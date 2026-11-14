@@ -1,0 +1,189 @@
+@page "/Requests/Ingest"
+@inject RequestService Requests
+@inject SupportDbContext Db
+@inject SignerOptions Options
+@{
+    ViewData["Title"] = "ثبت درخواست";
+}
+@functions {
+    public ParsedRequest? Preview { get; set; }
+    public string Error { get; set; } = "";
+    public string Mode { get; set; } = "paste";
+    public string PastedJson { get; set; } = "";
+    public string ManualInstallationId { get; set; } = "";
+    public string ManualCustomerName { get; set; } = "";
+    public string ManualContactName { get; set; } = "";
+    public string ManualContactPhone { get; set; } = "";
+    public string ManualContactEmail { get; set; } = "";
+    public string ManualNote { get; set; } = "";
+    public string ManualType { get; set; } = "NewActivation";
+
+    /// <summary>خواندن ورودی از فرم — فقط از همین مسیر، تا هیچ دادهٔ خامی اجرا نشود.</summary>
+    private async Task<(ParsedRequest? Parsed, List<(string, byte[])> Files, string? Error)> ReadInputAsync()
+    {
+        var files = new List<(string, byte[])>();
+        Mode = Request.Form["mode"].ToString() is { Length: > 0 } mode ? mode : "paste";
+        var pasted = Request.Form["pastedJson"].ToString();
+        var rawText = Request.Form["rawText"].ToString();
+        var text = !string.IsNullOrWhiteSpace(rawText) ? rawText : pasted;
+
+        if (Request.HasFormContentType && Request.Form.Files.Count > 0)
+        {
+            var upload = Request.Form.Files[0];
+            if (upload.Length > 2 * 1024 * 1024) return (null, files, "حجم فایل بیش از سقف مجاز (۲ مگابایت) است.");
+            using var buffer = new MemoryStream();
+            await upload.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+            var name = RequestService.SafeFileName(upload.FileName);
+
+            if (name.EndsWith(".eml", StringComparison.OrdinalIgnoreCase))
+            {
+                var (parsedEml, attachments, warnings) = RequestParser.ParseEml(bytes, name);
+                if (parsedEml is null) return (null, files, warnings.FirstOrDefault() ?? "فایل .eml خوانده نشد.");
+                parsedEml.Warnings.InsertRange(0, warnings);
+                files.AddRange(attachments.Select(a => (a.FileName, a.Bytes)));
+                return (parsedEml, files, null);
+            }
+
+            var fromFile = RequestParser.ParseJson(System.Text.Encoding.UTF8.GetString(bytes));
+            files.Add((name, bytes));
+            return (fromFile, files, null);
+        }
+
+        if (Mode == "manual")
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                requestVersion = 2,
+                requestType = ManualType,
+                installationId = ManualInstallationId.Trim(),
+                customerName = ManualCustomerName.Trim(),
+                contactName = ManualContactName.Trim(),
+                contactPhone = ManualContactPhone.Trim(),
+                contactEmail = ManualContactEmail.Trim(),
+                customerNote = ManualNote.Trim(),
+                requestedAt = DateTime.UtcNow.ToString("O")
+            });
+            return (RequestParser.ParseJson(json), files, null);
+        }
+
+        if (string.IsNullOrWhiteSpace(text)) return (null, files, "متن درخواست خالی است.");
+        return (text.TrimStart().StartsWith('{') ? RequestParser.ParseJson(text) : RequestParser.ParseText(text), files, null);
+    }
+
+    /// <summary>پیش‌نمایش: هیچ ردیفی ذخیره نمی‌شود.</summary>
+    public async Task<IActionResult> OnPostPreviewAsync()
+    {
+        var (parsed, _, error) = await ReadInputAsync();
+        if (parsed is null)
+        {
+            Error = error ?? "ورودی خوانده نشد.";
+            return Page();
+        }
+
+        Preview = parsed;
+        return Page();
+    }
+
+    public Task<IActionResult> OnPostAsync() => OnPostSaveAsync();
+
+    public async Task<IActionResult> OnPostSaveAsync()
+    {
+        var (parsed, files, error) = await ReadInputAsync();
+        if (parsed is null)
+        {
+            Error = error ?? "ورودی خوانده نشد.";
+            return Page();
+        }
+
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        var channel = Request.Form["rawChannel"].ToString() is { Length: > 0 } ch && Enum.TryParse<RequestChannel>(ch, true, out var parsedChannel)
+            ? parsedChannel
+            : RequestChannel.Paste;
+
+        var result = await Requests.IngestAsync(parsed, channel, actor, files);
+        if (!result.Ok)
+        {
+            Error = result.Error ?? "ثبت درخواست انجام نشد.";
+            Preview = parsed;
+            return Page();
+        }
+
+        TempData["ok"] = result.Duplicate
+            ? "فایل تکراری تشخیص داده شد و به درخواست موجود وصل شد."
+            : $"درخواست {result.RequestNo} ثبت شد. {Ui.N(parsed.Warnings.Count)} هشدار ثبت شد.";
+        return Redirect($"/Requests/Details?id={result.RequestId}");
+    }
+}
+<div class="page-head"><div><h1>ثبت درخواست</h1>
+    <p class="lead">چهار مسیر ورود: JSON مشتری، فایل .eml، چسباندن متن، ثبت دستی</p></div></div>
+
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="card"><div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+        <div class="grid">
+            <div class="field"><label for="mode">مسیر ورود</label>
+                <select id="mode" name="mode">
+                    <option value="paste" selected="@(Mode == "paste")">JSON / چسباندن متن</option>
+                    <option value="upload" selected="@(Mode == "upload")">فایل JSON یا .eml</option>
+                    <option value="manual" selected="@(Mode == "manual")">ثبت دستی</option>
+                </select></div>
+            <div class="field"><label for="file">فایل (JSON یا .eml)</label><input id="file" name="file" type="file" /></div>
+            <div class="field"><label for="rawChannel">کانال</label>
+                <select id="rawChannel" name="rawChannel">
+                    <option value="Paste">متن چسبانده‌شده</option>
+                    <option value="Email">ایمیل</option>
+                    <option value="Phone">تلفن</option>
+                    <option value="InPerson">حضوری</option>
+                </select></div>
+        </div>
+
+        <div class="field"><label for="pastedJson">متن درخواست (JSON نسخهٔ ۲ یا متن خام)</label>
+            <textarea id="pastedJson" name="pastedJson" class="mono" placeholder='{"requestVersion":2,"requestType":"NewActivation","installationId":"…"}'></textarea></div>
+
+        <details>
+            <summary class="hint">ثبت دستی (بدون فایل مشتری)</summary>
+            <div class="grid" style="margin-top:.6rem">
+                <div class="field"><label for="manualInstallationId">شناسهٔ نصب</label><input id="manualInstallationId" name="manualInstallationId" class="mono" /></div>
+                <div class="field"><label for="manualCustomerName">نام مشتری</label><input id="manualCustomerName" name="manualCustomerName" /></div>
+                <div class="field"><label for="manualContactName">نام تماس</label><input id="manualContactName" name="manualContactName" /></div>
+                <div class="field"><label for="manualContactPhone">تلفن تماس</label><input id="manualContactPhone" name="manualContactPhone" class="mono" /></div>
+                <div class="field"><label for="manualContactEmail">ایمیل تماس</label><input id="manualContactEmail" name="manualContactEmail" class="mono" /></div>
+                <div class="field"><label for="manualType">نوع</label>
+                    <select id="manualType" name="manualType">
+                        @foreach (RequestType type in Enum.GetValues(typeof(RequestType)))
+                        {
+                            <option value="@type" selected="@(ManualType == type.ToString())">@Ui.Type(type)</option>
+                        }
+                    </select></div>
+            </div>
+            <div class="field"><label for="manualNote">یادداشت</label><input id="manualNote" name="manualNote" /></div>
+        </details>
+
+        <p class="hint">سقف حجم فایل ۲ مگابایت و متن ۲۵۶ کیلوبایت است. محتوای HTML فقط به‌صورت متن نمایش داده می‌شود.</p>
+        <p>
+            <button type="submit" class="btn">ثبت درخواست</button>
+            <button type="submit" formaction="?handler=Preview" class="btn ghost">پیش‌نمایش (بدون ذخیره)</button>
+        </p>
+    </form>
+</div></div>
+
+@if (Preview is not null)
+{
+    <div class="card"><div class="card-head">پیش‌نمایش تجزیه‌شده (چیزی ذخیره نشده)</div><div class="card-body">
+        <dl class="kv">
+            <dt>شناسهٔ نصب</dt><dd class="mono">@(string.IsNullOrWhiteSpace(Preview.InstallationId) ? "—" : Preview.InstallationId)</dd>
+            <dt>نوع درخواست</dt><dd>@Ui.Type(Preview.Type)</dd>
+            <dt>مشتری</dt><dd>@(string.IsNullOrWhiteSpace(Preview.CustomerName) ? "شناسایی نشد — پس از ثبت می‌توانید مشتری بسازید/وصل کنید" : Preview.CustomerName)</dd>
+            <dt>ماژول‌های موردنظر</dt><dd class="mono">@(Preview.InterestedModules.Count == 0 ? "—" : string.Join(", ", Preview.InterestedModules))</dd>
+            <dt>هشدارها</dt><dd>@Ui.N(Preview.Warnings.Count)</dd>
+        </dl>
+        @if (Preview.Warnings.Count > 0)
+        {
+            <div class="alert warn">هشدارهای تجزیه:
+                <ul>@foreach (var warning in Preview.Warnings) { <li>@warning</li> }</ul>
+            </div>
+        }
+    </div></div>
+}

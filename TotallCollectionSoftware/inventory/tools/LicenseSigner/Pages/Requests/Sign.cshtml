@@ -1,0 +1,137 @@
+@page "/Requests/Sign"
+@inject SupportDbContext Db
+@inject SigningRunner Signing
+@inject DraftService Drafts
+@{
+    ViewData["Title"] = "امضا";
+}
+@functions {
+    public int RequestId { get; set; }
+    public string Error { get; set; } = "";
+    public SignOutcome? Result { get; set; }
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    public async Task<IActionResult> OnPostAsync()
+    {
+        RequestId = ResolveId();
+        var actor = await Db.Users.FirstOrDefaultAsync(u => u.Id == User.UserId());
+        if (actor is null) return Redirect("/Login");
+
+        if (Request.Form["confirm"].ToString() != "on")
+        {
+            Error = "پیش از امضا باید تأیید صریح را بزنید.";
+            return Page();
+        }
+
+        var keyId = Request.Form["keyId"].ToString();
+        var keyPassword = Request.Form["keyPassword"].ToString();
+        var supersede = Request.Form["supersede"].ToString() == "on";
+
+        Result = await Signing.SignAsync(RequestId, actor, keyId, keyPassword, supersede);
+        if (!Result.Signed) Error = Result.Error ?? "امضا انجام نشد.";
+        return Page();
+    }
+}
+@{
+    RequestId = ResolveId();
+    var request = await Db.Requests.AsNoTracking().Include(r => r.Customer)
+        .FirstOrDefaultAsync(r => r.Id == RequestId);
+    var draft = await Drafts.CurrentAsync(RequestId);
+    var status = Signing.GetStatus();
+    var hasIdentity = request is null ? false
+        : await Db.IdentityChecks.AnyAsync(i => i.RequestId == RequestId);
+    var signCheck = request is null
+        ? new WorkflowCheck(false, "درخواست پیدا نشد.")
+        : Workflow.CheckSign(request.Status, User.Role(), hasIdentity);
+}
+<div class="page-head">
+    <div><h1>تأیید و امضا — <span class="mono">@(request?.RequestNo ?? "?")</span></h1>
+        <p class="lead">آخرین قدم: بازبینی خلاصه، ورود گذرواژهٔ کلید و تأیید صریح. امضا با LicenseTool انجام می‌شود.</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Requests/Draft?id=@RequestId">پیش‌نویس</a></div>
+</div>
+
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+@if (Result is { Signed: true })
+{
+    <div class="alert ok">سند با موفقیت امضا و بازبینی شد.</div>
+    <div class="card"><div class="card-head">نتیجه</div><div class="card-body">
+        <dl class="kv">
+            <dt>سریال</dt><dd class="mono">@Result.Serial</dd>
+            <dt>SHA256</dt><dd class="mono">@Result.Sha256</dd>
+            <dt>حجم</dt><dd>@Ui.Bytes(Result.SizeBytes)</dd>
+            <dt>تأیید با کلید عمومی</dt><dd>@(Result.VerifiedByPublicKey ? "✔" : "✖")</dd>
+            <dt>تأیید شناسهٔ نصب</dt><dd>@(Result.VerifiedByInstallation ? "✔" : "✖")</dd>
+        </dl>
+        @if (Result.Warnings.Count > 0)
+        {
+            <div class="alert warn"><ul>@foreach (var warning in Result.Warnings) { <li>@warning</li> }</ul></div>
+        }
+        <p>
+            <a class="btn" href="/Requests/Deliver?id=@RequestId">رفتن به تحویل</a>
+            @if (Result.IssuedLicenseId is int licenseId)
+            {
+                <a class="btn ghost" href="/Licenses/Details?id=@licenseId">جزئیات لایسنس</a>
+            }
+        </p>
+    </div></div>
+}
+else
+{
+    @if (request is null)
+    {
+        <div class="alert error">درخواست پیدا نشد.</div>
+    }
+    else if (!signCheck.Ok)
+    {
+        <div class="alert error">امضا ممکن نیست: @signCheck.Error</div>
+        <p><a class="btn ghost" href="/Requests/Details?id=@request.Id">بازگشت به درخواست</a></p>
+    }
+    else if (!status.Ready)
+    {
+        <div class="alert warn">ابزار آماده نیست: @status.Reason</div>
+    }
+    else if (draft is null)
+    {
+        <div class="alert warn">پیش‌نویسی وجود ندارد؛ ابتدا «پیش‌نویس امضا» بسازید.</div>
+        <p><a class="btn" href="/Requests/Draft?id=@request.Id">ساخت پیش‌نویس</a></p>
+    }
+    else
+    {
+        <div class="grid">
+            <div class="card"><div class="card-head">بازبینی پیش از امضا</div><div class="card-body">
+                <dl class="kv">
+                    <dt>مشتری</dt><dd>@(request.Customer?.Name ?? "—")</dd>
+                    <dt>شناسهٔ نصب</dt><dd class="mono">@request.InstallationId</dd>
+                    <dt>مدت</dt><dd>@(draft.TermMode == "months" ? $"{draft.Months} ماه" : draft.TermMode)</dd>
+                    <dt>کاربر</dt><dd>@draft.UserMode · @draft.UserMax</dd>
+                    <dt>بسته‌ها</dt><dd class="mono">@(draft.PresetsCsv ?? "—")</dd>
+                    <dt>ماژول‌ها</dt><dd class="mono">@(draft.ModulesCsv ?? "—")</dd>
+                    <dt>ابزار</dt><dd class="mono">@(status.ToolPath ?? "—")</dd>
+                    <dt>کلید خصوصی</dt><dd>@(status.PrivateKeyFound ? "یافت شد ✔" : "یافت نشد ✖") · کلید عمومی @(status.PublicKeyFound ? "✔" : "✖")</dd>
+                </dl>
+            </div></div>
+
+            <div class="card"><div class="card-head">تأیید و امضا</div><div class="card-body">
+                <form method="post">
+                    <input type="hidden" name="id" value="@request.Id" />
+                    <div class="field"><label for="keyId">Key ID</label>
+                        <input id="keyId" name="keyId" class="mono" placeholder="dev-2026a" /></div>
+                    <div class="field"><label for="keyPassword">گذرواژهٔ کلید خصوصی (اختیاری)</label>
+                        <input id="keyPassword" name="keyPassword" type="password"
+                               placeholder="فقط برای همین فرایند فرزند پاس می‌شود" /></div>
+                    <div class="field"><label><input type="checkbox" name="confirm" /> پیش‌نویس و خلاصهٔ نهایی را بازبینی کردم</label></div>
+                    <div class="field"><label><input type="checkbox" name="supersede" /> لایسنس‌های جاری این نصب «فوگرفته» شوند</label></div>
+                    <button type="submit" class="btn">امضا و صدور</button>
+                </form>
+                <p class="hint">رمز کلید در DB/لاگ نمی‌نشیند؛ فقط از راه متغیر محیطی همان فرایند فرزند به ابزار می‌رسد.</p>
+            </div></div>
+        </div>
+    }
+}

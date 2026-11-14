@@ -1,0 +1,103 @@
+@page "/Requests/Identity"
+@inject SupportDbContext Db
+@inject RequestService Requests
+@{
+    ViewData["Title"] = "تأیید هویت";
+}
+@functions {
+    public int Id { get; set; }
+    public string Error { get; set; } = "";
+
+    private LicenseRequest? Req => ViewData["Request"] as LicenseRequest;
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    public async Task<IActionResult> OnPostAsync()
+    {
+        Id = ResolveId();
+        var actor = await Db.Users.FirstOrDefaultAsync(u => u.Id == User.UserId());
+        if (actor is null) return Redirect("/Login");
+
+        var method = Enum.TryParse<IdentityMethod>(Request.Form["method"].ToString(), true, out var parsed)
+            ? parsed
+            : IdentityMethod.Phone;
+
+        var (ok, error) = await Requests.SaveIdentityAsync(Id, method, Request.Form["verifiedWith"].ToString(),
+            Request.Form["verifiedAt"].ToString(), Request.Form["note"].ToString(), actor);
+
+        TempData[ok ? "ok" : "error"] = ok ? "تأیید هویت ثبت شد." : error;
+        if (ok) return Redirect($"/Requests/Details?id={Id}");
+
+        var request = await Db.Requests.AsNoTracking().Include(r => r.Customer).Include(r => r.IdentityChecks)
+            .FirstOrDefaultAsync(r => r.Id == Id);
+        ViewData["Request"] = request;
+        Error = error ?? "ثبت تأیید هویت انجام نشد.";
+        return Page();
+    }
+}
+@{
+    Id = ResolveId();
+    var request = await Db.Requests.AsNoTracking().Include(r => r.Customer).Include(r => r.IdentityChecks)
+        .FirstOrDefaultAsync(r => r.Id == Id);
+    ViewData["Request"] = request;
+    var today = JalaliDate.Short(JalaliDate.TehranNow());
+}
+<div class="page-head">
+    <div><h1>تأیید هویت — <span class="mono">@(request?.RequestNo ?? "?")</span></h1>
+        <p class="lead">پیش از «تأییدشده» باید ثبت شود: چه کسی، با چه روشی، چه زمانی.</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Requests/Details?id=@Id">بازگشت به درخواست</a></div>
+</div>
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (TempData["error"] is string errorMessage && !string.IsNullOrEmpty(errorMessage)) { <div class="alert error">@errorMessage</div> }
+
+@if (request is null)
+{
+    <div class="alert error">درخواست پیدا نشد.</div>
+}
+else
+{
+    <div class="card"><div class="card-body">
+        <form method="post">
+            <input type="hidden" name="id" value="@request.Id" />
+            <div class="grid">
+                <div class="field"><label for="method">روش تأیید</label>
+                    <select id="method" name="method">
+                        @foreach (IdentityMethod value in Enum.GetValues(typeof(IdentityMethod)))
+                        {
+                            <option value="@value">@Ui.IdentityMethodText(value)</option>
+                        }
+                    </select></div>
+                <div class="field"><label for="verifiedWith">با چه کسی تأیید شد</label>
+                    <input id="verifiedWith" name="verifiedWith" value="@(request.ContactName ?? "")" required /></div>
+                <div class="field"><label for="verifiedAt">تاریخ تأیید (شمسی)</label>
+                    <input id="verifiedAt" name="verifiedAt" class="mono" value="@today" required /></div>
+            </div>
+            <div class="field"><label for="note">یادداشت</label>
+                <textarea id="note" name="note" placeholder="مثلاً: تماس با شمارهٔ ثبت‌شده و تطبیق نام تأییدکننده"></textarea></div>
+            <p class="hint">بدون این ردیف، گذار به «تأییدشده» رد می‌شود.</p>
+            <button type="submit" class="btn">ثبت تأیید هویت</button>
+        </form>
+    </div></div>
+
+    @if (request.IdentityChecks.Count > 0)
+    {
+        <div class="card"><div class="card-head">تأییدهای ثبت‌شده</div><div class="card-body">
+            <table>
+                <thead><tr><th>تاریخ</th><th>روش</th><th>تأییدکننده</th><th>یادداشت</th><th>کاربر</th></tr></thead>
+                <tbody>
+                @foreach (var check in request.IdentityChecks.OrderByDescending(c => c.Id))
+                {
+                    <tr><td>@JalaliDate.Short(check.VerifiedAt)</td><td>@Ui.IdentityMethodText(check.Method)</td>
+                        <td>@check.VerifiedWith</td><td>@(check.Note ?? "—")</td><td>@check.ByName</td></tr>
+                }
+                </tbody>
+            </table>
+        </div></div>
+    }
+}

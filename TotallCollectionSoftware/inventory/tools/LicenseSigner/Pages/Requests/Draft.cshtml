@@ -1,0 +1,231 @@
+@page "/Requests/Draft"
+@inject SupportDbContext Db
+@inject DraftService Drafts
+@inject SigningRunner Signing
+@{
+    ViewData["Title"] = "پیش‌نویس امضا";
+}
+@functions {
+    public int RequestId { get; set; }
+    public string Error { get; set; } = "";
+    public string OkMessage { get; set; } = "";
+    public string PreviewText { get; set; } = "";
+    public string TermMode { get; set; } = "months";
+    public string Months { get; set; } = "12";
+    public string UntilText { get; set; } = "";
+    public string UpdatesUntilText { get; set; } = "";
+    public string UserMode { get; set; } = "Named";
+    public string UserMax { get; set; } = "5";
+    public string Exempt { get; set; } = "0";
+    public string AppliesTo { get; set; } = "Global";
+    public string DeploymentValue { get; set; } = "OnPrem";
+    public List<string> PresetsSelected { get; set; } = new();
+    public List<string> ModulesSelected { get; set; } = new();
+    public string Note { get; set; } = "";
+
+    private async Task LoadAsync()
+    {
+        var existing = await Drafts.CurrentAsync(RequestId);
+        if (existing is null) return;
+        TermMode = existing.TermMode;
+        Months = (existing.Months ?? 12).ToString();
+        UntilText = existing.Until is { } until ? JalaliDate.Short(until) : "";
+        UpdatesUntilText = existing.UpdatesUntil is { } updates ? JalaliDate.Short(updates) : "";
+        UserMode = existing.UserMode;
+        UserMax = existing.UserMax.ToString();
+        Exempt = existing.Exempt.ToString();
+        AppliesTo = existing.AppliesTo;
+        DeploymentValue = existing.Deployment;
+        PresetsSelected = DraftService.SplitCsv(existing.PresetsCsv).ToList();
+        ModulesSelected = DraftService.SplitCsv(existing.ModulesCsv).ToList();
+        Note = existing.Note ?? "";
+    }
+
+    private void ReadForm()
+    {
+        TermMode = Request.Form["termMode"].ToString() is { Length: > 0 } mode ? mode : "months";
+        Months = Request.Form["months"].ToString();
+        UntilText = Request.Form["until"].ToString();
+        UpdatesUntilText = Request.Form["updatesUntil"].ToString();
+        UserMode = Request.Form["userMode"].ToString() is { Length: > 0 } user ? user : "Named";
+        UserMax = Request.Form["userMax"].ToString();
+        Exempt = Request.Form["exempt"].ToString();
+        AppliesTo = Request.Form["appliesTo"].ToString() is { Length: > 0 } scope ? scope : "Global";
+        DeploymentValue = Request.Form["deployment"].ToString() is { Length: > 0 } deploy ? deploy : "OnPrem";
+        Note = Request.Form["note"].ToString();
+        PresetsSelected = Request.Form["presets"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
+        ModulesSelected = Request.Form["modules"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
+    }
+
+    private LicenseDraft BuildFromForm()
+    {
+        var draft = new LicenseDraft
+        {
+            RequestId = RequestId,
+            Deployment = DeploymentValue,
+            TermMode = TermMode,
+            Months = int.TryParse(Months, out var months) ? months : null,
+            UserMode = UserMode,
+            UserMax = int.TryParse(UserMax, out var userMax) ? userMax : 0,
+            Exempt = int.TryParse(Exempt, out var exempt) ? exempt : 0,
+            AppliesTo = AppliesTo,
+            PresetsCsv = string.Join(",", PresetsSelected),
+            ModulesCsv = string.Join(",", ModulesSelected),
+            Note = Note
+        };
+
+        if (JalaliDate.TryParse(UntilText, out var until)) draft.Until = until;
+        if (JalaliDate.TryParse(UpdatesUntilText, out var updates)) draft.UpdatesUntil = updates;
+        return draft;
+    }
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    public async Task<IActionResult> OnPostSaveAsync()
+    {
+        RequestId = ResolveId();
+        ReadForm();
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        var (ok, error) = await Drafts.SaveAsync(RequestId, BuildFromForm(), actor, HttpContext.RequestServices.GetRequiredService<RequestService>());
+        if (!ok)
+        {
+            Error = error ?? "ذخیرهٔ پیش‌نویس انجام نشد.";
+            await LoadAsync();
+            return Page();
+        }
+
+        TempData["ok"] = "پیش‌نویس ذخیره شد.";
+        return Redirect($"/Requests/Draft?id={RequestId}");
+    }
+
+    public Task<IActionResult> OnPostAsync() => OnPostSaveAsync();
+
+    public async Task<IActionResult> OnPostPreviewAsync()
+    {
+        RequestId = ResolveId();
+        ReadForm();
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        var requests = HttpContext.RequestServices.GetRequiredService<RequestService>();
+        var (ok, error) = await Drafts.SaveAsync(RequestId, BuildFromForm(), actor, requests);
+        if (!ok)
+        {
+            Error = error ?? "پیش‌نویس ذخیره نشد.";
+            return Page();
+        }
+
+        var outcome = await Signing.PreviewAsync(RequestId);
+        PreviewText = outcome.Preview;
+        if (!string.IsNullOrEmpty(outcome.Error)) Error = outcome.Error;
+        else OkMessage = "پیش‌نمایش ابزار آماده است (هیچ فایلی امضا نشده).";
+        return Page();
+    }
+}
+@{
+    RequestId = ResolveId();
+    if (Request.Method == "GET") { await LoadAsync(); }
+
+    var request = await Db.Requests.AsNoTracking().Include(r => r.Customer)
+        .FirstOrDefaultAsync(r => r.Id == RequestId);
+    ViewData["Request"] = request;
+    var presets = await Db.Presets.AsNoTracking().Where(p => p.IsActive).OrderBy(p => p.Code).ToListAsync();
+    var modules = Inventory.Licensing.Modules.ModuleCodes.All.ToList();
+    var req = request;
+}
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+@if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
+
+@if (req is null)
+{
+    <div class="alert error">درخواست پیدا نشد.</div>
+}
+else
+{
+    <div class="page-head">
+        <div><h1>پیش‌نویس امضا — <span class="mono">@req.RequestNo</span></h1>
+            <p class="lead">@(req.Customer?.Name ?? "مشتری تعیین نشده") · شناسهٔ نصب <span class="mono">@req.InstallationId</span></p></div>
+        <div class="ms-auto">
+            <a class="btn ghost" href="/Requests/Details?id=@req.Id">بازگشت</a>
+            @if (req.Status == RequestStatus.Approved)
+            {
+                <a class="btn" href="/Requests/Sign?id=@req.Id">رفتن به امضا</a>
+            }
+        </div>
+    </div>
+
+    <form method="post">
+        <input type="hidden" name="id" value="@req.Id" />
+        <div class="card"><div class="card-head">۱) آیتم‌ها و مدت</div><div class="card-body">
+            <div class="grid">
+                <div class="field"><label for="presets">بسته‌های آماده</label>
+                    <select id="presets" name="presets" multiple size="4">
+                        @foreach (var preset in presets)
+                        {
+                            <option value="@preset.Code" selected="@PresetsSelected.Contains(preset.Code, StringComparer.OrdinalIgnoreCase)">@preset.Title (@preset.Code)</option>
+                        }
+                    </select></div>
+                <div class="field"><label for="modules">ماژول‌های صریح</label>
+                    <select id="modules" name="modules" multiple size="10">
+                        @foreach (var module in modules)
+                        {
+                            <option value="@module.Code" selected="@ModulesSelected.Contains(module.Code, StringComparer.OrdinalIgnoreCase)">@module.Title (@module.Code)</option>
+                        }
+                    </select></div>
+                <div>
+                    <div class="field"><label for="termMode">حالت مدت</label>
+                        <select id="termMode" name="termMode">
+                            <option value="months" selected="@(TermMode == "months")">ماه‌شمار</option>
+                            <option value="until" selected="@(TermMode == "until")">تاریخ پایان</option>
+                            <option value="perpetual" selected="@(TermMode == "perpetual")">دائمی</option>
+                        </select></div>
+                    <div class="field"><label for="months">مدت (ماه)</label><input id="months" name="months" class="mono" value="@Months" /></div>
+                    <div class="field"><label for="until">تاریخ پایان (شمسی)</label><input id="until" name="until" class="mono" value="@UntilText" /></div>
+                    <div class="field"><label for="updatesUntil">به‌روزرسانی تا (شمسی)</label><input id="updatesUntil" name="updatesUntil" class="mono" value="@UpdatesUntilText" /></div>
+                    <div class="field"><label for="deployment">حالت استقرار</label>
+                        <select id="deployment" name="deployment">
+                            <option value="OnPrem" selected="@(DeploymentValue == "OnPrem")">OnPrem</option>
+                            <option value="Saas" selected="@(DeploymentValue == "Saas")">SaaS</option>
+                        </select></div>
+                </div>
+            </div>
+        </div></div>
+
+        <div class="card"><div class="card-head">۲) کاربران و دامنه</div><div class="card-body">
+            <div class="grid">
+                <div class="field"><label for="userMode">حالت کاربر</label>
+                    <select id="userMode" name="userMode">
+                        @foreach (var mode in new[] { "Named", "Concurrent", "None" })
+                        {
+                            <option value="@mode" selected="@(UserMode == mode)">@mode</option>
+                        }
+                    </select></div>
+                <div class="field"><label for="userMax">سقف کاربر</label><input id="userMax" name="userMax" class="mono" value="@UserMax" /></div>
+                <div class="field"><label for="exempt">کاربران مستثنا</label><input id="exempt" name="exempt" class="mono" value="@Exempt" /></div>
+                <div class="field"><label for="appliesTo">دامنه</label>
+                    <select id="appliesTo" name="appliesTo">
+                        @foreach (var scope in new[] { "Global", "PerTenant" })
+                        {
+                            <option value="@scope" selected="@(AppliesTo == scope)">@scope</option>
+                        }
+                    </select></div>
+            </div>
+            <div class="field"><label for="note">یادداشت پیش‌نویس</label><input id="note" name="note" value="@Note" /></div>
+            <p>
+                <button type="submit" class="btn">ذخیرهٔ پیش‌نویس</button>
+                <button type="submit" formaction="?handler=Preview" class="btn ghost">پیش‌نمایش ابزار (بدون امضا)</button>
+            </p>
+            <p class="hint">پروفایل ذخیره‌شده مبنای امضاست، نه ورودی فرم.</p>
+        </div></div>
+    </form>
+
+    @if (!string.IsNullOrWhiteSpace(PreviewText))
+    {
+        <div class="card"><div class="card-head">خروجی ابزار (کد ۳ = پیش‌نمایش، هیچ فایلی نوشته نشد)</div>
+            <div class="card-body"><pre>@PreviewText</pre></div></div>
+    }
+}

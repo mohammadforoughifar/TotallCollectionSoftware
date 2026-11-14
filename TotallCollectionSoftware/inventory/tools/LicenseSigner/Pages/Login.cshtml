@@ -1,0 +1,44 @@
+@page "/Login"
+@attribute [AllowAnonymous]
+@inject SupportAuthService Auth
+@inject AuditChainService Audit
+@{
+    ViewData["Title"] = "ورود";
+}
+@functions {
+    public string Error { get; set; } = "";
+
+    public async Task<IActionResult> OnPostAsync()
+    {
+        var userName = Request.Form["userName"].ToString();
+        var password = Request.Form["password"].ToString();
+
+        var (ok, error, user) = await Auth.SignInAsync(userName, password);
+        if (!ok || user is null)
+        {
+            Error = error ?? "ورود انجام نشد.";
+            return Page();
+        }
+
+        await HttpContext.SignInAsync(
+            Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme,
+            ClaimsFactory.Create(user));
+        await Audit.AppendAsync(user.UserName, "LOGIN", "SupportUser", user.Id.ToString(), null, user.Id);
+
+        return user.MustChangePassword ? Redirect("/ChangePassword?first=1") : Redirect("/");
+    }
+}
+<div class="page-head"><div><h1>ورود به پنل پشتیبانی</h1>
+    <p class="lead">این پنل فقط روی ماشین پشتیبانی و روی localhost اجرا می‌شود.</p></div></div>
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+<div class="card" style="max-width:460px"><div class="card-body">
+    <form method="post">
+        <div class="field"><label for="userName">نام کاربری</label>
+            <input id="userName" name="userName" autocomplete="username" required /></div>
+        <div class="field"><label for="password">گذرواژه</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required /></div>
+        <p class="hint">پس از پنج تلاش ناموفق، حساب ۱۵ دقیقه قفل می‌شود.</p>
+        <p><button class="btn" type="submit">ورود</button></p>
+    </form>
+</div></div>
+<div class="alert warn">اگر نخستین اجرا است، گذرواژهٔ آغازین یک‌بار روی کنسول چاپ شده و در هیچ فایل/لاگی نیست.</div>

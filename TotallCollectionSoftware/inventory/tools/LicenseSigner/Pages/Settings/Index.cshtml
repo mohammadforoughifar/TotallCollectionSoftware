@@ -1,0 +1,75 @@
+@page "/Settings"
+@attribute [Authorize(Roles = "Admin")]
+@inject SupportDbContext Db
+@inject SupportSettingsService Settings
+@inject AuditChainService Audit
+@{
+    ViewData["Title"] = "تنظیمات";
+}
+@functions {
+    public string Error { get; set; } = "";
+    public string OkMessage { get; set; } = "";
+
+    public async Task<IActionResult> OnPostSmtpAsync()
+    {
+        var current = await Settings.GetSmtpAsync();
+        var host = Request.Form["host"].ToString().Trim();
+        var user = Request.Form["user"].ToString().Trim();
+        var from = Request.Form["from"].ToString().Trim();
+        var fromName = Request.Form["fromName"].ToString().Trim();
+        var port = int.TryParse(Request.Form["port"], out var parsedPort) && parsedPort is > 0 and < 65535 ? parsedPort : 587;
+        var startTls = Request.Form["starttls"].ToString() == "on";
+        var timeout = int.TryParse(Request.Form["timeout"], out var parsedTimeout) ? Math.Clamp(parsedTimeout, 5, 120) : current.TimeoutSeconds;
+
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        await Settings.SaveSmtpAsync(new SmtpSettings(host, port, user, from, fromName.Length == 0 ? "پشتیبانی لایسنس" : fromName, startTls, timeout), actor, Audit);
+        OkMessage = "تنظیمات SMTP ذخیره شد (رمز در DB ذخیره نمی‌شود).";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostTemplateAsync()
+    {
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        await Settings.SaveTemplateAsync(Request.Form["subject"].ToString(), Request.Form["body"].ToString(), actor, Audit);
+        OkMessage = "قالب ایمیل ذخیره شد.";
+        return Page();
+    }
+}
+@{
+    var smtp = await Settings.GetSmtpAsync();
+    var template = await Settings.GetTemplateAsync();
+    var passwordAvailable = Settings.SmtpPasswordAvailable;
+}
+<div class="page-head"><div><h1>تنظیمات</h1>
+    <p class="lead">SMTP (اختیاری)، قالب ایمیل تحویل و کاربران پنل</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Settings/Users">کاربران</a></div>
+</div>
+@if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="card"><div class="card-head">SMTP (اختیاری)</div><div class="card-body">
+    <form method="post" asp-page-handler="Smtp">
+        <div class="grid">
+            <div class="field"><label for="host">میزبان</label><input id="host" name="host" class="mono" value="@smtp.Host" placeholder="smtp.example.com" /></div>
+            <div class="field"><label for="port">درگاه</label><input id="port" name="port" class="mono" value="@smtp.Port" /></div>
+            <div class="field"><label for="user">کاربر</label><input id="user" name="user" class="mono" value="@smtp.User" /></div>
+            <div class="field"><label for="from">فرستنده (ایمیل)</label><input id="from" name="from" class="mono" value="@smtp.From" /></div>
+            <div class="field"><label for="fromName">نام فرستنده</label><input id="fromName" name="fromName" value="@smtp.FromName" /></div>
+            <div class="field"><label for="timeout">مهلت (ثانیه)</label><input id="timeout" name="timeout" class="mono" value="@smtp.TimeoutSeconds" /></div>
+        </div>
+        <div class="field"><label><input type="checkbox" name="starttls" checked="@smtp.UseStartTls" /> STARTTLS</label></div>
+        <p class="hint">رمز SMTP از متغیر محیطی <span class="mono">LICENSESIGNER_SMTP_PASSWORD</span> خوانده می‌شود —
+            وضعیت: @(passwordAvailable ? "در دسترس" : "موجود نیست").</p>
+        <button type="submit" class="btn">ذخیرهٔ تنظیمات SMTP</button>
+    </form>
+</div></div>
+
+<div class="card"><div class="card-head">قالب ایمیل تحویل</div><div class="card-body">
+    <form method="post" asp-page-handler="Template">
+        <div class="field"><label for="subject">موضوع</label><input id="subject" name="subject" value="@template.Subject" /></div>
+        <div class="field"><label for="body">متن</label><textarea id="body" name="body">@template.Body</textarea></div>
+        <p class="hint">جای‌نگهدارها: <span class="mono">{{Serial}}</span>، <span class="mono">{{InstallationId}}</span>،
+            <span class="mono">{{CustomerName}}</span>، <span class="mono">{{RequestNo}}</span>.</p>
+        <button type="submit" class="btn ghost">ذخیرهٔ قالب</button>
+    </form>
+</div></div>

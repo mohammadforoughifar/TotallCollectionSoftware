@@ -1,0 +1,132 @@
+@page "/Settings/Users"
+@attribute [Authorize(Roles = "Admin")]
+@inject SupportDbContext Db
+@inject SupportAuthService Auth
+@inject AuditChainService Audit
+@{
+    ViewData["Title"] = "کاربران پنل";
+}
+@functions {
+    public string Error { get; set; } = "";
+    public string OkMessage { get; set; } = "";
+    public string NewUserName { get; set; } = "";
+    public string NewDisplayName { get; set; } = "";
+    public string NewRole { get; set; } = "Operator";
+    public string? GeneratedPassword { get; set; }
+
+    public async Task<IActionResult> OnPostCreateAsync()
+    {
+        NewUserName = Request.Form["userName"].ToString().Trim();
+        NewDisplayName = Request.Form["displayName"].ToString().Trim();
+        NewRole = Request.Form["role"].ToString() is { Length: > 0 } role ? role : "Operator";
+        var parsedRole = Enum.TryParse<SupportRole>(NewRole, true, out var value) ? value : SupportRole.Operator;
+
+        try
+        {
+            var user = await Auth.CreateUserAsync(NewUserName, NewDisplayName, parsedRole);
+            await Audit.AppendAsync(User.UserName(), "USER_CREATE", "SupportUser", user.Id.ToString(),
+                System.Text.Json.JsonSerializer.Serialize(new { role = parsedRole.ToString() }), User.UserId());
+            OkMessage = $"کاربر «{user.UserName}» ساخته شد. گذرواژهٔ آغازین یک‌بار روی کنسول سرور چاپ شد و تعویض آن اجباری است.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            Error = ex.Message;
+        }
+
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostResetAsync()
+    {
+        var userId = int.TryParse(Request.Form["userId"], out var parsed) ? parsed : 0;
+        var (ok, error, password) = await Auth.ResetPasswordAsync(userId);
+        if (!ok)
+        {
+            Error = error ?? "بازنشانی انجام نشد.";
+            return Page();
+        }
+
+        await Audit.AppendAsync(User.UserName(), "USER_RESET", "SupportUser", userId.ToString(), null, User.UserId());
+        // گذرواژهٔ تازه عمداً در صفحهٔ وب نشان داده نمی‌شود؛ فقط روی کنسول.
+        Console.WriteLine($"گذرواژهٔ تازهٔ کاربر #{userId}: {password}");
+        OkMessage = "گذرواژهٔ تازه ساخته شد و روی کنسول سرور چاپ شد؛ تعویض در اولین ورود اجباری است.";
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostUnlockAsync()
+    {
+        var userId = int.TryParse(Request.Form["userId"], out var parsed) ? parsed : 0;
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        if (user is null)
+        {
+            Error = "کاربر پیدا نشد.";
+            return Page();
+        }
+
+        user.FailedCount = 0;
+        user.LockedUntil = null;
+        await Db.SaveChangesAsync();
+        await Audit.AppendAsync(User.UserName(), "USER_UNLOCK", "SupportUser", userId.ToString(), null, User.UserId());
+        OkMessage = "قفل حساب برداشته شد.";
+        return Page();
+    }
+}
+@{
+    var users = await Db.Users.AsNoTracking().OrderBy(u => u.Id).ToListAsync();
+}
+<div class="page-head"><div><h1>کاربران پنل</h1>
+    <p class="lead">نقش‌ها: اپراتور (ثبت/بررسی) · امضاکننده · مدیر</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Settings">بازگشت به تنظیمات</a></div>
+</div>
+@if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="card">
+    <table>
+        <thead><tr><th>کاربر</th><th>نام</th><th>نقش</th><th>وضعیت</th><th>آخرین ورود</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var user in users)
+        {
+            <tr>
+                <td class="mono">@user.UserName</td>
+                <td>@user.DisplayName</td>
+                <td>@Ui.Role(user.Role)</td>
+                <td>
+                    @if (!user.IsActive) { <span class="badge err">غیرفعال</span> }
+                    else if (user.LockedUntil is { } locked && locked > DateTime.UtcNow) { <span class="badge err">قفل تا @JalaliDate.Full(locked)</span> }
+                    else if (user.MustChangePassword) { <span class="badge review">تعویض گذرواژه لازم</span> }
+                    else { <span class="badge ok">فعال</span> }
+                </td>
+                <td>@JalaliDate.Full(user.LastLoginAt)</td>
+                <td>
+                    <form method="post" asp-page-handler="Reset" class="inline">
+                        <input type="hidden" name="userId" value="@user.Id" />
+                        <button class="btn small ghost" type="submit">بازنشانی گذرواژه</button>
+                    </form>
+                    <form method="post" asp-page-handler="Unlock" class="inline">
+                        <input type="hidden" name="userId" value="@user.Id" />
+                        <button class="btn small ghost" type="submit">رفع قفل</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Create">
+            <div class="grid">
+                <div class="field"><label for="userName">نام کاربری تازه</label><input id="userName" name="userName" class="mono" value="@NewUserName" /></div>
+                <div class="field"><label for="displayName">نام نمایشی</label><input id="displayName" name="displayName" value="@NewDisplayName" /></div>
+                <div class="field"><label for="role">نقش</label>
+                    <select id="role" name="role">
+                        @foreach (SupportRole role in Enum.GetValues(typeof(SupportRole)))
+                        {
+                            <option value="@role" selected="@(NewRole == role.ToString())">@Ui.Role(role)</option>
+                        }
+                    </select></div>
+                <div class="field"><label>&nbsp;</label><button class="btn" type="submit">ساخت کاربر</button></div>
+            </div>
+            <p class="hint">گذرواژهٔ آغازین روی کنسول سرور چاپ می‌شود و در اولین ورود تعویض آن اجباری است.</p>
+        </form>
+    </div>
+</div>

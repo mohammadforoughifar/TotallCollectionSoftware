@@ -1,0 +1,16 @@
+## مینی‌پروژهٔ پشتیبانی — چیزهایی که هرگز نباید کامیت شوند
+bin/
+obj/
+out/
+data/
+keys/
+*.db
+*.db-shm
+*.db-wal
+*.db.before-restore
+*.private.pem
+*.pem
+*.lic
+*.eml
+Logs/
+wwwroot/
