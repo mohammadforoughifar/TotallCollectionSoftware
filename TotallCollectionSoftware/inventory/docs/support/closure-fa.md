@@ -33,10 +33,10 @@
 
 ## ۱-ب) تحویل کد
 
-- شاخه: `lic/support-panel`
-- کامیت: `181f852a3fb8900048d8ce54805a158b4a3fb6a7` — feat(support): پنل مستقل پشتیبانی لایسنس (فاز ۵) — درخواست، امضا، تحویل
-- `git ls-remote origin refs/heads/lic/support-panel` ⇒ `181f852a3fb8900048d8ce54805a158b4a3fb6a7`
-- PR: https://github.com/mohammadforoughifar/TotallCollectionSoftware/pull/new/lic/support-panel
+- شاخه: `main` (پوش مستقیم به درخواست کاربر)
+- کامیت: `bb25d3165f61f5c043f25e7c4d182fec33fd15c5` — feat(support): پنل مستقل پشتیبانی لایسنس (فاز ۵)
+- `git ls-remote origin refs/heads/main` ⇒ همان کامیت
+- ۷۲ فایل تازه؛ هیچ فایل موجودی تغییر/حذف نشده (`src/` مشتری، `InventoryDb` و `tools/LicenseTool` دست‌نخورده)
 
 ## ۲) آزمون‌ها
 
