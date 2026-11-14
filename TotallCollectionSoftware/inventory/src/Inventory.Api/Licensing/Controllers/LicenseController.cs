@@ -102,13 +102,17 @@ public class LicenseController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly QuotaService _quota;
     private readonly RefundPolicy _refundPolicy;
+    private readonly DevelopmentLicenseBypass _devBypass;
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
         InstallationBinding binding, ClockGuard clock, PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
         LicenseEventLogger events, AppDbContext db, LicensingOptions options,
-        IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log)
+        IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log,
+        DevelopmentLicenseBypass devBypass)
     {
+        _devBypass = devBypass;
+
         _licenses = licenses;
         _identity = identity;
         _binding = binding;
@@ -149,6 +153,8 @@ public class LicenseController : ControllerBase
                 status = entitlement.Status.ToString(),
                 installationId,
                 deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
+                // وضعیت توسعه: کلاینت با همین پرچم «لایسنس در حال دور زدن» را نشان می‌دهد.
+                developmentBypass = _devBypass.IsActive,
                 issues = entitlement.Issues.Select(i => new { i.Code, severity = i.Severity.ToString(), i.Message }),
                 canActivate = true
             });
@@ -170,7 +176,10 @@ public class LicenseController : ControllerBase
         {
             status = entitlement.Status.ToString(),
             installationId,
-            provider = "SignedFile",
+            provider = _devBypass.IsActive ? "DevelopmentBypass" : "SignedFile",
+            // ⚠️ در محیط Development هیچ سندی اعمال نشده؛ این پرچم همان چیزی است که
+            // به پشتیبانی و توسعه‌دهنده می‌گوید «چرا همه‌چیز باز است».
+            developmentBypass = _devBypass.IsActive,
             customerId = entitlement.CustomerId,
             customerName = entitlement.CustomerName,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),

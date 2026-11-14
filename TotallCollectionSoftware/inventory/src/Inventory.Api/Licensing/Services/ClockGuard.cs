@@ -166,20 +166,23 @@ public sealed class ClockGuard
     private readonly IReadOnlyList<IClockStore> _stores;
     private readonly byte[]? _key;
     private readonly ILogger<ClockGuard> _log;
+    private readonly DevelopmentLicenseBypass? _bypass;
 
     public ClockGuard(AppDbContext db, LicensePaths paths, LicenseEventLogger events,
-        ILogger<ClockGuard> log)
-        : this(db, paths, events, log, BuildDefaultStores(paths), null) { }
+        ILogger<ClockGuard> log, DevelopmentLicenseBypass? bypass = null)
+        : this(db, paths, events, log, BuildDefaultStores(paths), null, bypass) { }
 
     /// <summary>سازندهٔ قابل‌تست: ذخیره‌گاه‌ها و کلید قابل جایگزینی‌اند.</summary>
     public ClockGuard(AppDbContext db, LicensePaths paths, LicenseEventLogger events,
-        ILogger<ClockGuard> log, IReadOnlyList<IClockStore> stores, byte[]? key)
+        ILogger<ClockGuard> log, IReadOnlyList<IClockStore> stores, byte[]? key,
+        DevelopmentLicenseBypass? bypass = null)
     {
         _db = db;
         _events = events;
         _log = log;
         _stores = stores;
         _key = key ?? TryLoadOrCreateKey(paths, log);
+        _bypass = bypass;
     }
 
     private static IReadOnlyList<IClockStore> BuildDefaultStores(LicensePaths paths)
@@ -206,6 +209,20 @@ public sealed class ClockGuard
     /// </summary>
     public async Task<ClockVerdict> EvaluateAsync(CancellationToken cancellationToken = default)
     {
+        // ---- محیط توسعه: قفل ساعت کاملاً کنار می‌رود ----
+        // چرا؟ چون توسعه‌دهنده مرتب ساعت ویندوز/VM را دست می‌زند (بازگردانی اسنپ‌شات، تغییر
+        // منطقهٔ زمانی) و نتیجه‌اش در نسخهٔ واقعی «فقط‌خواندنی موقت» است؛ در توسعه این فقط
+        // وقت تلف‌کردن است. وضعیت «Normal» منتشر می‌شود تا هیچ فیلتر نوشتنی و هیچ بنری
+        // در Development فعال نشود.
+        if (_bypass?.IsActive == true)
+        {
+            var devNow = Inventory.Api.Licensing.ClockAnchor.Now();
+            var devVerdict = new ClockVerdict(devNow, devNow, null, devNow, TimeSpan.Zero,
+                ClockHealth.Normal, "حالت توسعه — سنجش ساعت غیرفعال است.", new[] { "dev-bypass" });
+            ClockGuardState.Publish(devVerdict);
+            return devVerdict;
+        }
+
         var systemNow = Inventory.Api.Licensing.ClockAnchor.Now();
         var observed = new List<(string Store, DateTime Value)>();
 

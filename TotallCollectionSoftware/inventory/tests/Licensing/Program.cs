@@ -9,6 +9,8 @@ using Inventory.Licensing.Modules;
 using Inventory.Licensing.Abstractions;
 using Inventory.Licensing.Periods;
 using Inventory.Licensing.Validation;
+using Inventory.Api.Licensing;
+using Microsoft.Extensions.Configuration;
 
 // ============================================================
 //  تست‌های موتور لایسنس (مرحله ۱)
@@ -1276,6 +1278,60 @@ Section("۲۷) گام ۵ — کلاینت: نگاشت منو به ماژول، �
         "تشخیص کد لایسنسی درست است");
 }
 
+
+// ============================================================
+//  دور زدن لایسنس در محیط توسعه (DevelopmentBypass)
+//  هدف: «در محیط توسعه هیچ خطای لایسنسی نباید وجود داشته باشد» — و در عین حال
+//  هرگز در Production اثر نکند.
+// ============================================================
+Section("دور زدن لایسنس در محیط توسعه");
+
+{
+    // ---------- الف) وضعیت ساختگی: کامل و بدون سقف ----------
+    var dev = DevelopmentEntitlement.Build();
+
+    Check(dev.Status == LicenseOverallStatus.Valid, "وضعیت توسعه: Valid است");
+    Check(dev.HasLicense && !dev.HasErrors, "وضعیت توسعه: بدون خطا");
+    Check(dev.Modules.Count == ModuleCodes.All.Count,
+        $"وضعیت توسعه: هر {ModuleCodes.All.Count} ماژول حاضر است (شد: {dev.Modules.Count})");
+    Check(ModuleCodes.All.All(m => dev.GetState(m.Code) == ModuleState.Valid),
+        "وضعیت توسعه: همهٔ ماژول‌ها Valid هستند");
+    Check(ModuleCodes.All.All(m => dev.IsWritable(m.Code)), "وضعیت توسعه: نوشتن در همهٔ ماژول‌ها آزاد است");
+    Check(dev.Limits.Count == 0, "وضعیت توسعه: هیچ سقف سهمیه‌ای نیست (یعنی نامحدود)");
+    Check(!dev.Seats.HasUserLimit && dev.Seats.Mode == LicenseUserMode.None,
+        "وضعیت توسعه: سقف صندلی اعمال نمی‌شود");
+    Check(dev.HasPerpetualItem && dev.UpdatesUntil is null,
+        "وضعیت توسعه: بررسی نسخه/آپدیت مانع نمی‌شود");
+    Check(dev.Issues.Any(i => i.Code == DevelopmentEntitlement.IssueCode && i.Severity == LicenseIssueSeverity.Info),
+        "وضعیت توسعه: با Issue اطلاعاتی LICENSE_DEV_BYPASS علامت‌گذاری شده (پنهان نیست)");
+    Check(dev.AppliedSerials.Contains(DevelopmentEntitlement.Serial),
+        "وضعیت توسعه: سریال ساختگی در AppliedSerials است");
+    Check(dev.Issues.All(i => i.Severity != LicenseIssueSeverity.Error),
+        "وضعیت توسعه: هیچ Issue با شدت Error ندارد (پس بنر قرمز نمی‌سازد)");
+
+    // ---------- ب) تصمیم فعال‌سازی: فقط Development ----------
+    DevelopmentLicenseBypass Eval(string env, bool? flag)
+    {
+        var cfg = new Microsoft.Extensions.Configuration.ConfigurationBuilder();
+        if (flag is { } value)
+            cfg.AddInMemoryCollection(new Dictionary<string, string?>
+                { [DevelopmentLicenseBypass.ConfigKey] = value ? "true" : "false" });
+        return DevelopmentLicenseBypass.Evaluate(new FakeEnv(env), cfg.Build());
+    }
+
+    Check(Eval("Development", null).IsActive, "Development بدون کلید ⇒ فعال (پیش‌فرض)");
+    Check(Eval("Development", true).IsActive, "Development با true ⇒ فعال");
+    Check(!Eval("Development", false).IsActive, "Development با false ⇒ غیرفعال (تست مسیر واقعی لایسنس)");
+
+    Check(!Eval("Production", null).IsActive, "Production بدون کلید ⇒ غیرفعال");
+    Check(!Eval("Production", true).IsActive,
+        "⛔ Production با true ⇒ همچنان غیرفعال (کلید مشتری نمی‌تواند لایسنس را دور بزند)");
+    Check(Eval("Production", true).InactiveReason is { Length: > 0 },
+        "Production با true ⇒ دلیل غیرفعال بودن گزارش می‌شود");
+    Check(!Eval("Staging", null).IsActive && !Eval("", null).IsActive,
+        "محیط‌های دیگر (Staging/خالی) ⇒ غیرفعال");
+}
+
 Console.WriteLine($"\n{(failures == 0 ? "همهٔ تست‌ها موفق بود." : $"{failures} تست شکست خورد.")}");
 return failures == 0 ? 0 : 1;
 
@@ -1284,4 +1340,16 @@ static bool merged_ok(LicenseDocument doc)
 {
     var ent = EntitlementMerger.Merge(new[] { doc });
     return ent.Status == LicenseOverallStatus.Valid && ent.Items.Count > 0;
+}
+
+// ---- کمکی: محیط ساختگی برای تست تصمیم «حالت توسعه» ----
+sealed class FakeEnv : Microsoft.Extensions.Hosting.IHostEnvironment
+{
+    public FakeEnv(string name) => EnvironmentName = name;
+
+    public string EnvironmentName { get; set; }
+    public string ApplicationName { get; set; } = "tests";
+    public string ContentRootPath { get; set; } = ".";
+    public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
+        new Microsoft.Extensions.FileProviders.NullFileProvider();
 }
