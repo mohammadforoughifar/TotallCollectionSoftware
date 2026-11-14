@@ -41,6 +41,8 @@ public sealed class SeatGrant
     public static int StatusFor(string code) => code switch
     {
         "LICENSE_SESSION_MISMATCH" => StatusCodes.Status401Unauthorized,
+        // پایان پنجرهٔ توکن‌های بدون sid: پاسخ ۴۰۱ تا کلاینت «یک بار دیگر وارد شو» را نشان دهد.
+        "LICENSE_SESSION_ENDED" => StatusCodes.Status401Unauthorized,
         "LICENSE_SEAT_BUSY" or "LICENSE_SEAT_UNAVAILABLE" => StatusCodes.Status503ServiceUnavailable,
         "LICENSE_SEAT_FULL" or "LICENSE_SEAT_ENDED" or "LICENSE_SEAT_UNKNOWN" => StatusCodes.Status403Forbidden,
         _ => StatusCodes.Status403Forbidden
@@ -109,11 +111,14 @@ public sealed class SeatService
     private readonly SeatCache _cache;
     private readonly SeatDegradedJournal _journal;
     private readonly LicensingOptions _options;
+    private readonly LicenseRuntimeState _runtime;
     private readonly ILogger<SeatService> _log;
 
     public SeatService(AppDbContext db, ILicenseService licenses, LicenseSessionService sessions,
-        SeatCache cache, SeatDegradedJournal journal, LicensingOptions options, ILogger<SeatService> log)
+        SeatCache cache, SeatDegradedJournal journal, LicensingOptions options,
+        LicenseRuntimeState runtime, ILogger<SeatService> log)
     {
+        _runtime = runtime;
         _db = db;
         _licenses = licenses;
         _sessions = sessions;
@@ -266,8 +271,21 @@ public sealed class SeatService
             return SeatGrant.Ok(sessionId);
 
         if (string.IsNullOrWhiteSpace(sessionId))
-            return SeatGrant.Denied("LICENSE_SEAT_UNKNOWN",
-                "این توکن شناسهٔ نشست ندارد؛ یک بار خارج و دوباره وارد شوید.");
+        {
+            // توکن‌های صادرشده توسط نسخهٔ قبلی claim «sid» ندارند. دو خطای بد ممکن است:
+            // رد فوری ⇒ همهٔ کاربران بدون توضیح بیرون می‌افتند؛ پذیرش دائمی ⇒ نگه‌داشتن
+            // توکن قدیمی، سقف صندلی را دور می‌زند. راه میانه: پنجرهٔ گذار از «اولین
+            // استارت همین بیلد» (پیش‌فرض ۱۳ ساعت، بیش از حداکثر عمر ۱۲ ساعتهٔ توکن).
+            var legacyOpen = await _runtime.IsLegacyTokenWindowOpenAsync(Now, cancellationToken);
+            if (!legacyOpen)
+                return SeatGrant.Denied(LicenseRuntimeState.SessionEndedCode,
+                    "نشست این توکن پایان یافته است؛ یک بار دیگر وارد شوید.");
+
+            _log.LogInformation(
+                "[License] توکن بدون sid در پنجرهٔ گذار پذیرفته شد (کاربر {UserId}). صندلی مصرف نمی‌شود.",
+                userId);
+            return SeatGrant.Ok(sessionId);
+        }
 
         var cacheSeconds = _options.EffectiveSeatCacheSeconds();
         var now = Now;

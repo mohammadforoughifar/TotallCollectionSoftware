@@ -253,6 +253,19 @@ END;
 -- ---------- ستون معافیت صندلی روی جدول کاربران (افزایشی) ----------
 IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', 'LicenseSeatExempt') IS NULL
     ALTER TABLE [dbo].[Users] ADD [LicenseSeatExempt] bit NOT NULL CONSTRAINT [DF_Users_LicenseSeatExempt] DEFAULT(0);
+
+-- ---------- وضعیت زمان‌دار نصب (گام ۳-ب) ----------
+-- اولین‌بار که این بیلد بالا می‌آید یک ردیف build.firstStart درج می‌شود؛ پنجرهٔ
+-- پذیرش توکن‌های بدون sid از همان لحظه شمرده می‌شود. افزایشی و بی‌خطر.
+IF OBJECT_ID(N'dbo.LicenseRuntime', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LicenseRuntime] (
+        [Key]       nvarchar(64)  NOT NULL,
+        [Value]     nvarchar(400) NULL,
+        [UpdatedAt] datetime2     NOT NULL,
+        CONSTRAINT [PK_LicenseRuntime] PRIMARY KEY ([Key])
+    );
+END;
 ";
 
     /// <summary>اجرای افزایشی روی دیتابیس جاری (SQL Server یا SQLite).</summary>
@@ -419,6 +432,12 @@ CREATE TABLE IF NOT EXISTS ""LicenseEvents"" (
     ""UserId"" INTEGER NULL,
     ""Serial"" TEXT NULL);");
             await Exec(connection, @"CREATE INDEX IF NOT EXISTS ""IX_LicenseEvents_At"" ON ""LicenseEvents"" (""At"");");
+
+            // وضعیت زمان‌دار نصب (گام ۳-ب) — همان DDL، لهجهٔ SQLite
+            await Exec(connection, @"CREATE TABLE IF NOT EXISTS ""LicenseRuntime"" (
+    ""Key"" TEXT NOT NULL CONSTRAINT ""PK_LicenseRuntime"" PRIMARY KEY,
+    ""Value"" TEXT NULL,
+    ""UpdatedAt"" TEXT NOT NULL);");
 
             // ستون معافیت صندلی — فقط اگر جدول Users از قبل هست و ستون را ندارد
             await using var exists = connection.CreateCommand();

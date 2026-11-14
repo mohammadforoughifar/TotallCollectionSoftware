@@ -53,6 +53,7 @@ public static class LicenseStartup
         // (وگرنه هر درخواست یک کوئری می‌زند) و دفتر تخریب هم یک فایل دارد.
         services.AddSingleton<SeatCache>();
         services.AddSingleton<SeatDegradedJournal>();
+        services.AddScoped<LicenseRuntimeState>();
         services.AddScoped<SeatService>();
 
         services.AddSingleton<EntitlementCache>();

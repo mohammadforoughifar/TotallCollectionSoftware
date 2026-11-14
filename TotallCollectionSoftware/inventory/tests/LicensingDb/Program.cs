@@ -2365,6 +2365,8 @@ Inventory.Api.Licensing.Services.SeatService NewSeats(AppDbContext db, Effective
         cache,
         journal,
         opts,
+        new Inventory.Api.Licensing.Services.LicenseRuntimeState(db,
+            NullLogger<Inventory.Api.Licensing.Services.LicenseRuntimeState>.Instance),
         NullLogger<Inventory.Api.Licensing.Services.SeatService>.Instance);
 
 async Task SeedSeatUsersAsync(int count)
@@ -3091,6 +3093,96 @@ async Task ClearSessionsAsync()
         "توکن RadisHr با کلید مشتق‌شده و بدون رشتهٔ ثابت صادر می‌شود (در میزبان پذیرفته نمی‌شود ⇒ صندلی نمی‌گیرد)");
 }
 
+
+// ============================================================
+//  بخش ۲۹ (گام ۳-ب) — پنجرهٔ توکن بدون sid و پوشه‌های ProgramData
+// ============================================================
+Section("۲۹) گام ۳-ب: توکن بدون sid و ProgramData");
+
+{
+    await using var db = NewDb();
+
+    var runtime = new Inventory.Api.Licensing.Services.LicenseRuntimeState(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseRuntimeState>.Instance);
+
+    var firstStart = await runtime.EnsureFirstStartAsync();
+    var again = await runtime.EnsureFirstStartAsync();
+    Check(firstStart == again, "اولین استارت فقط یک‌بار درج می‌شود (idempotent) — مقدار: " + firstStart.ToString("o"));
+    Check(await db.LicenseRuntime.CountAsync() == 1, "جدول LicenseRuntime دقیقاً یک ردیف build.firstStart دارد");
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(12)))
+    {
+        var open = await runtime.IsLegacyTokenWindowOpenAsync(Inventory.Api.Licensing.ClockAnchor.Now());
+        Check(open, "۱۲ ساعت بعد از اولین استارت، پنجرهٔ توکن بدون sid باز است");
+    }
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(13).AddMinutes(1)))
+    {
+        var open = await runtime.IsLegacyTokenWindowOpenAsync(Inventory.Api.Licensing.ClockAnchor.Now());
+        Check(!open, "۱۳ ساعت و یک دقیقه بعد، پنجره بسته است (حداکثر عمر توکن ۱۲ ساعت + ۱ ساعت حاشیه)");
+    }
+
+    // رفتار واقعی دروازهٔ صندلی با توکن بدون sid
+    var ent = SeatEnt(LicenseUserMode.Named, 1);
+    await SeedSeatUsersAsync(2);
+    var opts = new Inventory.Api.Licensing.LicensingOptions();
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(2)))
+    {
+        var seats = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts,
+            new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths,
+                NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance));
+        var legacyGrant = await seats.AuthorizeRequestAsync(1, sessionId: null, username: "u1", isActivity: true);
+        Check(legacyGrant.Allowed, "در پنجرهٔ گذار، درخواست با توکن بدون sid پذیرفته می‌شود");
+    }
+
+    using (Inventory.Api.Licensing.ClockAnchor.Fix(firstStart.AddHours(20)))
+    {
+        var seats = NewSeats(db, ent, new Inventory.Api.Licensing.Services.SeatCache(), opts,
+            new Inventory.Api.Licensing.Services.SeatDegradedJournal(paths,
+                NullLogger<Inventory.Api.Licensing.Services.SeatDegradedJournal>.Instance));
+        var legacyGrant = await seats.AuthorizeRequestAsync(1, sessionId: null, username: "u1", isActivity: true);
+        Check(!legacyGrant.Allowed && legacyGrant.Code == "LICENSE_SESSION_ENDED",
+            "بیرون از پنجره، پاسخ LICENSE_SESSION_ENDED است (واقعی: " + legacyGrant.Code + ")");
+        Check(Inventory.Api.Licensing.Services.SeatGrant.StatusFor("LICENSE_SESSION_ENDED") == 401,
+            "کد LICENSE_SESSION_ENDED به HTTP 401 نگاشت می‌شود تا کلاینت دوباره ورود کند");
+    }
+}
+
+{
+    // ProgramData: ساخت چهار پوشه و شکست روشن وقتی مسیر قابل‌نوشتن نیست
+    var root = Path.Combine(Path.GetTempPath(), "totall-layout-" + Guid.NewGuid().ToString("N"));
+    var layoutPaths = new Inventory.Api.Licensing.ProgramDataPaths(
+        root, Path.Combine(root, "security"), Path.Combine(root, "License"),
+        Path.Combine(root, "projects"), Path.Combine(root, "logs"));
+    var ensured = Inventory.Api.Licensing.ProgramDataLayout.Ensure(layoutPaths);
+    Check(Directory.Exists(ensured.Security) && Directory.Exists(ensured.License)
+          && Directory.Exists(ensured.Projects) && Directory.Exists(ensured.Logs),
+        "هر چهار پوشهٔ ProgramData (security، License، projects، logs) ساخته می‌شوند");
+    Check(!File.Exists(Path.Combine(ensured.Security, ".write-probe")), "فایل آزمایشی نوشتن بعد از بررسی پاک می‌شود");
+
+    var blocked = Path.Combine(root, "blocked");
+    Directory.CreateDirectory(blocked);
+    try
+    {
+        // پوشه را فقط‌خواندنی می‌کنیم: ساخت زیرپوشه باید شکست بخورد.
+        File.SetUnixFileMode(blocked, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        var bad = new Inventory.Api.Licensing.ProgramDataPaths(
+            blocked, Path.Combine(blocked, "security"), Path.Combine(blocked, "License"),
+            Path.Combine(blocked, "projects"), Path.Combine(blocked, "logs"));
+        var threw = false;
+        string message = "";
+        try { Inventory.Api.Licensing.ProgramDataLayout.Ensure(bad); }
+        catch (InvalidOperationException ex) { threw = true; message = ex.Message; }
+        Check(threw && message.Contains("راه‌اندازی متوقف شد", StringComparison.Ordinal),
+            "پوشهٔ غیرقابل‌نوشتن ⇒ خطای روشن راه‌اندازی (نه فال‌بک بی‌صدا)");
+    }
+    finally
+    {
+        try { File.SetUnixFileMode(blocked, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); } catch { }
+        try { Directory.Delete(root, recursive: true); } catch { }
+    }
+}
 
 Console.WriteLine();
 Console.WriteLine(new string('═', 96));
