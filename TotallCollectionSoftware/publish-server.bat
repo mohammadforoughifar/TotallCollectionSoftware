@@ -12,6 +12,15 @@ rem src قدیمی موتور لایسنس ندارد و انتشار از آن 
 rem مرحلهٔ [6/6] همین را قبل از پایان بررسی می‌کند و در صورت نبود، شکست می‌دهد.
 rem ================================================================
 
+rem حالت استقرار: saas | onprem  (پیش‌فرض: onprem)  — مثال: publish-server.bat saas
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=onprem"
+if /I "%MODE%"=="saas" (set "PUBLISH_PROFILE=SaaS" & set "MODE_LABEL=SaaS") else if /I "%MODE%"=="onprem" (set "PUBLISH_PROFILE=OnPrem" & set "MODE_LABEL=OnPrem") else (
+  echo [ERROR] حالت نامعتبر: %MODE%  ^(مجاز: saas ^| onprem^)
+  exit /b 2
+)
+echo حالت استقرار: %MODE_LABEL%  ^(Publish Profile: %PUBLISH_PROFILE%^)
+
 set "ROOT=%~dp0"
 set "SRCROOT=%ROOT%inventory\src"
 set "CLIENT=%SRCROOT%\Inventory.Client"
@@ -57,7 +66,7 @@ xcopy "%CLIENT_PUBLISH%\wwwroot\*" "%API%\wwwroot\" /E /I /Y >nul
 if errorlevel 1 goto :failed
 
 echo [4/6] انتشار API برای Windows x64...
-dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -o "%API_PUBLISH%"
+dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -p:PublishProfile=%PUBLISH_PROFILE% -o "%API_PUBLISH%"
 if errorlevel 1 goto :failed
 
 echo [5/6] آماده‌سازی پوشه استقرار...
@@ -76,7 +85,7 @@ if not exist "%VERIFY%" (
   echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
   goto :failed
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%" -Deployment %MODE_LABEL%
 if errorlevel 1 (
   echo.
   echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.

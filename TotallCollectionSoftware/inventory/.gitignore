@@ -61,3 +61,8 @@ src/Inventory.Api/App_Data/
 
 # کلید رمزنگاری پوشه‌های پیوست که در زمان اجرا در uploads ساخته می‌شود
 src/Inventory.Api/wwwroot/uploads/**/.key
+
+# ===================== تنظیمات محلی (خارج از گیت) =====================
+# کلیدهای عملیاتی (پیامک، ایمیل، هوش مصنوعی) در این فایل بمانند، نه در appsettings.json
+appsettings.Local.json
+**/appsettings.Local.json

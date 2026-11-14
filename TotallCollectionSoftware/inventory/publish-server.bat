@@ -8,6 +8,32 @@ rem آدرس اجرا: http://192.168.30.104:8181
 rem SQL Server: 192.168.30.104 / InventoryDb
 rem ================================================================
 
+rem ================================================================
+rem  حالت استقرار: saas | onprem  (پیش‌فرض: onprem)
+rem  مثال:  publish-server.bat saas
+rem  چرا پارامتر؟ چون تنها تفاوت دو بسته یک ثابت کامپایل (SAAS) است؛ اگر دستی
+rem  پاس داده شود، یک بار فراموش می‌شود و بستهٔ اشتباه منتشر می‌شود.
+rem ================================================================
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=onprem"
+if /I "%MODE%"=="saas" goto :mode_saas
+if /I "%MODE%"=="onprem" goto :mode_onprem
+echo [ERROR] حالت نامعتبر: %MODE%  (مجاز: saas | onprem)
+exit /b 2
+
+:mode_saas
+set "PUBLISH_PROFILE=SaaS"
+set "MODE_LABEL=SaaS"
+goto :mode_ready
+
+:mode_onprem
+set "PUBLISH_PROFILE=OnPrem"
+set "MODE_LABEL=OnPrem"
+goto :mode_ready
+
+:mode_ready
+echo حالت استقرار: %MODE_LABEL%  (Publish Profile: %PUBLISH_PROFILE%)
+
 set "ROOT=%~dp0"
 set "CLIENT=%ROOT%src\Inventory.Client"
 set "API=%ROOT%src\Inventory.Api"
@@ -42,7 +68,7 @@ xcopy "%CLIENT_PUBLISH%\wwwroot\*" "%API%\wwwroot\" /E /I /Y >nul
 if errorlevel 1 goto :failed
 
 echo [4/7] انتشار API برای Windows x64...
-dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -o "%API_PUBLISH%"
+dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -p:PublishProfile=%PUBLISH_PROFILE% -o "%API_PUBLISH%"
 if errorlevel 1 goto :failed
 
 echo [5/7] آماده‌سازی پوشه استقرار...
@@ -69,7 +95,7 @@ if not exist "%VERIFY%" (
   echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
   goto :failed
 )
-powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%" -Deployment %MODE_LABEL%
 if errorlevel 1 (
   echo.
   echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.

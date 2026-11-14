@@ -33,6 +33,11 @@ AppDomain.CurrentDomain.UnhandledException += (_, e) =>
 var updateDatabaseOnly = args.Any(a => a.Equals("--update-database", StringComparison.OrdinalIgnoreCase));
 args = args.Where(a => !a.Equals("--update-database", StringComparison.OrdinalIgnoreCase)).ToArray();
 var builder = WebApplication.CreateBuilder(args);
+
+// تنظیمات محلی/عملیاتی خارج از گیت (اختیاری). چرا؟ چون appsettings.json ردیابی
+// می‌شود و هر کلیدی که در آن بماند وارد تاریخچهٔ گیت می‌شود. متغیر محیطی همچنان
+// اولویت بالاتری دارد، پس روی سرور می‌توان فقط با env کار کرد.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 var schemaVerbose = string.Equals(Environment.GetEnvironmentVariable("DB_SCHEMA_VERBOSE"), "true", StringComparison.OrdinalIgnoreCase);
 var schemaInitializing = true;
 if (!schemaVerbose)
@@ -652,6 +657,23 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+
+// ---------- وضعیت پیکربندی پیامک: خاموشِ روشن، نه خطا ----------
+// اگر کلید نباشد، سرویس‌های پیامک فقط NotConfigured/Disabled برمی‌گردانند و هیچ
+// استثنایی پرتاب نمی‌شود؛ ولی بی‌صدا بودنش خطرناک است (مدیر فکر می‌کند پیامک می‌رود).
+// پس یک خط لاگ صریح در شروع برنامه ثبت می‌شود.
+{
+    var smsOptions = app.Services.GetRequiredService<
+        Microsoft.Extensions.Options.IOptions<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>().Value;
+    if (string.IsNullOrWhiteSpace(smsOptions.ApiKey))
+        app.Logger.LogWarning(
+            "[SMS] کلید KavenegarSms:ApiKey تنظیم نشده است — ارسال پیامک غیرفعال است (خطا نیست). " +
+            "برای فعال‌سازی: متغیر محیطی KavenegarSms__ApiKey یا appsettings.Local.json (خارج از گیت).");
+    else if (string.IsNullOrWhiteSpace(smsOptions.Sender))
+        app.Logger.LogWarning("[SMS] کلید پیامک تنظیم شده ولی KavenegarSms:Sender خالی است — ارسال پیامک غیرفعال است.");
+    else
+        app.Logger.LogInformation("[SMS] درگاه پیامک پیکربندی شده است (SdkSendEnabled={Enabled}).", smsOptions.SdkSendEnabled);
+}
 
 if (updateDatabaseOnly)
 {

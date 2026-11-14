@@ -22,6 +22,7 @@
 #     4 = سرور پاسخ داد ولی فیلد licensing نداشت
 #     5 = RequireOnline داده شده ولی سروری پاسخ نداد
 #     6 = بیلد Release هیچ کلید عمومی معتبری ندارد (کلید تولیدی در manifest.json نیست)
+#     7 = حالت استقرار (SaaS/OnPrem) با آنچه انتظار داشتیم نمی‌خواند — یا اصلاً قابل تشخیص نبود
 #
 #  نمونه:
 #     powershell -NoProfile -ExecutionPolicy Bypass -File verify-licensing.ps1 -AppPath .\deploy\inventory-server
@@ -35,7 +36,8 @@ param(
     [string]$HealthUrl = "",
     [int]$TimeoutSec = 6,
     [switch]$RequireOnline,
-    [switch]$Quiet
+    [switch]$Quiet,
+    [ValidateSet('SaaS', 'OnPrem')][string]$Deployment = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -92,6 +94,34 @@ if ($keyText -match 'Release' -and $keyCount -eq 0) {
 }
 
 Say ("  OK   کلیدهای عمومی در بیلد: $keyCount" + $(if ($keyText -match 'Release') { " (Release)" } else { " (Debug — در انتشار واقعی Release لازم است)" })) "Green"
+
+# ---------- ۰-ب) حالت استقرار: SaaS یا OnPrem؟ ----------
+# چرا این بررسی؟ بستهٔ OnPrem با ثابت SAAS ⇒ لایسنس از جدول‌های دیتابیس خوانده
+# می‌شود که روی نصب مشتری نیست؛ بستهٔ SaaS بدون SAAS ⇒ Provider دیتابیسی اصلاً
+# کامپایل نشده و ردیف لایسنس نادیده می‌ماند. هر دو خطا بی‌صدا هستند.
+# تشخیص با متادیتای Inventory.Api.dll است (بدون اجرای کد و بدون وابستگی).
+if ($Deployment) {
+    $expected = $Deployment.ToLowerInvariant()
+    $depExit = -1
+    $depText = $null
+    if (Test-Path -LiteralPath $licenseCheckExe) {
+        $depText = (& $licenseCheckExe --deployment --app $dir --expect $expected 2>&1 | Out-String)
+        $depExit = $LASTEXITCODE
+    } elseif (Test-Path -LiteralPath $licenseCheckDll) {
+        $depText = (& dotnet $licenseCheckDll --deployment --app $dir --expect $expected 2>&1 | Out-String)
+        $depExit = $LASTEXITCODE
+    }
+
+    if ($null -eq $depText) {
+        Fail 7 ("حالت استقرار قابل بررسی نبود: ابزار LicenseCheck در خروجی نیست." )
+    }
+    if ($depExit -ne 0) {
+        Fail 7 ("حالت استقرار با انتظار نمی‌خواند (انتظار: $Deployment)." + [Environment]::NewLine + $depText)
+    }
+    Say ("  OK   حالت استقرار: $Deployment (از متادیتای اسمبلی)") "Green"
+} else {
+    Say "  --   حالت استقرار بررسی نشد (پارامتر -Deployment داده نشده)" "DarkYellow"
+}
 
 # ---------- ۱) اسمبلی موتور ----------
 $engine = Join-Path $dir "Inventory.Licensing.dll"
