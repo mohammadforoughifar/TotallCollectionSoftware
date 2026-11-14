@@ -1,0 +1,68 @@
+@page "/"
+@inject SupportDbContext Db
+@inject SigningRunner Signing
+@{
+    ViewData["Title"] = "داشبورد";
+    var now = DateTime.UtcNow;
+    var soon = now.AddDays(60);
+    var pending = await Db.Requests.CountAsync(r => r.Status == RequestStatus.New || r.Status == RequestStatus.Reviewing);
+    var approved = await Db.Requests.CountAsync(r => r.Status == RequestStatus.Approved);
+    var delivered = await Db.Requests.CountAsync(r => r.Status == RequestStatus.Delivered || r.Status == RequestStatus.Closed);
+    var expiring = await Db.IssuedLicenses.CountAsync(l => l.Status == LicenseStatus.Current
+        && (l.ValidUntil != null && l.ValidUntil <= soon || l.UpdatesUntil != null && l.UpdatesUntil <= soon));
+    var work = await Db.Requests.AsNoTracking().Include(r => r.Customer)
+        .Where(r => r.Status == RequestStatus.New || r.Status == RequestStatus.Reviewing || r.Status == RequestStatus.NeedsInfo)
+        .OrderByDescending(r => r.Id).Take(8).ToListAsync();
+    var status = Signing.GetStatus();
+}
+<div class="page-head">
+    <div><h1>داشبورد</h1><p class="lead">@JalaliDate.FullNow() (تهران)</p></div>
+    <div class="ms-auto">
+        <a class="btn ghost" href="/Requests/Ingest">ثبت درخواست</a>
+        <a class="btn" href="/Requests">صف درخواست‌ها</a>
+    </div>
+</div>
+
+<div class="grid">
+    <div class="card"><div class="card-body">
+        <div class="hint">در انتظار بررسی</div><div class="stat">@Ui.N(pending)</div></div></div>
+    <div class="card"><div class="card-body">
+        <div class="hint">تأییدشده و آمادهٔ امضا</div><div class="stat">@Ui.N(approved)</div></div></div>
+    <div class="card"><div class="card-body">
+        <div class="hint">تحویل‌شده / بسته</div><div class="stat">@Ui.N(delivered)</div></div></div>
+    <div class="card"><div class="card-body">
+        <div class="hint">تمدید نزدیک (۶۰ روز)</div><div class="stat">@Ui.N(expiring)</div></div></div>
+</div>
+
+@if (!status.Ready)
+{
+    <div class="alert warn">امضا آماده نیست: @status.Reason</div>
+}
+else
+{
+    <div class="alert ok">ابزار امضا و کلیدها در دسترس‌اند (Key ID: <span class="mono">@(string.IsNullOrWhiteSpace(status.PresetsPath) ? "—" : System.IO.Path.GetFileName(status.PresetsPath))</span>).
+        <a href="/Requests">رفتن به صف</a></div>
+}
+
+<div class="card">
+    <div class="card-head">کارهای باز</div>
+    <table>
+        <thead><tr><th>درخواست</th><th>مشتری</th><th>وضعیت</th><th>ثبت</th><th></th></tr></thead>
+        <tbody>
+        @if (work.Count == 0)
+        {
+            <tr><td colspan="5" class="muted">کاری باز نیست.</td></tr>
+        }
+        @foreach (var row in work)
+        {
+            <tr>
+                <td class="mono">@row.RequestNo</td>
+                <td>@(row.Customer?.Name ?? "—")</td>
+                <td><span class="badge @Ui.Badge(row.Status)">@Ui.Status(row.Status)</span></td>
+                <td>@JalaliDate.Full(row.CreatedAt)</td>
+                <td><a href="/Requests/Details?id=@row.Id">بازکردن</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,61 @@
+@page "/Renewals"
+@inject SupportDbContext Db
+@inject SigningRunner Signing
+@{
+    ViewData["Title"] = "تمدیدها";
+}
+@{
+    var now = DateTime.UtcNow;
+    var horizon = now.AddDays(60);
+    var rows = await Db.IssuedLicenses.AsNoTracking().Include(l => l.Customer)
+        .Where(l => l.Status == LicenseStatus.Current
+                    && ((l.ValidUntil != null && l.ValidUntil <= horizon) || (l.UpdatesUntil != null && l.UpdatesUntil <= horizon)))
+        .OrderBy(l => l.ValidUntil).ToListAsync();
+    var expired = await Db.IssuedLicenses.AsNoTracking().Include(l => l.Customer)
+        .Where(l => l.Status == LicenseStatus.Current && l.ValidUntil != null && l.ValidUntil < now)
+        .OrderBy(l => l.ValidUntil).Take(50).ToListAsync();
+}
+<div class="page-head"><div><h1>تمدیدها و هشدار انقضا</h1>
+    <p class="lead">@Ui.N(rows.Count) لایسنس در ۶۰ روز آینده · @Ui.N(expired.Count) منقضی‌شده</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Licenses">همهٔ لایسنس‌ها</a></div>
+</div>
+
+<div class="card"><div class="card-head">در ۶۰ روز آینده</div>
+    <table>
+        <thead><tr><th>سریال</th><th>مشتری</th><th>نصب</th><th>معتبر تا</th><th>به‌روزرسانی تا</th><th>روز مانده</th><th></th></tr></thead>
+        <tbody>
+        @if (rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">هیچ لایسنسی در این بازه نیست.</td></tr>
+        }
+        @foreach (var row in rows)
+        {
+            var days = row.ValidUntil is null ? (int?)null : (int)Math.Ceiling((row.ValidUntil.Value - now).TotalDays);
+            <tr>
+                <td class="mono">@row.Serial</td>
+                <td>@(row.Customer?.Name ?? "—")</td>
+                <td class="mono">@Ui.Clip(row.InstallationId, 12)</td>
+                <td>@JalaliDate.Short(row.ValidUntil)</td>
+                <td>@JalaliDate.Short(row.UpdatesUntil)</td>
+                <td>@(days is null ? "—" : Ui.N(days.Value))</td>
+                <td><a href="/Requests/Draft?id=@row.RequestId">تمدید</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card"><div class="card-head">منقضی‌شده (نیازمند تمدید)</div>
+    <table>
+        <thead><tr><th>سریال</th><th>مشتری</th><th>معتبر تا</th><th>روز گذشته</th><th></th></tr></thead>
+        <tbody>
+        @foreach (var row in expired)
+        {
+            <tr><td class="mono">@row.Serial</td><td>@(row.Customer?.Name ?? "—")</td>
+                <td>@JalaliDate.Short(row.ValidUntil)</td>
+                <td>@Ui.N((int)Math.Ceiling((now - row.ValidUntil!.Value).TotalDays))</td>
+                <td><a href="/Requests/Draft?id=@row.RequestId">تمدید</a></td></tr>
+        }
+        </tbody>
+    </table>
+</div>

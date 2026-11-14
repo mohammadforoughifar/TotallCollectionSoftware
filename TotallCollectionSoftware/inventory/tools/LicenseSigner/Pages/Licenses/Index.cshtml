@@ -1,0 +1,42 @@
+@page "/Licenses"
+@inject SupportDbContext Db
+@{
+    ViewData["Title"] = "لایسنس‌ها";
+    var soon = DateTime.UtcNow.AddDays(60);
+    var rows = await Db.IssuedLicenses.AsNoTracking().Include(l => l.Customer).Include(l => l.Request)
+        .OrderByDescending(l => l.Id).Take(200).ToListAsync();
+    var expiring = rows.Count(l => l.Status == LicenseStatus.Current
+        && (l.ValidUntil != null && l.ValidUntil <= soon || l.UpdatesUntil != null && l.UpdatesUntil <= soon));
+}
+<div class="page-head">
+    <div><h1>لایسنس‌ها</h1><p class="lead">@Ui.N(rows.Count) ردیف · @Ui.N(expiring) مورد در ۶۰ روز آینده منقضی می‌شود</p></div>
+</div>
+<div class="card">
+    <table>
+        <thead><tr><th>سریال</th><th>مشتری</th><th>نصب</th><th>معتبر تا</th><th>به‌روزرسانی تا</th><th>وضعیت</th><th></th></tr></thead>
+        <tbody>
+        @if (rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">هنوز لایسنسی صادر نشده است.</td></tr>
+        }
+        @foreach (var row in rows)
+        {
+            var isSoon = row.Status == LicenseStatus.Current
+                         && (row.ValidUntil != null && row.ValidUntil <= soon || row.UpdatesUntil != null && row.UpdatesUntil <= soon);
+            <tr>
+                <td class="mono">@row.Serial</td>
+                <td>@(row.Customer?.Name ?? "—")</td>
+                <td class="mono">@Ui.Clip(row.InstallationId, 12)</td>
+                <td>@JalaliDate.Short(row.ValidUntil)</td>
+                <td>@JalaliDate.Short(row.UpdatesUntil)</td>
+                <td>
+                    <span class="badge @Ui.LicenseBadge(row.Status)">@Ui.LicenseStatus(row.Status)</span>
+                    @if (isSoon) { <span class="badge review">۶۰ روز مانده</span> }
+                </td>
+                <td><a href="/Licenses/Details?id=@row.Id">جزئیات</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+<div class="alert warn">ابطال آفلاین وجود ندارد: برای «ابطال» فقط یادداشت ثبت می‌شود؛ لایسنس صادرشده تغییرناپذیر است و اصلاح یعنی سریال تازه.</div>

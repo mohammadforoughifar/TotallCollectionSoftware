@@ -1,0 +1,154 @@
+@page "/Requests/Deliver"
+@inject SupportDbContext Db
+@inject DeliveryService Delivery
+@inject SupportSettingsService Settings
+@{
+    ViewData["Title"] = "تحویل لایسنس";
+}
+@functions {
+    public int RequestId { get; set; }
+    public string Error { get; set; } = "";
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    private async Task<SupportUser?> ActorAsync() => await Db.Users.FirstOrDefaultAsync(u => u.Id == User.UserId());
+
+    public async Task<IActionResult> OnPostEmlAsync()
+    {
+        RequestId = ResolveId();
+        var licenseId = int.TryParse(Request.Form["licenseId"], out var parsed) ? parsed : 0;
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+
+        var result = await Delivery.CreateEmlDraftAsync(licenseId, actor);
+        TempData[result.Ok ? "ok" : "error"] = result.Ok
+            ? $"پیش‌نویس ایمیل ساخته شد ({System.IO.Path.GetFileName(result.FilePath ?? "")})."
+            : result.Message;
+        return Redirect($"/Requests/Deliver?id={RequestId}");
+    }
+
+    public async Task<IActionResult> OnPostSmtpAsync()
+    {
+        RequestId = ResolveId();
+        var licenseId = int.TryParse(Request.Form["licenseId"], out var parsed) ? parsed : 0;
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+
+        var result = await Delivery.SendSmtpAsync(licenseId, Request.Form["recipient"].ToString(), actor);
+        TempData[result.Ok ? "ok" : "error"] = result.Message;
+        return Redirect($"/Requests/Deliver?id={RequestId}");
+    }
+
+    public async Task<IActionResult> OnPostManualAsync()
+    {
+        RequestId = ResolveId();
+        var licenseId = int.TryParse(Request.Form["licenseId"], out var parsed) ? parsed : 0;
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+
+        var (ok, error) = await Delivery.RecordManualAsync(licenseId, DeliveryChannel.Manual,
+            Request.Form["recipient"].ToString(), Request.Form["note"].ToString(), actor);
+        TempData[ok ? "ok" : "error"] = ok ? "تحویل دستی ثبت شد." : error;
+        return Redirect($"/Requests/Deliver?id={RequestId}");
+    }
+}
+@{
+    RequestId = ResolveId();
+    var request = await Db.Requests.AsNoTracking().Include(r => r.Customer)
+        .Include(r => r.Licenses).ThenInclude(l => l.Deliveries)
+        .FirstOrDefaultAsync(r => r.Id == RequestId);
+    var smtp = await Settings.GetSmtpAsync();
+    var smtpPassword = Settings.SmtpPasswordAvailable;
+    var licenses = request?.Licenses.OrderByDescending(l => l.Id).ToList() ?? new List<IssuedLicense>();
+    var license = licenses.FirstOrDefault();
+}
+<div class="page-head">
+    <div><h1>تحویل لایسنس — <span class="mono">@(request?.RequestNo ?? "?")</span></h1>
+        <p class="lead">سه مسیر: دانلود فایل، پیش‌نویس ایمیل (.eml) با پیوست، ارسال SMTP (اختیاری)</p></div>
+    <div class="ms-auto"><a class="btn ghost" href="/Requests/Details?id=@RequestId">بازگشت</a></div>
+</div>
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (TempData["error"] is string errorMessage && !string.IsNullOrEmpty(errorMessage)) { <div class="alert error">@errorMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+@if (request is null || license is null)
+{
+    <div class="alert warn">برای این درخواست لایسنس صادرشده‌ای وجود ندارد.</div>
+}
+else
+{
+    <div class="card"><div class="card-head">لایسنس صادرشده</div>
+        <table>
+            <thead><tr><th>سریال</th><th>صادر</th><th>معتبر تا</th><th>وضعیت</th><th></th></tr></thead>
+            <tbody>
+            @foreach (var row in licenses)
+            {
+                <tr><td class="mono">@row.Serial</td><td>@JalaliDate.Short(row.CreatedAt)</td>
+                    <td>@JalaliDate.Short(row.ValidUntil)</td>
+                    <td><span class="badge @Ui.LicenseBadge(row.Status)">@Ui.LicenseStatus(row.Status)</span></td>
+                    <td><a href="/Licenses/Download?id=@row.Id">دانلود .lic</a></td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="grid">
+        <div class="card"><div class="card-head">پیش‌نویس ایمیل (.eml با پیوست)</div><div class="card-body">
+            <p class="hint">فایل .eml در پوشهٔ کاری پنل ساخته می‌شود — خودکار ارسال نمی‌شود.</p>
+            <form method="post" asp-page-handler="Eml">
+                <input type="hidden" name="id" value="@request.Id" />
+                <input type="hidden" name="licenseId" value="@license.Id" />
+                <button type="submit" class="btn ghost">ساخت پیش‌نویس .eml</button>
+            </form>
+        </div></div>
+
+        <div class="card"><div class="card-head">ارسال SMTP (اختیاری)</div><div class="card-body">
+            <form method="post" asp-page-handler="Smtp">
+                <input type="hidden" name="id" value="@request.Id" />
+                <input type="hidden" name="licenseId" value="@license.Id" />
+                <div class="field"><label for="recipient">گیرنده</label>
+                    <input id="recipient" name="recipient" class="mono"
+                           value="@(request.Customer?.Email ?? request.ContactEmail ?? "")" /></div>
+                <p class="hint">SMTP: @(smtp.IsConfigured ? $"{smtp.Host}:{smtp.Port}" : "تنظیم نشده") ·
+                    رمز در دسترس: @(smtpPassword ? "بله" : "خیر")</p>
+                <button type="submit" class="btn" disabled="@(!smtp.IsConfigured)">ارسال ایمیل</button>
+            </form>
+            @if (!smtp.IsConfigured)
+            {
+                <div class="alert warn">SMTP تنظیم نشده است؛ از «دانلود» یا «پیش‌نویس ایمیل» استفاده کنید.</div>
+            }
+        </div></div>
+
+        <div class="card"><div class="card-head">ثبت تحویل دستی</div><div class="card-body">
+            <form method="post" asp-page-handler="Manual">
+                <input type="hidden" name="id" value="@request.Id" />
+                <input type="hidden" name="licenseId" value="@license.Id" />
+                <div class="field"><label for="manual-recipient">گیرنده</label>
+                    <input id="manual-recipient" name="recipient" class="mono"
+                           value="@(request.Customer?.Email ?? request.ContactEmail ?? "")" /></div>
+                <div class="field"><label for="manual-note">یادداشت</label>
+                    <input id="manual-note" name="note" placeholder="مثلاً: تحویل با ایمیل دستی" /></div>
+                <button type="submit" class="btn">ثبت تحویل</button>
+            </form>
+        </div></div>
+    </div>
+
+    <div class="card"><div class="card-head">سابقهٔ تحویل</div><div class="card-body">
+        <table>
+            <thead><tr><th>زمان</th><th>کانال</th><th>گیرنده</th><th>نتیجه</th><th>یادداشت</th></tr></thead>
+            <tbody>
+            @foreach (var row in license.Deliveries.OrderByDescending(d => d.Id))
+            {
+                <tr><td>@JalaliDate.Full(row.At)</td><td>@Ui.DeliveryChannelText(row.Channel)</td>
+                    <td class="mono">@(row.Recipient ?? "—")</td><td>@(row.Success ? "✔" : "✖")</td>
+                    <td>@(row.Note ?? row.Error ?? "—")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div></div>
+}
