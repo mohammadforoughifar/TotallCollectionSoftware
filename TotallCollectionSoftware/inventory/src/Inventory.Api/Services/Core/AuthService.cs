@@ -263,6 +263,9 @@ public class AuthService : IAuthService
             LastName = u.LastName,
             Mobile = u.Mobile,
             BaleChatId = u.BaleChatId,
+            BalePhone = u.BalePhone,
+            BalePhoneLinked = u.BalePhoneLinked,
+            BaleLinked = !string.IsNullOrWhiteSpace(u.BaleChatId) || u.BalePhoneLinked,
             EitaaChatId = u.EitaaChatId,
             SignaturePath = u.SignaturePath,
             IsActive = u.IsActive,
@@ -538,6 +541,8 @@ public class AuthService : IAuthService
             }
         }
         entity.BaleChatId = string.IsNullOrWhiteSpace(dto.BaleChatId) ? null : dto.BaleChatId.Trim();
+        // اتصال انبوهٔ بله (شمارهٔ تلفن) مستقل از فرم ویرایش کاربر است و نباید بازنویسی شود؛
+        // فقط اتصال چت که در فرم آمده ذخیره می‌شود.
         entity.EitaaChatId = string.IsNullOrWhiteSpace(dto.EitaaChatId) ? null : dto.EitaaChatId.Trim();
         // پیوند کاربر به «معرف» مستقل از سطح قدیمی است: ویزیتورِ میدانی با نقش RBAC
         // «SalesVisitor» در سطح قدیمی «اپراتور» می‌شود، ولی باید به معرف خودش وصل بماند

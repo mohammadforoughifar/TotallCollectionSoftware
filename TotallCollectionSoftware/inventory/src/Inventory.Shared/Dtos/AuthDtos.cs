@@ -67,6 +67,15 @@ public class UserDto
     /// <summary>شناسه چت بله (پر بودن = کاربر بله دارد)</summary>
     public string? BaleChatId { get; set; }
 
+    /// <summary>شمارهٔ نرمال‌شدهٔ بله (۹۸…) — پس از اتصال انبوه.</summary>
+    public string? BalePhone { get; set; }
+
+    /// <summary>آیا اتصال بله از مسیر شمارهٔ تلفن برقرار شده است؟</summary>
+    public bool BalePhoneLinked { get; set; }
+
+    /// <summary>آیا کاربر به بله متصل است (چت یا شماره)؟</summary>
+    public bool BaleLinked { get; set; }
+
     /// <summary>شناسه چت ایتا (پر بودن = کاربر ایتا دارد)</summary>
     public string? EitaaChatId { get; set; }
 

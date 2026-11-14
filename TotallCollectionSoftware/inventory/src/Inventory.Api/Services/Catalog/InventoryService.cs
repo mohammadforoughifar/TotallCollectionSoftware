@@ -32,7 +32,7 @@ public class InventoryService : IInventoryService
         var s = await _db.AppSettings.FirstOrDefaultAsync();
         return s is null
             ? new AppSettings()
-            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs };
+            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, BaleSafirApiAccessKey = s.BaleSafirApiAccessKey, BaleSafirBotId = s.BaleSafirBotId, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs };
     }
 
     public async Task<AppSettings> SaveSettingsAsync(AppSettings dto)
@@ -52,6 +52,12 @@ public class InventoryService : IInventoryService
         s.ItServerUrl = string.IsNullOrWhiteSpace(dto.ItServerUrl) ? null : dto.ItServerUrl.Trim().TrimEnd('/');
         s.ItCompanyName = string.IsNullOrWhiteSpace(dto.ItCompanyName) ? null : dto.ItCompanyName.Trim();
         s.BaleBotToken = string.IsNullOrWhiteSpace(dto.BaleBotToken) ? null : dto.BaleBotToken.Trim();
+        s.BaleSafirApiAccessKey = string.IsNullOrWhiteSpace(dto.BaleSafirApiAccessKey) ? null : dto.BaleSafirApiAccessKey.Trim();
+        // شناسهٔ بازو: اگر مدیر آن را وارد نکرده باشد، از عدد ابتدای توکن ربات استخراج می‌شود
+        // (قالب توکن بله: 123456789:abc…) — چون سرویس سفیر همین شناسه را می‌خواهد.
+        s.BaleSafirBotId = dto.BaleSafirBotId is > 0
+            ? dto.BaleSafirBotId
+            : ExtractBotId(s.BaleBotToken);
         s.EitaaToken = string.IsNullOrWhiteSpace(dto.EitaaToken) ? null : dto.EitaaToken.Trim();
         s.MessengerSenderNumber = string.IsNullOrWhiteSpace(dto.MessengerSenderNumber) ? "09111189771" : dto.MessengerSenderNumber.Trim();
         // مدت نمایش اعلان‌ها و پیام‌ها (سراسری): ۰ = تا بستن دستی، در غیر این‌صورت بین ۵ ثانیه تا ۱ ساعت؛ مقدار نامعتبر → پیش‌فرض
@@ -64,6 +70,19 @@ public class InventoryService : IInventoryService
     /// <summary>اعتبارسنجی مدت نمایش (میلی‌ثانیه): ۰ = تا بستن دستی؛ در غیر این‌صورت بین ۵۰۰۰ تا ۳۶۰۰۰۰۰؛ خارج از بازه → مقدار پیش‌فرض.</summary>
     private static int SanitizeNotifyMs(int ms, int fallback)
         => ms == 0 ? 0 : (ms >= 5_000 && ms <= 3_600_000 ? ms : fallback);
+
+    /// <summary>
+    /// استخراج شناسهٔ عددی بازو از توکن ربات بله (قالب «123456789:abc…»).
+    /// سرویس سفیر همین عدد را به‌عنوان <c>bot_id</c> می‌خواهد.
+    /// </summary>
+    internal static int? ExtractBotId(string? botToken)
+    {
+        if (string.IsNullOrWhiteSpace(botToken)) return null;
+        var token = botToken.Trim();
+        var colon = token.IndexOf(':');
+        var head = colon > 0 ? token[..colon] : token;
+        return int.TryParse(head, out var id) && id > 0 ? id : null;
+    }
 
     // =============================== معرف (بازاریاب) ===============================
 

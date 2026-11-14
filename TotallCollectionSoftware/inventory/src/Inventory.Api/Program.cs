@@ -536,6 +536,24 @@ builder.Services.AddSingleton<IMessengerLinkCodes, MessengerLinkCodes>();
 builder.Services.AddHostedService<BaleBotWorker>(); // خواندن خودکار پیام‌های ربات بله (/start و اشتراک شماره)
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 
+// سرویس سفیر بله: ارسال مستقیم به شمارهٔ تلفن (بدون نیاز به استارت ربات) و تشخیص اکانت بله.
+// کلید دسترسی و شناسهٔ بازو از تنظیمات (AppSettings) خوانده می‌شود.
+builder.Services.AddScoped<IBaleSafirService>(sp =>
+{
+    var db = sp.GetRequiredService<AppDbContext>();
+    var log = sp.GetRequiredService<ILogger<BaleSafirService>>();
+    return new BaleSafirService(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        async () =>
+        {
+            var s = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
+            return (s?.BaleSafirApiAccessKey?.Trim(), s?.BaleSafirBotId ?? 0);
+        },
+        log);
+});
+// اتصال انبوهٔ کاربران به بله (دکمهٔ صفحهٔ کاربران) — فقط مدیر سامانه.
+builder.Services.AddScoped<IBaleLinkService, BaleLinkService>();
+
 // ================== هوش مصنوعی فروغ آریا (مدل لوکال — Ollama) ==================
 // تایم‌اوت هر درخواست داخل خود کلاینت مدیریت می‌شود (AiOptions.TimeoutSeconds).
 builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));

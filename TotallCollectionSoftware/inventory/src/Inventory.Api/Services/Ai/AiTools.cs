@@ -2045,7 +2045,7 @@ public class SetReminderTool : IAiTool
         }
         var db = ctx.Services.GetRequiredService<AppDbContext>();
         var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
-            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null || u.BalePhoneLinked, ctx.CancellationToken);
         return JsonSerializer.Serialize(new
         {
             reminder_id = r.Id,
@@ -2543,7 +2543,7 @@ public class ScheduleReportTool : IAiTool
         }
         var db = ctx.Services.GetRequiredService<AppDbContext>();
         var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
-            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null || u.BalePhoneLinked, ctx.CancellationToken);
         return JsonSerializer.Serialize(new
         {
             schedule_id = sch.Id,
@@ -2796,7 +2796,7 @@ public class CreateAlertTool : IAiTool
         }
         var db = ctx.Services.GetRequiredService<AppDbContext>();
         var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
-            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null || u.BalePhoneLinked, ctx.CancellationToken);
         return JsonSerializer.Serialize(new
         {
             rule_id = rule.Id,

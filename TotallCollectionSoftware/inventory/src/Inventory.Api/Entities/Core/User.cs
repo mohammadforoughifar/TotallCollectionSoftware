@@ -32,6 +32,19 @@ public class User
 
     /// <summary>شناسه چت کاربر در پیام‌رسان ایتا</summary>
     [MaxLength(50)] public string? EitaaChatId { get; set; }
+
+    /// <summary>
+    /// شمارهٔ نرمال‌شدهٔ بله (قالب 98…) وقتی کاربر با سرویس «سفیر» تأیید شده باشد.
+    /// پر بودن این ستون یعنی شمارهٔ کاربر به یک اکانت بله متصل است و می‌توان برای او
+    /// پیام فرستاد — بدون اینکه خودِ کاربر کاری انجام دهد.
+    /// </summary>
+    [MaxLength(20)] public string? BalePhone { get; set; }
+
+    /// <summary>
+    /// آیا اتصال بلهٔ این کاربر از مسیر «سفیر» (شماره تلفن) برقرار شده است؟
+    /// برای نمایش نشان «بله» در فهرست کاربران و ارسال پیام بر پایهٔ شماره.
+    /// </summary>
+    public bool BalePhoneLinked { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

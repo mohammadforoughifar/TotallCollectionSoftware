@@ -147,7 +147,8 @@
         {
             <p class="fs-8 text-muted mb-3">
                 با تنظیم توکن‌ها، اعلان‌های هر کاربر علاوه بر نرم‌افزار، در <b>بله</b> و <b>ایتا</b> هم برای خودش ارسال می‌شود.
-                هر کاربر از پنجره‌ی «اعلان‌ها» (زنگ بالای صفحه) اتصال حساب خود را انجام می‌دهد و می‌تواند پیام آزمایشی بگیرد.
+                اتصال بله <b>خودکار</b> انجام می‌شود: مدیر سامانه از صفحهٔ «کاربران» همهٔ کاربرانی را که شمارهٔ موبایلشان
+                به یک اکانت بله تعلق دارد یکجا متصل می‌کند و کاربران نیازی به انجام هیچ اقدامی ندارند.
             </p>
             <div class="row g-3">
                 <div class="col-md-4">
@@ -155,7 +156,24 @@
                     <input class="form-control num" dir="ltr" placeholder="123456789:abc..." @bind="model.BaleBotToken" />
                     <div class="fs-9 text-muted mt-1">
                         در بله با ربات <b>@@botfather</b> <span dir="ltr">(ble.ir/botfather)</span> ربات بسازید و توکن را اینجا بگذارید.
-                        کاربران با استارت ربات و ارسال شماره‌شان (دکمه‌ی «ارسال شماره من») به‌صورت خودکار متصل می‌شوند.
+                        این توکن برای دستیار هوشمند بله و پاسخ‌گویی به پیام‌های کاربران استفاده می‌شود.
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">کلید دسترسی سفیر بله <span dir="ltr" class="fs-9">(business.bale.ai)</span></label>
+                    <input class="form-control num" dir="ltr" placeholder="کلید Api Access Key سازمان" @bind="model.BaleSafirApiAccessKey" />
+                    <div class="fs-9 text-muted mt-1">
+                        سرویس «سفیر» امکان ارسال مستقیم به شمارهٔ تلفن را می‌دهد (بدون نیاز به استارت ربات).
+                        با همین سرویس، سامانه تشخیص می‌دهد کدام شماره به اکانت بله تعلق دارد و کاربران را خودکار متصل می‌کند.
+                        کلید از پنل کسب‌وکار بله پس از ساخت سفیر به دست می‌آید.
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">شناسهٔ بازو برای سفیر</label>
+                    <input class="form-control num" dir="ltr" placeholder="123456789" @bind="model.BaleSafirBotId" />
+                    <div class="fs-9 text-muted mt-1">
+                        همان عدد ابتدای توکن ربات است. اگر خالی بگذارید، خودکار از توکن ربات استخراج می‌شود.
+                        برای «اتصال انبوهٔ بله» در صفحهٔ کاربران لازم است.
                     </div>
                 </div>
                 <div class="col-md-4">

@@ -206,9 +206,9 @@ public class AiAlertRuleService
             {
                 var user = await db.Users.AsNoTracking()
                     .Where(u => u.Id == rule.UserId)
-                    .Select(u => new { u.Role, u.BaleChatId, u.EitaaChatId })
+                    .Select(u => new { u.Role, u.BaleChatId, u.EitaaChatId, u.BalePhoneLinked })
                     .FirstOrDefaultAsync(ct);
-                var linked = user != null && (user.BaleChatId != null || user.EitaaChatId != null);
+                var linked = user != null && MessengerLinkHelper.HasMessengerLink(user.BaleChatId, user.BalePhoneLinked, user.EitaaChatId);
                 var allowed = user != null && await AiAccessHelper.UserHasAsync(
                     db, rule.UserId, "AiAssistant", "Use", user.Role, ct);
                 if (!allowed)

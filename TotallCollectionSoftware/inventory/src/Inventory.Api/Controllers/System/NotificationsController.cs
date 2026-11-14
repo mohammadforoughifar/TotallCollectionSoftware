@@ -17,14 +17,16 @@ public class NotificationsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IMessengerService _messenger;
+    private readonly IBaleLinkService _baleLink;
     private readonly IMessengerLinkCodes _codes;
     private readonly IPushService _push;
     private readonly PushKeyStore _keys;
     private readonly PushSettings _pushSettings;
-    public NotificationsController(AppDbContext db, IMessengerService messenger, IMessengerLinkCodes codes, IPushService push, PushKeyStore keys, PushSettings pushSettings)
+    public NotificationsController(AppDbContext db, IMessengerService messenger, IBaleLinkService baleLink, IMessengerLinkCodes codes, IPushService push, PushKeyStore keys, PushSettings pushSettings)
     {
         _db = db;
         _messenger = messenger;
+        _baleLink = baleLink;
         _codes = codes;
         _push = push;
         _keys = keys;
@@ -195,7 +197,7 @@ public class NotificationsController : ControllerBase
         var settings = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
         var user = await _db.Users.AsNoTracking()
             .Where(u => u.Id == MyUserId)
-            .Select(u => new { u.BaleChatId, u.EitaaChatId, u.Mobile })
+            .Select(u => new { u.BaleChatId, u.EitaaChatId, u.Mobile, u.BalePhone, u.BalePhoneLinked })
             .FirstOrDefaultAsync();
         if (user == null) return NotFound();
 
@@ -203,7 +205,8 @@ public class NotificationsController : ControllerBase
         {
             baleConfigured = !string.IsNullOrWhiteSpace(settings?.BaleBotToken),
             eitaaConfigured = !string.IsNullOrWhiteSpace(settings?.EitaaToken),
-            baleLinked = !string.IsNullOrWhiteSpace(user.BaleChatId),
+            baleLinked = !string.IsNullOrWhiteSpace(user.BaleChatId)
+                         || (user.BalePhoneLinked && !string.IsNullOrWhiteSpace(user.BalePhone)),
             eitaaLinked = !string.IsNullOrWhiteSpace(user.EitaaChatId),
             hasMobile = !string.IsNullOrWhiteSpace(user.Mobile),
             ackEitaaUserId = user.EitaaChatId,
@@ -223,6 +226,41 @@ public class NotificationsController : ControllerBase
 
         var (matched, message) = await _messenger.SyncBaleAsync();
         return Ok(new { matched, message });
+    }
+
+    /// <summary>
+    /// اتصال انبوهٔ کاربران به بله — همهٔ کاربرانی که شمارهٔ موبایلشان به یک اکانت بله
+    /// تعلق دارد، بدون آنکه خودِ کاربر کاری انجام دهد به بله متصل می‌شوند.
+    /// فقط مدیر سامانه مجاز است.
+    /// </summary>
+    [HttpPost("bale/bulk-link")]
+    public async Task<IActionResult> BulkLinkBale([FromQuery] bool includeAlreadyLinked = false)
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync())
+            return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به اتصال انبوهٔ بله است." });
+
+        var result = await _baleLink.LinkAllUsersAsync(includeAlreadyLinked);
+        return Ok(new
+        {
+            result.Total,
+            result.Linked,
+            result.AlreadyLinked,
+            result.NotBaleUser,
+            result.InvalidNumber,
+            result.NoNumber,
+            result.Failed,
+            result.Completed,
+            result.Message,
+            details = result.Details.Select(d => new
+            {
+                d.UserId,
+                d.Username,
+                d.Phone,
+                outcome = d.Outcome.ToString(),
+                d.Detail
+            })
+        });
     }
 
     /// <summary>ارسال پیام آزمایشی بله/ایتا به کاربر جاری — نتیجه‌ی هر پیام‌رسان برگردانده می‌شود.</summary>

@@ -35,8 +35,11 @@ else
             <button class="btn btn-primary" @onclick="OpenNew">
                 <i class="bi bi-person-plus"></i> کاربر جدید
             </button>
-            <button class="btn btn-outline-success" title="تطبیق مخاطبین ربات بله با موبایل کاربران" disabled="@syncing" @onclick="SyncBale">
+            <button class="btn btn-outline-success" title="اتصال خودکار همهٔ کاربرانی که شمارهٔ موبایلشان به یک اکانت بله تعلق دارد — کاربران نیازی به انجام هیچ اقدامی ندارند" disabled="@syncing" @onclick="BulkLinkBale">
                 @if (syncing) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                <i class="bi bi-lightning-charge"></i> اتصال انبوه بله
+            </button>
+            <button class="btn btn-outline-secondary" title="خواندن پیام‌های ربات بله و تطبیق مخاطبینی که شمارهٔشان را از قبل فرستاده‌اند" disabled="@syncing" @onclick="SyncBale">
                 <i class="bi bi-arrow-repeat"></i> همگام‌سازی بله
             </button>
         </div>
@@ -80,6 +83,10 @@ else
                                         @if (!string.IsNullOrWhiteSpace(u.BaleChatId))
                                         {
                                             <span class="msgr-badge msgr-bale" title="کاربر بله دارد">بله</span>
+                                        }
+                                        else if (u.BalePhoneLinked)
+                                        {
+                                            <span class="msgr-badge msgr-bale" title="اتصال خودکار از طریق شمارهٔ موبایل">بله (شماره)</span>
                                         }
                                         @if (!string.IsNullOrWhiteSpace(u.EitaaChatId))
                                         {
@@ -223,6 +230,83 @@ else
             }
         </div>
     </div>
+
+    <Modal Visible="showBulkResult" Title="نتیجهٔ اتصال انبوهٔ بله" Size="modal-lg" OnClose="CloseBulkResult">
+        <ChildContent>
+            @if (bulkResult != null)
+            {
+                <div class="alert @(bulkResult.Linked > 0 ? "alert-success" : "alert-warning") py-2">
+                    <i class="bi bi-lightning-charge-fill"></i> @bulkResult.Message
+                </div>
+                <div class="row g-2 text-center mb-3">
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2">
+                            <div class="fs-5 fw-bold">@bulkResult.Total</div>
+                            <div class="fs-8 text-muted">کل کاربران فعال</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2 border-success">
+                            <div class="fs-5 fw-bold text-success">@bulkResult.Linked</div>
+                            <div class="fs-8 text-muted">متصل‌شده</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2">
+                            <div class="fs-5 fw-bold">@bulkResult.AlreadyLinked</div>
+                            <div class="fs-8 text-muted">از قبل متصل</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2">
+                            <div class="fs-5 fw-bold">@bulkResult.NotBaleUser</div>
+                            <div class="fs-8 text-muted">بدون اکانت بله</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2">
+                            <div class="fs-5 fw-bold">@bulkResult.InvalidNumber</div>
+                            <div class="fs-8 text-muted">شمارهٔ نامعتبر</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-2">
+                        <div class="border rounded p-2">
+                            <div class="fs-5 fw-bold">@bulkResult.Failed</div>
+                            <div class="fs-8 text-muted">ناموفق</div>
+                        </div>
+                    </div>
+                </div>
+                @if (bulkResult.Details.Count > 0)
+                {
+                    <div class="table-responsive" style="max-height:340px; overflow-y:auto">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light" style="position:sticky; top:0">
+                                <tr>
+                                    <th>کاربر</th>
+                                    <th>شماره</th>
+                                    <th>نتیجه</th>
+                                    <th>توضیح</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var d in bulkResult.Details)
+                                {
+                                    <tr>
+                                        <td>@d.Username</td>
+                                        <td dir="ltr" class="num">@(d.Phone ?? "—")</td>
+                                        <td>
+                                            <span class="badge @BulkOutcomeBadge(d.Outcome)">@BulkOutcomeText(d.Outcome)</span>
+                                        </td>
+                                        <td class="fs-8 text-muted">@d.Detail</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </ChildContent>
+    </Modal>
 
     <Modal Visible="showModal" Title="@(editing ? "ویرایش کاربر" : "کاربر جدید")" OnClose="CloseModal">
         <ChildContent>
@@ -681,6 +765,73 @@ else
         finally { syncing = false; }
     }
     private class SyncRes { public int Matched { get; set; } public string Message { get; set; } = ""; }
+
+    // ===== اتصال انبوهٔ کاربران به بله (بدون نیاز به اقدام کاربر) =====
+    private bool showBulkResult;
+    private BulkLinkRes? bulkResult;
+
+    private async Task BulkLinkBale()
+    {
+        if (syncing) return;
+        syncing = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Auth.Token))
+                Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+            var resp = await Http.PostAsync("/api/notifications/bale/bulk-link", null);
+            var res = await resp.Content.ReadFromJsonAsync<BulkLinkRes>();
+            bulkResult = res;
+            showBulkResult = true;
+            if (res != null && res.Linked > 0) Toast.Success($"{res.Linked} کاربر به بله متصل شد.");
+            else if (res != null) Toast.Error(res.Message);
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { syncing = false; }
+    }
+
+    private class BulkLinkRes
+    {
+        public int Total { get; set; }
+        public int Linked { get; set; }
+        public int AlreadyLinked { get; set; }
+        public int NotBaleUser { get; set; }
+        public int InvalidNumber { get; set; }
+        public int NoNumber { get; set; }
+        public int Failed { get; set; }
+        public bool Completed { get; set; }
+        public string Message { get; set; } = "";
+        public List<BulkLinkDetail> Details { get; set; } = new();
+    }
+    private class BulkLinkDetail
+    {
+        public int UserId { get; set; }
+        public string Username { get; set; } = "";
+        public string? Phone { get; set; }
+        public string Outcome { get; set; } = "";
+        public string? Detail { get; set; }
+    }
+
+    private void CloseBulkResult() => showBulkResult = false;
+
+    private static string BulkOutcomeText(string outcome) => outcome switch
+    {
+        "Linked" => "متصل شد",
+        "AlreadyLinked" => "از قبل متصل",
+        "NotBaleUser" => "بدون اکانت بله",
+        "InvalidNumber" => "شمارهٔ نامعتبر",
+        "NoNumber" => "بدون شماره",
+        _ => "ناموفق"
+    };
+
+    private static string BulkOutcomeBadge(string outcome) => outcome switch
+    {
+        "Linked" => "badge-soft-success",
+        "AlreadyLinked" => "badge-soft-primary",
+        "NotBaleUser" => "badge-soft-secondary",
+        "InvalidNumber" => "badge-soft-warning",
+        _ => "badge-soft-danger"
+    };
 
     // ===== کد اتصال ایتا برای این کاربر (مدیر) =====
     private bool codeBusy;

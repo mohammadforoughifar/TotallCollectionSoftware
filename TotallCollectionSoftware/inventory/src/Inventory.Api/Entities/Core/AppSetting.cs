@@ -16,6 +16,18 @@ public class AppSetting
     /// <summary>توکن ربات بله (tapi.bale.ai)</summary>
     public string? BaleBotToken { get; set; }
 
+    /// <summary>
+    /// کلید دسترسی سرویس «سفیر» بله (هدر <c>api-access-key</c>) — از پنل کسب‌وکار بله.
+    /// با این کلید می‌توان بدون نیاز به استارت ربات، مستقیم به شمارهٔ تلفن پیام فرستاد.
+    /// </summary>
+    [MaxLength(200)]
+    public string? BaleSafirApiAccessKey { get; set; }
+
+    /// <summary>
+    /// شناسهٔ عددی بازوی بله برای سرویس سفیر (همان عدد ابتدای توکن ربات، مثلاً 123456789).
+    /// </summary>
+    public int? BaleSafirBotId { get; set; }
+
     /// <summary>توکن ایتایار (eitaayar.ir)</summary>
     public string? EitaaToken { get; set; }
 

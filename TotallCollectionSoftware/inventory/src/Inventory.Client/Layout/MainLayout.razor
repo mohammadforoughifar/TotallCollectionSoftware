@@ -245,8 +245,9 @@ else
                                                     else
                                                     {
                                                         <div class="fs-9 text-muted">
-                                                            برای اتصال: در بله ربات سامانه را باز کنید، دکمه‌ی «شروع/Start» را بزنید و شماره‌ی خود را ارسال کنید —
-                                                            اتصال به‌صورت خودکار انجام می‌شود (حتی می‌توانید شماره را از منوی پیوست ← «مخاطب» بفرستید).
+                                                            اتصال به بله خودکار انجام می‌شود: مدیر سامانه همهٔ کاربرانی را که شمارهٔ موبایلشان
+                                                            به یک اکانت بله تعلق دارد، از صفحهٔ «کاربران» متصل می‌کند.
+                                                            شما هیچ اقدامی لازم نیست — پس از اتصال، اعلان‌ها خودکار به همین شماره ارسال می‌شود.
                                                         </div>
                                                     }
                                                     <div class="d-flex gap-2 mt-2">
@@ -255,8 +256,8 @@ else
                                                         </button>
                                                         @if (msgStatus?.isAdmin == true)
                                                         {
-                                                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="SyncBaleAsync" disabled="@msgBusy">
-                                                                <i class="bi bi-arrow-repeat"></i> همگام‌سازی بله
+                                                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="BulkLinkBaleAsync" disabled="@msgBusy">
+                                                                <i class="bi bi-lightning-charge"></i> اتصال انبوهٔ کاربران
                                                             </button>
                                                         }
                                                     </div>
@@ -1007,6 +1008,23 @@ else
         finally { msgBusy = false; }
     }
 
+    /// <summary>اتصال انبوهٔ کاربران به بله — همهٔ کاربرانی که شماره‌شان به اکانت بله تعلق دارد، خودکار متصل می‌شوند.</summary>
+    private async Task BulkLinkBaleAsync()
+    {
+        if (msgBusy) return;
+        msgBusy = true; msgResultText = "در حال اتصال انبوهٔ کاربران به بله…";
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync("api/notifications/bale/bulk-link", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<MsgBulkRes>() : null;
+            msgResultText = r?.message ?? "اتصال انبوه انجام نشد (دسترسی مدیر لازم است).";
+            await LoadMsgStatusAsync();
+        }
+        catch { msgResultText = "اتصال انبوهٔ بله ناموفق بود."; }
+        finally { msgBusy = false; }
+    }
+
     private async Task GetEitaaCodeAsync()
     {
         if (msgBusy) return;
@@ -1042,6 +1060,18 @@ else
     }
     private class MsgTestRes { public bool posted { get; set; } public string? message { get; set; } public string? bale { get; set; } public string? eitaa { get; set; } }
     private class MsgSyncRes { public int matched { get; set; } public string? message { get; set; } }
+    private class MsgBulkRes
+    {
+        public int Total { get; set; }
+        public int Linked { get; set; }
+        public int AlreadyLinked { get; set; }
+        public int NotBaleUser { get; set; }
+        public int InvalidNumber { get; set; }
+        public int NoNumber { get; set; }
+        public int Failed { get; set; }
+        public bool Completed { get; set; }
+        public string? message { get; set; }
+    }
     private class MsgCodeRes { public string? code { get; set; } public DateTime? expiresAt { get; set; } public bool configured { get; set; } public string? message { get; set; } }
 
     public class NtfItem

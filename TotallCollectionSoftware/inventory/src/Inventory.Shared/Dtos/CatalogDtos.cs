@@ -18,6 +18,14 @@ public class AppSettings
     /// <summary>توکن ربات بله</summary>
     public string? BaleBotToken { get; set; }
 
+    /// <summary>
+    /// کلید دسترسی سرویس «سفیر» بله — برای ارسال مستقیم به شمارهٔ تلفن و اتصال انبوهٔ کاربران.
+    /// </summary>
+    public string? BaleSafirApiAccessKey { get; set; }
+
+    /// <summary>شناسهٔ عددی بازوی بله برای سرویس سفیر (همان عدد ابتدای توکن ربات).</summary>
+    public int? BaleSafirBotId { get; set; }
+
     /// <summary>توکن ایتایار</summary>
     public string? EitaaToken { get; set; }
 

@@ -45,6 +45,12 @@ public interface IMessengerService
 
     /// <summary>اعتبارسنجی initData برنامک ایتا و اتصال کاربر (با کد یکبارمصرف) — شناسه چت ایتا ذخیره می‌شود.</summary>
     Task<(bool ok, string message)> LinkEitaaAsync(string code, string initData);
+
+    /// <summary>
+    /// آیا شمارهٔ موبایل کاربر به یک اکانت بله تعلق دارد؟ (از مسیر سرویس سفیر).
+    /// برای اتصال انبوهٔ کاربران بدون نیاز به اقدام خودِ کاربر استفاده می‌شود.
+    /// </summary>
+    Task<bool> IsBalePhoneRegisteredAsync(string phone);
 }
 
 public class MessengerService : IMessengerService
@@ -52,16 +58,18 @@ public class MessengerService : IMessengerService
     private readonly AppDbContext _db;
     private readonly IHttpClientFactory _httpFactory;
     private readonly IMessengerLinkCodes _codes;
+    private readonly IBaleSafirService _safir;
     private readonly ILogger<MessengerService> _log;
     private readonly AiOptions _aiOptions;
     private readonly IAiAgentService _agent;
     private readonly AiReportService _reports;
 
-    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, ILogger<MessengerService> log, IOptions<AiOptions> aiOptions, IAiAgentService agent, AiReportService reports)
+    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, IBaleSafirService safir, ILogger<MessengerService> log, IOptions<AiOptions> aiOptions, IAiAgentService agent, AiReportService reports)
     {
         _db = db;
         _httpFactory = httpFactory;
         _codes = codes;
+        _safir = safir;
         _log = log;
         _aiOptions = aiOptions.Value;
         _agent = agent;
@@ -94,6 +102,8 @@ public class MessengerService : IMessengerService
             var eitaaSent = false;
 
             // ---------- بله ----------
+            // اولویت: اگر شناسهٔ چت دارد با همان ارسال می‌شود؛ وگرنه اگر شماره‌اش از مسیر
+            // سفیر متصل شده، پیام مستقیم به شماره فرستاده می‌شود (بدون نیاز به استارت ربات).
             if (!string.IsNullOrWhiteSpace(user.BaleChatId))
             {
                 if (string.IsNullOrWhiteSpace(baleToken)) baleError = "توکن ربات بله در تنظیمات وارد نشده است.";
@@ -104,6 +114,12 @@ public class MessengerService : IMessengerService
                     baleSent = ok;
                     if (!ok) baleError = err;
                 }
+            }
+            else if (user.BalePhoneLinked && !string.IsNullOrWhiteSpace(user.BalePhone))
+            {
+                var result = await _safir.SendTextAsync(user.BalePhone!, text, $"bale-notify-{userId}-{Guid.NewGuid():N}");
+                baleSent = result.Ok;
+                if (!baleSent) baleError = result.Error ?? result.Describe();
             }
 
             // ---------- ایتا (برنامه‌ی رسمی ایتا / ایتایار) ----------
@@ -119,7 +135,9 @@ public class MessengerService : IMessengerService
                 }
             }
 
-            var linked = !string.IsNullOrWhiteSpace(user.BaleChatId) || !string.IsNullOrWhiteSpace(user.EitaaChatId);
+            var linked = !string.IsNullOrWhiteSpace(user.BaleChatId)
+                         || (user.BalePhoneLinked && !string.IsNullOrWhiteSpace(user.BalePhone))
+                         || !string.IsNullOrWhiteSpace(user.EitaaChatId);
             return new MessengerSendResult(baleSent, baleError, eitaaSent, eitaaError, linked);
         }
         catch (Exception ex)
@@ -271,7 +289,8 @@ public class MessengerService : IMessengerService
                     if (linked > 0) await _db.SaveChangesAsync();
                 }
 
-                // کاربرانی که ربات را استارت کرده‌اند اما شماره نداده‌اند: درخواست اشتراک شماره
+                // کاربرانی که ربات را استارت کرده‌اند: خوش‌آمدگویی. دیگر از کاربر
+                // خواسته نمی‌شود شماره‌اش را ارسال کند — اتصال از سمت سامانه و به‌صورت خودکار انجام می‌شود.
                 foreach (var chatId in startChats.Distinct())
                 {
                     var known = await _db.Users.AsNoTracking().AnyAsync(u => u.BaleChatId == chatId);
@@ -281,9 +300,7 @@ public class MessengerService : IMessengerService
                         await ReplyAsync(http, baleToken, chatId, BaleIntroText);
                         continue;
                     }
-                    await ReplyAsync(http, baleToken, chatId,
-                        "سلام 👋\nبرای دریافت اعلان‌های سامانه، لطفاً شماره تلفن خود را با دکمه‌ی زیر ارسال کنید.",
-                        new { keyboard = new[] { new[] { new { text = "📱 ارسال شماره من", request_contact = true } } }, resize_keyboard = true, one_time_keyboard = true });
+                    await ReplyAsync(http, baleToken, chatId, BaleWelcomeText);
                 }
 
                 // راهنمای دستیار + پاسخ فروغ آریا به پیام‌های متنی (فقط کاربران لینک‌شده و مجاز)
@@ -307,6 +324,12 @@ public class MessengerService : IMessengerService
             }
         }
     }
+
+    private const string BaleWelcomeText =
+        "سلام 👋\nبه سامانهٔ انبار و فروش خوش آمدید.\n" +
+        "اتصال حساب شما به‌صورت خودکار و توسط مدیر سامانه انجام می‌شود؛ " +
+        "نیازی به ارسال شمارهٔ تلفن نیست.\n" +
+        "به‌محض تکمیل اتصال، اعلان‌های سامانه به‌صورت خودکار برای شما ارسال می‌شود.";
 
     private const string BaleIntroText =
         "سلام! 👋 من «فروغ آریا»، دستیار هوشمند سامانه‌ام.\n\n" +
@@ -450,7 +473,7 @@ public class MessengerService : IMessengerService
         var (linked, _, note) = await PollBaleAsync(0);
         var message = linked > 0
             ? $"{linked} کاربر با موفقیت به بله متصل شد."
-            : "کاربر جدیدی برای اتصال پیدا نشد — کاربران باید ربات را در بله استارت کنند و شماره خود را (با دکمه‌ی «ارسال شماره من») بفرستند.";
+            : "کاربر جدیدی برای اتصال پیدا نشد — برای اتصال همهٔ کاربران از دکمهٔ «اتصال انبوه بله» در صفحهٔ کاربران استفاده کنید.";
         return (linked, $"{message} {note}");
     }
 
@@ -475,9 +498,32 @@ public class MessengerService : IMessengerService
         return p;
     }
 
-    // ============================================================ ایتا: اتصال کاربر
-    public async Task<(bool ok, string message)> LinkEitaaAsync(string code, string initData)
+    // ============================================================ بله: بررسی شمارهٔ متعلق به اکانت بله
+    /// <summary>
+    /// بررسی اینکه شمارهٔ موبایل داده‌شده به یک اکانت بله تعلق دارد یا نه.
+    /// از پاسخ سرویس رسمی «سفیر» استفاده می‌شود: خطای ۱۷ یعنی اکانت بله ندارد.
+    /// </summary>
+    public async Task<bool> IsBalePhoneRegisteredAsync(string phone)
     {
+        var normalized = BaleSafirService.NormalizePhone(phone);
+        if (normalized == null) return false;
+
+        try
+        {
+            var result = await _safir.SendTextAsync(normalized,
+                "🔔 سامانه انبار و فروش — بررسی اتصال بله",
+                $"bale-check-{normalized}");
+            return result.Status == BaleSendStatus.Sent;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "بررسی اکانت بله برای {Phone} ناموفق بود", normalized);
+            return false;
+        }
+    }
+
+    // ============================================================ ایتا: اتصال کاربر
+    public async Task<(bool ok, string message)> LinkEitaaAsync(string code, string initData)    {
         if (string.IsNullOrWhiteSpace(initData))
             return (false, "داده‌ی ایتا دریافت نشد؛ این صفحه باید از داخل برنامه‌ی ایتا باز شود.");
 

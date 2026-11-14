@@ -75,9 +75,9 @@ public class AiReminderService
             {
                 var links = await _db.Users.AsNoTracking()
                     .Where(u => u.Id == r.UserId)
-                    .Select(u => new { u.BaleChatId, u.EitaaChatId })
+                    .Select(u => new { u.BaleChatId, u.EitaaChatId, u.BalePhoneLinked })
                     .FirstOrDefaultAsync(ct);
-                if (links == null || (links.BaleChatId == null && links.EitaaChatId == null))
+                if (links == null || (!MessengerLinkHelper.HasMessengerLink(links.BaleChatId, links.BalePhoneLinked, links.EitaaChatId)))
                     continue; // لینک نشده؛ معلق می‌ماند تا لینک شود
                 var late = now - r.RemindAt > TimeSpan.FromMinutes(15);
                 var title = late ? "⏰ یادآوری معوق" : "⏰ یادآوری";

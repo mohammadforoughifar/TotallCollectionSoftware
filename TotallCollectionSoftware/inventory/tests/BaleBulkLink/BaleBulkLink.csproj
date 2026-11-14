@@ -1,0 +1,100 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    هارنس آزمون «اتصال انبوهٔ کاربران به بله».
+
+    این پروژه به‌جای ProjectReference به Inventory.Api، فایل‌های لازم را به‌صورت
+    لینک‌شده (Compile Include با مسیر نسبی) وارد می‌کند. دلیل: Inventory.Api
+    یک پروژهٔ بسیار بزرگ است و بیلد کامل آن در محیط‌های با حافظهٔ محدود
+    (۲ گیگابایت) با OOM (خروجی ۱۳۷) متوقف می‌شود. این هارنس فقط بخش
+    مرتبط با بله را کامپایل می‌کند و در چند ثانیه ساخته می‌شود.
+
+    فایل‌های «سبک» (Light*.cs) فقط قراردادهای لازم برای کنترلر آزمون را نگه می‌دارند:
+      • LightMessengerService.cs        → پیاده‌سازی اصلی به سرویس‌های AI وابسته است
+      • LightActiveCompanyMiddleware.cs → فقط ثابت ItemKey لازم است
+    اگر امضای اینترفیس‌ها تغییر کرد، این دو فایل باید به‌روز شوند.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RootNamespace>BaleBulkLink</RootNamespace>
+    <!-- EF1002 هشدار «SQL خام» در فایل‌های Schema اصلی پروژه است، نه در این هارنس -->
+    <NoWarn>$(NoWarn);EF1002;NETSDK1086</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageReference Include="WebPush" Version="1.0.13" />
+  </ItemGroup>
+
+  <!-- مسیر ریشهٔ سورس پروژهٔ API (برای لینک‌کردن فایل‌های واقعی) -->
+  <PropertyGroup>
+    <ApiSrc>$(MSBuildThisFileDirectory)..\..\src\Inventory.Api\</ApiSrc>
+    <SharedSrc>$(MSBuildThisFileDirectory)..\..\src\Inventory.Shared\</SharedSrc>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- هارنس -->
+    <Compile Include="Program.cs" />
+    <Compile Include="LightMessengerService.cs" />
+    <Compile Include="LightActiveCompanyMiddleware.cs" />
+
+    <!-- هستهٔ مورد آزمون (فایل‌های واقعی پروژه) -->
+    <Compile Include="$(ApiSrc)Services\System\BaleSafirService.cs" Link="Api\BaleSafirService.cs" />
+    <Compile Include="$(ApiSrc)Services\System\BaleLinkService.cs" Link="Api\BaleLinkService.cs" />
+    <Compile Include="$(ApiSrc)Controllers\System\NotificationsController.cs" Link="Api\NotificationsController.cs" />
+
+    <!-- دیتابیس واقعی (برای آزمون ذخیره‌سازی) -->
+    <Compile Include="$(ApiSrc)Data\AppDbContext.cs" Link="Api\AppDbContext.cs" />
+    <Compile Include="$(ApiSrc)Entities\**\*.cs" LinkBase="Api\Entities" />
+    <Compile Include="$(SharedSrc)Entities\**\*.cs" LinkBase="Shared\Entities" />
+
+    <!-- وابستگی‌های سبک AppDbContext -->
+    <Compile Include="$(ApiSrc)Data\BackupEntities.cs" Link="Api\Data\BackupEntities.cs" />
+    <Compile Include="$(ApiSrc)Data\ICompanyOwned.cs" Link="Api\Data\ICompanyOwned.cs" />
+    <Compile Include="$(ApiSrc)Data\PushDeliverySchema.cs" Link="Api\Data\PushDeliverySchema.cs" />
+    <Compile Include="$(ApiSrc)Data\RemoteEntities.cs" Link="Api\Data\RemoteEntities.cs" />
+    <Compile Include="$(ApiSrc)Data\UserContactOtpChallenge.cs" Link="Api\Data\UserContactOtpChallenge.cs" />
+    <Compile Include="$(ApiSrc)Data\DocEvolutionModel.cs" Link="Api\Data\DocEvolutionModel.cs" />
+    <Compile Include="$(ApiSrc)Data\AiSchemaV1.cs" Link="Api\Data\AiSchemaV1.cs" />
+    <Compile Include="$(ApiSrc)Data\ItVaultSchemaV1.cs" Link="Api\Data\ItVaultSchemaV1.cs" />
+    <Compile Include="$(ApiSrc)Data\ServerManagementSchemaV1.cs" Link="Api\Data\ServerManagementSchemaV1.cs" />
+    <Compile Include="$(ApiSrc)Data\ServerMonitoringSchemaV2.cs" Link="Api\Data\ServerMonitoringSchemaV2.cs" />
+    <Compile Include="$(ApiSrc)Data\ServerAlertWorkflowSchemaV3.cs" Link="Api\Data\ServerAlertWorkflowSchemaV3.cs" />
+    <Compile Include="$(ApiSrc)Data\ServerHardwareDetailsSchemaV4.cs" Link="Api\Data\ServerHardwareDetailsSchemaV4.cs" />
+    <Compile Include="$(ApiSrc)Data\IpamSchemaV1.cs" Link="Api\Data\IpamSchemaV1.cs" />
+    <Compile Include="$(ApiSrc)Data\OfficeMachineSchemaV2.cs" Link="Api\Data\OfficeMachineSchemaV2.cs" />
+    <Compile Include="$(ApiSrc)Data\OfficeMachineSchemaV3.cs" Link="Api\Data\OfficeMachineSchemaV3.cs" />
+
+    <!-- DTO/Enum های مشترک -->
+    <Compile Include="$(SharedSrc)Enums.cs" Link="Shared\Enums.cs" />
+    <Compile Include="$(SharedSrc)Dtos\ChatDtos.cs" Link="Shared\ChatDtos.cs" />
+    <Compile Include="$(SharedSrc)Dtos\SalesVisitStatus.cs" Link="Shared\SalesVisitStatus.cs" />
+    <Compile Include="$(SharedSrc)Dtos\ShopExpenseChequeDtos.cs" Link="Shared\ShopExpenseChequeDtos.cs" />
+    <Compile Include="$(SharedSrc)Dtos\ShopTradeInDtos.cs" Link="Shared\ShopTradeInDtos.cs" />
+    <Compile Include="$(SharedSrc)Dtos\ShopWarrantyDtos.cs" Link="Shared\ShopWarrantyDtos.cs" />
+    <Compile Include="$(SharedSrc)Dtos\CatalogDtos.cs" Link="Shared\CatalogDtos.cs" />
+    <Compile Include="$(SharedSrc)Dtos\OperationDtos.cs" Link="Shared\OperationDtos.cs" />
+
+    <!-- سرویس‌های جانبی موردنیاز کنترلر -->
+    <Compile Include="$(ApiSrc)Services\Core\TehranClock.cs" Link="Api\Services\TehranClock.cs" />
+    <Compile Include="$(ApiSrc)Data\BaleLinkSchemaV1.cs" Link="Api\Data\BaleLinkSchemaV1.cs" />
+    <Compile Include="$(ApiSrc)Services\Ai\MessengerLinkHelper.cs" Link="Api\Services\Ai\MessengerLinkHelper.cs" />
+    <Compile Include="$(ApiSrc)Services\System\MessengerLinkCodes.cs" Link="Api\MessengerLinkCodes.cs" />
+    <Compile Include="$(ApiSrc)Services\Notification\PushService.cs" Link="Api\PushService.cs" />
+    <Compile Include="$(ApiSrc)Services\Notification\PushKeyStore.cs" Link="Api\PushKeyStore.cs" />
+    <Compile Include="$(ApiSrc)Services\Notification\PushQueue.cs" Link="Api\PushQueue.cs" />
+    <Compile Include="$(ApiSrc)Services\Notification\NotificationCategory.cs" Link="Api\NotificationCategory.cs" />
+    <Compile Include="$(ApiSrc)Licensing\Infrastructure\AllowInReadOnlyAttribute.cs" Link="Api\AllowInReadOnlyAttribute.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\src\Inventory.Licensing\Inventory.Licensing.csproj" />
+  </ItemGroup>
+
+</Project>

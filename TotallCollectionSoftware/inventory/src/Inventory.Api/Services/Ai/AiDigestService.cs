@@ -48,7 +48,7 @@ public class AiDigestService
     public async Task<int> SendToAllAsync(IMessengerService messenger, CancellationToken ct)
     {
         var users = await _db.Users.AsNoTracking()
-            .Where(u => u.IsActive && (u.BaleChatId != null || u.EitaaChatId != null))
+            .Where(u => u.IsActive && (u.BaleChatId != null || u.EitaaChatId != null || u.BalePhoneLinked))
             .Select(u => new { u.Id, u.Username, u.FirstName, u.LastName, u.Role })
             .Take(200)
             .ToListAsync(ct);

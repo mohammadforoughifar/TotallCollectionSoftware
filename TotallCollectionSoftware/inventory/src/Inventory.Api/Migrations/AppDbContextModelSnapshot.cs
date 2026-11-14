@@ -1061,6 +1061,13 @@ namespace Inventory.Api.Migrations
                     b.Property<string>("BaleBotToken")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("BaleSafirBotId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BaleSafirApiAccessKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<int>("CategoryCodeLength")
                         .HasColumnType("int");
 
