@@ -66,3 +66,10 @@ src/Inventory.Api/wwwroot/uploads/**/.key
 # کلیدهای عملیاتی (پیامک، ایمیل، هوش مصنوعی) در این فایل بمانند، نه در appsettings.json
 appsettings.Local.json
 **/appsettings.Local.json
+
+# ===================== ابزار صدور لایسنس =====================
+# دفتر صدور محلی و کلیدهای خصوصی هرگز در مخزن نمی‌آیند
+issued-licenses.jsonl
+*.private.pem
+*.lic
+!tests/**/fixtures/**
