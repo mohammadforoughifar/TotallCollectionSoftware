@@ -14,6 +14,17 @@
 
 <PageTitle>دستور کار</PageTitle>
 
+@if (_embedMode)
+{
+    @* حالت جاسازی‌شده (از نگار ذهنی): فقط خودِ فرم دیده شود، نه منوی اصلی برنامه *@
+    <style>
+        .app-sidebar, .app-topbar, .sidebar-backdrop, .btn-burger { display: none !important; }
+        .app-shell, .app-main { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important; }
+        .app-shell { display: block !important; }
+        html, body { overflow: hidden !important; }
+    </style>
+}
+
 <div class="page-head wo-page-head">
     <div>
         <h1>دستور کار و وظایف</h1>
@@ -3086,7 +3097,12 @@ else
     private bool keepChainParent;     // پرچم: ریست فرم، والد را پاک نکند
 
     /// <summary>بستن فرم ایجاد/ویرایش — والد زنجیره هم پاک می‌شود.</summary>
-    private void CloseNewForm() { showNew = false; chainParent = null; editingId = 0; }
+    private void CloseNewForm()
+    {
+        showNew = false; chainParent = null; editingId = 0;
+        if (_embedMode)
+            _ = JS.InvokeVoidAsync("inventoryNotifyEmbedParent", new { source = "inventory-workorder-embed", type = "wo-closed", id = 0, number = "" }).AsTask();
+    }
 
     /// <summary>باز کردن فرم «دستور کار جدید» به‌عنوان زیر-دستورِ دستور جاری — مهلت پیش‌فرض: مهلت والد.</summary>
     private async Task OpenChainForm()
@@ -3376,6 +3392,8 @@ else
         Nav.LocationChanged -= OnLocChanged;
     }
 
+    private bool _embedMode, _newFromQueryHandled;
+
     private async Task TryOpenFromQuery()
     {
         // محافظ مسیر: این متد روی هر LocationChanged هم فراخوان می‌شود (حین ناوبری
@@ -3386,6 +3404,14 @@ else
         var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/');
         if (!rel.Equals("work-orders", StringComparison.OrdinalIgnoreCase)) return;
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
+        // حالت جاسازی‌شده (iframe نگار ذهنی): فرم «دستور کار جدید» همان‌جا باز و نتیجه به والد فرستاده می‌شود
+        if (qs["embed"] == "1") _embedMode = true;
+        if (qs["new"] == "1" && !_newFromQueryHandled)
+        {
+            _newFromQueryHandled = true;
+            await OpenNew();
+            return;
+        }
         if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
         // باز شدن مستقیم تب آمار با لینک (مثلاً از داشبورد) هم باید داده‌ها را بارگذاری کند.
         if (qs["tab"] == "stats" && tab != "stats") { tab = "stats"; await LoadStats(); }
@@ -4670,6 +4696,21 @@ else
 
             if (created?.Duplicate != true)
                 Toast.Success(editingId > 0 ? "تغییرات ذخیره شد." : "دستور کار ثبت شد.");
+            // جاسازی‌شده در نگار ذهنی: شناسهٔ دستور کار را به صفحهٔ والد بده تا به گرهٔ انتخابی وصل شود
+            if (_embedMode && editingId <= 0 && created != null)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("inventoryNotifyEmbedParent", new
+                    {
+                        source = "inventory-workorder-embed",
+                        type = "wo-created",
+                        id = created.Id,
+                        number = created.Number ?? ""
+                    });
+                }
+                catch { }
+            }
             // کلید بعدی — ثبت بعدی (عمدی) نباید تکراری شمرده شود
             newRequestId = Guid.NewGuid().ToString("N");
             editingId = 0;

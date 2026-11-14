@@ -72,3 +72,11 @@
 .wpmf-fullscreen .wpmf-workarea{grid-template-columns:minmax(0,1fr) 350px}
 @media(max-width:950px){.wpmf-workarea{grid-template-columns:minmax(0,1fr) 285px}}
 @media(max-width:700px){.wpmf-workarea{grid-template-columns:1fr}}
+
+.wpmf-new-order-btn{margin-top:6px;background:#eef1ff;border-color:#c9d1f7;color:#414fc4}
+.wpmf-new-order-btn:hover:not(:disabled){background:#e2e7ff;border-color:#aeb9f5}
+.wpmf-embed-backdrop{position:fixed;inset:0;z-index:3100;background:rgba(15,23,42,.55);display:grid;place-items:center;padding:14px}
+.wpmf-embed-dialog{width:min(1200px,100%);height:min(88vh,900px);display:flex;flex-direction:column;overflow:hidden;background:#fff;border-radius:14px;box-shadow:0 18px 60px #10182a55}
+.wpmf-embed-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 14px;border-bottom:1px solid #eef0f5;background:#fbfbfd;font-size:12px;font-weight:700;color:#273247}
+.wpmf-embed-head>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wpmf-embed-dialog iframe{flex:1 1 auto;width:100%;min-height:0;border:0;background:#fff}
