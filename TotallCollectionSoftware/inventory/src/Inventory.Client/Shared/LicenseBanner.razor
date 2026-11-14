@@ -1,0 +1,97 @@
+@using Inventory.Client.Services
+@inject ILicensingApi Licensing
+@inject NavigationManager Nav
+
+@*
+    بنر لایسنس — بالای محتوا در همهٔ صفحه‌ها.
+    قاعده: هرگز کاربر را بیرون نمی‌اندازد و هرگز خطا را بی‌صدا نمی‌خورد؛
+    فقط «چه چیزی بسته است و چه کسی بازش می‌کند» را نشان می‌دهد.
+*@
+
+@if (message is not null)
+{
+    <div class="alert alert-@(level) d-flex align-items-start gap-2 rounded-0 mb-0 py-2" role="alert">
+        <i class="bi @(icon) mt-1"></i>
+        <div class="flex-grow-1 small">@message</div>
+        @if (showLink)
+        {
+            <a class="btn btn-sm btn-outline-dark" href="settings/license">وضعیت لایسنس</a>
+        }
+        <button class="btn btn-sm btn-link text-dark" @onclick="Dismiss" title="بستن">✕</button>
+    </div>
+}
+
+@code {
+    private string? message;
+    private string level = "warning";
+    private string icon = "bi-exclamation-triangle";
+    private bool showLink;
+    private bool dismissed;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    /// <summary>بازخوانی وضعیت — از بیرون هم قابل صدا زدن است (مثلاً بعد از آپلود لایسنس).</summary>
+    public async Task RefreshAsync()
+    {
+        if (dismissed) return;
+        try
+        {
+            var status = await Licensing.GetStatusAsync();
+            Apply(status);
+        }
+        catch
+        {
+            // بنر نباید صفحه را خراب کند؛ وضعیت نامعلوم = بی‌بنر.
+            message = null;
+        }
+    }
+
+    private void Apply(LicenseStatusSummary status)
+    {
+        message = null;
+        showLink = false;
+
+        if (status.ClockBlocked)
+        {
+            message = status.ClockMessage ?? "ساعت سرور عقب است؛ سامانه فقط‌خواندنی است.";
+            level = "danger";
+            icon = "bi-clock-history";
+            showLink = true;
+            return;
+        }
+
+        if (!status.CanWrite)
+        {
+            message = status.Status == "Missing"
+                ? "لایسنس روی این نصب اعمال نشده است؛ فقط ورود مدیر و صفحهٔ فعال‌سازی باز است."
+                : "وضعیت لایسنس معتبر نیست؛ سامانه فقط‌خواندنی است.";
+            level = "danger";
+            icon = "bi-lock";
+            showLink = true;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(status.ClockMessage))
+        {
+            message = status.ClockMessage;
+            level = "warning";
+            icon = "bi-clock";
+            showLink = true;
+            return;
+        }
+
+        if (status.RehostRecommended)
+        {
+            message = "مؤلفه‌های این نصب تغییر کرده‌اند؛ اعتبار لایسنس تغییر نکرده، اما بررسی انتقال نصب لازم است.";
+            level = "info";
+            icon = "bi-arrow-left-right";
+            showLink = true;
+        }
+    }
+
+    private void Dismiss()
+    {
+        dismissed = true;
+        message = null;
+    }
+}

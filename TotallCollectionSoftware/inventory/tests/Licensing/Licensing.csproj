@@ -18,4 +18,14 @@
     -->
     <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      گام ۵: منطق «نگاشت منو به ماژول»، «خلاصهٔ وضعیت» و «متن خطاها» عمداً کلاس‌های
+      سادهٔ C# در پروژهٔ کلاینت‌اند (بدون وابستگی به Blazor) تا همین‌جا و بدون مرورگر
+      تست شوند. فایل‌ها Link می‌شوند تا کپی دوم ساخته نشود.
+    -->
+    <Compile Include="../../src/Inventory.Client/Services/LicenseMenuMap.cs" Link="Client/LicenseMenuMap.cs" />
+    <Compile Include="../../src/Inventory.Client/Services/LicenseStatusSummary.cs" Link="Client/LicenseStatusSummary.cs" />
+    <Compile Include="../../src/Inventory.Client/Services/LicenseErrorText.cs" Link="Client/LicenseErrorText.cs" />
+  </ItemGroup>
 </Project>

@@ -654,6 +654,32 @@ public class LicenseController : ControllerBase
     }
 
     /// <summary>
+    /// آخرین رخدادهای لایسنس — برای صفحهٔ «وضعیت لایسنس» (آخرین ۵۰ هشدار).
+    ///
+    /// <para>
+    /// فقط مدیر. پیش‌فرض <c>severity=Warning</c> چون مدیر برای دیدن موارد <b>نیازمند
+    /// اقدام</b> به این صفحه می‌آید؛ با <c>severity=all</c> همه چیز برمی‌گردد.
+    /// </para>
+    /// </summary>
+    [HttpGet("events")]
+    public async Task<IActionResult> Events([FromQuery] int take = 50, [FromQuery] string? severity = "Warning",
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsAdmin()) return AdminOnly();
+
+        take = Math.Clamp(take, 1, 200);
+        var query = _db.LicenseEvents.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(severity) && !severity.Equals("all", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(e => e.Severity == severity);
+
+        var rows = await query.OrderByDescending(e => e.Id).Take(take)
+            .Select(e => new { e.Id, e.At, e.Kind, e.Severity, e.Message, e.UserId, e.Serial })
+            .ToListAsync(cancellationToken);
+
+        return Ok(new { count = rows.Count, take, severity = severity ?? "all", items = rows });
+    }
+
+    /// <summary>
     /// <b>تسویهٔ دستی</b> یک رزرو «در انتظار».
     ///
     /// <para>
