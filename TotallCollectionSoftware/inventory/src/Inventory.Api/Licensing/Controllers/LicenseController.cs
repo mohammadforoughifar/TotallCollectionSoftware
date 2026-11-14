@@ -91,6 +91,7 @@ public class LicenseController : ControllerBase
 {
     private readonly ILicenseService _licenses;
     private readonly IInstallationIdentity _identity;
+    private readonly InstallationBinding _binding;
     private readonly PublicKeyRingProvider _keys;
     private readonly LicenseActivationThrottle _throttle;
     private readonly LicensePaths _paths;
@@ -103,12 +104,13 @@ public class LicenseController : ControllerBase
     private readonly ILogger<LicenseController> _log;
 
     public LicenseController(ILicenseService licenses, IInstallationIdentity identity,
-        PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
+        InstallationBinding binding, PublicKeyRingProvider keys, LicenseActivationThrottle throttle, LicensePaths paths,
         LicenseEventLogger events, AppDbContext db, LicensingOptions options,
         IConfiguration configuration, QuotaService quota, ILogger<LicenseController> log)
     {
         _licenses = licenses;
         _identity = identity;
+        _binding = binding;
         _keys = keys;
         _throttle = throttle;
         _paths = paths;
@@ -150,6 +152,8 @@ public class LicenseController : ControllerBase
             });
 
         var usage = await BuildUsageRowsAsync(entitlement, cancellationToken);
+        // بایند نصب: فقط «آیا جابه‌جا شده؟» — هرگز اعتبار لایسنس را تغییر نمی‌دهد.
+        var binding = await _binding.AssessAsync(cancellationToken);
         var grants = await _db.LicenseGrants.AsNoTracking()
             .Where(g => g.Status == "Active")
             .OrderBy(g => g.AppliedAt)
@@ -167,6 +171,15 @@ public class LicenseController : ControllerBase
             computedAt = entitlement.ComputedAt,
             updatesUntil = entitlement.UpdatesUntil,
             hasPerpetualItem = entitlement.HasPerpetualItem,
+            // پرچم «انتقال نصب»: دو مؤلفهٔ ثانویه یا بیشتر عوض شده.
+            // تصمیم با ما است؛ این پرچم فقط اطلاع‌رسانی است و چیزی را قفل نمی‌کند.
+            rehostRecommended = binding.RehostRecommended,
+            binding = new
+            {
+                changed = binding.Changed,
+                compared = binding.Compared,
+                summary = binding.Summary
+            },
             appliedSerials = entitlement.AppliedSerials,
             seats = new
             {
@@ -316,15 +329,26 @@ public class LicenseController : ControllerBase
 
         var request = new
         {
-            requestVersion = 1,
+            requestVersion = 2,
             kind = "license-request",
             installationId,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             customerName,
+
+            // ---- موتور و بیلد (برای اینکه هنگام صدور بدانیم مشتری چه نسخه‌ای دارد) ----
+            engineVersion = Inventory.Licensing.LicenseEngineInfo.FullVersion,
+            engineSchema = Inventory.Licensing.LicenseEngineInfo.SchemaVersion,
             productVersion = _options.ProductVersion ?? typeof(LicenseController).Assembly.GetName().Version?.ToString(),
+            buildDate = BuildDate(),
+
+            // ---- مؤلفه‌های ماشین: نام خام برای پشتیبانی، هش برای تشخیص جابه‌جایی ----
             machineName = Environment.MachineName,
             osVersion = Environment.OSVersion.VersionString,
-            requestedAt = DateTime.Now,
+            components = BindingComponents.Capture(_configuration.GetConnectionString("Default")),
+
+            // ---- زمان‌ها: تهران برای انسان، UTC برای ماشین ----
+            requestedAt = Inventory.Licensing.Periods.PersianPeriodKey.NowIran(),
+            requestedAtTehranZone = Inventory.Licensing.Periods.PersianPeriodKey.IranZone.Id,
             requestedAtUtc = DateTime.UtcNow,
             note = "این فایل را برای دریافت لایسنس ارسال کنید. شناسهٔ نصب، کلید اصلی اتصال لایسنس به همین سرور است."
         };
@@ -732,6 +756,14 @@ public class LicenseController : ControllerBase
             code = "LICENSE_ADMIN_ONLY",
             message = "مدیریت لایسنس فقط برای مدیر سیستم مجاز است."
         });
+
+    /// <summary>تاریخ ساخت اسمبلی (UTC) — مبنای «این فایل را با چه بیلدی ساختی».</summary>
+    private static DateTime? BuildDate()
+    {
+        var location = typeof(LicenseController).Assembly.Location;
+        if (string.IsNullOrWhiteSpace(location) || !System.IO.File.Exists(location)) return null;
+        return System.IO.File.GetLastWriteTimeUtc(location);
+    }
 
     private int? CurrentUserIdOrNull()
         => int.TryParse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value, out var id) ? id : null;

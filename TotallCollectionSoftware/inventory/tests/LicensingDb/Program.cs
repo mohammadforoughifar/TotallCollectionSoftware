@@ -3271,6 +3271,129 @@ Section("۳۰) رفت‌وبرگشت امضا (payload مشترک ابزار ص�
     Check(File.Exists(toolProject), "پروژهٔ tools/LicenseTool وجود دارد");
 }
 
+// ============================================================
+//  بخش ۳۲ (گام ۴-۲/۴-۳) — بایند نصب (جابه‌جایی) و فایل درخواست غنی‌شده
+// ============================================================
+Section("۳۲) گام ۴-ب: کمیت مؤلفه‌های ثانویه (۴.۳) و فایل درخواست (۴.۲)");
+
+{
+    await using var db = NewDb();
+    var events = new Inventory.Api.Licensing.Services.LicenseEventLogger(db,
+        NullLogger<Inventory.Api.Licensing.Services.LicenseEventLogger>.Instance);
+
+    const string installId = "11111111-1111-1111-1111-111111111111";
+    db.LicenseInstallations.Add(new LicenseInstallation
+    {
+        InstallationId = installId,
+        DeploymentMode = "OnPrem",
+        CustomerName = "CUST-BIND",
+        CreatedAt = DateTime.Now,
+        UpdatedAt = DateTime.Now
+    });
+    await db.SaveChangesAsync();
+
+    var components = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // ورودی این تست همان خروجی Capture است؛ یعنی هش ۱۶ کاراکتری (نه مقدار خام).
+        ["machineName"] = "aaaaaaaaaaaaaaaa", ["machineGuid"] = "bbbbbbbbbbbbbbbb",
+        ["sqlServer"] = "cccccccccccccccc"
+    };
+    Inventory.Api.Licensing.Services.InstallationBinding Binding() =>
+        new(db, events, () => new Dictionary<string, string>(components, StringComparer.OrdinalIgnoreCase),
+            NullLogger<Inventory.Api.Licensing.Services.InstallationBinding>.Instance);
+
+    // ---------- الف) اولین اجرا: خط پایه ----------
+    var first = await Binding().AssessAsync();
+    Check(first.BaselineCreated && first.Changed.Count == 0 && !first.RehostRecommended,
+        "اجرای اول خط پایه را می‌سازد و هیچ تغییری گزارش نمی‌کند");
+    var row = await db.LicenseInstallations.AsNoTracking().FirstAsync();
+    Check(row.MachineFingerprint is not null && row.MachineFingerprint.Contains("\"components\"", StringComparison.Ordinal),
+        "خط پایه به شکل JSON مؤلفه‌ها در MachineFingerprint ذخیره می‌شود");
+    Check((row.MachineFingerprint ?? "").Length < 600,
+        "اندازهٔ JSON خط پایه در ستون nvarchar(600) جا می‌شود (واقعی: " + (row.MachineFingerprint ?? "").Length + ")");
+    Check(components.Values.All(v => row.MachineFingerprint!.Contains(v, StringComparison.Ordinal)),
+        "خط پایه همان هش‌ها را ذخیره می‌کند (هش دوباره گرفته نمی‌شود)");
+
+    // ---------- ب) بدون تغییر ----------
+    var same = await Binding().AssessAsync();
+    Check(!same.BaselineCreated && same.Changed.Count == 0 && same.Compared.Count == 3,
+        "اجرای بعدی سه مؤلفه را مقایسه و بدون تغییر گزارش می‌کند");
+
+    // ---------- ج) یک مؤلفه: طبیعی، بدون هشدار ----------
+    components["machineName"] = "zzzzzzzzzzzzzzzz";
+    var one = await Binding().AssessAsync();
+    Check(one.Changed.Count == 1 && one.Changed[0] == "machineName" && !one.RehostRecommended,
+        "تغییر یک مؤلفه ⇒ «انتقال نصب» پیشنهاد نمی‌شود");
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 0,
+        "با یک مؤلفه هیچ رخداد Warning نوشته نمی‌شود");
+
+    // ---------- د) دو مؤلفه: هشدار، بدون هیچ مهلت ----------
+    components["sqlServer"] = "yyyyyyyyyyyyyyyy";
+    var two = await Binding().AssessAsync();
+    Check(two.Changed.Count == 2 && two.RehostRecommended,
+        "دو مؤلفهٔ عوض‌شده ⇒ پرچم rehostRecommended (بدون غیرفعال‌سازی لایسنس)");
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING" && x.Severity == "Warning") == 1,
+        "یک رخداد Warning با شدت Warning ثبت می‌شود");
+    await Binding().AssessAsync();
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 1,
+        "تکرار همان وضعیت، رخداد تکراری نمی‌سازد (ضد اسپم)");
+    components["machineGuid"] = "xxxxxxxxxxxxxxxx";
+    await Binding().AssessAsync();
+    Check(await db.LicenseEvents.CountAsync(x => x.Kind == "INSTALL_BINDING_WARNING") == 2,
+        "مجموعهٔ متفاوتِ تغییر ⇒ یک رخداد تازه (نه بیشتر)");
+
+    // ---------- هـ) قاعدهٔ سخت: شناسهٔ نصب دست‌نخورده ----------
+    var afterAll = await db.LicenseInstallations.AsNoTracking().FirstAsync();
+    Check(afterAll.InstallationId == installId,
+        "بایند ثانویه هرگز شناسهٔ نصب (GUID) را عوض نمی‌کند — ناهمخوانی GUID جای دیگری Invalid می‌دهد");
+    var props = typeof(Inventory.Api.Licensing.Services.BindingAssessment).GetProperties()
+        .Select(x => x.Name).ToList();
+    Check(!props.Any(x => x.Contains("Deadline", StringComparison.OrdinalIgnoreCase)
+                          || x.Contains("Expir", StringComparison.OrdinalIgnoreCase)
+                          || x.Contains("Block", StringComparison.OrdinalIgnoreCase)),
+        "سطح API بایند هیچ مهلت/قفل/انقضایی ندارد (" + string.Join(", ", props) + ")");
+
+    // ---------- و) مؤلفهٔ نامعلوم مقایسه نمی‌شود ----------
+    components["machineGuid"] = "";
+    var unknown = await Binding().AssessAsync();
+    Check(unknown.Compared.Count == 2 && !unknown.Changed.Contains("machineGuid"),
+        "مؤلفهٔ خوانده‌نشده (هش خالی) در مقایسه شمرده نمی‌شود — خطای خواندن ≠ جابه‌جایی");
+
+    // ---------- ز) اثر انگشت سه مؤلفهٔ واقعی ----------
+    var real = Inventory.Api.Licensing.Services.BindingComponents.Capture(
+        "Server=SQLHOST\\SQLEXPRESS,1433;Database=X;User Id=u;Password=p;TrustServerCertificate=True");
+    Check(real.Count == 3 && real["machineName"].Length == 16 && real["machineGuid"].Length == 16,
+        "Capture سه مؤلفه با هش ۱۶ کاراکتری می‌دهد");
+    Check(!real["machineName"].Contains(Environment.MachineName, StringComparison.OrdinalIgnoreCase),
+        "اثر انگشت، نام خام ماشین را در خود ندارد (فقط هش)");
+    Check(real["sqlServer"] == Inventory.Api.Licensing.Services.BindingComponents.Capture(
+              "Server=sqlhost\\sqlexpress;Database=Y;User Id=u;Password=q;TrustServerCertificate=True")["sqlServer"],
+        "نام سرور SQL مستقل از دیتابیس/کاربر/رمز است (کوچک و بی‌حساسیت به حروف)");
+}
+
+{
+    // ---------- ۴.۲: فایل درخواست غنی است و همان مسیر دسترسی/محدودیت نرخ را دارد ----------
+    var root = repoRootForScan is null ? Environment.CurrentDirectory : Path.GetFullPath(repoRootForScan);
+    var controller = Path.Combine(root, "src", "Inventory.Api", "Licensing", "Controllers", "LicenseController.cs");
+    Check(File.Exists(controller), "فایل LicenseController پیدا شد");
+    var text = File.ReadAllText(controller);
+    var start = text.IndexOf("request-file", StringComparison.Ordinal);
+    Check(start > 0, "مسیر GET /api/license/request-file وجود دارد");
+    var body = start > 0 ? text.Substring(start, Math.Min(2600, text.Length - start)) : "";
+    foreach (var field in new[]
+             {
+                 "requestVersion = 2", "installationId", "engineVersion", "engineSchema", "buildDate",
+                 "components = BindingComponents.Capture", "requestedAtTehranZone", "requestedAtUtc", "machineName"
+             })
+        Check(body.Contains(field, StringComparison.Ordinal), "فایل درخواست فیلد «" + field + "» را دارد");
+    Check(body.Contains("EnsureActivationAccessAsync", StringComparison.Ordinal),
+        "درخواست فایل، همان قاعدهٔ دسترسی را دارد (Admin وقتی لایسنس معتبر است؛ آزاد در Missing/Invalid)");
+    Check(body.Contains("TryThrottle", StringComparison.Ordinal),
+        "درخواست فایل، محدودیت نرخ دارد");
+    Check(body.Contains("installationId", StringComparison.Ordinal) && body.Contains("components", StringComparison.Ordinal),
+        "شناسهٔ نصب و مؤلفه‌ها همگام با بایند نصب در فایل درخواست می‌آیند");
+}
+
 Console.WriteLine();
 Console.WriteLine(new string('═', 96));
 if (failures == 0)
