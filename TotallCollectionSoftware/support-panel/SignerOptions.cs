@@ -19,6 +19,13 @@ public sealed class SignerOptions
     public string SmtpPasswordEnvironmentVariable { get; set; } = "LICENSESIGNER_SMTP_PASSWORD";
     public string Token { get; set; } = "";
 
+    /// <summary>
+    /// حالت پیش‌نمایش/دمو: پنل پشت یک پراکسی HTTPS (مثل محیط پیش‌نمایش) اجرا می‌شود.
+    /// در این حالت کوکی‌ها <c>SameSite=None; Secure</c> می‌شوند تا داخل iframe کار کنند.
+    /// این حالت <b>فقط برای نمایش</b> است و نباید روی اینترنت عمومی روشن بماند.
+    /// </summary>
+    public bool PreviewMode { get; set; }
+
     public string EffectiveWorkFolder()
     {
         var folder = string.IsNullOrWhiteSpace(WorkFolder)

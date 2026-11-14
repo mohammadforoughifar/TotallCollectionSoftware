@@ -30,4 +30,35 @@
   <ItemGroup>
     <ProjectReference Include="../inventory/src/Inventory.Licensing/Inventory.Licensing.csproj" />
   </ItemGroup>
+
+  <!--
+    ابزار امضا (LicenseTool) هم به‌صورت پروژهٔ مستقل ساخته و کنار پنل کپی می‌شود،
+    تا اجرا از Visual Studio/Rider (F5) و «dotnet run» بدون تنظیم مسیر کار کند.
+    خروجی: <OutDir>/tools/LicenseTool.dll + <OutDir>/tools/presets.json
+  -->
+  <Target Name="BuildAndCopyLicenseTool" AfterTargets="Build">
+    <MSBuild Projects="../inventory/tools/LicenseTool/LicenseTool.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+    <ItemGroup>
+      <_LicenseToolFiles Include="../inventory/tools/LicenseTool/bin/$(Configuration)/net8.0/**/*" />
+      <_LicenseToolPresets Include="../inventory/tools/LicenseTool/presets.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LicenseToolFiles)" DestinationFolder="$(OutDir)tools/%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_LicenseToolPresets)" DestinationFiles="$(OutDir)tools/presets.json"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- همان کپی، این بار در پوشهٔ انتشار (dotnet publish) -->
+  <Target Name="CopyLicenseToolToPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_LicenseToolPublish Include="../inventory/tools/LicenseTool/bin/$(Configuration)/net8.0/**/*" />
+      <_LicenseToolPresetsPublish Include="../inventory/tools/LicenseTool/presets.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LicenseToolPublish)" DestinationFolder="$(PublishDir)tools/%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_LicenseToolPresetsPublish)" DestinationFiles="$(PublishDir)tools/presets.json"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

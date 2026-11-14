@@ -2,6 +2,8 @@
 @attribute [AllowAnonymous]
 @inject SupportAuthService Auth
 @inject AuditChainService Audit
+@inject SupportDbContext Db
+@inject SignerOptions Options
 @{
     ViewData["Title"] = "ورود";
 }
@@ -27,6 +29,40 @@
 
         return user.MustChangePassword ? Redirect("/ChangePassword?first=1") : Redirect("/");
     }
+
+    /// <summary>
+    /// ورود سریع دمو — فقط در حالت پیش‌نمایش (Signer:PreviewMode). در حالت عادی ۴۰۴ می‌دهد.
+    /// کاربر «demo» بدون گذرواژهٔ نمایش‌داده‌شده ساخته/بازیابی می‌شود تا بازدیدکنندهٔ
+    /// پیش‌نمایش لازم نباشد رازی را جایی بخواند.
+    /// </summary>
+    public async Task<IActionResult> OnPostDemoAsync()
+    {
+        if (!Options.PreviewMode) return NotFound();
+
+        var demo = await Db.Users.FirstOrDefaultAsync(u => u.UserName == "demo");
+        if (demo is null)
+        {
+            demo = new SupportUser
+            {
+                UserName = "demo",
+                DisplayName = "کاربر دمو (پیش‌نمایش)",
+                Role = SupportRole.Admin,
+                PasswordHash = SupportAuthService.HashPassword(SupportAuthService.GeneratePassword()),
+                PasswordIterations = SupportAuthService.Iterations,
+                MustChangePassword = false,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            Db.Users.Add(demo);
+            await Db.SaveChangesAsync();
+        }
+
+        await HttpContext.SignInAsync(
+            Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme,
+            ClaimsFactory.Create(demo));
+        await Audit.AppendAsync(demo.UserName, "LOGIN", "SupportUser", demo.Id.ToString(), "preview-demo", demo.Id);
+        return Redirect("/");
+    }
 }
 <div class="page-head"><div><h1>ورود به پنل پشتیبانی</h1>
     <p class="lead">این پنل فقط روی ماشین پشتیبانی و روی localhost اجرا می‌شود.</p></div></div>
@@ -41,4 +77,13 @@
         <p><button class="btn" type="submit">ورود</button></p>
     </form>
 </div></div>
+@if (Options.PreviewMode)
+{
+    <div class="card" style="max-width:460px"><div class="card-body">
+        <div class="hint">حالت پیش‌نمایش فعال است — برای دیدن پنل نیازی به گذرواژه نیست.</div>
+        <form method="post" asp-page-handler="Demo">
+            <button class="btn" type="submit">ورود سریع دمو</button>
+        </form>
+    </div></div>
+}
 <div class="alert warn">اگر نخستین اجرا است، گذرواژهٔ آغازین یک‌بار روی کنسول چاپ شده و در هیچ فایل/لاگی نیست.</div>

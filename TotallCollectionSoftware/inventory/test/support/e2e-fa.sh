@@ -68,7 +68,13 @@ section "۱) سلامت سرویس و بایگانی احراز هویت"
 H=$(get /api/health "$TMP/health.json"); check "$(code_is "$H" 200)" "/api/health پاسخ ۲۰۰ داد ($H)"
 H=$(get / "$TMP/root.html"); check "$(code_is "$H" 302)" "داشبورد بدون کوکی به ورود هدایت می‌شود ($H)"
 H=$(get /Audit "$TMP/anonaudit.html"); check "$(code_is "$H" 302)" "مسیر ممیزی بدون ورود باز نمی‌شود ($H)"
-H=$(curl -sS -b "$JAR" -c "$JAR" -o "$TMP/badhost.html" -w '%{http_code}' -H "Host: evil.example" "$BASE/"); check "$(code_is "$H" 400)" "Host غیرمجاز رد می‌شود ($H)"
+H=$(curl -sS -b "$JAR" -c "$JAR" -o "$TMP/badhost.html" -w '%{http_code}' -H "Host: evil.example" "$BASE/")
+# در حالت پیش‌نمایش (پشت پراکسی HTTPS) فیلتر میزبان آگاهانه باز است (AllowedHosts=*).
+if [ "${PREVIEW:-0}" = "1" ]; then
+  check "$(code_is "$H" 200)" "حالت پیش‌نمایش: هر هاستی پذیرفته می‌شود ($H)"
+else
+  check "$(code_is "$H" 400)" "Host غیرمجاز رد می‌شود ($H)"
+fi
 
 # ---------------------------------------------------------------- ۲) ورود و تعویض اجباری گذرواژه
 section "۲) ورود، تعویض اجباری گذرواژهٔ آغازین"
@@ -305,7 +311,15 @@ HASHOK=$(python3 - "$WORK/support.db" <<'PYHASH'
 import sqlite3, sys, hashlib
 c = sqlite3.connect(sys.argv[1])
 row = c.execute("select PrevHash, At, UserName, Action, Entity, EntityId, DataJson, Hash from AuditLogs order by Id limit 1").fetchone()
-payload = '|'.join([row[0], row[1].replace(' ', 'T'), row[2], row[3], row[4], row[5] or '', row[6] or ''])
+# SQLite کسر ثانیه را با صفرهای انتهایی حذف‌شده ذخیره می‌کند (مثلاً ۶ رقم)؛
+# سرویس همیشه با ۷ رقم هش می‌گیرد، پس این‌جا هم به ۷ رقم نرمال می‌کنیم.
+def ts7(value):
+    text = value.replace(' ', 'T')
+    if '.' in text:
+        head, frac = text.split('.')
+        return head + '.' + (frac + '0000000')[:7]
+    return text + '.0000000'
+payload = '|'.join([row[0], ts7(row[1]), row[2], row[3], row[4], row[5] or '', row[6] or ''])
 print('1' if hashlib.sha256(payload.encode()).hexdigest() == row[7] else '0')
 PYHASH
 )

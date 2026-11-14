@@ -180,6 +180,54 @@ bash ../inventory/test/support/e2e-fa.sh
 - پوشهٔ `data/` و `out/` و کلیدها را کامیت نکنید (`.gitignore` تنظیم است).
 - هر تغییر مهم: `ممیزی → بررسی زنجیره` و `پشتیبان → ساخت پشتیبان`.
 
+## ۲.۵) اجرا با کلیک روی Solution (Visual Studio / Rider)
+
+در ریشهٔ مخزن فایل **`SupportPanel.sln`** هست (کنار `Inventory.sln`). باز کردن و اجرای آن:
+
+1. فایل `TotallCollectionSoftware/SupportPanel.sln` را دوبار کلیک کنید (یا در VS: File → Open → Project/Solution).
+2. سه پروژه داخل آن است: **`support-panel`** (پروژهٔ شروع)، `inventory/src/Inventory.Licensing`، `inventory/tools/LicenseTool`.
+3. کلید **F5** (یا Ctrl+F5). پروفایل پیش‌فرض **«پنل پشتیبانی (localhost)»** روی `http://127.0.0.1:5399` بالا می‌آید.
+   پروفایل دوم **«پنل پشتیبانی (پیش‌نمایش)»** همان چیز را روی `0.0.0.0` و با `PreviewMode` اجرا می‌کند.
+
+**چه چیزهایی خودکار است؟**
+
+| کار | چطور |
+|---|---|
+| ساخت ابزار امضا | هدف `BuildAndCopyLicenseTool` در `SupportPanel.csproj` ابزار را با همان Configuration می‌سازد و در `<OutDir>/tools/` (و در انتشار، `$(PublishDir)/tools/`) کپی می‌کند |
+| پیدا کردن ابزار و `presets.json` | اگر `Signer:ToolPath`/`PresetsPath` خالی یا ناموجود باشد، `Program.cs` نسخهٔ کنار خود برنامه (`tools/`) را برمی‌دارد |
+| مسیرهای نسبی | `WorkFolder`، `ToolPath`، `PresetsPath` و مسیر کلیدها نسبت به ریشهٔ برنامه باز می‌شوند، نه پوشهٔ جاری |
+| پروفایل‌ها | `Properties/launchSettings.json` (دو پروفایل، بدون هیچ راز) |
+
+**چه چیزی خودکار نیست؟** کلید امضا. برای دیدن صفحهٔ امضا باید `Signer:PrivateKeyPath` / `PublicKeyPath` / `KeyId`
+را در `appsettings.json` یا env بگذارید (گذرواژهٔ کلید فقط env: `LICENSETOOL_KEY_PASSWORD`). بدون آن پنل بالا
+می‌آید ولی داشبورد می‌گوید «امضا آماده نیست: کلید خصوصی پیدا نشد».
+
+> نکته: `Inventory.sln` اصلی به پروژه‌های `Inventory.Api/Client/Shared/Agent.Console` هم ارجاع دارد؛
+> اگر آن‌ها را کلون نکرده‌اید، از `SupportPanel.sln` استفاده کنید تا Solution بدون خطا باز شود.
+
+## ۸.۵) حالت پیش‌نمایش (دمو پشت پراکسی HTTPS)
+
+برای اینکه پنل را بتوان بدون نصب روی ماشین واقعی نشان داد، یک حالت اختیاری هست:
+
+```bash
+export Signer__PreviewMode=true          # یا Signer:PreviewMode=true در appsettings
+export ASPNETCORE_URLS=http://0.0.0.0:5399
+dotnet SupportPanel.dll
+```
+
+در این حالت:
+
+| تغییر | چرا |
+|---|---|
+| کوکی نشست و کوکی آنتی‌فورجری `SameSite=None` | داخل iframe/پراکسی کار کند |
+| `SecurePolicy=SameAsRequest` | پشت HTTPS ⇒ Secure؛ روی HTTP ساده ⇒ بدون Secure (وگرنه آنتی‌فورجری خطا می‌دهد) |
+| `AllowedHosts=*` + هدرهای `X-Forwarded-*` | دامنهٔ پراکسی و پروتکل واقعی پذیرفته شود |
+| دکمهٔ **«ورود سریع دمو»** روی `/Login` | بازدیدکنندهٔ پیش‌نمایش به گذرواژه نیاز ندارد |
+| کاربر `demo` (نقش Admin، بدون تعویض اجباری) + دادهٔ نمایشی: ۳ مشتری و ۴ درخواست | صفحه‌ها خالی نباشند |
+
+> ⚠️ این حالت **فقط برای نمایش** است. با `PreviewMode` خاموش، همهٔ رفتارهای امنیتی قبلی (فقط localhost،
+> ورود با گذرواژه، تعویض اجباری گذرواژهٔ نخست) سر جای خودشان هستند. پنل امضای واقعی را با این حالت بالا نیاورید.
+
 ## ۹) عیب‌یابی سریع
 
 | نشانه | کار |
