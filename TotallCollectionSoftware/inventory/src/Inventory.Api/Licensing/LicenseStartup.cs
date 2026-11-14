@@ -54,6 +54,7 @@ public static class LicenseStartup
         services.AddSingleton<SeatCache>();
         services.AddSingleton<SeatDegradedJournal>();
         services.AddScoped<LicenseRuntimeState>();
+        services.AddScoped<InstallationBinding>();
         services.AddScoped<SeatService>();
 
         services.AddSingleton<EntitlementCache>();
