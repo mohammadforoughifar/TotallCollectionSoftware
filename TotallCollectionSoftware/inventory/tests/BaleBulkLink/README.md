@@ -74,3 +74,15 @@ Every check prints `PASS: …`. The run ends with:
 ```
 
 Any failure throws an `Exception` with a `FAIL:` prefix and a non-zero exit code.
+
+The current run is **85 checks**, all passing.
+
+## Note after the merge with `origin/main`
+
+The licensing work that landed on `origin/main` added the `RepairSms` entities, which reference
+the `RepairSmsEventType` / `RepairSmsStatus` enums that live in
+`src/Inventory.Shared/Dtos/RepairDtos.cs`. Because this probe compiles the *real* entity
+folder, that DTO file has to be linked in as well — otherwise the probe stops compiling with
+`CS0246: The type or namespace name 'RepairSmsEventType' could not be found`. The link is listed
+in `BaleBulkLink.csproj` next to the other shared DTOs.
+
