@@ -7,11 +7,11 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 Write-Host "==> [1/3] Publishing Blazor client..." -ForegroundColor Cyan
-dotnet publish src/Inventory.Client -c Release -o publish/client
+dotnet publish inventory/src/Inventory.Client -c Release -o publish/client
 if ($LASTEXITCODE -ne 0) { throw "Inventory client publish failed" }
 
-Write-Host "==> [2/3] Copying static files into src/Inventory.Api/wwwroot ..." -ForegroundColor Cyan
-$dest = Join-Path $PSScriptRoot "src/Inventory.Api/wwwroot"
+Write-Host "==> [2/3] Copying static files into inventory/src/Inventory.Api/wwwroot ..." -ForegroundColor Cyan
+$dest = Join-Path $PSScriptRoot "inventory/src/Inventory.Api/wwwroot"
 New-Item -ItemType Directory -Path $dest -Force | Out-Null
 # uploads و SecureFiles فایل‌های واقعی کاربران‌اند (مدارک آرشیو، پیوست‌ها)، نه خروجی بیلد؛ نباید پاک شوند.
 $keep = @('README.md', 'uploads', 'SecureFiles')
@@ -19,7 +19,7 @@ Get-ChildItem $dest -Force | Where-Object { $keep -notcontains $_.Name } | Remov
 Copy-Item -Path (Join-Path $PSScriptRoot "publish/client/wwwroot/*") -Destination $dest -Recurse -Force
 
 Write-Host "==> [3/3] Publishing slim API ($Rid, framework-dependent) ..." -ForegroundColor Cyan
-dotnet publish src/Inventory.Api/Inventory.Api.csproj -c Release -r $Rid --self-contained false -o publish/app
+dotnet publish inventory/src/Inventory.Api/Inventory.Api.csproj -c Release -r $Rid --self-contained false -o publish/app
 if ($LASTEXITCODE -ne 0) { throw "Inventory API publish failed" }
 Remove-Item (Join-Path $PSScriptRoot "publish/app/wwwroot/SecureFiles") -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $PSScriptRoot "publish/app/wwwroot/uploads") -Recurse -Force -ErrorAction SilentlyContinue

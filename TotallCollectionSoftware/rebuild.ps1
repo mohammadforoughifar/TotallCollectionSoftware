@@ -12,7 +12,7 @@ dotnet restore Inventory.sln
 if ($LASTEXITCODE -ne 0) { throw "restore failed" }
 
 Write-Host "بیلد Inventory.Shared..." -ForegroundColor Yellow
-dotnet build src/Inventory.Shared/Inventory.Shared.csproj -c Debug --no-restore
+dotnet build inventory/src/Inventory.Shared/Inventory.Shared.csproj -c Debug --no-restore
 if ($LASTEXITCODE -ne 0) { throw "Inventory.Shared build failed" }
 
 Write-Host "بیلد کل Solution..." -ForegroundColor Yellow

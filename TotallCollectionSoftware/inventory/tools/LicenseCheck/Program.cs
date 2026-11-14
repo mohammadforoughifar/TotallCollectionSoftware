@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using Inventory.Licensing.Crypto;
 using Inventory.Licensing.Entitlement;
@@ -61,6 +63,10 @@ public static class Program
             PrintKeys();
             return 0;
         }
+
+        // ---------- حالت «حالت استقرار»: این بیلد SaaS است یا OnPrem؟ (از متادیتای اسمبلی) ----------
+        if (args.Contains("--deployment"))
+            return CheckDeployment(args);
 
         // ---------- حالت «آماده‌سازی»: ساخت شناسهٔ نصب روی دیتابیس موجود، پیش از آپدیت ----------
         if (args.Contains("--prepare"))
@@ -877,6 +883,94 @@ VALUES (@id, @mode, NULL, NULL, NULL, @now, @now)", connection))
         return result is null or DBNull ? 0 : Convert.ToInt32(result);
     }
 
+    // ==================== حالت --deployment ====================
+
+    /// <summary>نوعی که فقط در بستهٔ SaaS کامپایل می‌شود (`#if SAAS`).</summary>
+    private const string SaasOnlyType = "Inventory.Api.Licensing.Providers.DatabaseLicenseProvider";
+
+    /// <summary>
+    /// بررسی «حالت استقرار» از روی <b>متادیتای</b> اسمبلی منتشرشده — بدون اجرای کد و بدون
+    /// نیاز به بارگذاری وابستگی‌ها. اسمبلی با <see cref="PEReader"/> خوانده می‌شود و
+    /// وجود/نبود نوع <c>DatabaseLicenseProvider</c> گزارش می‌شود.
+    ///
+    /// <para>
+    /// چرا مهم است؟ اگر بستهٔ OnPrem به‌اشتباه با ثابت <c>SAAS</c> منتشر شود، لایسنس از
+    /// دیتابیس خوانده می‌شود و نصب مشتری بدون جدول‌های لایسنس کار نمی‌کند؛ و اگر بستهٔ SaaS
+    /// بدون این ثابت منتشر شود، Provider دیتابیسی وجود ندارد و ردیف لایسنس نادیده می‌ماند.
+    /// هر دو خطا بی‌صدا هستند؛ این بررسی آن‌ها را پیش از تحویل می‌گیرد.
+    /// </para>
+    /// </summary>
+    private static int CheckDeployment(string[] args)
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+
+        var app = Arg(args, "--app") ?? AppContext.BaseDirectory;
+        var expect = (Arg(args, "--expect") ?? "").Trim().ToLowerInvariant();
+
+        if (expect is not ("" or "saas" or "onprem"))
+        {
+            Console.Error.WriteLine("❌ مقدار --expect باید saas یا onprem باشد.");
+            return 2;
+        }
+
+        var apiPath = Path.Combine(app, "Inventory.Api.dll");
+        if (!File.Exists(apiPath))
+        {
+            Console.Error.WriteLine($"❌ Inventory.Api.dll در این مسیر نیست: {app}");
+            return 5;
+        }
+
+        bool hasSaasProvider;
+        try
+        {
+            hasSaasProvider = ApiAssemblyHasType(apiPath, SaasOnlyType);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ خواندن متادیتای {Path.GetFileName(apiPath)} ناموفق بود: {ex.Message}");
+            return 5;
+        }
+
+        var actual = hasSaasProvider ? "saas" : "onprem";
+
+        Console.WriteLine("حالت استقرار این بیلد (از متادیتای اسمبلی):");
+        Console.WriteLine($"  اسمبلی: {apiPath}");
+        Console.WriteLine($"  نوع {SaasOnlyType}: {(hasSaasProvider ? "هست" : "نیست")}");
+        Console.WriteLine($"  نتیجه: {actual}");
+
+        if (expect.Length == 0) return 0;
+
+        if (!string.Equals(expect, actual, StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine(
+                $"❌ انتظار «{expect}» بود ولی این بیلد «{actual}» است. Publish Profile را بررسی کنید.");
+            return 7;
+        }
+
+        Console.WriteLine($"  ✔ مطابق انتظار ({expect})");
+        return 0;
+    }
+
+    /// <summary>آیا این اسمبلی نوعی با نام کامل مشخص دارد؟ (فقط متادیتا، بدون اجرا)</summary>
+    private static bool ApiAssemblyHasType(string assemblyPath, string fullTypeName)
+    {
+        using var stream = File.OpenRead(assemblyPath);
+        using var pe = new PEReader(stream);
+        if (!pe.HasMetadata) return false;
+
+        var reader = pe.GetMetadataReader();
+        foreach (var handle in reader.TypeDefinitions)
+        {
+            var def = reader.GetTypeDefinition(handle);
+            var ns = reader.GetString(def.Namespace);
+            var name = reader.GetString(def.Name);
+            if (ns.Length == 0) continue;
+            if (string.Equals(ns + "." + name, fullTypeName, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
     private static void PrintHelp()
     {
         Console.WriteLine("""
@@ -890,6 +984,11 @@ VALUES (@id, @mode, NULL, NULL, NULL, @now, @now)", connection))
           --conn          رشتهٔ اتصال SQL Server. اگر نبود، از LICENSING_TEST_CONN خوانده می‌شود.
           --license       فایل .lic یا پوشهٔ آن. اگر نبود، فقط مصرف واقعی گزارش می‌شود (بدون مقایسه با سقف).
           --months        تعداد ماه‌های گذشته برای نمایش (پیش‌فرض ۳، حداکثر ۲۴).
+
+          --deployment    حالت «بررسی بسته»: این بیلد SaaS است یا OnPrem؟
+          --app           پوشهٔ خروجی منتشرشده (پیش‌فرض: پوشهٔ همین ابزار).
+          --expect        saas | onprem — اگر بدهید، ناسازگاری با کد خروج ۷ گزارش می‌شود.
+
           --help, -h      همین راهنما.
 
         خروجی، برای هر متریکی که سقف دارد:

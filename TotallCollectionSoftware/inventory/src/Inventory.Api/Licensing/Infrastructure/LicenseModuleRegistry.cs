@@ -16,6 +16,12 @@ namespace Inventory.Api.Licensing.Infrastructure;
 /// تازه باعث قطع کار مشتری نشود؛ ولی در لاگ API یک خط هشدار ثبت می‌شود تا تیم متوجه شود
 /// و ردیف آن را به همین فایل اضافه کند. (fail-open آگاهانه برای پوشش، با ردیابی)
 /// </para>
+///
+/// <para>
+/// ⚠️ <b>قاعدهٔ اجباری:</b> هر کنترلر تازه باید <b>در همان PR</b> یک ردیف در همین جدول بگیرد.
+/// تست <c>tests/Licensing</c> (بخش «پوشش رجیستری کنترلر→ماژول») هر کنترلر بدون نگاشت را
+/// FAIL می‌کند؛ پس فراموش‌کردن این کار در CI دیده می‌شود.
+/// </para>
 /// </summary>
 public static class LicenseModuleRegistry
 {
@@ -44,6 +50,9 @@ public static class LicenseModuleRegistry
         ["Archive"] = ModuleCodes.Cartable,
         ["Cartable"] = ModuleCodes.Cartable,
         ["Notifications"] = ModuleCodes.Cartable,
+        // تنظیمات درگاه پیامک شرکت: کانال اعلانِ همین ماژول است (کارتابل همیشه‌فعال است،
+        // پس هیچ نصب مشتری با قفلِ این کنترلر از دسترسی به تنظیمات پیامک محروم نمی‌شود).
+        ["CompanySmsSettings"] = ModuleCodes.Cartable,
         ["NotifyTiming"] = ModuleCodes.Cartable,
 
         ["Backup"] = ModuleCodes.Backup,
@@ -62,6 +71,9 @@ public static class LicenseModuleRegistry
         ["Parties"] = ModuleCodes.Catalog,
         ["Products"] = ModuleCodes.Catalog,
         ["ShopPricing"] = ModuleCodes.Catalog,
+        // تنظیمات چاپ فروشگاه (سرصفحهٔ فروشنده و ردیف‌های بانکی) — چاپ پیش‌فرضِ فروش/خرید
+        // در ماژول «فروش و خرید» است، نه کالا؛ پس با نسخهٔ بدون ماژول فروش قفل می‌شود.
+        ["ShopPrintSettings"] = ModuleCodes.Sales,
         ["Stock"] = ModuleCodes.Catalog,
         ["Units"] = ModuleCodes.Catalog,
         ["Warehouses"] = ModuleCodes.Catalog,

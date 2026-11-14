@@ -7,8 +7,8 @@ REM  خروجی: پوشهٔ publish-win (کنار همین فایل) شامل In
 REM =====================================================================
 setlocal
 set "ROOT=%~dp0"
-set "API=%ROOT%src\Inventory.Api"
-set "CLIENT=%ROOT%src\Inventory.Client"
+set "API=%ROOT%inventory\src\Inventory.Api"
+set "CLIENT=%ROOT%inventory\src\Inventory.Client"
 set "OUT=%ROOT%publish-win"
 set "TMP=%ROOT%_client-tmp"
 

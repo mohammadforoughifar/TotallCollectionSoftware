@@ -19,12 +19,12 @@ Write-Host "=====================================================" -ForegroundCo
 
 # 1) پابلیش کلاینت
 Write-Host "`n[1/4] پابلیش کلاینت Blazor WebAssembly..." -ForegroundColor Yellow
-dotnet publish src/Inventory.Client -c Release -o publish/client
+dotnet publish inventory/src/Inventory.Client -c Release -o publish/client
 if ($LASTEXITCODE -ne 0) { throw "Inventory publish failed" }
 
 # 2) کپی در wwwroot
 Write-Host "`n[2/4] کپی فایل‌های کلاینت در wwwroot مربوط به API..." -ForegroundColor Yellow
-$dest = Join-Path $PSScriptRoot "src/Inventory.Api/wwwroot"
+$dest = Join-Path $PSScriptRoot "inventory/src/Inventory.Api/wwwroot"
 if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
 New-Item -ItemType Directory -Path $dest | Out-Null
 Copy-Item -Path (Join-Path $PSScriptRoot "publish/client/wwwroot/*") -Destination $dest -Recurse -Force
@@ -42,5 +42,5 @@ Write-Host "  در مرورگر باز کنید:  http://localhost:5100" -Foregr
 Write-Host "  ورود پیش‌فرض:        admin / admin" -ForegroundColor Green
 Write-Host "  (برای توقف: Ctrl+C)" -ForegroundColor Green
 Write-Host ""
-Set-Location (Join-Path $PSScriptRoot "src/Inventory.Api")
+Set-Location (Join-Path $PSScriptRoot "inventory/src/Inventory.Api")
 dotnet run
