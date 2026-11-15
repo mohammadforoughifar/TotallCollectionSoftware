@@ -41,8 +41,9 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
     /// <summary>پوشهٔ پیشنهادی کلیدها: بیرون از مخزن، کنار پوشهٔ کاری پنل.</summary>
     public string SuggestedFolder()
     {
-        var work = options.EffectiveWorkFolder();
-        var parent = Directory.GetParent(work)?.FullName ?? work;
+        // بیرون از پوشهٔ برنامه/مخزن: آپدیت پنل نباید کلیدها را جابه‌جا یا پاک کند.
+        var baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parent = Directory.GetParent(baseDir)?.FullName ?? baseDir;
         return Path.Combine(parent, "license-keys");
     }
 
