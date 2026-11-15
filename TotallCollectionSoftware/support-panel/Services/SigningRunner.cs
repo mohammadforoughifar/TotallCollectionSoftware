@@ -32,7 +32,7 @@ public sealed record SigningStatus(bool Ready, string Reason, string? ToolPath, 
 /// </summary>
 public sealed class SigningRunner(SupportDbContext db, SignerOptions options, LicenseToolRunner runner,
     DraftService drafts, LicenseInspector inspector, AuditChainService audit, RequestService requests,
-    ILogger<SigningRunner> log)
+    SignerKeyService keys, ILogger<SigningRunner> log)
 {
     public string LicenseFolder => Path.Combine(options.EffectiveWorkFolder(), "licenses");
 
@@ -59,6 +59,15 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         if (toolPath is null) return null;
         var beside = Path.Combine(Path.GetDirectoryName(toolPath)!, "presets.json");
         return File.Exists(beside) ? beside : null;
+    }
+
+    private static bool LooksLikeWrongPassword(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return text.Contains("password may be incorrect", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("EncryptedPrivateKeyInfo", StringComparison.OrdinalIgnoreCase)
+               || text.Contains("کلید خصوصی رمزنگاری‌شده است ولی", StringComparison.Ordinal)
+               || text.Contains("رمزنگاری‌شده است", StringComparison.Ordinal);
     }
 
     /// <summary>انتهای متن ابزار برای پیام خطای قابل‌فهم (بدون هیچ رازی؛ ابزار کلید چاپ نمی‌کند).</summary>
@@ -208,6 +217,27 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         var prepared = await PrepareAsync(request, draft, ct);
         if (prepared.Error is not null) return new SignOutcome { Error = prepared.Error };
 
+        // پیش‌بررسی رمز: اگر رمز با کلید نمی‌خواند، ابزار اجرا نمی‌شود و پیام روشن داده می‌شود.
+        var formPassword = string.IsNullOrEmpty(keyPassword) ? null : keyPassword;
+        var envPassword = keys.EnvironmentPassword;
+        var effectivePassword = formPassword ?? envPassword;
+        var passwordCheck = keys.CheckPassword(effectivePassword);
+        if (passwordCheck is { KeyExists: true, Encrypted: true, Matches: false })
+        {
+            var sourceLabel = formPassword is not null
+                ? "رمزی که در فرم وارد کردید"
+                : envPassword is not null
+                    ? $"رمز متغیر محیطی {options.KeyPasswordEnvironmentVariable} (چون فیلد رمز خالی بود)"
+                    : "هیچ رمزی (فیلد فرم خالی و متغیر محیطی ست نشده)";
+            return new SignOutcome
+            {
+                Error = "امضا انجام نشد: رمز کلید خصوصی درست نیست. " + $"آنچه در اختیار است: {sourceLabel}. " +
+                        "رمز درست همان رمزی است که هنگام ساخت کلید در «تنظیمات ← کلیدهای امضا» دادید؛ " +
+                        $"یا متغیر {options.KeyPasswordEnvironmentVariable} را با آن هم‌تراز کنید. " +
+                        "برای امتحان، در تنظیمات دکمهٔ «بررسی رمز کلید فعال» را بزنید."
+            };
+        }
+
         var args = new List<string>(prepared.Args) { "--yes" };
         if (!string.IsNullOrWhiteSpace(keyId) && !args.Contains("--key-id"))
         {
@@ -219,12 +249,34 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         {
             var run = await runner.RunAsync(prepared.ToolPath!, args, keyPassword, ct);
             if (!run.Ok)
+            {
+                // «رمز اشتباه» شایع‌ترین خطای کد ۲ است؛ پیام رمزنگاری خام به کاربر نشان داده نمی‌شود.
+                if (LooksLikeWrongPassword(run.Text))
+                {
+                    var source = run.PasswordSource switch
+                    {
+                        "form" => "رمزی که در فرم وارد کردید",
+                        "env" => $"رمز متغیر محیطی {options.KeyPasswordEnvironmentVariable} (چون فیلد رمز خالی بود)",
+                        _ => "هیچ رمزی (فیلد فرم خالی و متغیر محیطی ست نشده)"
+                    };
+                    return new SignOutcome
+                    {
+                        Error = "امضا انجام نشد: رمز کلید خصوصی درست نیست. " +
+                                $"آنچه به ابزار داده شد: {source}. " +
+                                "همان رمزی را وارد کنید که هنگام ساخت کلید در «تنظیمات ← کلیدهای امضا» دادید، " +
+                                $"یا متغیر {options.KeyPasswordEnvironmentVariable} را با آن هم‌تراز کنید. " +
+                                "برای امتحان بدون امضا، در تنظیمات دکمهٔ «بررسی رمز کلید فعال» را بزنید.",
+                        Preview = run.Text
+                    };
+                }
+
                 return new SignOutcome
                 {
                     Error = (run.ExitCode == 2 ? "امضا انجام نشد: ابزار ورودی را نپذیرفت (کد ۲)." : $"امضا انجام نشد (کد {run.ExitCode}).")
                             + Tail(run.Text),
                     Preview = run.Text
                 };
+            }
 
             if (prepared.OutPath is null || !File.Exists(prepared.OutPath))
                 return new SignOutcome { Error = "ابزار موفق گزارش داد ولی فایل لایسنس ساخته نشد.", Preview = run.Text };

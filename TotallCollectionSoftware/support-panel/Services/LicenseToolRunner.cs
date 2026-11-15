@@ -4,7 +4,7 @@ using System.Text;
 namespace LicenseSigner.Services;
 
 /// <summary>نتیجهٔ اجرای <c>LicenseTool</c>.</summary>
-public sealed record ToolRun(int ExitCode, string StdOut, string StdErr)
+public sealed record ToolRun(int ExitCode, string StdOut, string StdErr, string PasswordSource = "none")
 {
     public string Text => (StdOut + Environment.NewLine + StdErr).Trim();
     public bool PreviewedOnly => ExitCode == 3;
@@ -41,8 +41,13 @@ public sealed class LicenseToolRunner(SignerOptions options, ILogger<LicenseTool
         // گذرواژه فقط به فرایند فرزند داده می‌شود؛ هرگز در DB/لاگ/فایل نوشته نمی‌شود.
         // اولویت: مقدار فرم ← متغیر محیطی خودِ پنل (تا راه‌اندازی env-only هم کار کند).
         psi.Environment.Remove("LICENSETOOL_PRIVATE_KEY");
-        if (string.IsNullOrEmpty(keyPassword))
+        var passwordSource = "none";
+        if (!string.IsNullOrEmpty(keyPassword)) passwordSource = "form";
+        else
+        {
             keyPassword = Environment.GetEnvironmentVariable(options.KeyPasswordEnvironmentVariable) ?? "";
+            if (!string.IsNullOrEmpty(keyPassword)) passwordSource = "env";
+        }
         if (string.IsNullOrEmpty(keyPassword))
             psi.Environment.Remove(options.KeyPasswordEnvironmentVariable);
         else
@@ -54,7 +59,7 @@ public sealed class LicenseToolRunner(SignerOptions options, ILogger<LicenseTool
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
 
-        if (!process.Start()) return new ToolRun(-1, "", "اجرای ابزار ممکن نشد.");
+        if (!process.Start()) return new ToolRun(-1, "", "اجرای ابزار ممکن نشد.", passwordSource);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
@@ -73,10 +78,10 @@ public sealed class LicenseToolRunner(SignerOptions options, ILogger<LicenseTool
         catch (OperationCanceledException)
         {
             try { process.Kill(entireProcessTree: true); } catch { /* بی‌صدا */ }
-            return new ToolRun(-2, Clip(stdout.ToString()), "مهلت اجرای ابزار تمام شد.");
+            return new ToolRun(-2, Clip(stdout.ToString()), "مهلت اجرای ابزار تمام شد.", passwordSource);
         }
 
-        var run = new ToolRun(process.ExitCode, Clip(stdout.ToString()), Clip(stderr.ToString()));
+        var run = new ToolRun(process.ExitCode, Clip(stdout.ToString()), Clip(stderr.ToString()), passwordSource);
         log.LogInformation("LicenseTool {Verb} ⇒ exit {Code}", args.FirstOrDefault() ?? "?", run.ExitCode);
         return run;
     }

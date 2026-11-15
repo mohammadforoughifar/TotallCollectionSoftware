@@ -13,6 +13,7 @@
     public string Error { get; set; } = "";
     public string OkMessage { get; set; } = "";
     public KeyGenResult? KeyResult { get; set; }
+    public KeyPasswordCheck? PasswordCheck { get; set; }
     public List<string> KeyWarnings { get; set; } = new();
 
     public async Task<IActionResult> OnPostKeygenAsync()
@@ -37,6 +38,12 @@
             OkMessage = KeyResult.Message;
             KeyWarnings = KeyResult.Warnings;
         }
+        return Page();
+    }
+
+    public IActionResult OnPostCheckKeyPass()
+    {
+        PasswordCheck = Keys.CheckPassword(Request.Form["checkPass"].ToString());
         return Page();
     }
 
@@ -145,6 +152,27 @@
             <button type="submit" formnovalidate asp-page-handler="KeyDisconnect" class="btn ghost"
                     onclick="return confirm('اتصال از کلید ثبت‌شده قطع شود؟ فایل‌ها پاک نمی‌شوند.')">قطع اتصال از کلید ثبت‌شده</button>
         }
+    </form>
+
+    <form method="post" asp-page-handler="CheckKeyPass" style="margin-top:1rem;border-top:1px solid #e6e9ef;padding-top:.9rem">
+        <div class="grid">
+            <div class="field"><label for="checkPass">بررسی رمز کلید فعال (بدون امضا)</label>
+                <input id="checkPass" name="checkPass" type="password" autocomplete="off" /></div>
+        </div>
+        <button type="submit" class="btn ghost">بررسی رمز کلید فعال</button>
+        @if (PasswordCheck is not null)
+        {
+            <div class="alert @(PasswordCheck.Matches ? "ok" : "error")" style="margin:.7rem 0 0">
+                @PasswordCheck.Message
+                @if (!PasswordCheck.Matches && PasswordCheck.KeyExists)
+                {
+                    <span> — رمز درست همان رمزی است که هنگام ساخت این کلید دادید؛ اگر گم شده، فقط با ساخت کلید جدید
+                        (با «بازنویسی») قابل جبران است.</span>
+                }
+            </div>
+        }
+        <p class="hint">اگر کلید رمزنگاری‌شده نباشد یا رمز خالی باشد، همین پیام کوتاه علت را می‌گوید؛
+            رمز در پاسخ صفحه یا لاگ نوشته نمی‌شود.</p>
     </form>
 
     @if (KeyResult is { Ok: true, Key: not null })

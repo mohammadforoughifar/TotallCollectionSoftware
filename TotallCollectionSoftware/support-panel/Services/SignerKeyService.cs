@@ -10,6 +10,9 @@ namespace LicenseSigner.Services;
 public sealed record SignerKeyRecord(string KeyId, string PrivateKeyPath, string PublicKeyPath,
     string Fingerprint, DateTime CreatedAtUtc, string Folder);
 
+/// <summary>نتیجهٔ بررسی «آیا این رمز به کلید خصوصی فعال می‌خورد؟»</summary>
+public sealed record KeyPasswordCheck(bool KeyExists, bool Encrypted, bool Matches, string Message);
+
 /// <summary>نتیجهٔ ساخت جفت‌کلید.</summary>
 public sealed record KeyGenResult(bool Ok, string Message, SignerKeyRecord? Key, bool Encrypted, List<string> Warnings)
 {
@@ -158,6 +161,53 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
         warnings.Add("از کلید خصوصی نسخهٔ پشتیبان آفلاین بگیرید و آن را بیرون از مخزن نگه دارید.");
 
         return new KeyGenResult(true, "جفت‌کلید ساخته و به پنل وصل شد.", record, true, warnings);
+    }
+
+    /// <summary>رمز موجود در متغیر محیطی پنل (اگر ست شده باشد) — فقط برای مقایسه، نه ذخیره.</summary>
+    public string? EnvironmentPassword =>
+        Environment.GetEnvironmentVariable(options.KeyPasswordEnvironmentVariable) is { Length: > 0 } value ? value : null;
+
+    /// <summary>
+    /// بدون امضا بررسی می‌کند که رمز داده‌شده با کلید خصوصی فعال می‌خواند یا نه.
+    /// برای «رمز اشتباه» هیچ پیام رمزنگاری خامی به کاربر نشان داده نمی‌شود.
+    /// </summary>
+    public KeyPasswordCheck CheckPassword(string? password)
+    {
+        var path = options.PrivateKeyPath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return new KeyPasswordCheck(false, false, false, "کلید خصوصی فعال پیدا نشد؛ ابتدا در همین صفحه جفت‌کلید بسازید.");
+
+        string pem;
+        try
+        {
+            pem = File.ReadAllText(path);
+        }
+        catch (Exception ex)
+        {
+            return new KeyPasswordCheck(true, false, false, $"خواندن فایل کلید ممکن نشد: {ex.Message}");
+        }
+
+        var encrypted = pem.Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal);
+        if (!encrypted)
+            return new KeyPasswordCheck(true, false, true, "این کلید رمزنگاری نشده است؛ رمز لازم نیست (توصیه: کلید رمزدار بسازید).");
+
+        if (string.IsNullOrEmpty(password))
+            return new KeyPasswordCheck(true, true, false, "کلید رمزنگاری‌شده است ولی رمزی داده نشد.");
+
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromEncryptedPem(pem, password);
+            return new KeyPasswordCheck(true, true, true, "رمز با کلید خصوصی فعال می‌خواند.");
+        }
+        catch (CryptographicException)
+        {
+            return new KeyPasswordCheck(true, true, false, "رمز با کلید خصوصی فعال نمی‌خواند.");
+        }
+        catch (Exception ex)
+        {
+            return new KeyPasswordCheck(true, true, false, $"بررسی رمز ممکن نشد: {ex.Message}");
+        }
     }
 
     /// <summary>قطع اتصال از کلید ثبت‌شده (فایل‌ها پاک نمی‌شوند).</summary>

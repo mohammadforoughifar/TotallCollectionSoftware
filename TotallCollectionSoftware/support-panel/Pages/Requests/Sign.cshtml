@@ -2,6 +2,7 @@
 @inject SupportDbContext Db
 @inject SigningRunner Signing
 @inject DraftService Drafts
+@inject SignerKeyService Keys
 @{
     ViewData["Title"] = "امضا";
 }
@@ -177,7 +178,26 @@ $env:LICENSETOOL_KEY_PASSWORD="..."</pre>
                     <dt>بسته‌ها</dt><dd class="mono">@(draft.PresetsCsv ?? "—")</dd>
                     <dt>ماژول‌ها</dt><dd class="mono">@(draft.ModulesCsv ?? "—")</dd>
                     <dt>ابزار</dt><dd class="mono">@(status.ToolPath ?? "—")</dd>
-                    <dt>کلید خصوصی</dt><dd>@(status.PrivateKeyFound ? "یافت شد ✔" : "یافت نشد ✖") · کلید عمومی @(status.PublicKeyFound ? "✔" : "✖")</dd>
+                    <dt>کلید خصوصی</dt><dd>@(status.PrivateKeyFound ? "یافت شد ✔" : "یافت نشد ✖") · کلید عمومی @(status.PublicKeyFound ? "✔" : "✖")
+                        @{
+                            var check = status.PrivateKeyFound ? Keys.CheckPassword(Keys.EnvironmentPassword) : null;
+                        }
+                        @if (check is { KeyExists: true, Encrypted: true })
+                        {
+                            if (Keys.EnvironmentPassword is null)
+                            {
+                                <div class="hint" style="margin:.3rem 0 0">رمز کلید در متغیر محیطی نیست؛ رمز را همین‌جا در فرم وارد کنید.</div>
+                            }
+                            else if (check.Matches)
+                            {
+                                <div class="hint" style="margin:.3rem 0 0">رمز متغیر <span class="mono">LICENSETOOL_KEY_PASSWORD</span> با این کلید می‌خواند ✔ (می‌توانید فیلد فرم را خالی بگذارید).</div>
+                            }
+                            else
+                            {
+                                <div class="alert error" style="margin:.4rem 0 0">رمز متغیر <span class="mono">LICENSETOOL_KEY_PASSWORD</span> با این کلید <b>نمی‌خواند</b>؛ رمز درست را در فرم وارد کنید تا امضا رد نشود.</div>
+                            }
+                        }
+                    </dd>
                 </dl>
             </div></div>
 
