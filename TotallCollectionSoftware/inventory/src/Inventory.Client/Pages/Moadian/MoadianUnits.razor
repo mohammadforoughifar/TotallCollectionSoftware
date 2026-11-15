@@ -1,0 +1,10 @@
+@page "/moadian/units"
+@inject NavigationManager Nav
+
+@* این فرم بهگرداندهٔ «اطلاعات پایهٔ سامانه مودیان» منتقل شده است *@
+@code {
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) Nav.NavigateTo("/moadian/basic-info/units", forceLoad: false);
+    }
+}

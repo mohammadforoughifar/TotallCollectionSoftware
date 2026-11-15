@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    موتور لایسنس — کاملاً مستقل از ASP.NET Core و Entity Framework.
+
+    چرا پروژهٔ جدا؟
+      • ابزار صدور لایسنس (LicenseTool) و ابزار بررسی آپدیت (LicenseCheck.exe) باید
+        بدون بالا آمدن API و بدون اتصال به دیتابیس، همان منطق ادغام Itemها و بررسی
+        امضا را اجرا کنند. اگر منطق داخل Inventory.Api باشد، آن دو ابزار مجبور می‌شوند
+        کل API و کل زنجیرهٔ وابستگی‌هایش را رفرنس کنند.
+      • تست‌های واحد هم بدون DbContext و بدون WebApplicationFactory اجرا می‌شوند.
+
+    هیچ کلید خصوصی‌ای در این پروژه نیست؛ فقط کلیدهای عمومی امضا (Keys/*.pem)
+    به‌صورت EmbeddedResource و از طریق manifest.json بارگذاری می‌شوند.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- کلیدهای عمومی امضا + فهرست مرکزی آن‌ها (keyId → فایل + اثر انگشت) -->
+    <EmbeddedResource Include="Keys/manifest.json" />
+    <EmbeddedResource Include="Keys/*.pem" />
+  </ItemGroup>
+
+</Project>

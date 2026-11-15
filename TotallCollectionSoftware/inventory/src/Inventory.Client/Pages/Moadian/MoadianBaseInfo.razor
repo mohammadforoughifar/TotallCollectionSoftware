@@ -1,0 +1,240 @@
+@page "/moadian/basic-info"
+@page "/moadian/basic-info/{Tab}"
+@using Inventory.Shared.Dtos.Moadian
+@inject NavigationManager Nav
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject MoadianCompanyContext Ctx
+@inject IAuthState Auth
+@inject IJSRuntime JS
+
+<PageTitle>سامانه مودیان — اطلاعات پایه</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-archive text-primary"></i> اطلاعات پایهٔ سامانهٔ مودیان</h1>
+        <p class="lead">شرکت (خدمات دهنده)، اتصال به سامانه، واحدهای سنجش، کالاها و مشتریان</p>
+    </div>
+    @if (CanDiagnose)
+    {
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-outline-secondary" @onclick="Diagnose" disabled="@diagnosing"
+                    title="بررسی سلامت اسکیمای مودیان — برای وقتی لیست‌ها خالی می‌آیند">
+                @if (diagnosing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-heart-pulse"></i> }
+                تشخیص اسکیما
+            </button>
+            <button class="btn btn-outline-warning" @onclick="DiagnoseLists" disabled="@deepDiagnosing"
+                    title="چرا ردیف‌ها در جدول هستند ولی لیست‌ها خالی‌اند؟ (همان کوئری‌های لیست را در سرور اجرا می‌کند)">
+                @if (deepDiagnosing) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-binoculars"></i> }
+                تشخیص عمیق لیست‌ها
+            </button>
+        </div>
+    }
+</div>
+
+@if (deepDiag is not null)
+{
+    <div class="card mi-blocked mb-3 border-warning">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <i class="bi bi-binoculars" aria-hidden="true"></i> نتیجهٔ تشخیص عمیق
+            <span class="text-danger small">متن زیر را برای پشتیبانی بفرستید</span>
+            <span class="ms-auto d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CopyDeepDiag"><i class="bi bi-clipboard" aria-hidden="true"></i> کپی</button>
+                <button type="button" class="btn btn-sm btn-link" @onclick="() => deepDiag = null" aria-label="بستن"><i class="bi bi-x-lg"></i></button>
+            </span>
+        </div>
+        <div class="card-body p-2">
+            <pre class="mi-code mb-0" dir="ltr" style="max-height:420px">@deepDiag</pre>
+        </div>
+    </div>
+}
+
+@if (diag is not null)
+{
+    <div class="card mi-blocked mb-3 @(diag.Tables.Any(t => !t.Exists || t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) ? "border-danger" : "border-success")">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-heart-pulse"></i> نتیجهٔ تشخیص اسکیما
+            <span class="text-muted small" dir="ltr">@diag.Provider</span>
+            <button class="btn btn-sm btn-link ms-auto" @onclick="() => diag = null"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead><tr><th>جدول</th><th>وضعیت</th><th>ردیف‌ها</th><th>فعال (حذف‌نشده)</th><th>شناسه → شرکت</th><th>ستون‌های جاافتاده</th><th>خطا</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in diag.Tables)
+                        {
+                            <tr class="@(!string.IsNullOrEmpty(t.Warning) ? "table-warning" : "")">
+                                <td class="fw-semibold" dir="ltr">@t.Table</td>
+                                <td>
+                                    @if (!t.Exists) { <span class="badge badge-soft-danger">جدول نیست</span> }
+                                    else if (t.Missing.Count > 0 || !string.IsNullOrEmpty(t.Error)) { <span class="badge badge-soft-danger">نقص دارد</span> }
+                                    else { <span class="badge badge-soft-success">سالم</span> }
+                                </td>
+                                <td class="num">@(t.TotalRows?.ToString() ?? "—")</td>
+                                <td class="num">@(t.ActiveRows?.ToString() ?? "—")</td>
+                                <td class="small" dir="ltr">@(string.IsNullOrEmpty(t.Linkage) ? "—" : t.Linkage)</td>
+                                <td class="small" dir="ltr">@(t.Missing.Count > 0 ? string.Join(", ", t.Missing) : "—")</td>
+                                <td class="small">@(t.Error ?? "—")</td>
+                            </tr>
+                            @if (!string.IsNullOrEmpty(t.Warning))
+                            {
+                                <tr class="table-warning"><td colspan="7" class="small text-danger">⚠ @t.Warning</td></tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<MoadianCompanyBar />
+
+@* ---------- نوار تب (فقط بخش‌هایی که نقش کاربر اجازه می‌دهد) ---------- *@
+@if (Tabs.Any())
+{
+    <div class="mi-tabs mb-3" role="tablist" aria-label="بخش‌های اطلاعات پایه">
+        @foreach (var t in Tabs)
+        {
+            <button type="button" role="tab" class="mi-tab @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
+                <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+            </button>
+        }
+    </div>
+
+    @* فقط تبِ مجاز و فعال رندر می‌شود؛ ورود مستقیم به URL تب بدون مجوز نیز محتوا را نشان نمی‌دهد. *@
+    @if (ActiveTab == "company")
+    {
+        <MoadianTabCompany />
+    }
+    else if (ActiveTab == "connection")
+    {
+        <MoadianTabConnection />
+    }
+    else if (ActiveTab == "units")
+    {
+        <MoadianTabUnits />
+    }
+    else if (ActiveTab == "goods")
+    {
+        <MoadianTabGoods />
+    }
+    else if (ActiveTab == "customers")
+    {
+        <MoadianTabCustomers />
+    }
+}
+else
+{
+    <div class="alert alert-info">برای نقش شما هیچ بخش قابل‌مدیریتی از اطلاعات پایهٔ مودیان فعال نشده است.</div>
+}
+
+@code {
+    [Parameter] public string? Tab { get; set; }
+
+    private record TabInfo(string Key, string Title, string Icon, string Permission);
+    private static readonly TabInfo[] TabsList =
+    {
+        new("company", "اطلاعات شرکت", "bi-building", "Moadian.Company"),
+        new("connection", "اطلاعات اتصال", "bi-plug", "Moadian.Connection"),
+        new("units", "واحدهای سنجش", "bi-rulers", "Moadian.Units"),
+        new("goods", "کالاها و خدمات", "bi-box", "Moadian.Goods"),
+        new("customers", "اطلاعات مشتریان", "bi-people", "Moadian.Customers"),
+    };
+
+    // مدیر قدیمی که نقش RBAC ندارد، در API مجاز است؛ رابط نیز همان تجربهٔ کامل را دارد.
+    private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+    private bool CanDiagnose => Can("Moadian.Diagnose");
+    private IReadOnlyList<TabInfo> Tabs => TabsList.Where(t => Can(t.Permission)).ToList();
+
+    // در صورت ورود مستقیم به URL غیرمجاز، اولین تب مجاز باز می‌شود؛ نه تب شرکت/اتصال.
+    private string? ActiveTab => Tabs.Any(t => t.Key == Tab)
+        ? Tab
+        : Tabs.FirstOrDefault()?.Key;
+
+    private void Go(string key)
+    {
+        if (Tabs.Any(t => t.Key == key))
+            Nav.NavigateTo($"/moadian/basic-info/{key}", forceLoad: false);
+    }
+
+    // ---------- تشخیص اسکیمای مودیان ----------
+    private bool diagnosing;
+    private DiagnoseResult? diag;
+
+    private sealed class DiagnoseResult
+    {
+        public string? Provider { get; set; }
+        public List<TableDiag> Tables { get; set; } = new();
+    }
+
+    private sealed class TableDiag
+    {
+        public string? Table { get; set; }
+        public bool Exists { get; set; }
+        public int Columns { get; set; }
+        public List<string> Missing { get; set; } = new();
+        public long? TotalRows { get; set; }
+        /// <summary>ردیف‌های IsDelete=0 (عدم‌نمایش در لیست یعنی «حذف‌نرم»).</summary>
+        public long? ActiveRows { get; set; }
+        /// <summary>نمونهٔ «شناسهٔ ردیف → شناسهٔ شرکت» برای مشاهدهٔ پیوند داده‌ها به شرکت.</summary>
+        public string? Linkage { get; set; }
+        /// <summary>هشدار داده‌ای (ردیف یتیم به شرکت دیگر/حذف‌شده — علت شایع خالی‌بودن لیست‌ها).</summary>
+        public string? Warning { get; set; }
+        public string? Error { get; set; }
+    }
+
+    private bool deepDiagnosing;
+    private string? deepDiag;
+
+    private async Task CopyDeepDiag()
+    {
+        if (string.IsNullOrEmpty(deepDiag)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", deepDiag); Toast.Info("نتیجهٔ تشخیص عمیق کپی شد."); }
+        catch { Toast.Error("کپی ممکن نبود."); }
+    }
+
+    private async Task DiagnoseLists()
+    {
+        deepDiagnosing = true;
+        deepDiag = null;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.DiagnoseListsAsync(Ctx.CpInfoId);
+            var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+            deepDiag = r.Data switch
+            {
+                System.Text.Json.JsonElement el => System.Text.Json.JsonSerializer.Serialize(el, opts),
+                not null => System.Text.Json.JsonSerializer.Serialize(r.Data, opts),
+                _ => "Success=" + r.Success + " Status=" + r.Status + " Message=" + r.Message
+            };
+            if (!r.Success) deepDiag = "خطا: " + r.Message + "\n" + deepDiag;
+        }
+        catch (Exception ex) { deepDiag = "خطا در اجرای تشخیص عمیق: " + ex.Message; }
+        finally { deepDiagnosing = false; StateHasChanged(); }
+    }
+
+    private async Task Diagnose()
+    {
+        diagnosing = true;
+        StateHasChanged();
+        try
+        {
+            var r = await Moadian.DiagnoseAsync();
+            if (r.Success)
+            {
+                diag = MoadianService.As<DiagnoseResult>(r) ?? new DiagnoseResult();
+                var hasWarn = diag.Tables.Any(t => !string.IsNullOrEmpty(t.Warning));
+                if (diag.Tables.Count > 0 && diag.Tables.All(t => t.Exists && t.Missing.Count == 0 && string.IsNullOrEmpty(t.Error)) && !hasWarn)
+                    Toast.Success("اسکیمای مودیان کامل است — اگر لیستی خالی است، علت آن داده/شرکت است نه اسکیما.");
+                else if (hasWarn)
+                    Toast.Error("اسکیما سالم است ولی ردیف‌هایی به شرکتِ ناموجود/حذف‌شده لینک‌اند یا حذف‌نرم شده‌اند — ردیف‌های زرد جدول را ببینید.");
+            }
+            else Toast.Error(r.Message ?? "تشخیص ناموفق.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { diagnosing = false; StateHasChanged(); }
+    }
+}

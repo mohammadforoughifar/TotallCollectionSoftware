@@ -1,0 +1,63 @@
+@page "/Customers"
+@inject SupportDbContext Db
+@{
+    ViewData["Title"] = "مشتریان";
+    var q = Request.Query["q"].ToString().Trim();
+    var query = Db.Customers.AsNoTracking().AsQueryable();
+    if (!string.IsNullOrWhiteSpace(q))
+        query = query.Where(c => c.Name.Contains(q) || c.Code.Contains(q) || (c.NationalId != null && c.NationalId.Contains(q)));
+
+    var rows = await query.OrderBy(c => c.Name).Take(200).ToListAsync();
+    var installations = await Db.Installations.AsNoTracking()
+        .Where(i => i.CustomerId != null).GroupBy(i => i.CustomerId!.Value)
+        .Select(g => new { CustomerId = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.CustomerId, x => x.Count);
+    var requests = await Db.Requests.AsNoTracking()
+        .Where(i => i.CustomerId != null).GroupBy(i => i.CustomerId!.Value)
+        .Select(g => new { CustomerId = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.CustomerId, x => x.Count);
+    var licenses = await Db.IssuedLicenses.AsNoTracking()
+        .Where(i => i.CustomerId != null && i.Status == LicenseStatus.Current).GroupBy(i => i.CustomerId!.Value)
+        .Select(g => new { CustomerId = g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.CustomerId, x => x.Count);
+}
+<div class="page-head">
+    <div><h1>مشتریان</h1><p class="lead">@Ui.N(rows.Count) ردیف</p></div>
+    <div class="ms-auto"><a class="btn" href="/Customers/Edit">مشتری تازه</a></div>
+</div>
+<div class="card"><div class="card-body">
+    <form method="get" class="grid">
+        <div class="field"><label for="q">جست‌وجو</label>
+            <input id="q" name="q" value="@q" placeholder="نام / کد قراردادی / شناسهٔ ملی" /></div>
+        <div class="field"><label>&nbsp;</label><button class="btn ghost" type="submit">جست‌وجو</button></div>
+    </form>
+</div></div>
+<div class="card">
+    <table>
+        <thead><tr><th>کد</th><th>نام</th><th>تلفن</th><th>نصب‌ها</th><th>درخواست‌ها</th><th>لایسنس جاری</th><th></th></tr></thead>
+        <tbody>
+        @if (rows.Count == 0)
+        {
+            <tr><td colspan="7" class="muted">مشتری‌ای با این صافی نیست.</td></tr>
+        }
+        @foreach (var customer in rows)
+        {
+            <tr>
+                <td class="mono">@customer.Code</td>
+                <td>@customer.Name</td>
+                <td class="mono">@(customer.Phone ?? "—")</td>
+                <td>@Ui.N(installations.GetValueOrDefault(customer.Id))</td>
+                <td>@Ui.N(requests.GetValueOrDefault(customer.Id))</td>
+                <td>@Ui.N(licenses.GetValueOrDefault(customer.Id))</td>
+                <td>
+                    @if (customer.MergedIntoId is int merged)
+                    {
+                        <span class="badge">ادغام در #@merged</span>
+                    }
+                    else
+                    {
+                        <a href="/Customers/Edit?id=@customer.Id">ویرایش</a>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>

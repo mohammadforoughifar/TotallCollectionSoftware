@@ -1,0 +1,260 @@
+@page "/Customers/Edit"
+@inject SupportDbContext Db
+@inject AuditChainService Audit
+@{
+    ViewData["Title"] = "ویرایش مشتری";
+}
+@functions {
+    public int CustomerId { get; set; }
+    public int FromRequest { get; set; }
+    public string Error { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string NationalId { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string ContactName { get; set; } = "";
+    public string ContactPhone { get; set; } = "";
+    public string ContactEmail { get; set; } = "";
+
+    private void ReadForm()
+    {
+        CustomerId = int.TryParse(Request.Form["id"], out var id) ? id : 0;
+        FromRequest = int.TryParse(Request.Form["fromRequest"], out var from) ? from : 0;
+        Code = Request.Form["code"].ToString().Trim();
+        Name = Request.Form["name"].ToString().Trim();
+        Phone = Request.Form["phone"].ToString().Trim();
+        Email = Request.Form["email"].ToString().Trim();
+        NationalId = Request.Form["nationalId"].ToString().Trim();
+        Address = Request.Form["address"].ToString().Trim();
+        ContactName = Request.Form["contactName"].ToString().Trim();
+        ContactPhone = Request.Form["contactPhone"].ToString().Trim();
+        ContactEmail = Request.Form["contactEmail"].ToString().Trim();
+    }
+
+    public async Task<IActionResult> OnPostSaveAsync()
+    {
+        ReadForm();
+        if (Code.Length < 2) { Error = "کد قراردادی باید حداقل ۲ نویسه باشد."; return Page(); }
+        if (Name.Length < 2) { Error = "نام مشتری باید حداقل ۲ نویسه باشد."; return Page(); }
+        if (await Db.Customers.AnyAsync(c => c.Code == Code && c.Id != CustomerId))
+        {
+            Error = "این کد قراردادی برای مشتری دیگری ثبت شده است.";
+            return Page();
+        }
+
+        Customer customer;
+        if (CustomerId == 0)
+        {
+            customer = new Customer { CreatedAt = DateTime.UtcNow };
+            Db.Customers.Add(customer);
+        }
+        else
+        {
+            customer = await Db.Customers.FirstOrDefaultAsync(c => c.Id == CustomerId)
+                       ?? throw new InvalidOperationException("مشتری پیدا نشد.");
+        }
+
+        customer.Code = Code;
+        customer.Name = Name;
+        customer.Phone = Phone.Length == 0 ? null : Phone;
+        customer.Email = Email.Length == 0 ? null : Email;
+        customer.NationalId = NationalId.Length == 0 ? null : NationalId;
+        customer.Address = Address.Length == 0 ? null : Address;
+        customer.UpdatedAt = DateTime.UtcNow;
+
+        if (customer.Id == 0)
+        {
+            await Db.SaveChangesAsync();
+            CustomerId = customer.Id;
+        }
+
+        if (ContactName.Length > 0)
+        {
+            var contact = await Db.Contacts.FirstOrDefaultAsync(p => p.CustomerId == CustomerId && p.Name == ContactName);
+            if (contact is null)
+            {
+                contact = new ContactPerson { CustomerId = CustomerId, Name = ContactName, IsPrimary = true, CreatedAt = DateTime.UtcNow };
+                Db.Contacts.Add(contact);
+            }
+
+            contact.Phone = ContactPhone.Length == 0 ? null : ContactPhone;
+            contact.Email = ContactEmail.Length == 0 ? null : ContactEmail;
+        }
+
+        if (FromRequest > 0)
+        {
+            var request = await Db.Requests.FirstOrDefaultAsync(r => r.Id == FromRequest);
+            if (request is not null)
+            {
+                request.CustomerId = CustomerId;
+                if (request.InstallationRefId is { } installationId)
+                {
+                    var installation = await Db.Installations.FindAsync(installationId);
+                    if (installation is not null) installation.CustomerId = CustomerId;
+                }
+            }
+        }
+
+        await Db.SaveChangesAsync();
+        await Audit.AppendAsync(User.UserName(), CustomerId == 0 ? "CUSTOMER_CREATE" : "CUSTOMER_UPDATE",
+            "Customer", CustomerId.ToString(), null, User.UserId());
+
+        TempData["ok"] = "مشتری ذخیره شد.";
+        return FromRequest > 0
+            ? Redirect($"/Requests/Details?id={FromRequest}")
+            : Redirect($"/Customers/Edit?id={CustomerId}");
+    }
+
+    public Task<IActionResult> OnPostAsync() => OnPostSaveAsync();
+
+    public async Task<IActionResult> OnPostMergeAsync()
+    {
+        CustomerId = int.TryParse(Request.Form["id"], out var id) ? id : 0;
+        var targetId = int.TryParse(Request.Form["targetId"], out var target) ? target : 0;
+        if (CustomerId == 0 || targetId == 0 || targetId == CustomerId)
+        {
+            Error = "مشتری مبدأ و مقصد را انتخاب کنید (نباید یکی باشند).";
+            return Page();
+        }
+
+        var source = await Db.Customers.FirstOrDefaultAsync(c => c.Id == CustomerId);
+        var destination = await Db.Customers.FirstOrDefaultAsync(c => c.Id == targetId && c.MergedIntoId == null);
+        if (source is null || destination is null)
+        {
+            Error = "مشتری مبدأ یا مقصد پیدا نشد.";
+            return Page();
+        }
+
+        foreach (var installation in await Db.Installations.Where(i => i.CustomerId == source.Id).ToListAsync())
+            installation.CustomerId = destination.Id;
+        foreach (var request in await Db.Requests.Where(r => r.CustomerId == source.Id).ToListAsync())
+            request.CustomerId = destination.Id;
+        foreach (var license in await Db.IssuedLicenses.Where(l => l.CustomerId == source.Id).ToListAsync())
+            license.CustomerId = destination.Id;
+        foreach (var contact in await Db.Contacts.Where(p => p.CustomerId == source.Id).ToListAsync())
+            contact.CustomerId = destination.Id;
+
+        source.MergedIntoId = destination.Id;
+        source.IsActive = false;
+        await Db.SaveChangesAsync();
+
+        await Audit.AppendAsync(User.UserName(), "CUSTOMER_MERGE", "Customer", source.Id.ToString(),
+            System.Text.Json.JsonSerializer.Serialize(new { into = destination.Id }), User.UserId());
+
+        TempData["ok"] = $"مشتری «{source.Name}» در «{destination.Name}» ادغام شد.";
+        return Redirect($"/Customers/Edit?id={destination.Id}");
+    }
+}
+@{
+    CustomerId = int.TryParse(Request.Query["id"], out var queryId) ? queryId : 0;
+    FromRequest = int.TryParse(Request.Query["fromRequest"], out var queryFrom) ? queryFrom : 0;
+    var customer = CustomerId > 0
+        ? await Db.Customers.AsNoTracking().Include(c => c.Contacts).FirstOrDefaultAsync(c => c.Id == CustomerId)
+        : null;
+    var contacts = customer?.Contacts.OrderByDescending(c => c.IsPrimary).ToList() ?? new List<ContactPerson>();
+    var installations = customer is null
+        ? new List<Installation>()
+        : await Db.Installations.AsNoTracking().Where(i => i.CustomerId == customer.Id).ToListAsync();
+    var others = await Db.Customers.AsNoTracking()
+        .Where(c => c.MergedIntoId == null && c.IsActive && c.Id != CustomerId)
+        .OrderBy(c => c.Name).Take(200).ToListAsync();
+    var fromRequestRow = FromRequest > 0 ? await Db.Requests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == FromRequest) : null;
+
+    if (customer is not null)
+    {
+        Code = customer.Code;
+        Name = customer.Name;
+        Phone = customer.Phone ?? "";
+        Email = customer.Email ?? "";
+        NationalId = customer.NationalId ?? "";
+        Address = customer.Address ?? "";
+        ContactName = contacts.FirstOrDefault()?.Name ?? "";
+        ContactPhone = contacts.FirstOrDefault()?.Phone ?? "";
+        ContactEmail = contacts.FirstOrDefault()?.Email ?? "";
+    }
+}
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="page-head">
+    <div><h1>@(customer is null ? "مشتری تازه" : $"مشتری — {customer.Name}")</h1>
+        <p class="lead">
+            @if (customer is not null)
+            {
+                <span>کد قراردادی <span class="mono">@customer.Code</span></span>
+            }
+            @if (fromRequestRow is not null)
+            {
+                <span> · ساخته‌شده از درخواست <span class="mono">@fromRequestRow.RequestNo</span></span>
+            }
+        </p></div>
+</div>
+
+<div class="card"><div class="card-head">اطلاعات مشتری</div><div class="card-body">
+    <form method="post" asp-page-handler="Save">
+        <input type="hidden" name="id" value="@CustomerId" />
+        <input type="hidden" name="fromRequest" value="@FromRequest" />
+        <div class="grid">
+            <div class="field"><label for="code">کد قراردادی (≥۲ نویسه)</label><input id="code" name="code" class="mono" value="@Code" required /></div>
+            <div class="field"><label for="name">نام مشتری (≥۲ نویسه)</label><input id="name" name="name" value="@Name" required /></div>
+            <div class="field"><label for="phone">تلفن</label><input id="phone" name="phone" class="mono" value="@Phone" /></div>
+            <div class="field"><label for="email">ایمیل</label><input id="email" name="email" class="mono" value="@Email" /></div>
+            <div class="field"><label for="nationalId">شناسهٔ ملی</label><input id="nationalId" name="nationalId" class="mono" value="@NationalId" /></div>
+            <div class="field"><label for="address">آدرس</label><input id="address" name="address" value="@Address" /></div>
+        </div>
+        <div class="card-head" style="margin-top:.6rem">شخص تماس اصلی</div>
+        <div class="grid">
+            <div class="field"><label for="contactName">نام</label><input id="contactName" name="contactName" value="@ContactName" /></div>
+            <div class="field"><label for="contactPhone">تلفن</label><input id="contactPhone" name="contactPhone" class="mono" value="@ContactPhone" /></div>
+            <div class="field"><label for="contactEmail">ایمیل</label><input id="contactEmail" name="contactEmail" class="mono" value="@ContactEmail" /></div>
+        </div>
+        <p><button type="submit" class="btn">ذخیره</button>
+            @if (FromRequest > 0)
+            {
+                <a class="btn ghost" href="/Requests/Details?id=@FromRequest">بازگشت به درخواست</a>
+            }</p>
+    </form>
+</div></div>
+
+@if (customer is not null)
+{
+    <div class="card"><div class="card-head">نصب‌ها</div><div class="card-body">
+        @if (installations.Count == 0)
+        {
+            <p class="muted">نصبی به این مشتری وصل نیست.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>شناسهٔ نصب</th><th>نام ماشین</th><th>نسخه</th><th>آخرین مشاهده</th></tr></thead>
+                <tbody>
+                @foreach (var installation in installations)
+                {
+                    <tr><td class="mono">@installation.InstallationId</td><td>@(installation.MachineName ?? "—")</td>
+                        <td>@(installation.EngineVersion ?? "—")</td><td>@JalaliDate.Full(installation.LastSeenAt)</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div></div>
+
+    <div class="card"><div class="card-head">ادغام مشتری</div><div class="card-body">
+        <form method="post" asp-page-handler="Merge">
+            <input type="hidden" name="id" value="@customer.Id" />
+            <div class="grid">
+                <div class="field"><label for="targetId">ادغام «@customer.Name» در</label>
+                    <select id="targetId" name="targetId">
+                        <option value="0">— انتخاب —</option>
+                        @foreach (var other in others)
+                        {
+                            <option value="@other.Id">@other.Name (@other.Code)</option>
+                        }
+                    </select></div>
+            </div>
+            <p><button type="submit" class="btn danger">ادغام</button></p>
+            <p class="hint">ادغام، نصب‌ها/درخواست‌ها/لایسنس‌ها/تماس‌ها را به مقصد منتقل و مبدأ را غیرفعال می‌کند.</p>
+        </form>
+    </div></div>
+}

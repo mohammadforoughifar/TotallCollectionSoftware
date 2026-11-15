@@ -1,0 +1,90 @@
+@page "/Backup"
+@attribute [Authorize(Roles = "Admin")]
+@inject BackupService Backup
+@inject AuditChainService Audit
+@inject SupportDbContext Db
+@{
+    ViewData["Title"] = "پشتیبان‌گیری";
+}
+@functions {
+    public string Error { get; set; } = "";
+
+    private async Task<SupportUser?> ActorAsync() => await Db.Users.FirstOrDefaultAsync(u => u.Id == User.UserId());
+
+    public async Task<IActionResult> OnPostCreateAsync()
+    {
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+        var result = await Backup.CreateAsync(actor, Audit);
+        TempData[result.Ok ? "ok" : "error"] = result.Ok
+            ? $"پشتیبان ساخته شد: {result.FileName}"
+            : result.Error;
+        return Redirect("/Backup");
+    }
+
+    public async Task<IActionResult> OnPostRestoreAsync()
+    {
+        var name = Request.Form["file"].ToString();
+        var confirm = Request.Form["confirm"].ToString() == "on";
+        if (!confirm)
+        {
+            TempData["error"] = "پیش از بازیابی باید تأیید صریح را بزنید.";
+            return Redirect("/Backup");
+        }
+
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+        var result = await Backup.RestoreAsync(name, actor, Audit);
+        TempData[result.Ok ? "ok" : "error"] = result.Ok
+            ? "بازیابی انجام شد؛ از نسخهٔ پیشین کپی .before-restore ساخته شد. سرور را دوباره راه‌اندازی کنید."
+            : result.Error;
+        return Redirect("/Backup");
+    }
+}
+@{
+    var files = Backup.List();
+    var sqlitePath = Backup.SqlitePath;
+}
+<div class="page-head"><div><h1>پشتیبان‌گیری</h1>
+    <p class="lead">SQLite: <span class="mono">@sqlitePath</span></p></div>
+</div>
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (TempData["error"] is string errorMessage && !string.IsNullOrEmpty(errorMessage)) { <div class="alert error">@errorMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="card"><div class="card-head">ساخت پشتیبان</div><div class="card-body">
+    <form method="post" asp-page-handler="Create">
+        <button class="btn" type="submit">ساخت پشتیبان تازه</button>
+    </form>
+    <p class="hint">پشتیبان با <span class="mono">wal_checkpoint(FULL)</span> گرفته می‌شود؛ پوشهٔ <span class="mono">backups/</span> کنار DB.</p>
+</div></div>
+
+<div class="card"><div class="card-head">پشتیبان‌های موجود</div>
+    <table>
+        <thead><tr><th>فایل</th><th>زمان</th><th>حجم</th><th>بازیابی</th></tr></thead>
+        <tbody>
+        @if (files.Count == 0)
+        {
+            <tr><td colspan="4" class="muted">پشتیبانی ساخته نشده است.</td></tr>
+        }
+        @foreach (var file in files)
+        {
+            <tr><td class="mono">@file.FileName</td><td>@JalaliDate.Full(file.CreatedAt)</td><td>@Ui.Bytes(file.SizeBytes)</td>
+                <td>
+                    <form method="post" asp-page-handler="Restore" class="inline">
+                        <input type="hidden" name="file" value="@file.FileName" />
+                        <label class="mono"><input type="checkbox" name="confirm" /> تأیید</label>
+                        <button class="btn small danger" type="submit">بازیابی</button>
+                    </form>
+                </td></tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card"><div class="card-head">چرخهٔ ممیزی</div><div class="card-body">
+    <form method="post" asp-page-handler="Create">
+        <button class="btn ghost" type="submit">ساخت پشتیبان + ثبت در ممیزی</button>
+    </form>
+    <p class="hint">عملیات <span class="mono">BACKUP_CREATE</span> و <span class="mono">BACKUP_RESTORE</span> در زنجیرهٔ ممیزی ثبت می‌شوند.</p>
+</div></div>

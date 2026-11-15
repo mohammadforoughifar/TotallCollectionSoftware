@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "//": "پروفایل‌های اجرا برای Visual Studio / Rider / dotnet run. مسیر ابزار امضا و presets خودکار از <OutDir>/tools خوانده می‌شود (هدف BuildAndCopyLicenseTool). هیچ رازی این‌جا نیست.",
+  "profiles": {
+    "پنل پشتیبانی (localhost)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "",
+      "applicationUrl": "http://127.0.0.1:5399",
+      "workingDirectory": ".",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production"
+      }
+    },
+    "پنل پشتیبانی (پیش‌نمایش)": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": true,
+      "launchUrl": "Login",
+      "applicationUrl": "http://0.0.0.0:5399",
+      "workingDirectory": ".",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Production",
+        "Signer__PreviewMode": "true"
+      }
+    }
+  }
+}

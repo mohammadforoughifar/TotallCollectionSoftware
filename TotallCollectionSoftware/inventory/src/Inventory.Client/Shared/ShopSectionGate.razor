@@ -1,0 +1,70 @@
+@inject IAuthState Auth
+@using Inventory.Shared
+@using Inventory.Client.Services
+
+@* ================== نگهبان مسیر بخش‌های سامانه فروشگاهی ==================
+   هر صفحهٔ سامانه فروشگاهی با مجوز همان «بخش» باز می‌شود (Shop.{Section}.View/Manage).
+   این کامپوننت مانع ورود مستقیم با آدرس (deep link) یا ورود از کارتابل/تب باز می‌شود؛
+   پیش‌تر فقط آیتم منو پنهان می‌شد و آدرس مستقیم هم چک نمی‌شد.
+   مسیرهایی که جزو سامانه فروشگاهی نیستند هیچ تغییری نمی‌کنند. *@
+
+@if (target is null || allowed)
+{
+    @ChildContent
+}
+else
+{
+    <div class="shop-denied" dir="rtl">
+        <div class="shop-denied-card">
+            <i class="bi bi-shield-lock"></i>
+            <h5>دسترسی به «@target.Title» ندارید</h5>
+            <p>
+                برای دیدن این بخش باید مجوز «@target.Title» به نقش شما داده شود.
+                مدیر سامانه می‌تواند از مسیر
+                <b>«تنظیمات ← نقش‌ها و دسترسی‌ها ← سامانه فروشگاهی»</b>
+                تیک همین بخش را برای نقش شما فعال کند.
+            </p>
+            <p class="shop-denied-hint">
+                <span class="badge">@target.ViewPermission</span>
+                @if (target.Writable)
+                {
+                    <span class="badge">@target.ManagePermission</span>
+                }
+            </p>
+            <a class="btn btn-primary" href=""><i class="bi bi-house-door"></i> بازگشت به داشبورد</a>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>مسیر نسبی صفحه (بدون اسلش ابتدایی). اگر داده نشود از آدرس جاری خوانده می‌شود.</summary>
+    [Parameter] public string? Path { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private ShopSection? target;
+    private bool allowed;
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    protected override void OnParametersSet() => Evaluate();
+
+    private void Evaluate()
+    {
+        var path = Path ?? Nav.ToBaseRelativePath(Nav.Uri);
+        target = ShopSections.ForRoute(path);
+        allowed = target is null || ShopAccess.CanSee(Auth, target);
+    }
+}
+
+<style>
+    .shop-denied { display: flex; justify-content: center; padding: 3rem 1rem; }
+    .shop-denied-card {
+        max-width: 560px; text-align: center; background: #fff; border: 1px solid #e6e8ef;
+        border-radius: 18px; padding: 2rem 1.6rem; box-shadow: 0 10px 30px rgba(24, 30, 60, .07);
+    }
+    .shop-denied-card i.bi-shield-lock { font-size: 2.6rem; color: #b45309; }
+    .shop-denied-card h5 { margin: 1rem 0 .6rem; font-weight: 800; }
+    .shop-denied-card p { color: #4b5563; line-height: 2; margin-bottom: .8rem; }
+    .shop-denied-hint { display: flex; gap: .4rem; justify-content: center; flex-wrap: wrap; }
+    .shop-denied-hint .badge { background: #f1f5f9; color: #334155; font-family: monospace; direction: ltr; }
+</style>

@@ -1,0 +1,123 @@
+@echo off
+setlocal EnableExtensions
+chcp 65001 >nul
+
+rem ================================================================
+rem Inventory - انتشار روی Windows Server
+rem آدرس اجرا: http://192.168.30.104:8181
+rem SQL Server: 192.168.30.104 / InventoryDb
+rem
+rem ⚠️ مهم: سورس مرجع در inventory\src است، نه src قدیمی ریشه.
+rem src قدیمی موتور لایسنس ندارد و انتشار از آن = توزیع نسخهٔ بدون لایسنس.
+rem مرحلهٔ [6/6] همین را قبل از پایان بررسی می‌کند و در صورت نبود، شکست می‌دهد.
+rem ================================================================
+
+rem حالت استقرار: saas | onprem  (پیش‌فرض: onprem)  — مثال: publish-server.bat saas
+set "MODE=%~1"
+if "%MODE%"=="" set "MODE=onprem"
+if /I "%MODE%"=="saas" (set "PUBLISH_PROFILE=SaaS" & set "MODE_LABEL=SaaS") else if /I "%MODE%"=="onprem" (set "PUBLISH_PROFILE=OnPrem" & set "MODE_LABEL=OnPrem") else (
+  echo [ERROR] حالت نامعتبر: %MODE%  ^(مجاز: saas ^| onprem^)
+  exit /b 2
+)
+echo حالت استقرار: %MODE_LABEL%  ^(Publish Profile: %PUBLISH_PROFILE%^)
+
+set "ROOT=%~dp0"
+set "SRCROOT=%ROOT%inventory\src"
+set "CLIENT=%SRCROOT%\Inventory.Client"
+set "API=%SRCROOT%\Inventory.Api"
+set "CLIENT_PUBLISH=%ROOT%artifacts\client-publish"
+set "API_PUBLISH=%ROOT%artifacts\inventory-server"
+set "DEPLOY=%ROOT%deploy\inventory-server"
+set "VERIFY=%ROOT%inventory\tools\verify-licensing.ps1"
+set "DB_CONNECTION=Server=.;Database=InventoryDb;Trusted_Connection=True;TrustServerCertificate=True;Encrypt=False"
+
+where dotnet >nul 2>nul
+if errorlevel 1 (
+  echo [ERROR] .NET SDK 8 روی این سیستم نصب نیست.
+  exit /b 1
+)
+
+if not exist "%API%\Inventory.Api.csproj" (
+  echo [ERROR] سورس مرجع پیدا نشد: %API%\Inventory.Api.csproj
+  echo [ERROR] این اسکریپت باید از ریشهٔ مخزن اجرا شود و سورس در inventory\src باشد.
+  exit /b 1
+)
+if not exist "%CLIENT%\Inventory.Client.csproj" (
+  echo [ERROR] سورس کلاینت پیدا نشد: %CLIENT%\Inventory.Client.csproj
+  exit /b 1
+)
+
+echo [1/6] پاک‌سازی خروجی قبلی...
+if exist "%CLIENT_PUBLISH%" rmdir /s /q "%CLIENT_PUBLISH%"
+if exist "%API_PUBLISH%" rmdir /s /q "%API_PUBLISH%"
+if exist "%DEPLOY%" rmdir /s /q "%DEPLOY%"
+mkdir "%CLIENT_PUBLISH%" "%API_PUBLISH%" "%DEPLOY%"
+
+pushd "%ROOT%"
+
+echo [2/6] انتشار کلاینت Blazor...
+dotnet publish "%CLIENT%\Inventory.Client.csproj" -c Release --no-restore -o "%CLIENT_PUBLISH%"
+if errorlevel 1 goto :failed
+
+rem فایل‌های static کلاینت باید در wwwroot API قرار بگیرند.
+echo [3/6] انتقال فایل‌های رابط کاربری به API wwwroot...
+if not exist "%API%\wwwroot" mkdir "%API%\wwwroot"
+xcopy "%CLIENT_PUBLISH%\wwwroot\*" "%API%\wwwroot\" /E /I /Y >nul
+if errorlevel 1 goto :failed
+
+echo [4/6] انتشار API برای Windows x64...
+dotnet publish "%API%\Inventory.Api.csproj" -c Release -r win-x64 --self-contained false -p:PublishProfile=%PUBLISH_PROFILE% -o "%API_PUBLISH%"
+if errorlevel 1 goto :failed
+
+echo [5/6] آماده‌سازی پوشه استقرار...
+xcopy "%API_PUBLISH%\*" "%DEPLOY%\" /E /I /Y >nul
+if errorlevel 1 goto :failed
+
+rem ================================================================
+rem [6/6] بررسی موتور لایسنس — شرط پایان موفق انتشار
+rem   الف) آفلاین: Inventory.Licensing.dll در خروجی + فیلد licensing در health
+rem   ب) آنلاین: فقط اگر INVENTORY_HEALTH_URL تنظیم شده باشد (سرور در حال اجرا را
+rem      بررسی می‌کند). عمداً پیش‌فرض خاموش است، چون در زمان انتشار ممکن است
+rem      نسخهٔ قدیمی روی همان پورت در حال اجرا باشد و نتیجه گمراه‌کننده شود.
+rem ================================================================
+echo [6/6] بررسی موتور لایسنس در خروجی...
+if not exist "%VERIFY%" (
+  echo [ERROR] اسکریپت بررسی پیدا نشد: %VERIFY%
+  goto :failed
+)
+powershell -NoProfile -ExecutionPolicy Bypass -File "%VERIFY%" -AppPath "%DEPLOY%" -Deployment %MODE_LABEL%
+if errorlevel 1 (
+  echo.
+  echo [ERROR] خروجی منتشرشده موتور لایسنس ندارد یا health فیلد licensing را نمی‌سازد.
+  echo [ERROR] انتشار متوقف شد. سورس را بررسی کنید ^(باید از inventory\src باشد^).
+  goto :failed
+)
+
+rem تنظیمات اجرایی را جداگانه می‌سازیم تا اجرای سرور بدون ویرایش دستی انجام شود.
+>"%DEPLOY%\run-server.bat" echo @echo off
+>>"%DEPLOY%\run-server.bat" echo set "ASPNETCORE_ENVIRONMENT=Production"
+>>"%DEPLOY%\run-server.bat" echo set "ASPNETCORE_URLS=http://192.168.30.104:8181"
+>>"%DEPLOY%\run-server.bat" echo set "ConnectionStrings__Default=%DB_CONNECTION%"
+>>"%DEPLOY%\run-server.bat" echo cd /d "%%~dp0"
+>>"%DEPLOY%\run-server.bat" echo Inventory.Api.exe
+
+>"%DEPLOY%\README-DEPLOY.txt" echo آدرس سامانه: http://192.168.30.104:8181
+>>"%DEPLOY%\README-DEPLOY.txt" echo اجرا: فایل run-server.bat را با دسترسی مناسب اجرا کنید.
+>>"%DEPLOY%\README-DEPLOY.txt" echo در Windows Firewall پورت TCP 8181 را باز کنید.
+>>"%DEPLOY%\README-DEPLOY.txt" echo SQL Server: 192.168.30.104 / InventoryDb
+>>"%DEPLOY%\README-DEPLOY.txt" echo موتور لایسنس: بررسی شد و در خروجی موجود است.
+
+popd
+echo.
+echo [OK] انتشار با موفقیت انجام شد.
+echo پوشه آماده انتقال به سرور:
+echo %DEPLOY%
+echo.
+echo روی سرور فایل run-server.bat را اجرا کنید.
+exit /b 0
+
+:failed
+popd
+echo.
+echo [ERROR] انتشار ناموفق بود. خروجی خطا را بررسی کنید.
+exit /b 1

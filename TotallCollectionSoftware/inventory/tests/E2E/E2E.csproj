@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    تست یکپارچهٔ سرتاسری لایسنس (گام «یکپارچه‌سازی»).
+
+    چرا کنسولی و با SQLite؟ چون باید بدون SQL Server و بدون مرورگر اجرا شود و همان
+    مسیر واقعی «رخداد در دیتابیس ⇒ سند امضاشده ⇒ Entitlement ⇒ دروازه/سهمیه/صندلی»
+    را بپیماید. همین سبک در ۲۵ پروژهٔ tests/ این مخزن استفاده شده است.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Inventory.Licensing/Inventory.Licensing.csproj" />
+    <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
+  </ItemGroup>
+</Project>

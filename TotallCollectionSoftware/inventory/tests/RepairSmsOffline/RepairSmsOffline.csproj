@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <!-- Lightweight in-memory shims, deliberately NOT a substitute for the EF integration fixture. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Api/Data/ICompanyOwned.cs" Link="ICompanyOwned.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Repairs/RepairSmsNotification.cs" Link="RepairSmsNotification.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/System/CompanySmsSetting.cs" Link="CompanySmsSetting.cs" />
+    <Compile Include="../../src/Inventory.Shared/SmsModuleCatalog.cs" Link="SmsModuleCatalog.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/CompanySmsDtos.cs" Link="CompanySmsDtos.cs" />
+    <Compile Include="../../src/Inventory.Api/Controllers/System/CompanySmsSettingsController.cs" Link="CompanySmsSettingsController.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/CompanySmsServicePolicy.cs" Link="CompanySmsServicePolicy.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/ICompanySmsRevocationHandler.cs" Link="ICompanySmsRevocationHandler.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/KavenegarSmsValidation.cs" Link="KavenegarSmsValidation.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/KavenegarSmsOptions.cs" Link="KavenegarSmsOptions.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsRevocationHandler.cs" Link="RepairSmsRevocationHandler.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsPolicy.cs" Link="RepairSmsPolicy.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs" Link="RepairSmsQueue.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Catalog/ShopCommissionProductKindGuard.cs" Link="ShopCommissionProductKindGuard.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,107 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject MoadianCompanyContext Ctx
+@inject IJSRuntime JS
+@inject HttpClient Http
+@implements IDisposable
+
+@if (!ready)
+{
+    <div class="card mb-3"><div class="card-body py-2 text-center">
+        <div class="spinner-border spinner-border-sm text-primary"></div>
+    </div></div>
+}
+else if (CpInfos.Count == 0)
+{
+    <div class="alert alert-warning d-flex align-items-center gap-2">
+        <i class="bi bi-building-add"></i>
+        <span>هنوز شرکتی برای سامانهٔ مودیان تعریف نشده است. برای شروع،
+            <NavLink href="moadian/basic-info/connection">شرکت خود را ثبت کنید</NavLink>.</span>
+    </div>
+}
+else
+{
+    <div class="card mi-bar mb-3">
+        <div class="card-body py-2 d-flex align-items-center gap-2 flex-wrap">
+            <span class="mi-bar-ic"><i class="bi bi-building"></i></span>
+            <label class="form-label mb-0 fw-semibold">شرکت مودیان:</label>
+            <select class="form-select form-select-sm" style="max-width:340px"
+                    value="@Ctx.CpInfoId" @onchange="OnCompany">
+                @foreach (var c in CpInfos)
+                {
+                    <option value="@c.cpinfoid">@c.PersianName</option>
+                }
+            </select>
+            @if (!string.IsNullOrEmpty(CurrentType))
+            {
+                <span class="badge @(CurrentType == "حقوقی" ? "badge-soft-primary" : "badge-soft-success")" title="نوع شرکت">
+                    <i class="bi @(CurrentType == "حقوقی" ? "bi-bank" : "bi-person")"></i> @CurrentType
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(CurrentCompanyName))
+            {
+                <span class="badge badge-soft-primary" title="شرکت سیستم (کمپانی)"><i class="bi bi-diagram-3"></i> @CurrentCompanyName</span>
+            }
+            @if (Ctx.CpInfoId > 0 && CurrentEcon != null)
+            {
+                <span class="badge badge-soft-primary num" title="شماره اقتصادی">
+                    <i class="bi bi-patch-check"></i> @CurrentEcon
+                </span>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private List<VMShowCpinfoByCompany> CpInfos = new();
+    private bool ready;
+    private string? CurrentEcon => CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.EconomicNumber;
+    private string? CurrentType => Ctx.CpInfoId > 0 ? CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.Type : null;
+    private string? CurrentCompanyName => Ctx.CpInfoId > 0 ? CpInfos.FirstOrDefault(c => c.cpinfoid == Ctx.CpInfoId)?.CompanyName : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Ctx.Changed += OnCtxChanged;
+        try
+        {
+            // شناسهٔ کمبوی بالای نرم‌افزار را صریحاً به سرویس مودیان می‌دهیم. هدر فقط برای
+            // دیگر درخواست‌های وابسته به شرکت نگه داشته می‌شود؛ خود فهرست با CompanyId فیلتر می‌شود.
+            int? activeSystemCompanyId = null;
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+                if (int.TryParse(saved, out var cid) && cid > 0)
+                {
+                    activeSystemCompanyId = cid;
+                    Http.DefaultRequestHeaders.Remove("X-Company-Id");
+                    Http.DefaultRequestHeaders.TryAddWithoutValidation("X-Company-Id", cid.ToString());
+                }
+            }
+            catch { }
+            CpInfos = await Moadian.GetCpInfosAsync(activeSystemCompanyId);
+        }
+        catch { CpInfos = new(); }
+        // تطبیق خدمات‌دهندهٔ فعال با فهرست همین شرکت فعال: اگر انتخاب قبلی متعلق به
+        // شرکت دیگری است (یا فهرست خالی شده)، اصلاح می‌شود تا هیچ‌جا وضعیت «همه غیرفعال» نماند.
+        if (CpInfos.Count == 0)
+        {
+            if (Ctx.CpInfoId != 0) Ctx.SetCpInfoId(0);
+        }
+        else if (Ctx.CpInfoId == 0 || CpInfos.All(c => c.cpinfoid != Ctx.CpInfoId))
+        {
+            Ctx.SetCpInfoId(CpInfos[0].cpinfoid);
+        }
+        ready = true;
+    }
+
+    private void OnCompany(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id))
+            Ctx.SetCpInfoId(id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnCtxChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Ctx.Changed -= OnCtxChanged;
+}

@@ -1,0 +1,637 @@
+@page "/fac/reports/summary"
+@inject IFacReportService ReportSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>گزارش تجمیعی فروش و خرید فاکتورها</PageTitle>
+
+<div class="fin-page-container fade-in">
+    <!-- ================== سربرگ ================== -->
+    <div class="fin-header mb-4 d-print-none">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="fin-header-icon bg-emerald-gradient">
+                    <i class="bi bi-file-earmark-bar-graph-fill"></i>
+                </div>
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <h1 class="h4 fw-800 text-dark mb-0">گزارش تجمیعی و تحلیلی فاکتورها</h1>
+                        <span class="badge rounded-pill fin-badge-emerald">تجمیع دوره‌ای</span>
+                    </div>
+                    <div class="text-secondary fs-8 mt-1">
+                        تجمیع فاکتورهای رسمی و قطعی بر اساس بازه ماهانه، روزانه، طرف‌حساب و تفکیک کالاها
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <button class="btn btn-outline-secondary fin-btn-pill" disabled="@(result is null)" @onclick="Print">
+                    <i class="bi bi-printer-fill me-1"></i> چاپ رسمی گزارش
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================== نوار فیلتر ================== -->
+    <div class="fin-card mb-4 d-print-none">
+        <div class="fin-card-body p-3">
+            <div class="row g-2.5 align-items-end">
+                <div class="col-6 col-md-3">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">نوع فاکتور</label>
+                    <select class="form-select fin-input" value="@((int)kind)" @onchange="OnKind">
+                        <option value="1">فاکتور فروش</option>
+                        <option value="0">فاکتور خرید</option>
+                        <option value="3">برگشت از فروش</option>
+                        <option value="2">برگشت از خرید</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">تجمیع بر اساس</label>
+                    <select class="form-select fin-input" value="@groupBy" @onchange="OnGroup">
+                        <option value="month">ماه به ماه</option>
+                        <option value="day">روزانه</option>
+                        <option value="party">طرف‌حساب (مشتری/تأمین‌کننده)</option>
+                        <option value="product">کالاهای پرفروش/پرتکرار</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">از تاریخ</label>
+                    <DatePicker Value="from" ValueChanged="OnFrom" AllowClear="true" />
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="form-label fs-8 fw-700 text-dark mb-1.5">تا تاریخ</label>
+                    <DatePicker Value="to" ValueChanged="OnTo" AllowClear="true" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <div class="text-secondary fs-8 mt-2">در حال استخراج و تجمیع داده‌های مالی فاکتورها...</div>
+        </div>
+    }
+    else if (result is null || result.Rows.Count == 0)
+    {
+        <div class="fin-card">
+            <div class="fin-card-body text-center py-5">
+                <div class="fin-avatar bg-slate-subtle text-slate mx-auto mb-2" style="width:52px;height:52px">
+                    <i class="bi bi-inbox fs-3"></i>
+                </div>
+                <h5 class="fw-800 text-dark">فاکتور قطعی‌شده‌ای در این بازه یافت نشد</h5>
+                <p class="text-secondary fs-8 mb-0">تنها اسناد و فاکتورهایی که تأیید قطعی شده‌اند در محاسبات آماری منظور می‌شوند.</p>
+            </div>
+        </div>
+    }
+    else
+    {
+        <!-- ================== کارت‌های KPI ================== -->
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-indigo">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-indigo">تعداد کل فاکتورها</span>
+                            <div class="fin-kpi-value text-indigo num mt-1">@result.TotalCount.Num()</div>
+                            <div class="fin-kpi-unit">فقره سند رسمی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-indigo-subtle text-indigo">
+                            <i class="bi bi-receipt"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-indigo-subtle text-indigo rounded-pill px-2.5">قطعی‌شده در بازه</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-amber">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-amber">مقدار کل کالاها</span>
+                            <div class="fin-kpi-value text-amber num mt-1">@result.TotalQuantity.Num()</div>
+                            <div class="fin-kpi-unit">مجموع حجم فیزیکی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
+                            <i class="bi bi-box-seam"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-amber-subtle text-amber rounded-pill px-2.5">گردش وزنی/تعدادی</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-rose">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-rose">مالیات بر ارزش افزوده</span>
+                            <div class="fin-kpi-value text-rose num mt-1">@result.TotalVat.Money()</div>
+                            <div class="fin-kpi-unit">ریال مالیات قانونی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-rose-subtle text-rose">
+                            <i class="bi bi-percent"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-rose-subtle text-rose rounded-pill px-2.5">سهم مالیات فاکتورها</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="fin-kpi-card border-emerald">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fin-kpi-title text-emerald">جمع کل خالص درآمد/هزینه</span>
+                            <div class="fin-kpi-value text-emerald num mt-1">@result.TotalNet.Money()</div>
+                            <div class="fin-kpi-unit">ریال مبلغ نهایی</div>
+                        </div>
+                        <div class="fin-kpi-icon-box bg-emerald-subtle text-emerald">
+                            <i class="bi bi-cash-stack"></i>
+                        </div>
+                    </div>
+                    <div class="fin-kpi-footer mt-3 pt-2">
+                        <span class="badge bg-emerald-subtle text-emerald rounded-pill px-2.5">تسویه‌شده و تعهدی</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================== جدول تجمیعی ================== -->
+        <div class="fin-card">
+            <div class="fin-card-header d-flex justify-content-between align-items-center p-3 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-table text-primary fs-5"></i>
+                    <span class="fw-800 text-dark">@KindTitle(result.Kind) — تفکیک بر اساس @GroupTitle(result.GroupBy)</span>
+                </div>
+                <span class="badge bg-indigo-subtle text-indigo rounded-pill px-3 py-1.5 num fs-8">
+                    @result.Rows.Count.Num() ردیف تحلیلی
+                </span>
+            </div>
+            <div class="fin-card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 fin-table">
+                        <thead class="bg-light">
+                            <tr>
+                                <th style="width:48px" class="text-secondary fs-8 fw-700 py-3">#</th>
+                                <th class="text-secondary fs-8 fw-700 py-3">عنوان گروه / دوره (@GroupTitle(result.GroupBy))</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center">تعداد فاکتور</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center">حجم/مقدار</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center">مأخذ مالیاتی (ریال)</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center">مالیات (ریال)</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center">جمع کل (ریال)</th>
+                                <th class="text-secondary fs-8 fw-700 py-3 text-center" style="width:18%">سهم از کل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{ var row = 1; var max = result.Rows.Max(r => r.Net); }
+                            @foreach (var r in result.Rows)
+                            {
+                                <tr>
+                                    <td class="num text-secondary">@((row++).FaDigits())</td>
+                                    <td class="fw-700 text-dark num">@r.Title.FaDigits()</td>
+                                    <td class="text-center num">@r.Count.Num()</td>
+                                    <td class="text-center num">@r.Quantity.Num()</td>
+                                    <td class="text-center num text-secondary">@r.Taxable.Money()</td>
+                                    <td class="text-center num text-rose">@r.Vat.Money()</td>
+                                    <td class="text-center num fw-800 text-emerald">@r.Net.Money()</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height:7px; border-radius:10px; background:#f1f5f9;">
+                                                <div class="progress-bar bg-primary rounded-pill" style="@BarStyle(r.Net, max)"></div>
+                                            </div>
+                                            <span class="fs-9 text-secondary num" style="min-width:32px">
+                                                @((max > 0 ? (r.Net * 100 / max).ToString("0") : "0").FaDigits())٪
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="bg-light fw-800">
+                            <tr>
+                                <th colspan="2" class="text-end text-dark py-3">مجموع ارقام تجمیعی:</th>
+                                <th class="text-center num text-dark">@result.TotalCount.Num()</th>
+                                <th class="text-center num text-dark">@result.TotalQuantity.Num()</th>
+                                <th class="text-center num text-secondary">@result.Rows.Sum(r => r.Taxable).Money()</th>
+                                <th class="text-center num text-rose">@result.TotalVat.Money()</th>
+                                <th class="text-center num text-emerald fs-7">@result.TotalNet.Money()</th>
+                                <th></th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+
+<style>
+/* ========================================================
+   استایل‌های مدرن و چشم‌نواز FinTech برای گزارش طلب و بدهی
+   ======================================================== */
+.fin-page-container {
+    max-width: 1440px;
+    margin: 0 auto;
+}
+
+/* سربرگ */
+.fin-header {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    border: 1px solid #e2e8f0;
+}
+.fin-header-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    box-shadow: 0 6px 16px -2px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+.fin-badge-status {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-btn-pill {
+    border-radius: 20px;
+    padding: 0.45rem 1rem;
+    font-weight: 700;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+/* کارت‌های شاخص KPI لوکس */
+.fin-kpi-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.25rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.03);
+    transition: transform 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.fin-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.08);
+}
+.fin-kpi-card.border-rose { border-top: 4px solid #ef4444; }
+.fin-kpi-card.border-emerald { border-top: 4px solid #10b981; }
+.fin-kpi-card.border-indigo { border-top: 4px solid #4f46e5; }
+.fin-kpi-card.border-slate { border-top: 4px solid #64748b; }
+
+.fin-kpi-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.fin-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+.fin-kpi-unit {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 0.1rem;
+}
+.fin-kpi-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.fin-kpi-footer {
+    border-top: 1px dashed #f1f5f9;
+}
+
+/* کارت فیلتر */
+.fin-filter-card {
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 1.1rem 1.4rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+}
+.fin-label {
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.35rem;
+    display: block;
+}
+.fin-input {
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    font-size: 0.82rem;
+}
+.fin-btn-submit {
+    border-radius: 10px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+/* جدول داده‌ها */
+.fin-table-card {
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px -4px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+.fin-table-header {
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fbfcfe;
+}
+.fin-table-header-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.fin-table-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 0.1rem;
+}
+.fin-table-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin-bottom: 0;
+}
+
+.fin-table {
+    margin-bottom: 0;
+    font-size: 0.82rem;
+}
+.fin-table thead th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1.5px solid #e2e8f0;
+    white-space: nowrap;
+}
+.fin-table tbody td {
+    padding: 0.85rem 0.9rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.fin-table-row:hover {
+    background: #f8fafc;
+}
+.fin-table-total-row {
+    background: #f8fafc;
+    border-top: 2px solid #cbd5e1;
+}
+.fin-table-total-row td {
+    padding: 1rem 0.9rem;
+}
+
+.fin-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+}
+.fin-avatar-lg {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%);
+    color: #ffffff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 1.4rem;
+    flex-shrink: 0;
+}
+
+/* صفحه صورت‌حساب شخص */
+.fin-statement-header-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.3rem 1.6rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 18px -4px rgba(15, 23, 42, 0.04);
+}
+.fin-statement-kpi-badge {
+    padding: 0.85rem 1.4rem;
+    border-radius: 14px;
+    text-align: left;
+    min-width: 220px;
+}
+.fin-statement-kpi-badge.badge-debtor {
+    background: #fef2f2;
+    border: 1.5px solid #fecaca;
+    color: #b91c1c;
+}
+.fin-statement-kpi-badge.badge-creditor {
+    background: #f0fdf4;
+    border: 1.5px solid #bbf7d0;
+    color: #15803d;
+}
+.fin-statement-kpi-badge.badge-settled {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+}
+.fin-statement-kpi-sub {
+    font-size: 0.72rem;
+    font-weight: 600;
+    opacity: 0.85;
+}
+.fin-statement-kpi-val {
+    font-size: 1.45rem;
+    font-weight: 900;
+    line-height: 1.2;
+    margin: 0.15rem 0;
+}
+.fin-statement-kpi-status {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.fin-opening-row {
+    background: #fffbeb !important;
+}
+.fin-opening-row:hover {
+    background: #fef3c7 !important;
+}
+
+.text-rose { color: #e11d48 !important; }
+.bg-rose-subtle { background-color: #ffe4e6 !important; }
+.text-emerald { color: #059669 !important; }
+.bg-emerald-subtle { background-color: #d1fae5 !important; }
+.text-indigo { color: #4f46e5 !important; }
+.bg-indigo-subtle { background-color: #eef2ff !important; }
+.text-amber { color: #d97706 !important; }
+.bg-amber-subtle { background-color: #fef3c7 !important; }
+.text-slate { color: #475569 !important; }
+.bg-slate-subtle { background-color: #f1f5f9 !important; }
+.text-purple { color: #7c3aed !important; }
+.bg-purple-subtle { background-color: #ede9fe !important; }
+
+.spin {
+    animation: finSpin 0.7s linear infinite;
+}
+@@keyframes finSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.fade-in {
+    animation: finFadeIn 0.25s ease-in-out;
+}
+@@keyframes finFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+
+<style>
+/* ========================================================
+   استایل‌های مدرن گزارش خرید و فروش
+   ======================================================== */
+.bg-indigo-gradient {
+    background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%) !important;
+    color: #ffffff !important;
+}
+.bg-emerald-gradient {
+    background: linear-gradient(135deg, #10b981 0%, #047857 100%) !important;
+    color: #ffffff !important;
+}
+.fin-badge-indigo {
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #c7d2fe;
+}
+.fin-badge-emerald {
+    background: #d1fae5;
+    color: #065f46;
+    font-weight: 700;
+    font-size: 0.72rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #a7f3d0;
+}
+.border-purple { border-top: 4px solid #7c3aed !important; }
+.border-amber { border-top: 4px solid #f59e0b !important; }
+</style>
+
+
+@code {
+    private FacSummaryResult? result;
+    private InvoiceKind kind = InvoiceKind.Sale;
+    private string groupBy = "month";
+    private DateTime? from, to;
+    private bool loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("گزارش فروش و خرید");
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { result = await ReportSvc.GetSummaryAsync(kind, groupBy, from, to); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task OnKind(ChangeEventArgs e)
+    {
+        kind = (InvoiceKind)int.Parse(e.Value?.ToString() ?? "1");
+        await Load();
+    }
+
+    private async Task OnGroup(ChangeEventArgs e)
+    {
+        groupBy = e.Value?.ToString() ?? "month";
+        await Load();
+    }
+
+    private async Task OnFrom(DateTime? d)
+    {
+        from = d;
+        await Load();
+    }
+
+    private async Task OnTo(DateTime? d)
+    {
+        to = d;
+        await Load();
+    }
+
+    /// <summary>عرض نوار سهم هر ردیف (با فرهنگ ثابت تا نقطه اعشار درست باشد).</summary>
+    private static string BarStyle(decimal value, decimal max)
+    {
+        var pct = max == 0 ? 0 : (double)(value / max) * 100;
+        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    private static string KindTitle(InvoiceKind k) => k switch
+    {
+        InvoiceKind.Purchase => "فاکتورهای خرید",
+        InvoiceKind.Sale => "فاکتورهای فروش",
+        InvoiceKind.PurchaseReturn => "برگشت از خرید",
+        _ => "برگشت از فروش"
+    };
+
+    private static string GroupTitle(string g) => g switch
+    {
+        "day" => "روز",
+        "party" => "طرف حساب",
+        "product" => "کالا",
+        _ => "ماه"
+    };
+
+    private async Task Print() => await JS.InvokeVoidAsync("window.print");
+}

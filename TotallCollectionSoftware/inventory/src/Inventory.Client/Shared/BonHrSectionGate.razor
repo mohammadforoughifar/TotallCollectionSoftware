@@ -1,0 +1,88 @@
+@inject IAuthState Auth
+@using Inventory.Shared
+@using Inventory.Client.Pages.BonHr
+
+@* ================== نگهبان مسیر صفحات منابع انسانی بن‌سازه ==================
+   هر صفحه بن‌سازه با مجوز همان بخش و اکشن باز می‌شود (RadisHr.{Section}.{Action}).
+   ورود مستقیم با آدرس (deep link) هم پوشش داده می‌شود، نه فقط پنهان‌کردن آیتم منو.
+   مسیرهایی که جزو بن‌سازه نیستند هیچ تغییری نمی‌کنند. *@
+
+@if (target is null || allowed)
+{
+    @ChildContent
+}
+else
+{
+    <div class="bhg-denied" dir="rtl">
+        <div class="bhg-card">
+            <i class="bi bi-shield-lock"></i>
+            <h5>دسترسی به «@target.Title» ندارید</h5>
+            <p>
+                برای انجام «@ActionLabel» در این بخش باید مجوز
+                <b>@target.Key.@Action</b> به نقش شما داده شود.
+            </p>
+            <p class="bhg-hint">
+                <span class="badge">@($"RadisHr.{target.Key}.{Action}")</span>
+                @if (target.LegacyModule is not null)
+                {
+                    <span class="badge">(قدیمی: RadisHr.@target.LegacyModule)</span>
+                }
+            </p>
+            <button class="btn btn-primary" @onclick="GoHome">
+                <i class="bi bi-house-door ms-1"></i> بازگشت به داشبورد
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>مسیر نسبی صفحه (بدون اسلش ابتدایی). اگر داده نشود از آدرس جاری خوانده می‌شود.</summary>
+    [Parameter] public string? Path { get; set; }
+
+    /// <summary>اکشن مورد نیاز: View / Create / Update / Delete (پیش‌فرض: View)</summary>
+    [Parameter] public string Action { get; set; } = "View";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private BonHrSection? target;
+    private bool allowed;
+
+    protected override void OnParametersSet() => Evaluate();
+
+    private string ActionLabel => Action switch
+    {
+        "View" => "مشاهدهٔ بخش",
+        "Create" => "ثبت/ایجاد",
+        "Update" => "ویرایش/ذخیره",
+        "Delete" => "حذف",
+        _ => Action
+    };
+
+    private void Evaluate()
+    {
+        var path = Path ?? Nav.ToBaseRelativePath(Nav.Uri);
+        target = BonHrSections.ForRoute(path);
+        allowed = target is null
+            || Auth.IsAdmin
+            || Auth.Has("RadisHr.Access")
+            || Auth.Has($"RadisHr.{target.Key}")
+            || Auth.Has($"RadisHr.{target.Key}.{Action}");
+    }
+
+    private void GoHome() => Nav.NavigateTo("");
+}
+
+<style>
+    .bhg-denied { display: flex; justify-content: center; padding: 3rem 1rem; }
+    .bhg-card {
+        max-width: 560px; text-align: center; background: #fff; border: 1px solid #e6e8ef;
+        border-radius: 18px; padding: 2rem 1.6rem; box-shadow: 0 10px 30px rgba(24, 30, 60, .07);
+    }
+    .bhg-card i.bi-shield-lock { font-size: 2.6rem; color: #f59e0b; background: #fef3c7; border-radius: 16px; padding: .8rem 1.1rem; }
+    .bhg-card h5 { margin: 1rem 0 .6rem; font-weight: 800; }
+    .bhg-card p { color: #4b5563; line-height: 2; margin-bottom: .8rem; }
+    .bhg-hint { display: flex; gap: .4rem; justify-content: center; flex-wrap: wrap; margin-bottom: 1rem; }
+    .bhg-hint .badge { background: #f1f5f9; color: #334155; font-family: monospace; direction: ltr; }
+</style>

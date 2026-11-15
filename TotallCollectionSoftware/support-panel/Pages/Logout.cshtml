@@ -1,0 +1,16 @@
+@page "/Logout"
+@attribute [AllowAnonymous]
+@inject AuditChainService Audit
+@functions {
+    public async Task<IActionResult> OnPostAsync()
+    {
+        if (User.Identity?.IsAuthenticated == true)
+            await Audit.AppendAsync(User.UserName(), "LOGOUT", "SupportUser", User.UserId().ToString(), null, User.UserId());
+
+        await HttpContext.SignOutAsync(
+            Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme);
+        return Redirect("/Login");
+    }
+
+    public IActionResult OnGet() => Redirect("/");
+}

@@ -1,0 +1,1091 @@
+"""Asset + source-contract checks; does not run the .NET renderer or access a database.
+python3 -m unittest discover -s inventory/tests/OutgoingLetterhead -p 'test_*.py' -v
+"""
+import base64
+import re
+import unittest
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+API = Path(__file__).resolve().parents[2] / "src" / "Inventory.Api"
+CLIENT = API.parent / "Inventory.Client"
+SERVICE = API / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"
+TEMPLATES = API / "Reports" / "OutgoingLetters" / "Companies"
+
+
+class LetterheadAssetsTests(unittest.TestCase):
+    def test_every_company_size_has_an_embedded_jpeg(self):
+        for company in (1, 2, 3, 1003, 1005):
+            for size in ("A4", "A5"):
+                with self.subTest(company=company, size=size):
+                    root = ET.parse(TEMPLATES / str(company) / f"Outgoing-{size}.mrt").getroot()
+                    watermark = next(e for e in root.iter() if e.tag.split("}")[-1] == "Watermark")
+                    value = next(e.text for e in watermark if e.tag.split("}")[-1] == "ImageBytes")
+                    # Convert.FromBase64String tolerates XML whitespace just as this normalization does.
+                    image = base64.b64decode("".join(value.split()), validate=True)
+                    self.assertTrue(image.startswith(b"\xff\xd8"))
+                    self.assertTrue(image.endswith(b"\xff\xd9"))
+                    self.assertGreater(len(image), 100_000)
+
+    def test_1003_enhanced_art_is_synchronized_across_registered_and_embedded_files(self):
+        registered = API / "wwwroot" / "uploads" / "letterheads" / "homepa_company1003_letterhead.jpg"
+        png = registered.with_suffix(".png")
+        pdf = registered.with_suffix(".pdf")
+        jpg_bytes = registered.read_bytes()
+        self.assertTrue(jpg_bytes.startswith(b"\xff\xd8"))
+        self.assertTrue(png.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(pdf.read_bytes().startswith(b"%PDF-"))
+        for size in ("A4", "A5"):
+            with self.subTest(size=size):
+                root = ET.parse(TEMPLATES / "1003" / f"Outgoing-{size}.mrt").getroot()
+                watermark = next(e for e in root.iter() if e.tag.split("}")[-1] == "Watermark")
+                value = next(e.text for e in watermark if e.tag.split("}")[-1] == "ImageBytes")
+                embedded = base64.b64decode("".join(value.split()), validate=True)
+                self.assertEqual(embedded, jpg_bytes, "each company-1003 template must use the synchronized enhanced artwork")
+
+    def test_content_pdf_does_not_cover_the_underlaid_letterhead(self):
+        source = SERVICE.read_text()
+        self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
+        # سربرگ پیش از متن رسم می‌شود (وگرنه زیر آن پنهان می‌شد) و با مستطیل
+        # «حفظ نسبت» رسم می‌شود تا سربرگِ بدابعاد، نقطه‌چین‌ها را جابه‌جا نکند.
+        self.assertLess(source.index("graphics.DrawImage(asset.Pdf, artBounds)"),
+                        source.index("graphics.DrawImage(contentForm, bounds)"))
+        self.assertIn("graphics.DrawImage(asset.Image, artBounds)", source)
+        self.assertIn("PrintAssetResolver.LetterheadRect(", source)
+
+    def test_registered_file_stays_the_default_source(self):
+        # اولویت پیش‌فرض همان فایل ثبت‌شدهٔ شرکت است؛ طرح قالب با تنظیم
+        # PreferTemplateLetterhead (یا خالی‌کردن LetterheadFileName) اولویت می‌گیرد.
+        source = SERVICE.read_text(encoding="utf-8")
+        self.assertIn(": registeredPath ?? templateLetterheadPath;", source)
+        # شرکت‌های فهرست‌شده (فعلاً ۱۰۰۳) طرح قالب را می‌گیرند، بقیه همان فایل ثبت‌شده را.
+        self.assertIn("var preferTemplate = PreferTemplateLetterhead", source)
+        self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", source)
+
+    def test_active_service_honors_the_configured_template_root(self):
+        source = SERVICE.read_text()
+        self.assertIn('_configuration["Reporting:Stimulsoft:TemplateRoot"]', source)
+        self.assertIn("Path.IsPathRooted(templateRoot)", source)
+        self.assertIn("$\"Outgoing-{size}.mrt\"", source)
+
+    def test_homepa_metadata_boxes_preserve_mrt_geometry_with_calibrated_left_shift(self):
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        expressions = {"Number": "LetterNumber", "Date": "DateShams", "Attachment": "Peyvast"}
+        for field, column in expressions.items():
+            method = re.search(r"static Field " + field + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
+            variants = re.findall(r"new\(([^)]+)\)", method)
+            self.assertEqual(len(variants), 2)
+            for index, size in enumerate(("A5", "A4")):
+                with self.subTest(field=field, size=size):
+                    root = ET.parse(TEMPLATES / "1003" / f"Outgoing-{size}.mrt").getroot()
+                    self.assertEqual(root.findtext("ReportUnit"), "Inches")
+                    page = root.find("./Pages/Page1")
+                    margins = [float(v) for v in page.findtext("Margins").split(",")]
+                    component = next(e for e in page.iter() if e.findtext("Text") == "{DataSource1." + column + "}")
+                    x, y, width, height = [float(v) for v in component.findtext("ClientRectangle").split(",")]
+                    left_shift = (3 if size == "A5" else 4) if field in ("Date", "Attachment") else 0
+                    physical_x = (margins[0] + x) * 72 - left_shift
+                    physical_y = (margins[2] + y) * 72
+                    page_header_origin = 16 if size == "A5" else 24
+                    expected = (physical_x, physical_y - page_header_origin, width * 72, height * 72)
+                    actual = [float(v.strip().removesuffix("f")) for v in variants[index].split(",")]
+                    for value, target in zip(actual, expected):
+                        self.assertAlmostEqual(value, target, places=3)
+                    self.assertAlmostEqual(actual[1] + page_header_origin, physical_y, places=3,
+                                           msg="value top must match the corresponding label's page coordinate")
+                    self.assertGreaterEqual(actual[0], 0)
+                    self.assertLess(actual[0] + actual[2], float(page.findtext("PageWidth")) * 72 / 3,
+                                    "values must stay in the physical left third, not the RTL right edge")
+
+    def test_1003_header_values_match_the_label_rows_and_use_ltr_isolation(self):
+        """مقدارها روی خط برچسب‌های چاپ‌شده بنشینند و جهت‌شان LTR ایزوله باشد.
+
+        عددها از خود قالب (MRT) مشتق می‌شوند تا با هر بازکالیبراسیون قالب هم‌تراز بمانند؛
+        فقط «مرکز کادر = مرکز برچسب» بررسی می‌شود.
+        """
+        source = SERVICE.read_text()
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        self.assertIn("Header content begins after Page.MarginTop", layout)
+        self.assertIn("text.DirectionFromLeftToRight()", source)
+        self.assertIn('isolateLtr ? $"\\u2066{value}\\u2069" : value', source)
+
+        # مرکز عمودی برچسب‌های چاپ‌شده روی تصویر سربرگ A4 (اندازه‌گیری پیکسلی)
+        label_centers = {"number": 66.48, "date": 84.48, "attachment": 103.20}
+        for is_a5, size in ((True, "A5"), (False, "A4")):
+            root = ET.parse(TEMPLATES / "1003" / f"Outgoing-{size}.mrt").getroot()
+            page = root.find("./Pages/Page1")
+            margins = [float(v) for v in page.findtext("Margins").split(",")]
+            scale = 1.0 if size == "A4" else 595.28 / 841.89
+            for token, key in (("LetterNumber", "number"), ("DateShams", "date"), ("Peyvast", "attachment")):
+                component = next(e for e in page.iter() if e.findtext("Text") == "{DataSource1." + token + "}")
+                _, y, _, height = [float(v) for v in component.findtext("ClientRectangle").split(",")]
+                center = (margins[2] + y + height / 2) * 72
+                with self.subTest(size=size, field=key):
+                    self.assertAlmostEqual(center, label_centers[key] * scale, delta=0.35,
+                                           msg="مرکز کادر مقدار باید روی مرکز برچسب چاپ‌شده باشد")
+
+    def test_aria_fields_and_body_start_are_fixed_independently_for_a4_and_a5(self):
+        source = SERVICE.read_text()
+        layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
+        # مختصات تأییدشدهٔ کارفرما: مقدارها راست‌چین و لبهٔ راستشان ۲pt سمت چپِ دونقطهٔ
+        # برچسب روی همان خط نقطه‌چین (۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ در A4).
+        expected = {
+            "Date": ((142.8, 48.2, 33.6, 9.7), (202, 66.8, 47.5, 13.7)),
+            "Number": ((77.7, 48.2, 30.8, 9.7), (110, 66.8, 43.5, 13.7)),
+            "Attachment": ((14.8, 48.2, 29, 9.7), (21, 66.8, 41, 13.7)),
+        }
+        for name, sizes in expected.items():
+            method = re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
+            variants = re.findall(r"new\(([^)]+)\)", method)
+            self.assertEqual(len(variants), 2)
+            for index, size in enumerate(sizes):
+                with self.subTest(field=name, size=("A5", "A4")[index]):
+                    actual = tuple(float(v.strip().removesuffix("f")) for v in variants[index].split(","))
+                    self.assertEqual(actual, size)
+
+        self.assertIn("HeaderHeight(bool isA5) => isA5 ? 70f : 95f", layout)
+        # بدنه از همان جایی شروع می‌شود که طرح برای «گیرنده» دارد (۱۶۵٫۶ / ۱۱۶٫۶pt).
+        self.assertIn("ContentTop(bool isA5) => isA5 ? 116.64f : 165.6f", layout)
+        self.assertIn("BodyTopPadding(bool isA5) => isA5 ? 30.64f : 46.6f", layout)
+        self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 97f", layout)
+        self.assertIn(r'isolateLtr ? $"\u2066{value}\u2069" : value', source)
+        self.assertIn("text.DirectionFromLeftToRight();", source)
+        self.assertIn("var pageTopMargin = isHomepaLetterhead || isAriaLetterhead", source)
+        self.assertIn("page.MarginTop(pageTopMargin);", source)
+        aria_branch = source.split("if (isAriaLetterhead)", 1)[1].split("else if (isHomepaLetterhead)", 1)[0]
+        self.assertIn("page.Header().ContentFromLeftToRight()", aria_branch)
+        self.assertIn(".Layers(layers =>", aria_branch)
+        for field in expected:
+            self.assertIn(f"AriaLetterheadLayout.{field}(isA5)", aria_branch)
+        self.assertIn("? AriaLetterheadLayout.BodyTopPadding(isA5)", source)
+
+    def test_company_1005_meta_row_sits_on_its_own_dotted_line(self):
+        """۱۰۰۵: سه مقدار در یک ردیف افقی، راست‌چین روی خط‌چین، پررنگ و با پلاک سفید.
+
+        اعداد از یک منبع می‌آیند: `AriaLetterheadLayout` (چاپ) و همان‌ها در قالب MRT نوشته
+        می‌شوند (`tools/sync_aria_meta_rows.py`). اگر یکی جابه‌جا شود، این تست می‌شکند.
+        """
+        layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
+        for size, origin in (("A5", 16.0), ("A4", 24.0)):
+            with self.subTest(size=size):
+                fields = declared_meta_fields(1005, size)
+                for name, slot in (("Number", "Number"), ("Date", "Date"), ("Attachment", "Attachment")):
+                    field = fields[name]
+                    # مرکز عمودی کادرها روی خط نقطه‌چین: ۹۷٫۶pt در A4 و ۶۹٫۰pt در A5.
+                    centre = field["top"] + field["height"] / 2
+                    self.assertAlmostEqual(centre, 97.65 if size == "A4" else 69.05, delta=0.2,
+                                           msg=f"{size} {name} باید روی خط نقطه‌چین بنشیند")
+                    self.assertEqual(field["color"], "Black", f"{size} {name} باید پررنگ/تیره باشد")
+                # همان سه ردیف افقی: هر سه کادر یک بالا و یک ارتفاع دارند.
+                tops = {round(fields[name]["top"], 2) for name in ("Number", "Date", "Attachment")}
+                self.assertEqual(len(tops), 1, "سه مقدار باید در یک ردیف افقی باشند")
+                # لبهٔ راست هر مقدار = انتهای خط‌چین (۲pt سمت چپِ دونقطهٔ برچسب).
+                rights = {name: round(fields[name]["left"] + fields[name]["width"], 1)
+                          for name in ("Attachment", "Number", "Date")}
+                self.assertEqual(rights, {"Attachment": 62.0, "Number": 153.5, "Date": 249.5}
+                                 if size == "A4" else
+                                 {"Attachment": 43.8, "Number": 108.5, "Date": 176.4})
+                # قلم: ۹pt در A4 و ۶٫۴pt در A5، همه توپُر، و پلاک سفید پشت مقدار.
+                font = "Vazirmatn,9,Bold" if size == "A4" else "Vazirmatn,6.4,Bold"
+                root = ET.parse(TEMPLATES / "1005" / f"Outgoing-{size}.mrt").getroot()
+                components = list(root.find("./Pages/Page1/Components"))
+                for token in ("LetterNumber", "DateShams", "Peyvast"):
+                    component = next(c for c in components
+                                     if token in (c.findtext("Text") or ""))
+                    self.assertEqual(component.findtext("Font"), font, token)
+                    self.assertEqual(component.findtext("Brush"), "White", token)
+                    self.assertEqual(component.findtext("HorAlignment"), "Right", token)
+        self.assertIn('ValueColor => "#000000"', layout)
+
+    def test_homepa_header_is_left_anchored_and_fields_are_independent(self):
+        source = SERVICE.read_text()
+        branch = source.split("else if (isHomepaLetterhead)", 1)[1]
+        branch = branch.split("else if (hasLetterhead)", 1)[0]
+        self.assertIn("page.Header().ContentFromLeftToRight()", branch)
+        self.assertIn(".Layers(layers =>", branch)
+        for field in ("Number", "Date", "Attachment"):
+            self.assertIn(f"HomepaLetterheadLayout.{field}(isA5)", branch)
+        self.assertNotIn(".Column(", branch)
+        self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", branch)
+        self.assertIn("HomepaLetterheadLayout.Number(isA5)", branch, "fixed metadata positions are independent of body spacing")
+
+    def test_1003_signer_block_alignment_and_no_page_footer(self):
+        source = SERVICE.read_text()
+        self.assertIn("col.Item().ShowEntire().Column(AddSignerBlock)", source)
+        self.assertIn("var signerTopPadding = isHomepaLetterhead", source)
+        self.assertIn("var tableTopPadding = isHomepaLetterhead", source)
+        self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
+        self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
+        self.assertNotIn('Text("امضاکنندگان")', source)
+        # شمارهٔ صفحه به‌درخواست کارفرما در هیچ مسیری چاپ نمی‌شود (نه مسیر طرح، نه کلاسیک).
+        self.assertNotIn("PageNumberFooter", source)
+        self.assertNotIn("CurrentPageNumber()", source)
+        self.assertNotIn("TotalPages()", source)
+        self.assertNotIn(".Dynamic(", source)
+        template = (SERVICE.parents[1] / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
+        self.assertNotIn("PageNumberFooter", template)
+        self.assertNotIn("IDynamicComponent", template)
+        overlay = source.split("private byte[] OverlayOnLetterhead", 1)[1]
+        self.assertIn("for (var index = 0; index < contentDoc.PageCount; index++)", overlay)
+        self.assertLess(overlay.index("graphics.DrawImage(asset.Image, artBounds)"),
+                        overlay.index("graphics.DrawImage(contentForm, bounds)"))
+        self.assertIn("page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);", source)
+        self.assertIn("page.Content().Background(Colors.Transparent)", source)
+
+    def test_print_does_not_inject_a_closing_or_stamp_box(self):
+        source = SERVICE.read_text()
+        self.assertNotIn("closingText", source)
+        self.assertNotIn("closingMatch", source)
+        self.assertNotIn('Text("با تشکر")', source)
+        self.assertNotIn('Text("مهر")', source)
+        self.assertNotIn("stampHeight", source)
+        self.assertNotIn("HtmlToPlainText", source,
+                         "authored HTML must be rendered rather than flattened or truncated")
+        self.assertIn("RichLetterPdfRenderer.AddTo(col, letter.Text", source)
+        self.assertIn(".Text(signer.Name)", source)
+        self.assertIn(".Text(signer.Role)", source)
+        self.assertIn(".Svg(signature.Svg).FitArea()", source)
+        self.assertIn("if (signerCards.Count > 0 && !signersKeptWithTrailingParagraph)", source)
+
+    def test_homepa_header_fields_and_body_spacing_are_independent(self):
+        source = SERVICE.read_text()
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        self.assertIn("var isHomepaLetterhead = hasLetterhead && _homepaCompanyIds.Contains(designCompanyId);", source)
+        self.assertIn("private static readonly int[] DefaultHomepaCompanyIds = { 3, HomepaCompanyId };", source,
+                      "the sample installation stores Homepa as company 3; both ids share the same artwork")
+        self.assertIn("var contentTopPadding = isHomepaLetterhead", source)
+        self.assertIn(": (withMargin || hasLetterhead ? 30f : 0f);", source,
+                      "other companies keep their existing body spacing")
+        self.assertIn("HomepaLetterheadLayout.ReceiverTopPadding(isA5)", source)
+        self.assertIn("contentContainer.PaddingTop(contentTopPadding)", source)
+        self.assertIn("HomepaLetterheadLayout.SubjectBodyGap(isA5) : 0f", source)
+        self.assertIn("col.Item().PaddingTop(subjectTopPadding).Text", source)
+        self.assertIn(".Height(HomepaLetterheadLayout.HeaderHeight(isA5))", source)
+        self.assertIn("HeaderHeight(bool isA5) => isA5 ? 150f : 160f", layout)
+        self.assertIn("ReceiverTopPadding(bool isA5) => isA5 ? 28f : 80f", layout)
+        self.assertIn("SubjectBodyGap(bool isA5) => isA5 ? 8f : 12f", layout)
+        # رزرو پابرگِ مسیر قدیمی دست‌نخورده مانده (فقط ۱۰۰۳ مسیر تازه را می‌گیرد)؛
+        # مسیر «از دل طرح» رزرو بزرگ‌تر خودش را دارد تا متن روی پابرگ نرود.
+        self.assertIn("FooterReserve(bool isA5) => isA5 ? 68f : 90f", layout)
+        # رزرو پابرگِ مسیر طرح بر اساس اندازه‌گیری روی تصویر سربرگ: روبان‌های روشن گوشهٔ
+        # پایین-چپ از ≈۶۸۹pt و پله‌های تیره از ≈۷۳۶pt؛ ۱۴۲ متن را تا ۷۰۰pt نگه می‌دارد.
+        self.assertIn("DesignFooterReserve(bool isA5) => isA5 ? 100f : 142f", layout)
+        self.assertIn("HeaderValueFontSize(bool isA5) => isA5 ? 8.5f : 10.5f", layout)
+        homepa_branch = source.split("else if (isHomepaLetterhead)", 1)[1].split("else if (hasLetterhead)", 1)[0]
+        self.assertNotIn("center: true", homepa_branch)
+        self.assertNotIn('"شماره:"', homepa_branch, "captions must not be duplicated over the artwork")
+        self.assertNotIn('"تاریخ:"', homepa_branch)
+        self.assertNotIn('"پیوست:"', homepa_branch)
+        self.assertIn(".Height(field.Height).AlignMiddle().AlignRight()", source)
+        self.assertIn('isolateLtr ? $"\\u2066{value}\\u2069" : value', source)
+        self.assertIn("col.Item().PaddingTop(subjectTopPadding).Text", source)
+        self.assertNotIn(".Column(body => AddSubjectAndFollowingContent(body))", source,
+                         "the separator and all body elements must share one margin box")
+        self.assertIn("var pageTopMargin = isHomepaLetterhead || isAriaLetterhead", source,
+                      "company 1003 header anchor must not depend on the body-margin option")
+        self.assertIn(": (withMargin ? (isA5 ? 16f : 24f) : 0f);", source,
+                      "other companies retain their existing page margin")
+        self.assertIn("page.MarginBottom(isHomepaLetterhead", source,
+                      "only company 1003 uses the dedicated footer clearance")
+        self.assertIn("page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);", source)
+
+    def test_homepa_content_gap_matches_scaled_header_art_in_a4_and_a5(self):
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        # Measured from the actual 1003 watermark; keep roughly 1cm clear below the diagonal art.
+        a4_gap = 24 + 160 + 80 - 232
+        a5_gap = 16 + 150 + 28 - 163
+        self.assertGreaterEqual(a4_gap, 28)
+        self.assertLessEqual(a4_gap, 42)
+        self.assertGreaterEqual(a5_gap, 28)
+        self.assertLessEqual(a5_gap, 42)
+        self.assertLess(abs(a4_gap - a5_gap), 3)
+        self.assertNotIn("NumberLabel", layout)
+        self.assertNotIn("DateLabel", layout)
+        self.assertNotIn("AttachmentLabel", layout)
+
+    def test_print_popup_is_reserved_on_native_menu_click(self):
+        view = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "Pages" / "Office" / "Letters" / "Outgoing" / "OutgoingLetterView.razor").read_text()
+        shell = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "wwwroot" / "js" / "app-shell.js").read_text()
+        self.assertIn('data-ltx-print-option', view)
+        self.assertIn("document.addEventListener('click'", shell)
+        self.assertIn("window.ltxPrintReserveByClick()", shell)
+        self.assertIn("window.ltxPrintPendingWindows", shell)
+        self.assertIn("window.ltxPrintSessions", shell)
+
+    def test_print_api_keeps_access_and_not_found_guards(self):
+        controller = (API / "Controllers" / "Office" / "OutgoingLettersController.cs").read_text()
+        print_action = controller.split('public async Task<IActionResult> Print(', 1)[1].split('// ==================== گردش / ارجاع', 1)[0]
+        self.assertIn('ForbiddenUnlessAsync(Module, "Read")', print_action)
+        self.assertIn('if (pdf == null) return NotFound', print_action)
+        self.assertIn('!string.Equals(size, "A4"', print_action)
+        self.assertIn('!string.Equals(size, "A5"', print_action)
+        self.assertIn('var hasDabirkhane = isAdmin || await HasAsync(Module, "Dabirkhane")', print_action)
+        flow_check = controller.split("private Task<bool> InFlowAsync(int letterId)", 1)[1].split("[HttpGet(\"{id:int}/attachments\")", 1)[0]
+        self.assertIn("AnyAsync(letter =>", flow_check)
+        self.assertIn("Db.Erjas.Any", flow_check)
+        self.assertIn("Db.OutgoingLetterSigners.Any", flow_check)
+        self.assertNotIn("FirstOrDefaultAsync", flow_check)
+
+    def test_saved_signature_preview_uses_authenticated_bytes_not_an_img_request(self):
+        users_page = (Path(__file__).resolve().parents[2] / "src" / "Inventory.Client" / "Pages" / "System" / "Users.razor").read_text()
+        auth_controller = (API / "Controllers" / "Core" / "AuthController.cs").read_text()
+        self.assertIn('Http.GetAsync($"/api/auth/users/signature/{userId}")', users_page)
+        self.assertIn('data:image/png;base64,', users_page)
+        self.assertNotIn('src="/api/auth/users/signature/@form.Id"', users_page)
+        self.assertIn('[Authorize]', auth_controller.split('[HttpGet("users/signature/{id:int}")]', 1)[1].split('private static byte[] CropSignatureToAlphaBounds', 1)[0])
+        self.assertIn('SaveNamedAsync("UserSignatures", id, output, $"user_{id}_signature.png")', auth_controller)
+        self.assertIn('Size = new Size(1200, 480)', auth_controller)
+        self.assertIn('PngColorType.RgbWithAlpha', auth_controller)
+        self.assertIn('Accept="image/png"', users_page)
+
+    def test_templates_travel_with_build_and_publish(self):
+        project = ET.parse(API / "Inventory.Api.csproj").getroot()
+        content = next(e for e in project.iter("Content") if e.get("Include") == "Reports/**/*.mrt")
+        self.assertEqual(content.get("CopyToOutputDirectory"), "PreserveNewest")
+        self.assertEqual(content.get("CopyToPublishDirectory"), "PreserveNewest")
+
+
+def declared_meta_fields(company, size):
+    """Replica of LetterheadMetaFields.TryRead so the MRT declarations can be asserted here."""
+    unit_factor = {"inches": 72, "centimeters": 72 / 2.54, "millimeters": 72 / 25.4}
+    root = ET.parse(TEMPLATES / str(company) / f"Outgoing-{size}.mrt").getroot()
+    factor = unit_factor.get((root.findtext("ReportUnit") or "").strip().lower(), 72)
+    page = next(e for e in root.iter() if e.tag.split("}")[-1] == "Pages")[0]
+    margins = [float(value) for value in page.findtext("Margins").split(",")]
+    margin_left, margin_top = margins[0], margins[2]
+    components = list(page.find("Components"))
+
+    fields = {}
+    for name, column in (("Number", "LetterNumber"), ("Date", "DateShams"), ("Attachment", "Peyvast")):
+        component = next((c for c in components if column.lower() in (c.findtext("Text") or "").lower()), None)
+        if component is None:
+            continue
+        x, y, width, height = [float(value) for value in component.findtext("ClientRectangle").split(",")]
+        font = component.findtext("Font") or ""
+        size_pt = next((float(part) for part in font.split(",") if part.replace(".", "", 1).isdigit()), 8.0)
+        fields[name] = {
+            "left": (margin_left + x) * factor,
+            "top": (margin_top + y) * factor,
+            "width": width * factor,
+            "height": height * factor,
+            "color": (component.findtext("TextBrush") or "").strip(),
+            "font": size_pt,
+            "center": (component.findtext("HorAlignment") or "").strip() == "Center",
+        }
+    return fields
+
+
+class LetterheadMetaValuesTests(unittest.TestCase):
+    """The number/date/attachment values are painted where the company template says they are."""
+
+    def test_every_company_template_declares_the_three_meta_values(self):
+        for company in (1, 2, 3, 1003, 1005):
+            for size in ("A4", "A5"):
+                with self.subTest(company=company, size=size):
+                    fields = declared_meta_fields(company, size)
+                    self.assertEqual(set(fields), {"Number", "Date", "Attachment"},
+                                     "the print renderer needs all three declarations, otherwise it falls back to the old layout")
+
+    def test_value_colour_follows_the_letterhead_artwork(self):
+        # Homepa prints white values on the dark band; Forough/Aria print black values on white paper.
+        for company in (3, 1003):
+            for size in ("A4", "A5"):
+                with self.subTest(company=company, size=size):
+                    for field in declared_meta_fields(company, size).values():
+                        self.assertEqual(field["color"], "White")
+        for company in (1, 2, 1005):
+            for size in ("A4", "A5"):
+                with self.subTest(company=company, size=size):
+                    for field in declared_meta_fields(company, size).values():
+                        self.assertEqual(field["color"], "Black")
+
+    def test_company_three_and_1003_share_the_same_homepa_geometry(self):
+        for size in ("A4", "A5"):
+            with self.subTest(size=size):
+                sample = declared_meta_fields(3, size)
+                main = declared_meta_fields(1003, size)
+                for name in ("Number", "Date", "Attachment"):
+                    for key in ("left", "top", "width", "height"):
+                        self.assertAlmostEqual(sample[name][key], main[name][key], places=3,
+                                               msg="Reports/OutgoingLetters/Companies/3 and /1003 carry the same Homepa artwork")
+
+    def test_declared_homepa_geometry_equals_the_calibrated_layout(self):
+        # HomepaLetterheadLayout is the calibrated copy of these MRT declarations; they must not drift.
+        layout = SERVICE.with_name("HomepaLetterheadLayout.cs").read_text()
+        for index, (size, header_origin) in enumerate((("A5", 16), ("A4", 24))):
+            fields = declared_meta_fields(1003, size)
+            for name in ("Number", "Date", "Attachment"):
+                method = re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
+                variant = re.findall(r"new\(([^)]+)\)", method)[index]
+                left, top, width, height = [float(value.strip().removesuffix("f")) for value in variant.split(",")]
+                with self.subTest(size=size, field=name):
+                    self.assertAlmostEqual(top + header_origin, fields[name]["top"], places=3)
+                    self.assertAlmostEqual(width, fields[name]["width"], places=1)
+                    self.assertAlmostEqual(height, fields[name]["height"], places=1)
+                    # number keeps the template's x, date/attachment are nudged left by 3pt (A5) / 4pt (A4)
+                    nudge = 0 if name == "Number" else (3 if size == "A5" else 4)
+                    self.assertAlmostEqual(left, fields[name]["left"] - nudge, places=1)
+
+    def test_renderer_reads_the_company_template_instead_of_a_white_guess(self):
+        source = SERVICE.read_text()
+        self.assertIn("var declared = hasLetterhead", source)
+        self.assertIn("? ReadDeclaredMetaFields(", source)
+        self.assertIn("var parsed = LetterheadMetaFields.TryRead(templatePath);", source)
+        self.assertIn('FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")', source)
+        self.assertIn("AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);", source)
+        self.assertIn("AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);", source)
+        self.assertIn(".FontColor(field.Color).LineHeight(1.05f);", source,
+                      "the declared colour must win over the hard-coded white used before")
+        self.assertIn("box = field.Center ? box.AlignCenter() : box.AlignRight();", source)
+        self.assertIn("var top = Math.Max(0f, field.Top - pageHeaderOrigin);", source,
+                      "template rows above the page margin must not become negative padding")
+
+    def test_homepa_company_ids_are_configurable(self):
+        source = SERVICE.read_text()
+        self.assertIn('CompanyIdsFor("Reporting:OutgoingLetters:HomepaCompanyIds", DefaultHomepaCompanyIds)', source)
+        settings = (API / "appsettings.json").read_text()
+        self.assertIn('"HomepaCompanyIds": "3,1003"', settings)
+        self.assertIn('"AriaCompanyIds": "1005"', settings)
+
+
+class CompanyTemplateMapTests(unittest.TestCase):
+    """قالب با شناسهٔ پوشه پیدا می‌شود و شناسهٔ شرکت بین نصب‌ها یکی نیست."""
+
+    def test_layout_follows_the_design_not_the_raw_company_id(self):
+        source = SERVICE.read_text()
+        self.assertIn("var designCompanyId = letterheadCompanyId is int designSource ? TemplateDesignId(designSource) : 0;", source)
+        self.assertIn("var isHomepaLetterhead = hasLetterhead && _homepaCompanyIds.Contains(designCompanyId);", source)
+        self.assertIn("var isAriaLetterhead = hasLetterhead && _ariaCompanyIds.Contains(designCompanyId);", source)
+
+    def test_template_lookup_honours_the_mapping_before_its_own_folder(self):
+        source = SERVICE.read_text()
+        self.assertIn("foreach (var designId in DesignCompanyIds(companyId))", source)
+        self.assertIn("private int TemplateDesignId(int companyId) => _companyTemplateMap.TryGetValue(companyId, out var mapped) ? mapped : companyId;", source)
+        design = source.split("private IEnumerable<int> DesignCompanyIds(int companyId)", 1)[1].split("}", 1)[0]
+        self.assertLess(design.index("if (designId != companyId) yield return designId;"), design.index("yield return companyId;"),
+                        "the mapped design must be searched first")
+
+    def test_mapping_is_read_from_configuration(self):
+        source = SERVICE.read_text()
+        self.assertIn('_configuration.GetSection("Reporting:OutgoingLetters:CompanyTemplateMap").GetChildren()', source)
+        settings = (API / "appsettings.json").read_text()
+        self.assertIn('"CompanyTemplateMap"', settings)
+
+    def test_every_template_folder_is_reachable_and_identifiable(self):
+        """هر پوشهٔ قالب باید همان دو سایز را داشته باشد؛ وگرنه نصب با شناسهٔ متفاوت کورکورانه شکست می‌خورد."""
+        for folder in sorted(TEMPLATES.iterdir()):
+            if not folder.is_dir():
+                continue
+            with self.subTest(company=folder.name):
+                for size in ("A4", "A5"):
+                    self.assertTrue((folder / f"Outgoing-{size}.mrt").is_file())
+
+    def test_report_folder_templates_can_be_synced_to_the_print_path(self):
+        """پوشهٔ Report/outgoingletter مرجع طراحی است؛ اسکریپت همگام‌سازی باید وجود داشته باشد."""
+        repo = Path(__file__).resolve().parents[3]
+        folder = repo / "Report" / "outgoingletter"
+        self.assertTrue((folder / "README-FA.md").is_file())
+        sync = folder / "sync-to-api-templates.bat"
+        self.assertTrue(sync.is_file(), "بدون اسکریپت همگام‌سازی، ویرایش این پوشه هیچ اثری روی چاپ ندارد")
+        script = sync.read_text(encoding="utf-8", errors="replace")
+        self.assertIn("Outgoing-%%S.mrt", script)
+        self.assertIn("inventory\\src\\Inventory.Api\\Reports\\OutgoingLetters\\Companies", script)
+        for company in ("3", "1003"):
+            for size in ("A4", "A5"):
+                self.assertTrue((folder / company / f"Report_{size}_OutgoingLetter.mrt").is_file())
+
+
+class PrintPreparationBudgetTests(unittest.TestCase):
+    """«صفحهٔ چاپ در حال بارگذاری می‌ماند و بعد خطا می‌دهد» = سقف زمانی آماده‌سازی در کلاینت.
+
+    سقف قبلی ۱۵ ثانیه بود و کل مسیر (دریافت PDF + تحویل به مرورگر) را می‌پوشاند؛ رندر سرور
+    (QuestPDF + PDFsharp روی تصویر ۲۴۸۱×۳۵۰۸) روی سرور کند یا در اولین چاپ بیشتر طول می‌کشد و
+    درخواست پیش از آماده‌شدن قطع می‌شد.
+    """
+
+    def setUp(self):
+        self.workflow = (CLIENT / "Services" / "LetterPrintWorkflow.cs").read_text(encoding="utf-8")
+
+    def test_preparation_budget_is_realistic_and_split(self):
+        # بودجهٔ اول ۱۲۰ ثانیه (رندر سرد)، تلاش خودکار ۱۵۰ ثانیه، تلاش دستی ۹۰ ثانیه.
+        self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(120)", self.workflow)
+        self.assertIn("AutoRetryTimeout = TimeSpan.FromSeconds(150)", self.workflow)
+        self.assertIn("RetryTimeout = TimeSpan.FromSeconds(90)", self.workflow)
+        self.assertIn("HandoffTimeout = TimeSpan.FromSeconds(30)", self.workflow)
+        self.assertNotIn("TimeSpan.FromSeconds(15)", self.workflow,
+                         "the old 15-second ceiling cancelled the print before the server finished")
+
+    def test_download_and_browser_handoff_have_separate_budgets(self):
+        self.assertIn("using (var loadTimeout = new CancellationTokenSource(loadBudget))", self.workflow)
+        self.assertIn("using (var handoffTimeout = new CancellationTokenSource(HandoffTimeout))", self.workflow)
+        # بودجه بر اساس شمارهٔ تلاش انتخاب می‌شود: ۱ = اول، ۲ = خودکار، بعدی‌ها = دستی.
+        self.assertIn("1 => FirstAttemptTimeout,", self.workflow)
+        self.assertIn("2 => AutoRetryTimeout,", self.workflow)
+        self.assertIn("_ => RetryTimeout", self.workflow)
+
+    def test_timeout_message_explains_what_happened(self):
+        self.assertIn("ساخت نسخهٔ چاپ بیش از", self.workflow)
+        self.assertIn("«تلاش مجدد»", self.workflow)
+        self.assertIn("OutgoingLetterPrintTiming", self.workflow)
+
+    def test_user_sees_progress_instead_of_a_frozen_spinner(self):
+        self.assertIn("SlowPreparationHintAfter = TimeSpan.FromSeconds(8)", self.workflow)
+        self.assertIn('"ltxPrintStatus"', self.workflow)
+        js = (CLIENT / "wwwroot" / "js" / "app-shell.js").read_text(encoding="utf-8")
+        self.assertIn("window.ltxPrintStatus = function (id, text) {", js)
+        self.assertIn("ltxSetPrintStatus(session, String(text", js)
+
+    def test_failed_render_is_not_cached(self):
+        for service in (SERVICE, Path(__file__).resolve().parents[3] / "src" / "Inventory.Api" / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"):
+            with self.subTest(service=str(service.parts[-6])):
+                source = service.read_text(encoding="utf-8")
+                # کش حافظه باید از بودجهٔ کلاینت بیشتر بماند؛ وگرنه «تلاش مجدد» رندر را تکرار می‌کند.
+                self.assertRegex(source, r"RenderedPdfLifetime = TimeSpan\.From(Minutes|Hours)\(\d+\)")
+                self.assertIn("ConcurrentDictionary<string, CachedRender> RenderedPdfs", source)
+                self.assertIn("TaskCompletionSource<byte[]?>", source)
+                self.assertIn("TaskCreationOptions.RunContinuationsAsynchronously", source)
+                self.assertIn(
+                    "RenderedPdfs.TryRemove(new KeyValuePair<string, CachedRender>(cacheKey, cached));",
+                    source, "a failed or missing render must not stay cached")
+                self.assertIn("cached.Fail(ex);", source)
+
+    def test_cache_key_covers_letter_signatures_and_copies(self):
+        source = SERVICE.read_text(encoding="utf-8")
+        for token in ("SignedCount = _db.OutgoingLetterSigners.Count", "AttachmentCount = _db.AppAttachments.Count",
+                      "CopyToCount = _db.OutgoingLetterCopyToes.Count", "SHA256.HashData"):
+            self.assertIn(token, source)
+
+    def test_concurrent_and_repeated_prints_share_one_render(self):
+        source = SERVICE.read_text(encoding="utf-8")
+        wrapper = source.split("public async Task<byte[]?> GeneratePdfAsync", 1)[1]
+        wrapper = wrapper.split("private static (CachedRender Render, bool StartedHere) RentRenderedPdf", 1)[0]
+        self.assertIn("var (cached, startedHere) = RentRenderedPdf(cacheKey);", wrapper)
+        self.assertIn("return await cached.Render;", wrapper)
+        helper = source.split("private static (CachedRender Render, bool StartedHere) RentRenderedPdf", 1)[1]
+        self.assertIn("RenderedPdfs.TryAdd(cacheKey, fresh)", helper,
+                      "the in-flight render must be published before it is awaited")
+
+    def test_print_cache_does_not_use_lazy_task(self):
+        """VSTHRD011: خواندن Lazy<Task<T>>.Value می‌تواند deadlock کند و ساخت پروژه را
+        با «Error» متوقف می‌کند (خطای VS روی همین سرویس). رندر مشترک با
+        TaskCompletionSource پیاده شده است."""
+        for service in (SERVICE, Path(__file__).resolve().parents[3] / "src" / "Inventory.Api"
+                        / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"):
+            with self.subTest(service=service.parts[-6]):
+                source = service.read_text(encoding="utf-8")
+                self.assertNotIn("Lazy<Task", source, "VSTHRD011 build break")
+                self.assertNotIn("render.Value", source)
+
+    def test_unexpected_print_errors_reach_the_user(self):
+        controllers = [
+            API / "Controllers" / "Office" / "OutgoingLettersController.cs",
+            Path(__file__).resolve().parents[3] / "src" / "Inventory.Api" / "Controllers" / "Office" / "OutgoingLettersController.cs",
+        ]
+        for controller in controllers:
+            with self.subTest(tree=controller.parts[-6]):
+                text = controller.read_text(encoding="utf-8")
+                self.assertIn("catch (Exception ex)", text)
+                self.assertIn("ساخت PDF نامه ناموفق بود ({ex.GetType().Name})", text)
+
+    def test_missing_persian_font_is_reported_instead_of_silently_ignored(self):
+        for service in (SERVICE, Path(__file__).resolve().parents[3] / "src" / "Inventory.Api" / "Services" / "Office" / "Outgoing" / "OutgoingLetterPrintService.cs"):
+            with self.subTest(service=service.parts[-6]):
+                text = service.read_text(encoding="utf-8")
+                self.assertIn("if (!File.Exists(reg))", text)
+                self.assertIn("فونت چاپ فارسی پیدا نشد", text)
+
+
+class BothClientTreesPrintTests(unittest.TestCase):
+    """هر دو درخت این مخزن باید رفتار چاپ یکسان داشته باشند.
+
+    اسکریپت‌های انتشار در ریشهٔ مخزن از `src/` استفاده می‌کنند و
+    `inventory/publish-server.bat` از `inventory/src/`؛ اگر اصلاح فقط در یکی باشد،
+    نصب کاربر بسته به اینکه با کدام اسکریپت منتشر شده، همان خطای قبلی را می‌دهد.
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    CLIENTS = [ROOT / "src" / "Inventory.Client", ROOT / "inventory" / "src" / "Inventory.Client"]
+
+    def test_every_client_has_the_shared_print_workflow(self):
+        for client in self.CLIENTS:
+            with self.subTest(client=client.parts[-4]):
+                workflow = (client / "Services" / "LetterPrintWorkflow.cs").read_text(encoding="utf-8")
+                self.assertIn("FirstAttemptTimeout = TimeSpan.FromSeconds(120)", workflow)
+                self.assertIn("ltxPrintStatus", workflow)
+                program = (client / "Program.cs").read_text(encoding="utf-8")
+                self.assertIn("AddScoped<LetterPrintWorkflow>()", program,
+                              "the workflow must be registered or the print pages cannot inject it")
+
+    def test_every_client_prints_through_the_workflow(self):
+        pages = [
+            "Pages/Office/Letters/LetterCartable.razor",
+            "Pages/Office/Letters/Outgoing/OutgoingLetterCartable.razor",
+            "Pages/Office/Letters/Outgoing/OutgoingLetterView.razor",
+            "Pages/Office/Letters/Outgoing/OutgoingDabirkhane.razor",
+        ]
+        for client in self.CLIENTS:
+            for page in pages:
+                with self.subTest(client=client.parts[-4], page=page.split("/")[-1]):
+                    text = (client / page).read_text(encoding="utf-8")
+                    self.assertIn("@inject LetterPrintWorkflow PrintWorkflow", text)
+                    self.assertIn("PrintWorkflow.PrintPdfAsync", text)
+                    self.assertNotIn('"ltxPrintReady", printId, payload', text,
+                                     "the PDF must reach the browser as binary, not base64")
+
+    def test_every_client_has_the_full_print_js_surface(self):
+        for client in self.CLIENTS:
+            with self.subTest(client=client.parts[-4]):
+                js = (client / "wwwroot" / "js" / "app-shell.js").read_text(encoding="utf-8")
+                for fn in ("ltxPrintBegin", "ltxPrintReady", "ltxPrintFail", "ltxPrintStatus",
+                           "ltxPrintWaitForAction", "ltxPrintDirectPage", "ltxPrintCancel"):
+                    self.assertIn(f"window.{fn} = ", js)
+                self.assertIn("ltxEnsurePrintSurface", js)
+
+    def test_print_services_accept_a_cancellation_token(self):
+        for client in self.CLIENTS:
+            with self.subTest(client=client.parts[-4]):
+                outgoing = (client / "Services" / "OutgoingLetterServices.cs").read_text(encoding="utf-8")
+                self.assertIn("CancellationToken cancellationToken = default", outgoing)
+                self.assertIn("ReadAsByteArrayAsync(cancellationToken)", outgoing)
+                letters = (client / "Services" / "LetterServices.cs").read_text(encoding="utf-8")
+                self.assertIn("CancellationToken cancellationToken = default", letters)
+                api = (client / "Services" / "IApiClient.cs").read_text(encoding="utf-8")
+                self.assertIn("GetFileAsync(string path, CancellationToken cancellationToken = default)", api)
+
+
+class LetterheadSourceResolutionTests(unittest.TestCase):
+    """«فایل‌های طرح در Reports/OutgoingLetters/Companies خوانده نمی‌شوند» — سه علت واقعی:
+
+    ۱) اولویت: فایل ثبت‌شده روی رکورد شرکت (SystemCompanies.LetterheadFileName) همیشه بر
+       طرح داخل قالب MRT مقدم بود، پس طرح شرکت هرگز خوانده نمی‌شد.
+    ۲) نامه بدون CompanyId: چاپ «اولین شرکت دارای سربرگ» را انتخاب می‌کرد، نه شرکت نامه.
+    ۳) نام فایل: فقط «Outgoing-A4.mrt» دقیق خوانده می‌شد و هر نام دیگری بی‌صدا نادیده می‌رفت
+       (لاگ آن هم فقط Debug بود و در سطح پیش‌فرض دیده نمی‌شد).
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    def service_text(self, tree):
+        return (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+
+    def test_template_can_win_over_the_registered_file(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("PreferTemplateLetterhead", service)
+                self.assertIn('"Reporting:OutgoingLetters:PreferTemplateLetterhead"', service)
+                self.assertIn("var preferTemplate = PreferTemplateLetterhead", service)
+                self.assertIn("preferTemplate && templateLetterheadPath != null", service)
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                # طرح قالب برای شرکت ۱۰۰۳ جداگانه اولویت دارد (کلید عمومی خاموش است).
+                self.assertIn('"TemplateLetterheadCompanyIds": "1003"', settings)
+                self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", service)
+
+    def test_shadowing_of_the_design_is_logged(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد", service)
+                self.assertIn("RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}", service)
+
+    def test_missing_template_is_a_loud_warning_with_the_available_folders(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("هیچ قالب چاپی برای شرکت پیدا نشد", service)
+                self.assertIn("AvailableDesigns={AvailableDesigns}", service)
+                self.assertIn("DescribeAvailableDesigns(templateRoot, roots)", service)
+                self.assertNotIn('_logger.LogDebug("قالب سربرگ شرکت یافت نشد', service,
+                                 "debug-level logging hid the reason the design was not read")
+
+    def test_alternate_template_file_names_are_still_read(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("private static string? FindTemplateFile(string folder, string size, out bool exactName)", service)
+                self.assertIn("Contains(size, StringComparison.OrdinalIgnoreCase)", service)
+                self.assertIn("if (files.Length == 1)", service)
+                self.assertIn("نام فایل قالب شرکت {CompanyId} مطابق استاندارد نیست", service)
+
+    def test_letter_without_company_never_picks_another_companys_letterhead(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertNotIn(
+                    '.Where(c => c.IsActive && c.LetterheadFileName != null && c.LetterheadFileName != "")\n                .OrderBy(c => c.Id)',
+                    service,
+                    "the old code printed such letters on the first company's letterhead")
+                self.assertIn("این نامه به هیچ شرکتی متصل نیست", service)
+                self.assertIn("ActiveCompanyIdFromContext()", service)
+
+    def test_letters_store_the_active_company_when_the_form_sends_none(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                           / "OutgoingLetterService.cs").read_text(encoding="utf-8")
+                self.assertIn("private int? DefaultCompanyIdForLetter()", service)
+                self.assertIn("var active = _db.ActiveCompanyId;", service)
+                self.assertEqual(service.count(": DefaultCompanyIdForLetter()"), 2,
+                                 "create and update must both keep a company on the letter")
+                self.assertNotIn("CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null,", service)
+
+    def test_print_diagnostics_are_reachable(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(int letterId, string size);", service)
+                self.assertIn("public async Task<OutgoingLetterPrintDiagnosticsDto?> DiagnoseAsync(", service)
+                controller = (tree / "Inventory.Api" / "Controllers" / "Office" /
+                              "OutgoingLettersController.cs").read_text(encoding="utf-8")
+                self.assertIn('HttpGet("{id:int}/print/diagnose")', controller)
+                self.assertIn("await _print.DiagnoseAsync(id, size)", controller)
+                dto = (tree / "Inventory.Shared" / "Dtos" / "OutgoingLetterDtos.cs").read_text(encoding="utf-8")
+                self.assertIn("class OutgoingLetterPrintDiagnosticsDto", dto)
+                for field in ("LetterCompanyId", "EffectiveCompanyId", "TemplatePath",
+                              "RegisteredLetterheadPath", "LetterheadSource", "AvailableDesigns", "Hint"):
+                    self.assertIn(f"public ", dto)
+                    self.assertIn(field, dto)
+
+    def test_client_offers_every_company_and_shows_the_diagnosis(self):
+        for client in [self.ROOT / "src" / "Inventory.Client", self.ROOT / "inventory" / "src" / "Inventory.Client"]:
+            with self.subTest(client=client.parts[-4]):
+                compose = (client / "Pages" / "Office" / "Letters" / "Outgoing" /
+                           "ComposeOutgoingModal.razor").read_text(encoding="utf-8")
+                self.assertIn("@foreach (var company in CompanyOptions)", compose)
+                self.assertIn("await OutgoingSvc.GetCompaniesAsync()", compose)
+                self.assertIn("companyId = activeCompany?.Id ??", compose)
+                view = (client / "Pages" / "Office" / "Letters" / "Outgoing" /
+                        "OutgoingLetterView.razor").read_text(encoding="utf-8")
+                self.assertIn("ShowPrintDiagnosticsAsync", view)
+                self.assertIn("تشخیص چاپ", view)
+                service = (client / "Services" / "OutgoingLetterServices.cs").read_text(encoding="utf-8")
+                self.assertIn("print/diagnose?size=", service)
+
+
+class PrintServiceSignatureTests(unittest.TestCase):
+    """CS0535: امضای متد عمومی سرویس چاپ باید دقیقاً با اینترفیسش یکی باشد.
+
+    هنگام بازنویسی کش رندر، امضای سه‌پارامتریِ درخت `src/` روی پیاده‌سازی درخت
+    `inventory/` نوشته شد؛ اینترفیس آن درخت شش پارامتر دارد و ساخت پروژه با
+    «does not implement interface member» متوقف شد.
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    @staticmethod
+    def _params(text):
+        return [part for part in text.split(",") if part.strip()]
+
+    def test_public_print_methods_match_the_interface(self):
+        import re
+
+        for tree in self.TREES:
+            service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                       / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+            with self.subTest(tree=tree.parts[-3]):
+                interface = re.search(
+                    r"public interface IOutgoingLetterPrintService.*?\n\}", service, re.S)
+                self.assertIsNotNone(interface, "interface IOutgoingLetterPrintService not found")
+                declared = re.findall(
+                    r"^\s*Task<[^>]+(?:\[\])?\??>\s+(\w+)\(([^)]*)\);", interface.group(0), re.M)
+                self.assertGreaterEqual(len(declared), 2)
+
+                for name, parameters in declared:
+                    with self.subTest(method=name):
+                        expected = len(self._params(parameters))
+                        implementation = re.search(
+                            rf"public async Task<[^>]+(?:\[\])?\??>\s+{name}\(([^)]*)\)", service, re.S)
+                        self.assertIsNotNone(implementation, f"{name} is not implemented")
+                        actual = len(self._params(implementation.group(1)))
+                        self.assertEqual(
+                            expected, actual,
+                            f"{name} takes {actual} parameters but the interface declares {expected} "
+                            "(CS0535 / CS7036)")
+                        # نام پارامترها هم باید یکی باشد؛ کلید کش و کش رندر به همین نام‌ها وابسته‌اند.
+                        for parameter in self._params(parameters):
+                            declared_name = parameter.split("=")[0].strip().split()[-1]
+                            self.assertRegex(implementation.group(1), rf"\b{declared_name}\b")
+
+    def test_render_cache_key_sees_every_output_option(self):
+        # اگر کلید کش بعضی گزینه‌ها را نبیند، نسخهٔ «با سربرگ» و «بدون سربرگ» خروجی
+        # یکدیگر را از کش برمی‌دارند.
+        for tree in self.TREES:
+            service = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                       / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+            with self.subTest(tree=tree.parts[-3]):
+                wrapper = service.split("public async Task<byte[]?> GeneratePdfAsync", 1)[1]
+                wrapper = wrapper.split("if (cacheKey == null) return null;", 1)[0]
+                signature = wrapper.split(")", 1)[0]
+                key_call = wrapper.split("BuildPrintCacheKeyAsync", 1)[1].split(");", 1)[0]
+                for option in ("withCopy", "withMargin", "withLetterhead", "requireSignatures"):
+                    if option in signature:
+                        self.assertIn(option, key_call,
+                                      f"{option} must take part in the cache key")
+
+
+class DesignDrivenLayoutTests(unittest.TestCase):
+    """چیدمان چاپ از دل فایل طرح همان شرکت خوانده می‌شود.
+
+    ویرایش‌های کاربر در Report/outgoingletter (همان MRT داخل
+    Reports/OutgoingLetters/Companies/{Id}) باید بی‌درنگ در چاپ دیده شوند: جای کپشن‌های
+    «گیرنده نامه:/عنوان نامه:»، گیرنده، عنوان، متن، سه ستون امضا و کادر رونوشت.
+    """
+
+    ROOT = Path(__file__).resolve().parents[3]
+    TREES = [ROOT / "src", ROOT / "inventory" / "src"]
+
+    def service_text(self, tree):
+        return (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
+
+    def test_reader_reads_the_same_template_the_printer_uses(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                path = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                        / "OutgoingLetterDesignLayout.cs")
+                self.assertTrue(path.exists(), "OutgoingLetterDesignLayout.cs must exist")
+                source = path.read_text(encoding="utf-8")
+                self.assertIn("TryRead", source)
+                self.assertIn("HasFullLayout", source)
+                for slot in ("Receiver", "Title", "Body", "Caption", "CopyTo", "SignerName"):
+                    self.assertIn(slot, source, f"slot {slot} missing")
+
+    def test_printer_uses_the_template_geometry_and_keeps_the_fallback(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("OutgoingLetterDesignLayout.TryRead", service)
+                self.assertIn("UseDesignLayout(", service)
+                self.assertIn("if (design is { HasFullLayout: true } designLayout)", service)
+                self.assertIn("OutgoingLetterDesignLayout.Slot.Caption", service)
+                # چیدمان قدیمی برای شرکت‌هایی که قالبشان گیرنده/عنوان/متن ندارد باید بماند.
+                self.assertIn("AddSubjectAndFollowingContent", service)
+
+    def test_signers_and_copy_to_flow_after_the_text_instead_of_a_fixed_page_overlay(self):
+        """امضا با موقعیت ثابت پایین صفحه چیده نشود.
+
+        نسخهٔ اول بلوک امضا/رونوشت را در یک صفحهٔ شفاف جدا می‌ساخت و روی «آخرین صفحه»
+        می‌چسباند؛ نتیجه این بود که نامهٔ کوتاه دوصفحه‌ای می‌شد و صفحهٔ دوم تقریباً خالی
+        می‌ماند. حالا امضا در جریان متن (بعد از متن) می‌آید.
+        """
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertNotIn("BuildDesignFixedBlocks", service)
+                self.assertNotIn("CountPdfPages", service)
+                self.assertIn("design.Signatures", service)
+                self.assertIn("design.SignerNames", service)
+                self.assertIn("ShowEntire().Row(", service)
+                # گیرنده/عنوان نباید در page.Header باشند (وگرنه در هر صفحه تکرار می‌شوند)
+                header = service.split("page.Header().ContentFromLeftToRight()", 1)[1]
+                header = header.split("page.Content()", 1)[0]
+                self.assertNotIn("Slot.Receiver", header)
+                self.assertNotIn("Slot.Title", header)
+                # گیرنده/عنوان در بلوک اطلاعاتِ بدنه می‌آیند (نه در سربرگِ تکراری).
+                self.assertIn("LetterPrintTemplate.InfoBlock(col, infoRows", service)
+                self.assertNotIn("AddDesignRow", service)
+
+    def test_letter_content_starts_below_the_letterhead_art(self):
+        """کپشن‌های «گیرنده نامه:/عنوان نامه:» نباید روی قوس آبی سربرگ بیفتند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("HeaderArtBottom(isA5)", service)
+                layout = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                          / "HomepaLetterheadLayout.cs").read_text(encoding="utf-8")
+                self.assertIn("HeaderArtBottom(bool isA5) => isA5 ? 163f : 232f", layout)
+
+    def test_meta_values_are_readable_and_inset_from_the_page_edge(self):
+        """شماره/تاریخ/پیوست نباید کم‌رنگ، ناهم‌وزن و چسبیده به لبهٔ چاپ شوند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("Reporting:OutgoingLetters:MetaValueColor", service)
+                # حاشیهٔ امن از لبهٔ چپ (۱۵mm پیش‌فرض) به‌جای ۸pt قبلی.
+                self.assertIn("Reporting:OutgoingLetters:DesignMetaSafeLeftMm", service)
+                self.assertIn("_designPrint.MetaSafeLeft", service)
+                # هر سه مقدار یک اندازه و یک وزن هستند (طرح «پیوست» را ۱۲ و بقیه را ۱۰ داشت).
+                self.assertIn("Reporting:OutgoingLetters:DesignMetaFontSize", service)
+                # هر سه مقدار یک اندازه‌اند؛ مقدار بلند به‌جای بریده‌شدن، فونتش کوچک می‌شود.
+                self.assertIn("FitFontSize(text, columnWidth, _designPrint.MetaFontSize)", service)
+                self.assertIn('.FontFamily("Vazirmatn-Bold")', service)
+                # رنگ مقدارها مثل قبل و مثل خودِ طرح سفید است (درخواست کارفرما).
+                self.assertIn("_designMetaColor ?? LetterPrintTemplate.MetaValueColor", service)
+                self.assertIn('"MetaValueColor": "#FFFFFF"',
+                              (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8"))
+                self.assertIn('MetaValueColor = "#FFFFFF"',
+                              (tree / "Inventory.Api" / "Services" / "Office"
+                               / "LetterPrintTemplate.cs").read_text(encoding="utf-8"))
+
+    def test_paragraph_direction_is_forced_right_to_left(self):
+        """bidi: ویرگول/نقطهٔ پایانی نباید به ابتدای خط پرت شود."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                renderer = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                            / "RichLetterPdfRenderer.cs").read_text(encoding="utf-8")
+                # هر تکهٔ متنی با RLM محصور می‌شود؛ فقط وقتی فراخوان بخواهد (مسیر ۱۰۰۳)
+                self.assertIn("bool forceRtlParagraph = false", renderer)
+                self.assertIn("if (forceRtlParagraph) MarkRightToLeft(root);", renderer)
+                self.assertIn('node.Text = "\\u200F" + IsolateLatinRuns(node.Text.Trim()) + "\\u200F";', renderer)
+                # متن ترکیبی فارسی/لاتین: واژهٔ لاتین با LRI/PDI جدا می‌شود (معادل <bdi>).
+                self.assertIn("IsolateLatinRuns", renderer)
+                self.assertIn('"\\u2066" + match.Value + "\\u2069"', renderer)
+                self.assertIn("forceRtlParagraph: true", self.service_text(tree))
+                service = self.service_text(tree)
+                # مقدارهای ترکیبی (مثل «۲۲۱/۱۴۰۵/IT») با جداسازی جهت چاپ می‌شوند.
+                self.assertIn("LetterPrintTemplate.IsolateMixedText(text)", service)
+                self.assertIn('$"\\u200F{card.Name}\\u200F"', service)
+
+    def test_pdf_gets_searchable_metadata(self):
+        """لایهٔ متنی PDF ناقص است؛ متادیتا برای بایگانی و جست‌وجو پر می‌شود."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("WithDocumentInfoIfDesignDriven(", service)
+                self.assertIn("document.Info.Subject = PlainTextOf(", service)
+                self.assertIn("document.Info.Keywords =", service)
+                # فقط مسیر ۱۰۰۳ متادیتا می‌گیرد؛ بقیهٔ شرکت‌ها دقیقاً مثل قبل
+                self.assertIn("design is { HasFullLayout: true } ? WithDocumentInfo(pdf, letter) : pdf", service)
+
+    def test_design_layout_defaults_to_company_1003_only(self):
+        """درخواست کارفرما: اصلاح‌های چیدمان فقط برای ۱۰۰۳ باشد."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn('"Reporting:OutgoingLetters:DesignDrivenCompanyIds"', service)
+                self.assertIn("DefaultDesignDrivenCompanyId = 1003", service)
+                self.assertIn("DefaultDesignDrivenCompanyIds = { DefaultDesignDrivenCompanyId }", service)
+                # شرکت ۳ نباید در مسیر جدید باشد (چاپش مثل قبل می‌ماند)
+                self.assertNotIn("DefaultDesignDrivenCompanyIds = { 3", service)
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                self.assertIn('"DesignDrivenCompanyIds": "1003"', settings)
+                self.assertNotIn('"DesignDrivenCompanyIds": "3,1003"', settings)
+
+    def test_diagnostics_say_whether_the_design_was_read(self):
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                self.assertIn("DesignDriven =", service)
+                self.assertIn("DesignLayoutSummary =", service)
+                dto = (tree / "Inventory.Shared" / "Dtos" / "OutgoingLetterDtos.cs").read_text(encoding="utf-8")
+                self.assertIn("public bool DesignDriven { get; set; }", dto)
+                view = (tree / "Inventory.Client" / "Pages" / "Office" / "Letters" / "Outgoing"
+                        / "OutgoingLetterView.razor").read_text(encoding="utf-8")
+                self.assertIn("diag.DesignDriven", view)
+
+    def test_design_branch_only_uses_parameters_that_exist_in_its_method(self):
+        """CS0103: در `BuildContentPdf` متغیری به نام `printData` وجود ندارد.
+
+        `printData` فقط در `GeneratePdfCoreAsync` ساخته می‌شود و مقدارش به‌صورت
+        پارامتر `hasAttachment` به `BuildContentPdf` می‌رسد؛ استفادهٔ مستقیم از آن
+        ساخت پروژه را با «The name 'printData' does not exist in the current context»
+        متوقف می‌کند.
+        """
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                body = service.split("private byte[] BuildContentPdf(", 1)[1]
+                body = body.split("\n    private ", 1)[0]
+                self.assertNotIn("printData", body,
+                                 "BuildContentPdf has no printData variable (CS0103)")
+                self.assertIn("int attachmentCount,", body,
+                              "تعداد برگ پیوست باید پارامتر BuildContentPdf باشد")
+                self.assertIn("externalReference, attachmentCount, hasLetterhead: hasLetterhead", body)
+
+    def test_receiver_and_title_rows_have_a_gap_and_hanging_indent(self):
+        """«گیرنده نامهجناب آقای …» نباید چسبیده چاپ شود؛ برچسب و مقدار دو ستون جدا هستند."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                service = self.service_text(tree)
+                template = (tree / "Inventory.Api" / "Services" / "Office"
+                            / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
+                # فاصلهٔ ثابت و قابل تنظیم بین مقدار و برچسب (طرح: ۰٫۱ اینچ = ۷٫۲pt).
+                self.assertIn("Reporting:OutgoingLetters:DesignLabelGapPt", service)
+                self.assertIn("_designPrint.LabelGap", service)
+                self.assertIn("line.ConstantItem(labelGap);", template)
+                # مقدار در ستون خودش می‌شکند، پس خط دوم زیر برچسب نمی‌رود (hanging indent).
+                self.assertIn("line.RelativeItem().AlignTop().AlignRight()", template)
+                # برچسب و مقدار هم‌اندازه و روی یک خط؛ دونقطه از RtlLabel (با RLM) می‌آید
+                # تا «موضوع:» و نه «:موضوع» چاپ شود.
+                self.assertIn(".Text(RtlLabel(row.Label))", template)
+                self.assertIn(".FontSize(fontSize)", template)
+                self.assertNotIn("baselineShift", service,
+                                 "اختلاف اندازهٔ برچسب/مقدار نباید با جابه‌جایی دستی جبران شود")
+
+    def test_list_items_put_the_marker_in_its_own_column(self):
+        """آیتم‌های فهرست: شماره در ستون راست، متن در ستون خودش، تورفتگی آویزان."""
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                renderer = (tree / "Inventory.Api" / "Services" / "Office" / "Outgoing"
+                            / "RichLetterPdfRenderer.cs").read_text(encoding="utf-8")
+                self.assertIn("var markerWidth = ordered ? fontSize", renderer)
+                self.assertIn("row.ConstantItem(markerWidth).Text(text =>", renderer)
+                self.assertIn("RenderText(row.RelativeItem().PaddingRight(fontSize * 0.35f)", renderer)
+                # فاصلهٔ یکسان بالای فهرست، بین آیتم‌ها و بعد از آن.
+                self.assertIn("column.Item().PaddingTop(topGap).PaddingVertical(fontSize * 0.45f).Column(", renderer)
+                self.assertIn("float topPadding = 0f)", renderer)
+                # شمارهٔ فارسی با نقطهٔ پایانی، در جهت راست‌به‌چپ: «۱.»
+                self.assertIn('{PersianDigits(index.ToString(CultureInfo.InvariantCulture))}."', renderer)
+                # نشانگر دیگر داخل همان بلوک متنیِ متن نیست (علت چسبیدن آیتم بعدی).
+                self.assertNotIn("text.Span(marker).Bold();\n            foreach (var child in item.Children",
+                                 renderer)
+
+    def test_print_margins_are_configurable_for_other_letterheads(self):
+        """حاشیه‌ها با تنظیمات قابل تغییرند تا همان کد برای سربرگ شرکت دیگری هم کار کند."""
+        keys = ("DesignLabelGapPt", "DesignMetaSafeLeftMm", "DesignMetaFontSize",
+                "DesignHeaderArtGapPt")
+        for tree in self.TREES:
+            with self.subTest(tree=tree.parts[-3]):
+                settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
+                service = self.service_text(tree)
+                for key in keys:
+                    self.assertIn(f'"{key}"', settings)
+                    self.assertIn(f"Reporting:OutgoingLetters:{key}", service)
+                self.assertIn("_designPrint.FooterReserve ?? HomepaLetterheadLayout.DesignFooterReserve(isA5)",
+                              service)
+                # حاشیهٔ امن ۱۵ میلی‌متر برای مقدارهای شماره/تاریخ/پیوست.
+                self.assertIn('"DesignMetaSafeLeftMm": 15', settings)
+
+    def test_company_1003_template_announces_receiver_title_and_body(self):
+        """قالب ۱۰۰۳ گیرنده/موضوع/متن را اعلام می‌کند و برچسب‌های قدیمی را ندارد.
+
+        کارفرما خواست «گیرنده نامه:» و «عنوان نامه:» چاپ نشوند؛ در قالب، برچسب گیرنده
+        خالی شده و برچسب عنوان به «موضوع» تغییر کرده است.
+        """
+        for tree in self.TREES:
+            for size in ("A4", "A5"):
+                with self.subTest(tree=tree.parts[-3], size=size):
+                    root = ET.parse(tree / "Inventory.Api" / "Reports" / "OutgoingLetters"
+                                    / "Companies" / "1003" / f"Outgoing-{size}.mrt").getroot()
+                    page = root.find("./Pages/Page1")
+                    texts = [e for e in root.iter() if e.tag.split("}")[-1] == "Text"]
+                    joined = "\n".join("".join(e.itertext()) for e in texts)
+                    # گیرنده/عنوان/متن با همان فیلدهای DataSource1 شناسایی می‌شوند.
+                    self.assertIn("{DataSource1.GirandeAsli}", joined)
+                    self.assertIn("{DataSource1.TitleLetter}", joined)
+                    self.assertIn("{DataSource1.TextLetter}", joined)
+                    # کادر رونوشت با همان فیلدهای DataSource1.Name/Desc شناسایی می‌شود.
+                    self.assertIn("{DataSource1.Desc}", joined)
+                    # برچسب‌های قدیمی: «گیرنده نامه» دیگر وجود ندارد و «عنوان نامه» شده «موضوع».
+                    self.assertNotIn("گیرنده نامه", joined)
+                    self.assertNotIn("عنوان نامه", joined)
+                    self.assertIn(":موضوع", joined)
+
+                    # ترتیب عمودی: گیرنده ← موضوع ← متن ← رونوشت ← کادر امضا
+                    tops = {}
+                    for component in page.find("Components"):
+                        name = component.findtext("Name")
+                        rect = component.findtext("ClientRectangle")
+                        if name in ("Text8", "Text5", "Text7", "Text11", "Image1") and rect:
+                            tops[name] = float(rect.split(",")[1])
+                    self.assertLess(tops["Text8"], tops["Text5"], "گیرنده باید بالای موضوع باشد")
+                    self.assertLess(tops["Text5"], tops["Text7"], "موضوع باید بالای متن باشد")
+                    self.assertLess(tops["Text7"], tops["Text11"], "رونوشت باید زیر متن باشد")
+                    self.assertLess(tops["Text11"], tops["Image1"], "رونوشت باید بالای کادر امضا باشد")
+
+
+if __name__ == "__main__":
+    unittest.main()

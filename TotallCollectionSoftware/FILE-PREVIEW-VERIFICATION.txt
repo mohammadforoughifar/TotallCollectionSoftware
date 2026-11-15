@@ -1,0 +1,78 @@
+FILE PREVIEW VERIFICATION — v3
+Date: 2026-10-02
+Baseline: immutable TotallCollectionSoftware-fixed-v2.7z
+Baseline SHA256: 8eec72e2ef046192419bc10be34320369161919433e9c28b616ec7886ead64c9
+
+ENVIRONMENT
+.NET SDK 8.0.425; Debian/Linux; serial MSBuild, shared compilation off.
+Browser: Chromium 153.0.8010.12 / Playwright.
+Real attachment controllers, JWT, isolated SQLite/scratch FileStore and actual production Razor components.
+The browser harness hosts the components with Interactive Server; production WASM Client is separately compiled and published.
+No Compile/Razor exclusions in production builds; all 299 actual Razor files are compiled.
+
+FINAL CLEAN SOLUTION BUILDS
+Release: PASS / 49 warnings / 0 errors / 00:02:36.98
+Debug:   PASS / 49 warnings / 0 errors / 00:02:52.02
+Existing unrelated warnings remain; this is not a warning-free or all-module audit.
+
+PUBLISH
+Client Release: PASS, ordinary Blazor WASM publish; wasm-tools/AOT not used.
+API Windows x64: PASS, cross-publish from Linux, --self-contained false / PublishSingleFile=true.
+.NET 8 compressed single-file bundles require self-contained mode; v3 condition preserves compression in that mode and fixes framework-dependent publish (NETSDK1176).
+IIS single-file deployment needs out-of-process hosting; v3 adds conditional AspNetCoreHostingModel=OutOfProcess.
+Generated web.config verified: processPath=.\Inventory.Api.exe; hostingModel=outofprocess; timeout=00:10:00; .bcmap/.pfb/.wasm mappings and original request limits preserved.
+Client wwwroot merged only in isolated publish output; all 201 vendored PDF asset hashes and service-worker manifest entries verified.
+This is NOT execution on a Windows/IIS server. No publish binaries are included in the source deliverable.
+
+CHECKS
+56/56 preview renderer checks PASS.
+78/78 real-browser integration checks PASS.
+104/104 archive authorization/security regression checks PASS.
+Total: 238 recorded checks PASS.
+JavaScript syntax: node --check inventory/src/Inventory.Client/wwwroot/js/file-preview.js PASS.
+PDF.js 6.3.289, local only; upstream asset hashes and license retained.
+
+BROWSER COVERAGE
+Eye clicks for PNG/JPEG/GIF/WebP/BMP/TIFF/SVG; disk/database storage; misleading MIME.
+PDF page pixels, pagination, zoom, password, close/Escape and cleanup.
+Word/Excel/PowerPoint/CSV real text, Persian text, tables and embedded images.
+Office sandbox, escaping/nonexecution, no external relationships fetched.
+Controlled errors for corrupted/unsupported/old files and bounded worksheets.
+401/403/404 and HTML-fallback/network errors; retry; late PDF response isolation.
+Read-only UI in a form; no unwanted submit, upload/delete/download; real HTTP denials.
+View-only/anonymous content denials; Authorization headers and no attachment tokens in URL.
+Expired confidential confirmation, wrong/correct password and pending preview resumed.
+Server-generated Office watermark, independent authorized Download and access logs.
+No uncaught browser JavaScript errors; expected HTTP errors are recorded separately.
+Request/PDF viewer/modal-handler counts and preview Blob count return to zero after close.
+Visual QA of Word/PowerPoint/PDF fixtures performed in the real browser harness.
+
+NOT TESTED / LIMITS
+No live SQL Server, Windows/IIS runtime, real customer database/files, migration or remote deployment.
+No production WASM end-to-end session connected to a real customer SQL Server.
+Office preview is lightweight content, not exact pagination/fonts/charts/OLE/animations/layout.
+Legacy binary/encrypted Office and uncommon codecs are not guaranteed; clear errors provided.
+Previewing is not DRM; content can be captured by a viewer despite independent official Download permission.
+Read-only/personal override/manager precedence contract from v2 is unchanged.
+
+COMMANDS USED
+ dotnet clean inventory/Inventory.sln -c Release -m:1 -nr:false
+ dotnet build inventory/Inventory.sln --no-restore -c Release -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet clean inventory/Inventory.sln -c Debug -m:1 -nr:false
+ dotnet build inventory/Inventory.sln --no-restore -c Debug -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet publish inventory/src/Inventory.Client/Inventory.Client.csproj --no-restore -c Release -o <isolated-client-output> -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet publish inventory/src/Inventory.Api/Inventory.Api.csproj -c Release -r win-x64 --self-contained false -o <isolated-api-output> -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet build inventory/tests/AttachmentPreview/AttachmentPreview.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet inventory/tests/AttachmentPreview/bin/Release/net8.0/AttachmentPreview.dll --verify
+ PREVIEW_TEST_HOST=1 PREVIEW_SOURCE_ROOT=<source-root> dotnet inventory/tests/AttachmentPreview/bin/Release/net8.0/AttachmentPreview.dll --urls http://0.0.0.0:5127
+ python inventory/tests/AttachmentPreview/browser_test.py http://127.0.0.1:5127 <results.json>
+ dotnet build inventory/tests/DocArchiveSecurity/DocArchiveSecurity.csproj --no-restore -c Release -m:1 -p:UseSharedCompilation=false -nr:false
+ dotnet inventory/tests/DocArchiveSecurity/bin/Release/net8.0/DocArchiveSecurity.dll
+
+EVIDENCE IN SOURCE
+FILE-PREVIEW-FIX-FA.md; inventory/tests/AttachmentPreview/README.md
+inventory/tests/AttachmentPreview/RENDERER-RESULTS.txt, BROWSER-RESULTS.json
+inventory/tests/AttachmentPreview/BUILD-RELEASE-RESULTS.txt, BUILD-DEBUG-RESULTS.txt
+inventory/tests/AttachmentPreview/PUBLISH-WINDOWS-RESULTS.txt, PUBLISH-VERIFICATION.json
+inventory/tests/DocArchiveSecurity/TEST-RESULTS.txt
+The external v3 manifest records file hashes and exact reconstruction of both binary-capable patches and the full archive; original/v2 files are not deleted.

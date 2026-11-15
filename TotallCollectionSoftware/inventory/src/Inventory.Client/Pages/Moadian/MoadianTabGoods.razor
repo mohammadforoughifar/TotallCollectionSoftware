@@ -1,0 +1,289 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+@if (Ctx.CpInfoId <= 0)
+{
+    <div class="card"><div class="card-body">
+        <div class="empty-state">
+            <i class="bi bi-building-add"></i>
+            <h5>ابتدا شرکت را ثبت کنید</h5>
+            <NavLink class="btn btn-primary" href="moadian/basic-info/company">ثبت شرکت</NavLink>
+        </div>
+    </div></div>
+}
+else
+{
+    <div class="card mi-blocked">
+        <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+            <span><i class="bi bi-box-seam" aria-hidden="true"></i> فهرست کالاها / خدمات <span class="text-muted small">— با شناسهٔ CPC</span></span>
+            <span class="badge badge-soft-primary num">@((data?.TotalCount ?? 0).Num()) کالا</span>
+            <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+                <div class="mi-flt-search" style="max-width:none;min-width:230px">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input class="form-control" placeholder="جستجو در نام یا شناسهٔ CPC" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در کالاها" />
+                </div>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i> کالا/خدمت جدید
+                </button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(loadError))
+        {
+            <div class="mi-error" role="alert">
+                <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+                <div class="mi-error-text">
+                    <div class="fw-bold">بارگذاری فهرست کالاها ناموفق بود</div>
+                    <div class="small" style="white-space:pre-wrap">@loadError</div>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync(pno)">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+                </button>
+            </div>
+        }
+        <div class="card-body p-0">
+            @if (loading)
+            {
+                <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری کالاها">
+                    @for (int si = 0; si < 4; si++)
+                    {
+                        <div class="mi-sk-row">
+                            <div class="mi-sk" style="width:30%"></div>
+                            <div class="mi-sk" style="width:20%"></div>
+                            <div class="mi-sk" style="width:14%"></div>
+                            <div class="mi-sk" style="width:10%"></div>
+                            <div class="mi-sk" style="width:16%"></div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (items is null || items.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></div>
+                    <h5>@(string.IsNullOrWhiteSpace(search) ? "کالایی تعریف نشده است" : $"کالایی با «{search}» یافت نشد")</h5>
+                    <p class="text-muted mb-3">@(string.IsNullOrWhiteSpace(search)
+                        ? "برای صدور صورتحساب، ابتدا کالا/خدمات خود را با شناسهٔ CPC ثبت کنید."
+                        : "عبارت جستجو را تغییر دهید یا آن را پاک کنید.")</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        @if (!string.IsNullOrWhiteSpace(search))
+                        {
+                            <button type="button" class="btn btn-outline-secondary" @onclick="ClearSearch"><i class="bi bi-x-lg" aria-hidden="true"></i> پاک‌کردن جستجو</button>
+                        }
+                        <button type="button" class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-plus-lg" aria-hidden="true"></i> کالا/خدمت جدید</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive grid-desktop mi-table">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>نام کالا / خدمت</th>
+                                <th>شناسهٔ CPC</th>
+                                <th>واحد سنجش</th>
+                                <th class="text-center">ارزش افزوده</th>
+                                <th class="text-end" style="min-width:120px">قیمت</th>
+                                <th class="text-end">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var g in items)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@g.Name</td>
+                                    <td><code class="num" dir="ltr">@g.UniqueIdentifier</code></td>
+                                    <td class="num">@g.UnitOfMeasurement</td>
+                                    <td class="text-center num">@(((decimal)(g.ValueAddedPercentage ?? 0)).Qty())٪</td>
+                                    <td class="text-end num mi-money">@MoadianUi.Money(g.Price)</td>
+                                    <td class="text-end">
+                                        <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => OpenForm(g)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if ((data?.TotalPages ?? 0) > 1)
+                {
+                    <div class="mi-pager d-flex align-items-center gap-2">
+                        <span class="text-muted small num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) کالا — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                        <div class="ms-auto d-flex gap-1">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno <= 1)" @onclick="() => LoadAsync(pno - 1)" aria-label="صفحهٔ قبل"><i class="bi bi-chevron-right"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => LoadAsync(pno + 1)" aria-label="صفحهٔ بعد"><i class="bi bi-chevron-left"></i></button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+<Modal Visible="showForm" Title="@(form.GoodsOrServicesId > 0 ? "ویرایش کالا/خدمت" : "کالا/خدمت جدید")" OnClose="CloseForm">
+        <ChildContent>
+    <div class="mb-2">
+        <label class="form-label">نام کالا / خدمت <span class="text-danger">*</span></label>
+        <input class="form-control" value="@form.Name" @oninput="e => form.Name = e.Value?.ToString()" placeholder="مثلاً: پست الکترونیکی سازمانی" />
+    </div>
+    <div class="row g-2">
+        <div class="col-7">
+            <label class="form-label">شناسهٔ CPC <span class="text-danger">*</span></label>
+            <input class="form-control num" dir="ltr" value="@form.UniqueIdentifier" @oninput="e => form.UniqueIdentifier = e.Value?.ToString()" placeholder="شناسهٔ CPC" />
+        </div>
+        <div class="col-5">
+            <label class="form-label">واحد سنجش</label>
+            <select class="form-select" value="@form.UnitOfMeasurementId" @onchange="OnUnit">
+                <option value="0">— انتخاب —</option>
+                @foreach (var u in Units)
+                {
+                    <option value="@u.UnitOfMeasurementId">@u.Name (@u.Code)</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="row g-2 mt-2">
+        <div class="col-6">
+            <label class="form-label">نرخ ارزش افزوده ٪</label>
+            <input type="number" min="0" max="100" step="any" class="form-control num" value="@form.ValueAddedPercentage" @onchange="OnVat" />
+        </div>
+        <div class="col-6">
+            <label class="form-label">قیمت واحد</label>
+            <input type="number" min="0" step="any" class="form-control num" value="@form.Price" @onchange="OnPrice" />
+        </div>
+    </div>
+    @if (!string.IsNullOrEmpty(formError))
+    {
+        <div class="alert alert-danger py-2 small mt-2">@formError</div>
+    }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="CloseForm">انصراف</button>
+        <button class="btn btn-primary" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check-lg"></i> }
+            @(form.GoodsOrServicesId > 0 ? "ذخیرهٔ تغییرات" : "ثبت کالا")
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private PagedList<VMGoodsOrService>? data;
+    private List<VMGoodsOrService>? items;
+    private List<VMUnitOfMeasurement> Units = new();
+    private bool loading = true;
+    private string? loadError;
+    private int pno = 1;
+    private const int PageSize = 10;
+    private string search = "";
+    private System.Timers.Timer? searchTimer;
+
+    private bool showForm;
+    private VMGoodsOrService form = new();
+    private string? formError;
+    private bool saving;
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
+        _ = InitAsync();
+    }
+
+    private void OnCtxChanged() { search = ""; _ = InitAsync(); }
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void OnSearchKey(KeyboardEventArgs e) { if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); } }
+    private void ClearSearch() { search = ""; _ = LoadAsync(1); }
+
+    private async Task InitAsync()
+    {
+        if (Ctx.CpInfoId <= 0) { loading = false; StateHasChanged(); return; }
+        loading = true; StateHasChanged();
+        try
+        {
+            Units = await Moadian.GetUnitsComboAsync(Ctx.CpInfoId);
+            await LoadAsync(1);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private async Task LoadAsync(int p)
+    {
+        if (Ctx.CpInfoId <= 0) return;
+        loading = true; StateHasChanged();
+        try
+        {
+            loadError = null;
+            var model = await Moadian.GetGoodsAsync(Ctx.CpInfoId, string.IsNullOrWhiteSpace(search) ? null : search, p, PageSize);
+            var paged = MoadianService.AsStrict<PagedList<VMGoodsOrService>>(model, "دریافت فهرست کالاها/خدمات");
+            data = paged;
+            items = paged?.Items?.ToList();
+            pno = p;
+        }
+        catch (Exception ex) { loadError = ex.Message; Toast.Error(ex.Message); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    private void OpenForm(VMGoodsOrService? g)
+    {
+        form = g is null
+            ? new VMGoodsOrService { CpInfoId = Ctx.CpInfoId, ValueAddedPercentage = 0, Price = 0 }
+            : new VMGoodsOrService
+            {
+                GoodsOrServicesId = g.GoodsOrServicesId,
+                CpInfoId = Ctx.CpInfoId,
+                Name = g.Name,
+                UniqueIdentifier = g.UniqueIdentifier,
+                UnitOfMeasurementId = g.UnitOfMeasurementId,
+                UnitOfMeasurement = g.UnitOfMeasurement,
+                ValueAddedPercentage = g.ValueAddedPercentage,
+                Price = g.Price
+            };
+        formError = null;
+        showForm = true;
+    }
+
+    private void CloseForm() { showForm = false; }
+
+    private void OnUnit(ChangeEventArgs e)
+    {
+        form.UnitOfMeasurementId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        form.UnitOfMeasurement = Units.FirstOrDefault(u => u.UnitOfMeasurementId == form.UnitOfMeasurementId)?.Name;
+    }
+
+    private void OnVat(ChangeEventArgs e)
+        => form.ValueAddedPercentage = decimal.TryParse(e.Value?.ToString(), out var v) ? (double)v : 0;
+
+    private void OnPrice(ChangeEventArgs e)
+        => form.Price = decimal.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام کالا الزامی است."; return; }
+        if (string.IsNullOrWhiteSpace(form.UniqueIdentifier)) { formError = "شناسهٔ CPC الزامی است."; return; }
+        if (form.Price <= 0) { formError = "قیمت واحد باید بیشتر از صفر باشد."; return; }
+
+        saving = true; StateHasChanged();
+        try
+        {
+            var r = form.GoodsOrServicesId > 0
+                ? await Moadian.UpdateGoodAsync(form)
+                : await Moadian.InsertGoodAsync(form);
+            if (r.Success)
+            {
+                Toast.Success(form.GoodsOrServicesId > 0 ? "تغییرات ذخیره شد." : "کالا ثبت شد.");
+                CloseForm();
+                await LoadAsync(pno);
+            }
+            else formError = r.Message ?? "خطا در ذخیره.";
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { saving = false; StateHasChanged(); }
+    }
+
+    public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }
+}

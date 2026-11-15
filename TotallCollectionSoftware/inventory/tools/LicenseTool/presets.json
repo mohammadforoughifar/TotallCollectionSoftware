@@ -1,0 +1,30 @@
+{
+  "_comment": "پیش‌تنظیم‌های بستهٔ فروش. کد هر preset در profile با usePresets نام برده می‌شود؛ آیتم‌های صریح profile روی همین‌ها اعمال/جایگزین می‌شوند.",
+  "presets": {
+    "FIN": {
+      "title": "بستهٔ مالی",
+      "scope": ["accounting", "treasury", "expenses", "invoicing"],
+      "term": { "type": "Subscription", "months": 12 },
+      "users": { "mode": "Named", "max": 3, "appliesTo": "Global", "exempt": 1 }
+    },
+    "HR": {
+      "title": "منابع انسانی",
+      "scope": ["hr_fa", "hr_core", "faham_att", "faham_pay"],
+      "term": { "type": "Subscription", "months": 12 },
+      "users": { "mode": "Named", "max": 5, "appliesTo": "Global", "exempt": 1 }
+    },
+    "WAREHOUSE": {
+      "title": "انبار و فروش",
+      "scope": ["catalog", "sales", "warehousing", "stocktaking"],
+      "term": { "type": "Subscription", "months": 12 },
+      "users": { "mode": "Named", "max": 5, "appliesTo": "Global", "exempt": 1 }
+    },
+    "OFFICE": {
+      "title": "اتوماسیون اداری",
+      "scope": ["letters", "docarchive", "workorders"],
+      "term": { "type": "Subscription", "months": 12 },
+      "users": { "mode": "Named", "max": 3, "appliesTo": "Global", "exempt": 1 },
+      "quotas": [ { "metric": "letter.outgoing.create", "limit": 2000, "period": "Monthly" } ]
+    }
+  }
+}

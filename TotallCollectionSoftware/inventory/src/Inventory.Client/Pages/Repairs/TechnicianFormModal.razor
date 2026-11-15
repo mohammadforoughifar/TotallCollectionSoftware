@@ -1,0 +1,76 @@
+@namespace Inventory.Client.Pages
+@inject IRepairService RepairSvc
+@inject IToastService Toast
+@inject IAuthState Auth
+
+<Modal Visible="Visible" Title="@(technician.Id == 0 ? "تعمیرکار جدید" : "ویرایش تعمیرکار")" OnClose="Close">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label" for="tech-name-@formKey">نام <span class="text-danger">*</span></label>
+                <input id="tech-name-@formKey" class="form-control" @bind="technician.Name" disabled="@saving" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="tech-phone-@formKey">موبایل / تلفن</label>
+                <input id="tech-phone-@formKey" class="form-control" @bind="technician.Phone" inputmode="tel" data-digits="tel" dir="ltr" disabled="@saving" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="tech-specialty-@formKey">تخصص</label>
+                <input id="tech-specialty-@formKey" class="form-control" placeholder="مثلاً لپ‌تاپ یا موبایل" @bind="technician.Specialty" disabled="@saving" />
+            </div>
+            @if (technician.Id > 0)
+            {
+                <div class="col-12 form-check form-switch">
+                    <input id="tech-active-@formKey" class="form-check-input" type="checkbox" @bind="technician.IsActive" disabled="@saving" />
+                    <label class="form-check-label" for="tech-active-@formKey">فعال</label>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="Close" disabled="@saving">انصراف (Esc)</button>
+        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@(saving || !CanManage)">
+            @(saving ? "در حال ذخیره…" : "ذخیره (F1)")
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public Technician? EditTechnician { get; set; }
+    [Parameter] public EventCallback<Technician> OnSaved { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    private readonly string formKey = Guid.NewGuid().ToString("N");
+    private Technician technician = new();
+    private bool wasVisible, saving;
+    private bool CanManage => ShopAccess.CanManage(Auth, "Repairs");
+
+    protected override void OnParametersSet()
+    {
+        if (Visible && !wasVisible)
+        {
+            // Work on a copy: cancel must not mutate a list item or an admission.
+            technician = EditTechnician is null ? new Technician() : new Technician {
+                Id = EditTechnician.Id, Name = EditTechnician.Name, Phone = EditTechnician.Phone,
+                Specialty = EditTechnician.Specialty, IsActive = EditTechnician.IsActive
+            };
+        }
+        wasVisible = Visible;
+    }
+    private async Task Close() { if (!saving) await OnCancel.InvokeAsync(); }
+    private async Task Save()
+    {
+        if (saving || !CanManage) return;
+        if (string.IsNullOrWhiteSpace(technician.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            technician.Name = technician.Name.Trim();
+            var saved = await RepairSvc.SaveTechnicianAsync(technician);
+            Toast.Success("تعمیرکار ذخیره شد.");
+            await OnSaved.InvokeAsync(saved);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

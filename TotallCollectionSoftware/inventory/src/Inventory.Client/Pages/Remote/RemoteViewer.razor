@@ -1,0 +1,168 @@
+@page "/remote/view/{SessionId}"
+@using Inventory.Shared.Dtos
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IApiClient Api
+@inject IAuthState Auth
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject ApiOptions ApiOpts
+@inject IToastService Toast
+@implements IAsyncDisposable
+
+<PageTitle>جلسه ریموت دسکتاپ</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>ریموت: @(_session?.DeviceName ?? SessionId)</h1>
+        <p class="lead">وضعیت: @StatusText()</p>
+    </div>
+    <div class="d-flex gap-2 me-auto">
+        <button class="btn btn-outline-danger" @onclick="EndAsync"><i class="bi bi-stop-circle"></i> پایان جلسه</button>
+        <a class="btn btn-secondary" href="/remote"><i class="bi bi-arrow-right"></i> بازگشت</a>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="card">
+    <div class="card-body p-2 bg-dark text-center" style="min-height:320px;">
+        <canvas id="@CanvasId" style="max-width:100%; height:auto; cursor:default;"></canvas>
+        @if (_session?.Status != "Active")
+        {
+            <div class="text-white-50 py-5">
+                @if (_session?.Status == "Pending")
+                {
+                    <div class="spinner-border text-light mb-3"></div>
+                    <div>در انتظار رضایت کاربر روی سیستم مقصد…</div>
+                }
+                else if (_session?.Status == "Rejected")
+                {
+                    <div>کاربر مقصد درخواست را رد کرد.</div>
+                }
+                else if (_session?.Status == "Expired")
+                {
+                    <div>مهلت رضایت به پایان رسید.</div>
+                }
+                else if (_session?.Status == "Ended")
+                {
+                    <div>جلسه پایان یافت. @(_session?.EndReason)</div>
+                }
+                else
+                {
+                    <div>@StatusText()</div>
+                }
+            </div>
+        }
+    </div>
+    <div class="card-footer fs-8 text-muted">
+        @if (_session?.AllowControl == true)
+        {
+            <span>کنترل موس/کیبورد فعال است. برای ارسال کلید، روی تصویر کلیک کنید.</span>
+        }
+        else
+        {
+            <span>جلسه فقط مشاهده است.</span>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string SessionId { get; set; } = "";
+    private const string CanvasId = "remote-canvas";
+    private HubConnection? _hub;
+    private RemoteSessionDto? _session;
+    private DotNetObjectReference<RemoteViewer>? _ref;
+    private string? error;
+    private bool _attached;
+
+    private string StatusText() => _session?.Status switch
+    {
+        "Pending" => "در انتظار رضایت",
+        "Active" => "فعال",
+        "Rejected" => "رد شده",
+        "Expired" => "منقضی",
+        "Ended" => "پایان‌یافته",
+        _ => "در حال اتصال…"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _session = await Api.GetAsync<RemoteSessionDto>($"api/remote/sessions/{SessionId}");
+            var baseUrl = (ApiOpts.BaseUrl ?? "").TrimEnd('/');
+            var token = Auth.Token ?? "";
+            _hub = new HubConnectionBuilder()
+                .WithUrl($"{baseUrl}/hubs/remote?access_token={Uri.EscapeDataString(token)}")
+                .WithAutomaticReconnect()
+                .Build();
+            _hub.On<RemoteSessionDto>("SessionStateChanged", s =>
+            {
+                _session = s;
+                InvokeAsync(StateHasChanged);
+            });
+            _hub.On<byte[], int, int>("Frame", async (data, w, h) =>
+            {
+                try { await JS.InvokeVoidAsync("remoteViewer.drawFrame", CanvasId, data, w, h); } catch { }
+            });
+            _hub.Closed += ex =>
+            {
+                error = "اتصال بلادرنگ قطع شد.";
+                InvokeAsync(StateHasChanged);
+                return Task.CompletedTask;
+            };
+            await _hub.StartAsync();
+            await _hub.SendAsync("JoinSession", SessionId);
+        }
+        catch (Exception ex) { error = ex.Message; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_attached && _hub != null)
+        {
+            try
+            {
+                _ref = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("remoteViewer.attach", CanvasId, _ref, _session?.AllowControl == true);
+                _attached = true;
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnRemoteInput(string inputJson)
+    {
+        if (_hub?.State == HubConnectionState.Connected)
+        {
+            try { await _hub.SendAsync("SendInput", SessionId, inputJson); } catch { }
+        }
+    }
+
+    private async Task EndAsync()
+    {
+        try
+        {
+            if (_hub?.State == HubConnectionState.Connected) await _hub.SendAsync("EndSession", SessionId);
+        }
+        catch { }
+        Nav.NavigateTo("/remote");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_attached)
+        {
+            try { await JS.InvokeVoidAsync("remoteViewer.detach", CanvasId); } catch { }
+        }
+        _ref?.Dispose();
+        if (_hub != null)
+        {
+            try { await _hub.StopAsync(); await _hub.DisposeAsync(); } catch { }
+        }
+    }
+}

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>جستجوی مشتری با شماره تلفن</title>
+<style>
+  :root { --primary:#4f46e5; --line:#e2e8f0; --muted:#64748b; --ink:#0f172a; --bg:#f8fafc; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; font-family:Tahoma,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:520px; margin:0 auto; }
+  h1 { font-size:16px; font-weight:700; margin:0 0 14px; }
+  .samples { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .samples button { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:999px;
+                    padding:4px 10px; font:inherit; font-size:12px; cursor:pointer; }
+  .samples button:hover { border-color:var(--primary); color:var(--primary); }
+  .combo { position:relative; }
+  input { width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:10px;
+          font:inherit; font-size:14px; outline:none; background:#fff; }
+  input:focus { border-color:var(--primary); box-shadow:0 0 0 3px rgba(79,70,229,.12); }
+  .menu { margin-top:6px; border:1px solid var(--line); border-radius:10px; background:#fff; overflow:hidden; }
+  .item { display:flex; flex-direction:column; gap:3px; padding:10px 13px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .item:last-child { border-bottom:0; }
+  .item:hover, .item.sel { background:#eef2ff; }
+  .name { font-size:14px; font-weight:600; }
+  .info { font-size:12px; color:var(--muted); direction:ltr; text-align:right; }
+  .empty { padding:14px; text-align:center; color:var(--muted); font-size:13px; }
+  .count { margin-top:9px; font-size:12px; color:var(--muted); }
+  .picked { margin-top:14px; padding:10px 13px; border:1px solid var(--line); border-radius:10px;
+            background:#fff; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>جستجوی مشتری</h1>
+  <div class="samples" id="samples"></div>
+  <div class="combo">
+    <input id="q" type="text" autocomplete="off" placeholder="نام، موبایل یا تلفن…" aria-label="جستجوی مشتری">
+    <div class="menu" id="menu"></div>
+  </div>
+  <div class="count" id="count"></div>
+  <div class="picked" id="picked">مشتری انتخابشده: —</div>
+</div>
+<script>
+// پیادهسازی معادل PhoneSearch.cs — فقط برای نمایش رفتار جستجو در این صفحهٔ مستقل.
+function digits(value) {
+  let d = '';
+  for (const ch of (value || '')) {
+    const c = ch.codePointAt(0);
+    if (c >= 48 && c <= 57) d += String.fromCharCode(c);
+    else if (c >= 0x06F0 && c <= 0x06F9) d += String.fromCharCode(48 + c - 0x06F0);
+    else if (c >= 0x0660 && c <= 0x0669) d += String.fromCharCode(48 + c - 0x0660);
+  }
+  if (d.startsWith('0098')) return '0' + d.slice(4);
+  if (d.startsWith('98') && d.length >= 12) return '0' + d.slice(2);
+  return d;
+}
+const key = v => digits(v).replace(/^0+/, '');
+function matches(query, fields) {
+  const q = (query || '').trim();
+  if (!q) return true;
+  const k = key(q);
+  return fields.some(f => {
+    if (!f || !f.trim()) return false;
+    if (f.toLowerCase().includes(q.toLowerCase())) return true;
+    return k.length >= 3 && key(f).includes(k);
+  });
+}
+
+const customers = [
+  { name:'شرکت آریا تجارت', mobile:'0912-345-6789', phone:'021-55667788' },
+  { name:'فروشگاه نور', mobile:'۰۹۳۵ ۱۲۳ ۴۵ ۶۷', phone:'' },
+  { name:'مهندسی پارس', mobile:'+98 912 111 2233', phone:'۰۲۱۶۶۴۴۲۲۱۱' },
+  { name:'علی محمدی', mobile:'09121110001', phone:'02155667701' },
+  { name:'شرکت سپهر', mobile:'', phone:'021-88776655' },
+];
+const examples = ['۰۹۱۲', '9123456789', '+98 912', '021-55', 'آریا'];
+const q = document.getElementById('q');
+const menu = document.getElementById('menu');
+const count = document.getElementById('count');
+const picked = document.getElementById('picked');
+let chosen = -1;
+
+function render() {
+  const query = q.value;
+  const found = customers.filter(c => matches(query, [c.name, c.mobile, c.phone]));
+  menu.innerHTML = '';
+  chosen = -1;
+  if (!found.length) {
+    menu.innerHTML = '<div class="empty">موردی یافت نشد</div>';
+  } else {
+    found.forEach((c, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      const info = [c.mobile, c.phone].filter(Boolean).join(' · ');
+      div.innerHTML = '<span class="name"></span>' + (info ? '<small class="info"></small>' : '');
+      div.querySelector('.name').textContent = c.name;
+      if (info) div.querySelector('.info').textContent = info;
+      div.addEventListener('mousedown', e => {
+        e.preventDefault();
+        q.value = c.name;
+        picked.textContent = 'مشتری انتخابشده: ' + c.name;
+        render();
+      });
+      menu.appendChild(div);
+    });
+  }
+  count.textContent = found.length + ' مورد';
+}
+q.addEventListener('input', render);
+q.addEventListener('keydown', e => {
+  const items = [...menu.querySelectorAll('.item')];
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!items.length) return;
+    chosen = e.key === 'ArrowDown'
+      ? (chosen + 1) % items.length
+      : (chosen <= 0 ? items.length - 1 : chosen - 1);
+    items.forEach((x, i) => x.classList.toggle('sel', i === chosen));
+  } else if (e.key === 'Enter' && chosen >= 0) {
+    items[chosen].dispatchEvent(new MouseEvent('mousedown'));
+  }
+});
+const samples = document.getElementById('samples');
+examples.forEach(x => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = x;
+  b.addEventListener('click', () => { q.value = x; q.focus(); render(); });
+  samples.appendChild(b);
+});
+render();
+</script>
+</body>
+</html>

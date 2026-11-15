@@ -1,0 +1,7 @@
+# ===== Totall STT Service — سرویس محلی تبدیل گفتار به متن =====
+# اجرا روی ویندوز/لینوکس، مستقل از برنامهٔ اصلی (نیازی به GPU نیست)
+# نصب:   pip install -r requirements.txt
+#
+# faster-whisper موتور Whisper را با CTranslate2 اجرا می‌کند؛ روی CPU هم
+# سریع است و برای فارسی کیفیت خوبی دارد.
+faster-whisper>=1.1,<2

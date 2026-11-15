@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    آماده‌ساز «دیتابیس قدیمی» برای آزمون مسیر ارتقا (مرحله ۲ — بازبینی).
+
+    چه می‌کند؟ یک دیتابیس SQL Server می‌سازد که وضعیت یک **نصب موجود مشتری** را دارد:
+      • کل مدل و همهٔ جدول‌های کسب‌وکار موجود (مثل نصب قبلی)
+      • همهٔ مایگریشن‌های EF در __EFMigrationsHistory «stamp» شده‌اند
+      • جدول‌های لایسنس **وجود ندارند** (چون در نسخهٔ قبل نبودند)
+    بعد از آن، خودِ برنامه (dotnet Inventory.Api.dll با سوئیچ update-database) دو بار
+    پشت سرهم اجرا می‌شود تا مسیر واقعی ارتقا سنجیده شود.
+
+    اجرا:
+      dotnet run (پروژه) با آرگومان رشتهٔ اتصال دیتابیس تست
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
+  </ItemGroup>
+</Project>

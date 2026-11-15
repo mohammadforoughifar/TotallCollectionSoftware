@@ -1,0 +1,70 @@
+@page "/Audit"
+@attribute [Authorize(Roles = "Admin,Signer")]
+@inject SupportDbContext Db
+@inject AuditChainService Audit
+@{
+    ViewData["Title"] = "ممیزی";
+}
+@functions {
+    public string Error { get; set; } = "";
+    public string OkMessage { get; set; } = "";
+    public AuditVerification? Result { get; set; }
+
+    public async Task<IActionResult> OnPostVerifyAsync()
+    {
+        Result = await Audit.VerifyAsync();
+        return Page();
+    }
+}
+@{
+    Result = await Audit.VerifyAsync();
+    var rows = await Db.AuditLogs.AsNoTracking().OrderByDescending(a => a.Id).Take(200).ToListAsync();
+    var entityFilter = Request.Query["entity"].ToString();
+    var total = await Db.AuditLogs.CountAsync();
+}
+<div class="page-head"><div><h1>ممیزی</h1>
+    <p class="lead">@Ui.N(total) ردیف کل (فقط‌افزودنی، زنجیرهٔ هش) · ۲۰۰ ردیف آخر</p></div>
+    <div class="ms-auto">
+        <form method="post" asp-page-handler="Verify" class="inline">
+            <button class="btn small ghost" type="submit">بررسی زنجیره</button>
+        </form>
+    </div>
+</div>
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+@if (Result is { Ok: true })
+{
+    <div class="alert ok">زنجیرهٔ ممیزی سالم است. (@Ui.N(Result.RowCount) ردیف بررسی شد)</div>
+}
+else if (Result is { Ok: false })
+{
+    <div class="alert error">⛔ زنجیرهٔ ممیزی معتبر نیست: @Result.Message (ردیف @Result.BrokenAtId)</div>
+}
+
+<div class="card"><div class="card-body">
+    <form method="get" class="grid">
+        <div class="field"><label for="entity">موجودیت</label>
+            <select id="entity" name="entity">
+                <option value="">— همه —</option>
+                @foreach (var entity in new[] { "LicenseRequest", "IssuedLicense", "Customer", "SupportUser", "Setting", "Backup" })
+                {
+                    <option value="@entity" selected="@(entityFilter == entity)">@entity</option>
+                }
+            </select></div>
+        <div class="field"><label>&nbsp;</label><button class="btn ghost" type="submit">صافی</button></div>
+    </form>
+</div></div>
+
+<div class="card">
+    <table>
+        <thead><tr><th>#</th><th>زمان</th><th>کاربر</th><th>کار</th><th>موجودیت</th><th>شناسه</th><th>هش</th></tr></thead>
+        <tbody>
+        @foreach (var row in rows.Where(r => string.IsNullOrWhiteSpace(entityFilter) || r.Entity == entityFilter))
+        {
+            <tr><td class="mono">@row.Id</td><td>@JalaliDate.Full(row.At)</td><td>@(string.IsNullOrWhiteSpace(row.UserName) ? "—" : row.UserName)</td>
+                <td class="mono">@row.Action</td><td class="mono">@(row.Entity ?? "—")</td>
+                <td class="mono">@(row.EntityId ?? "—")</td>
+                <td class="mono" title="@row.Hash">@Ui.Clip(row.Hash, 12)</td></tr>
+        }
+        </tbody>
+    </table>
+</div>

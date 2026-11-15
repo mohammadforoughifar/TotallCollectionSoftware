@@ -1,0 +1,142 @@
+@page "/Licenses/Details"
+@inject SupportDbContext Db
+@inject AuditChainService Audit
+@inject DeliveryService Delivery
+@inject LicenseInspector Inspector
+@{
+    ViewData["Title"] = "جزئیات لایسنس";
+}
+@functions {
+    public int LicenseId { get; set; }
+    public string Error { get; set; } = "";
+    public string InspectionText { get; set; } = "";
+    public bool? InspectionOk { get; set; }
+
+    private int ResolveId()
+    {
+        if (int.TryParse(Request.Query["id"], out var fromQuery) && fromQuery > 0) return fromQuery;
+        if (Request.HasFormContentType && int.TryParse(Request.Form["id"], out var fromForm)) return fromForm;
+        return 0;
+    }
+
+    public async Task<IActionResult> OnPostRevokeNoteAsync()
+    {
+        LicenseId = ResolveId();
+        var license = await Db.IssuedLicenses.FirstOrDefaultAsync(l => l.Id == LicenseId);
+        if (license is null) return Redirect("/Licenses");
+        var note = Request.Form["revocationNote"].ToString().Trim();
+        if (note.Length == 0)
+        {
+            TempData["error"] = "یادداشت ابطال خالی است.";
+            return Redirect($"/Licenses/Details?id={LicenseId}");
+        }
+
+        license.RevocationNote = note.Length <= 500 ? note : note[..500];
+        await Db.SaveChangesAsync();
+        await Audit.AppendAsync(User.UserName(), "LICENSE_REVOCATION_NOTE", "IssuedLicense", LicenseId.ToString(), null, User.UserId());
+        TempData["ok"] = "یادداشت ابطال ثبت شد (هیچ ابطال آفلاینی وجود ندارد).";
+        return Redirect($"/Licenses/Details?id={LicenseId}");
+    }
+
+    public async Task<IActionResult> OnPostVerifyAsync()
+    {
+        LicenseId = ResolveId();
+        var license = await Db.IssuedLicenses.FirstOrDefaultAsync(l => l.Id == LicenseId);
+        if (license is null) return Redirect("/Licenses");
+        var (bytes, error) = Delivery.ReadLicenseFile(license);
+        if (bytes is null)
+        {
+            TempData["error"] = error;
+            return Redirect($"/Licenses/Details?id={LicenseId}");
+        }
+
+        var inspection = Inspector.Inspect(System.Text.Encoding.UTF8.GetString(bytes));
+        TempData[inspection.Ok ? "ok" : "error"] = inspection.Ok
+            ? "امضا معتبر است."
+            : inspection.Error;
+        return Redirect($"/Licenses/Details?id={LicenseId}");
+    }
+}
+@{
+    LicenseId = ResolveId();
+    var license = await Db.IssuedLicenses.AsNoTracking().Include(l => l.Customer).Include(l => l.Request)
+        .Include(l => l.Deliveries).FirstOrDefaultAsync(l => l.Id == LicenseId);
+    var items = license?.PayloadJson ?? "";
+}
+<div class="page-head">
+    <div><h1>لایسنس <span class="mono">@(license?.Serial ?? "?")</span></h1>
+        <p class="lead">@(license?.Customer?.Name ?? "—") · صادر @JalaliDate.Short(license?.CreatedAt)</p></div>
+    <div class="ms-auto">
+        @if (license is not null)
+        {
+            <a class="btn ghost" href="/Requests/Deliver?id=@license.RequestId">تحویل</a>
+            <a class="btn" href="/Licenses/Download?id=@license.Id">دانلود .lic</a>
+        }
+    </div>
+</div>
+@if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
+@if (TempData["error"] is string errorMessage && !string.IsNullOrEmpty(errorMessage)) { <div class="alert error">@errorMessage</div> }
+@if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+@if (license is null)
+{
+    <div class="alert error">لایسنس پیدا نشد.</div>
+}
+else
+{
+    <div class="grid">
+        <div class="card"><div class="card-head">شناسنامه</div><div class="card-body">
+            <dl class="kv">
+                <dt>سریال</dt><dd class="mono">@license.Serial</dd>
+                <dt>SHA256 فایل</dt><dd class="mono">@Ui.Clip(license.Sha256, 32)</dd>
+                <dt>حجم</dt><dd>@Ui.Bytes(license.SizeBytes)</dd>
+                <dt>Key ID</dt><dd class="mono">@license.KeyId</dd>
+                <dt>الگوریتم</dt><dd class="mono">@license.Algorithm</dd>
+                <dt>معتبر</dt><dd>@JalaliDate.Short(license.ValidFrom) → @JalaliDate.Short(license.ValidUntil)</dd>
+                <dt>به‌روزرسانی تا</dt><dd>@JalaliDate.Short(license.UpdatesUntil)</dd>
+            </dl>
+        </div></div>
+
+        <div class="card"><div class="card-head">بازبینی</div><div class="card-body">
+            <dl class="kv">
+                <dt>امضا با کلید عمومی</dt><dd>@(license.VerifiedByPublicKey ? "✔ معتبر" : "✖")</dd>
+                <dt>تطابق شناسهٔ نصب</dt><dd>@(license.VerifiedByInstallation ? "✔" : "✖")</dd>
+                <dt>وضعیت</dt><dd><span class="badge @Ui.LicenseBadge(license.Status)">@Ui.LicenseStatus(license.Status)</span></dd>
+                <dt>جانشین (Superseded)</dt><dd>@(license.SupersededByLicenseId is int next ? $"#{next}" : "—")</dd>
+            </dl>
+            <p class="hint">لایسنس تغییرناپذیر است: هیچ ویرایشی روی این ردیف انجام نمی‌شود.</p>
+            <form method="post" asp-page-handler="Verify">
+                <input type="hidden" name="id" value="@license.Id" />
+                <button type="submit" class="btn small ghost">بازبینی دوبارهٔ فایل</button>
+            </form>
+        </div></div>
+    </div>
+
+    <div class="card"><div class="card-head">آیتم‌ها</div><div class="card-body">
+        <pre>@items</pre>
+    </div></div>
+
+    <div class="card"><div class="card-head">اصلاح/ابطال</div><div class="card-body">
+        <form method="post" asp-page-handler="RevokeNote">
+            <input type="hidden" name="id" value="@license.Id" />
+            <div class="field"><label for="revocationNote">یادداشت ابطال (فقط ثبت، بدون اثر فنی)</label>
+                <input id="revocationNote" name="revocationNote" value="@(license.RevocationNote ?? "")" /></div>
+            <p><button type="submit" class="btn danger">ثبت یادداشت</button>
+                <a class="btn ghost" href="/Requests/Draft?id=@license.RequestId">صدور سریال تازه (جانشین)</a></p>
+        </form>
+        <p class="hint">اثر واقعی فقط با انقضا یا صدور سریال تازه است.</p>
+    </div></div>
+
+    <div class="card"><div class="card-head">سابقهٔ تحویل</div><div class="card-body">
+        <table>
+            <thead><tr><th>زمان</th><th>کانال</th><th>گیرنده</th><th>نتیجه</th></tr></thead>
+            <tbody>
+            @foreach (var row in license.Deliveries.OrderByDescending(d => d.Id))
+            {
+                <tr><td>@JalaliDate.Full(row.At)</td><td>@Ui.DeliveryChannelText(row.Channel)</td>
+                    <td class="mono">@(row.Recipient ?? "—")</td><td>@(row.Success ? "✔" : "✖")</td></tr>
+            }
+            </tbody>
+        </table>
+    </div></div>
+}

@@ -1,0 +1,19 @@
+# ===== Totall OCR Service — سرویس استخراج متن (OCR) =====
+# اجرا روی ویندوز/لینوکس، مستقل از برنامهٔ اصلی
+# نصب کامل:   pip install -r requirements.txt
+# موتور پیشنهادی ویندوز (بدون نصب هیچ ابزار سیستمی):  pip install -r requirements-easyocr.txt
+
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+Pillow>=10.0
+numpy>=1.26
+pypdf>=4.2
+pypdfium2>=4.29
+
+# موتور «tesseract» (اختیاری — در صورت نصب بودن tesseract روی سیستم)
+pytesseract>=0.3.10
+
+# استخراج متن Word (.docx) و Excel (.xlsx) — همهٔ شیت‌ها و جدول‌ها
+python-docx>=1.1
+openpyxl>=3.1

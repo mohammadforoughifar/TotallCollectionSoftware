@@ -1,0 +1,1049 @@
+@page "/moadian/invoices"
+@using Inventory.Shared.Dtos.Moadian
+@using InvoiceVM = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceVM
+@using InvoiceResponse = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.InvoiceResponse
+@* ErroreMesage یک کلاس تودرتو داخل VmInvoiceItems است (MoadianVms.cs:390)، نه یک نوع
+   سطح‌بالا در namespace. به همین دلیل «@using Inventory.Shared.Dtos.Moadian» در خط بالا
+   آن را در دسترس نمی‌گذارد و خط ۴۹۰ با CS0246 شکست می‌خورد. alias لازم است — همان
+   الگویی که دو خط بالا برای InvoiceVM و InvoiceResponse (که آن‌ها هم تودرتو هستند) دارند. *@
+@using ErroreMesage = Inventory.Shared.Dtos.Moadian.VmInvoiceItems.ErroreMesage
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject MoadianCompanyContext Ctx
+@implements IDisposable
+
+<PageTitle>سامانه مودیان — صورتحساب‌ها</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-journal-text text-primary"></i> صورتحساب‌های الکترونیکی</h1>
+        <p class="lead">فهرست، صدور و پیگیری وضعیت صورتحساب در کارپوشهٔ مالیاتی</p>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+        @if (CanCreate)
+        {
+            <NavLink class="btn btn-primary" href="moadian/invoices/new"><i class="bi bi-plus-lg"></i> صورتحساب جدید</NavLink>
+        }
+        <NavLink class="btn btn-outline-secondary" href="moadian/guide"><i class="bi bi-journal-check"></i> راهنما</NavLink>
+    </div>
+</div>
+
+<MoadianCompanyBar />
+
+@if (Ctx.CpInfoId <= 0)
+{
+    <div class="card"><div class="card-body">
+        <div class="empty-state">
+            <i class="bi bi-building-add"></i>
+            <h5>برای مشاهدهٔ صورتحساب، ابتدا شرکت را ثبت کنید</h5>
+            <NavLink class="btn btn-primary" href="moadian/basic-info/connection">ثبت شرکت و اتصال</NavLink>
+        </div>
+    </div></div>
+}
+else
+{
+    @* ---------- تب‌های وضعیت (سبک ماژول دستور کار: شمارنده + آیکون) ---------- *@
+    <div class="mi-tabs mb-3" role="tablist" aria-label="وضعیت صورتحساب">
+        @foreach (var t in Tabs)
+        {
+            var tabCount = CountOf(t.Code);
+            <button type="button" class="mi-tab @(fOp == t.Code ? "active" : "")" aria-pressed="@(fOp == t.Code)" @onclick="() => SetOp(t.Code)">
+                <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+                @if (tabCount is not null)
+                {
+                    <span class="mi-tab-badge num">@tabCount.Value.Num()</span>
+                }
+            </button>
+        }
+    </div>
+
+    @* ---------- کارت فهرست صورتحساب (سربرگ + نوار ابزار + فهرست) ---------- *@
+    <div class="card mi-list mi-blocked">
+        <div class="card-header d-flex align-items-center gap-2">
+            <span><i class="bi bi-receipt" aria-hidden="true"></i> @(fOp == "همه" ? "همهٔ صورتحساب‌ها" : MoadianUi.StatusLabel(fOp))</span>
+            @if (data is not null)
+            {
+                <span class="badge badge-soft-primary num">@(data.TotalCount.Num()) مورد</span>
+            }
+        </div>
+        <div class="mi-filterbar">
+            <div class="mi-flt-search">
+                <i class="bi bi-search" aria-hidden="true"></i>
+                <input id="invoice-search" class="form-control" placeholder="موضوع، شماره، شمارهٔ مالیاتی، مشتری، وضعیت…"
+                       value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در صورتحساب‌ها" />
+                @if (!string.IsNullOrEmpty(search))
+                {
+                    <button type="button" class="mi-flt-clear" title="پاک‌کردن جستجو" aria-label="پاک‌کردن جستجو"
+                            @onclick="ClearSearchBox"><i class="bi bi-x-lg"></i></button>
+                }
+            </div>
+            <div class="mi-flt-field mi-flt-date">
+                <span>از تاریخ</span>
+                <DatePicker Value="fFrom" ValueChanged="OnFrom" AllowClear="true" />
+            </div>
+            <div class="mi-flt-field mi-flt-date">
+                <span>تا تاریخ</span>
+                <DatePicker Value="fTo" ValueChanged="OnTo" AllowClear="true" />
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => ResetFilters()">
+                <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> حذف فیلترها
+            </button>
+            @if (!string.IsNullOrEmpty(dateFilterError))
+            {
+                <div class="alert alert-warning py-1 px-2 mb-0 small" role="status" style="align-self:center"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> @dateFilterError</div>
+            }
+        </div>
+        <div class="mi-body p-0">
+            @if (!string.IsNullOrEmpty(loadError))
+            {
+                <div class="mi-error" role="alert">
+                    <i class="bi bi-exclamation-octagon" aria-hidden="true"></i>
+                    <div class="mi-error-text">
+                        <div class="fw-bold">بارگذاری فهرست صورتحساب‌ها ناموفق بود</div>
+                        <div class="small" style="white-space:pre-wrap">@loadError</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-auto" @onclick="() => LoadAsync(pno)">
+                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i> تلاش دوباره
+                    </button>
+                </div>
+            }
+            @if (loading)
+            {
+                <div class="mi-skeleton" role="status" aria-label="در حال بارگذاری فهرست صورتحساب‌ها">
+                    @for (int si = 0; si < 6; si++)
+                    {
+                        <div class="mi-sk-row">
+                            <div class="mi-sk" style="width:34px"></div>
+                            <div class="mi-sk" style="width:11%"></div>
+                            <div class="mi-sk" style="width:10%"></div>
+                            <div class="mi-sk" style="width:13%"></div>
+                            <div class="mi-sk" style="width:20%"></div>
+                            <div class="mi-sk" style="width:15%"></div>
+                            <div class="mi-sk" style="width:18%"></div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (items is null || items.Count == 0)
+            {
+                <div class="empty-state">
+                    <div class="mi-empty-icon" aria-hidden="true"><i class="bi bi-receipt"></i></div>
+                    <h5>صورتحسابی یافت نشد</h5>
+                    <p class="text-muted mb-3">@(HasActiveFilters
+                        ? "هیچ صورتحسابی با شرایط جستجو و فیلتر فعلی مطابقت ندارد. می‌توانید فیلترها را پاک کنید تا فهرست کامل را ببینید."
+                        : "با دکمهٔ «صورتحساب جدید» در بالای صفحه، اولین صورتحساب را صادر کنید.")</p>
+                    <div class="d-flex gap-2 justify-content-center flex-wrap">
+                        @if (HasActiveFilters)
+                        {
+                            <button type="button" class="btn btn-outline-primary" @onclick="() => ResetFilters()"><i class="bi bi-funnel" aria-hidden="true"></i> حذف فیلترها</button>
+                        }
+                        @if (CanCreate)
+                        {
+                            <NavLink class="btn btn-primary" href="moadian/invoices/new"><i class="bi bi-plus-lg" aria-hidden="true"></i> صورتحساب جدید</NavLink>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive grid-desktop mi-table">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th style="width:56px">ردیف</th>
+                                <th>موضوع</th>
+                                <th style="width:90px">شماره صورتحساب</th>
+                                <th style="width:105px">تاریخ صدور</th>
+                                <th>نام مشتری</th>
+                                <th class="text-end" style="min-width:130px">مجموع صورتحساب</th>
+                                <th style="width:80px">نوع پرداخت</th>
+                                <th style="width:80px">نوع صورتحساب</th>
+                                <th style="min-width:210px">شماره مالیاتی</th>
+                                <th style="width:150px">وضعیت</th>
+                                <th class="text-end" style="min-width:430px">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int ix = 0; ix < items.Count; ix++)
+                            {
+                                var inv = items[ix];
+                                <tr class="mi-rt mi-rt-@inv.StatusSentToSystemInt @(_flashId == InvoiceId(inv) ? "mi-flash" : "")" id="mi-row-@InvoiceId(inv)">
+                                    <td class="num text-muted">@(((pno - 1) * PageSize + ix + 1).Num())</td>
+                                    <td>
+                                        <span class="badge @MoadianUi.SubjectBadge(inv.Subject)">
+                                            @inv.Subject
+                                        </span>
+                                    </td>
+                                    <td class="num fw-semibold">@(inv.NumberInvoice?.NoGroup() ?? "—")</td>
+                                    <td class="num">@MoadianUi.Shamsi(inv.DateOrder)</td>
+                                    <td>@inv.CustomerName</td>
+                                    <td class="text-end num mi-money">@MoadianUi.Money(inv.TotallMoney)</td>
+                                    <td>@inv.PaymentType</td>
+                                    <td class="small">@inv.TypePattern</td>
+                                    <td>
+                                        @{
+                                            var taxPrimary = GetTaxPrimary(inv);
+                                            var taxRef = GetTaxReference(inv);
+                                        }
+                                        @if (string.IsNullOrWhiteSpace(taxPrimary) && string.IsNullOrWhiteSpace(taxRef))
+                                        {
+                                            <span class="text-muted small">—</span>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex flex-column gap-1">
+                                                @if (!string.IsNullOrWhiteSpace(taxPrimary))
+                                                {
+                                                    <div class="d-flex align-items-center gap-1">
+                                                        <span class="num small" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.82rem; letter-spacing:0.3px;">@taxPrimary</span>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مالیاتی" aria-label="کپی شماره مالیاتی @taxPrimary" @onclick="() => CopyText(taxPrimary)"><i class="bi bi-clipboard" style="font-size:0.85rem;"></i></button>
+                                                    </div>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(taxRef))
+                                                {
+                                                    <div class="d-flex align-items-center gap-1 small text-muted">
+                                                        <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
+                                                        @* کلیک روی شمارهٔ مرجع → رفتن به ردیفِ صورتحسابِ مرجع *@
+                                                        <button type="button" class="mi-ref-link num" dir="ltr"
+                                                                style="font-family:ui-monospace,monospace; font-size:0.78rem; letter-spacing:0.3px;"
+                                                                title="رفتن به صورتحسابِ مرجع (@taxRef)"
+                                                                aria-label="رفتن به صورتحسابِ مرجع @taxRef"
+                                                                @onclick="() => GoToReferenceAsync(taxRef)"
+                                                                @onclick:stopPropagation="true">@taxRef</button>
+                                                        <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @taxRef" @onclick="() => CopyText(taxRef)"><i class="bi bi-clipboard" style="font-size:0.85rem;"></i></button>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="mi-status @MoadianUi.StatusPillClass(inv.StatusSentToSystemInt)" title="@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)" aria-label="وضعیت: @MoadianUi.StatusLabel(inv.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)</span>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="mpa-group">
+                                            @* a) جزئیات *@
+                                            <NavLink class="mpa mpa-blue mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}")" title="جزئیات صورتحساب" aria-label="جزئیات صورتحساب">
+                                                <i class="bi bi-eye" aria-hidden="true"></i>
+                                            </NavLink>
+                                            @* c2) ثبت دستی واکنش خریدار — فقط روی اسناد منتظر واکنش در کارپوشه (۲/۳/۴) *@
+                                            @if (CanUpdate && MoadianUi.CanReactManually(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <button type="button" class="mpa mpa-amber mpa-ic" title="ثبت دستی وضعیت خریدار (تأیید شده/رد شده/تأیید سیستمی) — SDK واکنش‌ها را برنمی‌گرداند"
+                                                        aria-label="ثبت دستی وضعیت" @onclick="() => OpenReactModal(inv)" disabled="@acting">
+                                                    <i class="bi bi-person-check" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                            @* d) ویرایش *@
+                                            @if (CanUpdate && MoadianUi.CanEdit(inv.StatusSentToSystemInt))
+                                            {
+                                                <NavLink class="mpa mpa-green mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/edit")" title="ویرایش صورتحساب" aria-label="ویرایش صورتحساب">
+                                                    <i class="bi bi-pencil" aria-hidden="true"></i>
+                                                </NavLink>
+                                            }
+                                            @* e) کپی *@
+                                            @if (CanCreate)
+                                            {
+                                                <NavLink class="mpa mpa-gray mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/copy")" title="کپی صورتحساب" aria-label="کپی صورتحساب">
+                                                    <i class="bi bi-copy" aria-hidden="true"></i>
+                                                </NavLink>
+                                            }
+                                            @* b) چاپ *@
+                                            <NavLink class="mpa mpa-dark mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}?print=1")" title="چاپ صورتحساب" aria-label="چاپ صورتحساب">
+                                                <i class="bi bi-printer" aria-hidden="true"></i>
+                                            </NavLink>
+                                            @* ارسال *@
+                                            @if (CanSend && MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                            {
+                                                                                                <button type="button" class="mpa mpa-green mpa-ic" title="ارسال / ارسال مجدد به سامانه مودیان" aria-label="ارسال / ارسال مجدد به سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => SendToMoadian(inv)">
+                                                    <i class="bi bi-send" aria-hidden="true"></i>
+                                                </button>
+                                            }
+@if (CanInquiry && MoadianUi.CanInquiry(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <button type="button" class="mpa mpa-sky mpa-ic" title="استعلام صورتحساب از سامانه مودیان" aria-label="استعلام صورتحساب از سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => EstelamRow(inv)">
+                                                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                            @if (CanInquiry && MoadianUi.CanShowErrors(inv.StatusSentToSystemInt))
+                                            {
+                                                <button type="button" class="mpa mpa-red mpa-ic" title="نمایش خطاهای صورتحساب" aria-label="نمایش خطاهای صورتحساب"
+                                                        disabled="@acting" @onclick="() => ShowErrorsRow(inv)">
+                                                    <i class="bi bi-bug" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                            @if (CanInquiry && MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <a class="mpa mpa-cyan mpa-ic" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener"
+                                                   title="مشاهدهٔ صورتحساب در کارپوشهٔ سامانه مودیان (در پنجرهٔ جدید باز می‌شود)" aria-label="مشاهده در کارپوشه">
+                                                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                                </a>
+                                            }
+                                            @if (CanUpdate && MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <NavLink class="mpa mpa-amber mpa-ic" href="@($"moadian/invoices/{InvoiceId(inv)}/eslahi")" title="صدور صورتحساب اصلاحی" aria-label="صدور صورتحساب اصلاحی">
+                                                    <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                                                </NavLink>
+                                                @if (CanSend)
+                                                {
+                                                    <button type="button" class="mpa mpa-indigo mpa-ic" title="صدور برگشت از فروش" aria-label="صدور برگشت از فروش"
+                                                            disabled="@acting" @onclick="() => SalesReturnRow(inv)">
+                                                        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i>
+                                                    </button>
+                                                }
+                                            }
+                                            @if (CanUpdate && MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                            {
+                                                <button type="button" class="mpa mpa-dark mpa-ic" title="ابطال صورتحساب در سامانه مودیان" aria-label="ابطال صورتحساب در سامانه مودیان"
+                                                        disabled="@acting" @onclick="() => EbtalRow(inv)">
+                                                    <i class="bi bi-x-octagon" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                            @if (CanDelete && MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                            {
+                                                                                                <button type="button" class="mpa mpa-red mpa-ic" title="حذف صورتحساب (فقط ارسال‌نشده)" aria-label="حذف صورتحساب (فقط ارسال‌نشده)"
+                                                        disabled="@acting" @onclick="() => DeleteRow(inv)">
+                                                    <i class="bi bi-trash" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="cards-mobile px-2 py-2">
+                    @foreach (var inv in items)
+                    {
+                        <article class="card mb-2 mi-card @MoadianUi.StatusAccent(inv.StatusSentToSystemInt) @(_flashId == InvoiceId(inv) ? "mi-flash" : "")" id="mi-card-@InvoiceId(inv)" aria-label="صورتحساب شمارهٔ @(inv.NumberInvoice?.NoGroup() ?? "نامشخص")">
+                            <div class="card-body p-3">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <div class="mi-card-title">
+                                        <div class="fw-bold">صورتحساب شمارهٔ <span class="num">@(inv.NumberInvoice?.NoGroup() ?? "—")</span></div>
+                                        <div class="small text-muted mt-1">
+                                            <i class="bi bi-calendar3" aria-hidden="true"></i> @MoadianUi.Shamsi(inv.DateOrder)
+                                            <span class="mx-1" aria-hidden="true">·</span>
+                                            <i class="bi bi-person" aria-hidden="true"></i> @inv.CustomerName
+                                        </div>
+                                    </div>
+                                    <span class="mi-status @MoadianUi.StatusPillClass(inv.StatusSentToSystemInt)" aria-label="وضعیت: @MoadianUi.StatusLabel(inv.StatusSentToSystemInt)"><span class="mi-dot" aria-hidden="true"></span>@MoadianUi.StatusLabel(inv.StatusSentToSystemInt)</span>
+                                </div>
+                                <div class="mi-card-amount num mt-2">@MoadianUi.Money(inv.TotallMoney) <small>ریال</small></div>
+                                <div class="d-flex flex-wrap gap-2 align-items-center mt-1 small">
+                                    <span class="badge @MoadianUi.SubjectBadge(inv.Subject)">@inv.Subject</span>
+                                </div>
+                                @{
+                                    var mobileTaxPrimary = GetTaxPrimary(inv);
+                                    var mobileTaxReference = GetTaxReference(inv);
+                                }
+                                @if (!string.IsNullOrWhiteSpace(mobileTaxPrimary) || !string.IsNullOrWhiteSpace(mobileTaxReference))
+                                {
+                                    <div class="d-flex flex-column gap-1 mt-2 small">
+                                        @if (!string.IsNullOrWhiteSpace(mobileTaxPrimary))
+                                        {
+                                            <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                <span class="text-muted">شماره مالیاتی:</span>
+                                                <span class="num" dir="ltr" style="font-family:ui-monospace,monospace; font-size:0.8rem;">@mobileTaxPrimary</span>
+                                                <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مالیاتی" aria-label="کپی شماره مالیاتی @mobileTaxPrimary" @onclick="() => CopyText(mobileTaxPrimary)"><i class="bi bi-clipboard" aria-hidden="true"></i></button>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(mobileTaxReference))
+                                        {
+                                            <div class="d-flex align-items-center gap-1 flex-wrap text-muted">
+                                                <span class="badge bg-light text-dark border" style="font-size:0.7rem; padding:2px 4px;">مرجع</span>
+                                                <button type="button" class="mi-ref-link num" dir="ltr"
+                                                        style="font-family:ui-monospace,monospace; font-size:0.78rem;"
+                                                        title="رفتن به صورتحسابِ مرجع (@mobileTaxReference)"
+                                                        aria-label="رفتن به صورتحسابِ مرجع @mobileTaxReference"
+                                                        @onclick="() => GoToReferenceAsync(mobileTaxReference)">@mobileTaxReference</button>
+                                                <button type="button" class="btn btn-sm btn-link p-0 lh-1" title="کپی شماره مرجع" aria-label="کپی شماره مرجع @mobileTaxReference" @onclick="() => CopyText(mobileTaxReference)"><i class="bi bi-clipboard" aria-hidden="true"></i></button>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                <hr class="mi-card-hr" />
+                                <div class="d-flex flex-wrap gap-2 mt-2" role="group" aria-label="عملیات صورتحساب">
+                                    <NavLink class="mpa mpa-blue" href="@($"moadian/invoices/{InvoiceId(inv)}")" aria-label="جزئیات صورتحساب"><i class="bi bi-eye" aria-hidden="true"></i> جزئیات</NavLink>
+                                    <NavLink class="mpa mpa-dark" href="@($"moadian/invoices/{InvoiceId(inv)}?print=1")" aria-label="چاپ صورتحساب"><i class="bi bi-printer" aria-hidden="true"></i> چاپ</NavLink>
+                                    @if (CanUpdate && MoadianUi.CanEdit(inv.StatusSentToSystemInt))
+                                    {
+                                        <NavLink class="mpa mpa-green" href="@($"moadian/invoices/{InvoiceId(inv)}/edit")" aria-label="ویرایش صورتحساب"><i class="bi bi-pencil" aria-hidden="true"></i> ویرایش</NavLink>
+                                    }
+                                    @if (CanCreate)
+                                    {
+                                        <NavLink class="mpa mpa-gray" href="@($"moadian/invoices/{InvoiceId(inv)}/copy")" aria-label="کپی صورتحساب"><i class="bi bi-copy" aria-hidden="true"></i> کپی</NavLink>
+                                    }
+                                    @if (CanSend && MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                    {
+                                        <button type="button" class="mpa mpa-green" disabled="@acting" aria-label="ارسال صورتحساب به سامانهٔ مودیان" @onclick="() => SendToMoadian(inv)"><i class="bi bi-send" aria-hidden="true"></i> ارسال</button>
+                                    }
+@if (CanInquiry && MoadianUi.CanInquiry(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <button type="button" class="mpa mpa-sky" disabled="@acting" aria-label="استعلام صورتحساب" @onclick="() => EstelamRow(inv)"><i class="bi bi-arrow-repeat" aria-hidden="true"></i> استعلام</button>
+                                    }
+                                    @if (CanUpdate && MoadianUi.CanReactManually(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <button type="button" class="mpa mpa-amber" disabled="@acting" aria-label="ثبت دستی وضعیت خریدار" @onclick="() => OpenReactModal(inv)"><i class="bi bi-person-check" aria-hidden="true"></i> وضعیت</button>
+                                    }
+                                    @if (CanInquiry && MoadianUi.CanShowErrors(inv.StatusSentToSystemInt))
+                                    {
+                                        <button type="button" class="mpa mpa-red" disabled="@acting" aria-label="نمایش خطاهای صورتحساب" @onclick="() => ShowErrorsRow(inv)"><i class="bi bi-bug" aria-hidden="true"></i> خطاها</button>
+                                    }
+                                    @if (CanInquiry && MoadianUi.CanViewWorkFolder(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <a class="mpa mpa-cyan" href="@MoadianUi.WorkFolderUrl" target="_blank" rel="noopener" aria-label="مشاهده در کارپوشه"><i class="bi bi-folder2-open" aria-hidden="true"></i> کارپوشه</a>
+                                    }
+                                    @if (CanUpdate && MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <NavLink class="mpa mpa-amber" href="@($"moadian/invoices/{InvoiceId(inv)}/eslahi")" aria-label="صدور صورتحساب اصلاحی"><i class="bi bi-pencil-square" aria-hidden="true"></i> اصلاحی</NavLink>
+                                        @if (CanSend)
+                                        {
+                                            <button type="button" class="mpa mpa-indigo" disabled="@acting" aria-label="صدور برگشت از فروش" @onclick="() => SalesReturnRow(inv)"><i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> برگشت از فروش</button>
+                                        }
+                                    }
+                                    @if (CanUpdate && MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
+                                    {
+                                        <button type="button" class="mpa mpa-dark" disabled="@acting" aria-label="ابطال صورتحساب در سامانه مودیان" @onclick="() => EbtalRow(inv)"><i class="bi bi-x-octagon" aria-hidden="true"></i> ابطال</button>
+                                    }
+                                    @if (CanDelete && MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons))
+                                    {
+                                        <button type="button" class="mpa mpa-red" disabled="@acting" aria-label="حذف صورتحساب ارسال‌نشده" @onclick="() => DeleteRow(inv)"><i class="bi bi-trash" aria-hidden="true"></i> حذف</button>
+                                    }
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+
+                @* ---------- صفحه‌بندی (سبک ماژول دستور کار) ---------- *@
+                @if ((data?.TotalPages ?? 0) > 1)
+                {
+                    <div class="mi-pager2">
+                        <span class="mi-pg-info num">نمایش @(items!.Count.Num()) از @((data?.TotalCount ?? 0).Num()) مورد — صفحهٔ @(pno.Num()) از @((data?.TotalPages ?? 1).Num())</span>
+                        <div class="ms-auto d-flex gap-1 align-items-center">
+                            <button type="button" class="mi-pg-btn" title="صفحهٔ قبل" aria-label="صفحهٔ قبل" disabled="@(pno <= 1)" @onclick="() => GoPage(pno - 1)">
+                                <i class="bi bi-chevron-right"></i>
+                            </button>
+                            @foreach (var pp in VisiblePages)
+                            {
+                                if (pp < 0)
+                                {
+                                    <span class="mi-pg-ellipsis" aria-hidden="true">…</span>
+                                }
+                                else
+                                {
+                                    <button type="button" class="mi-pg-btn num @(pp == pno ? "active" : "")" aria-current="@(pp == pno ? "page" : null)" @onclick="() => GoPage(pp)">@(pp.Num())</button>
+                                }
+                            }
+                            <button type="button" class="mi-pg-btn" title="صفحهٔ بعد" aria-label="صفحهٔ بعد" disabled="@(pno >= (data?.TotalPages ?? 1))" @onclick="() => GoPage(pno + 1)">
+                                <i class="bi bi-chevron-left"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@* ---------- پنجرهٔ نتیجهٔ استعلام / خطاها ---------- *@
+@if (modalOpen)
+{
+    <div class="modal d-block mi-modal" tabindex="-1" style="background:rgba(15,23,42,.45)">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clipboard2-pulse text-primary"></i> @modalTitle</h5>
+                    <button type="button" class="btn-close" @onclick="() => modalOpen = false" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <pre class="mb-0 mi-code" dir="auto">@modalBody</pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => CopyText(modalBody)"><i class="bi bi-clipboard" aria-hidden="true"></i> کپی متن</button>
+                    <button type="button" class="btn btn-outline-secondary" @onclick="() => modalOpen = false">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---------- مودال ثبت دستی وضعیت واکنش خریدار ---------- *@
+@if (reactOpen && reactInvoice is not null)
+{
+    <div class="modal d-block mi-modal" tabindex="-1" style="background:rgba(15,23,42,.45)" @onclick="CloseReactModal">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-person-check text-warning"></i> ثبت وضعیت خریدار — @(reactInvoice.NumberInvoice?.NoGroup() ?? "—")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseReactModal" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-muted mb-2">
+                        وضعیت فعلی: <span class="badge @MoadianUi.StatusBadge(reactInvoice.StatusSentToSystemInt)">@MoadianUi.StatusLabel(reactInvoice.StatusSentToSystemInt)</span>
+                    </p>
+                    <p class="fs-8 text-muted">
+                        واکنش «پایانی» است — پس از ثبت، دیگر قابل تغییر نیست.
+                        نسخهٔ فعلی SDK واکنش‌های خریدار را در استعلام برنمی‌گرداند؛ این وضعیت را
+                        بعد از مشاهده در کارپوشه دستی ثبت کنید.
+                    </p>
+                    @if (reactInvoice.Subject == "اصلاحی")
+                    {
+                        <div class="alert alert-warning fs-8 py-2 mb-2">
+                            این سند «اصلاحی» است: اگر تأیید یا تأیید سیستمی شود، صورتحساب اصلی به‌طور خودکار «اصلاحی (۱۰)» می‌شود و قفل خواهد شد. اگر رد شود، اصلی زنده می‌ماند.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info fs-8 py-2 mb-2">
+                            تأیید سیستمی = خریدار واکنش نشان نداده و سامانه پس از ۳۰ روز خودکار سند را تأیید می‌کند.
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-success" disabled="@acting" @onclick='() => SubmitReact("7")'>
+                        @if (acting && reactTarget == "7") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check2-circle"></i> }
+                        تأیید شده (خریدار)
+                    </button>
+                    <button type="button" class="btn btn-danger" disabled="@acting" @onclick='() => SubmitReact("8")'>
+                        @if (acting && reactTarget == "8") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-x-octagon"></i> }
+                        رد شده (خریدار)
+                    </button>
+                    <button type="button" class="btn btn-primary" disabled="@acting" @onclick='() => SubmitReact("11")'>
+                        @if (acting && reactTarget == "11") { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-clock-history"></i> }
+                        تأیید سیستمی (۳۰ روزه)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (copyFallbackOpen)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45)" @onclick="CloseCopyFallback">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-clipboard-x text-warning"></i> کپی خودکار ممکن نبود</h5>
+                    <button type="button" class="btn-close" @onclick="CloseCopyFallback" aria-label="بستن"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="fs-8 text-muted mb-2">
+                        مرورگر اجازهٔ کپیِ خودکار نداد (این حالت روی http یا با تنظیمات امنیتی مرورگر پیش می‌آید).
+                        متن زیر انتخاب شده است؛ با <b>Ctrl+C</b> کپی کنید.
+                    </p>
+                    <input id="@CopyFallbackInputId" class="form-control num" dir="ltr" readonly
+                           value="@copyFallbackText" @onfocus="OnCopyFallbackShown" />
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="OnCopyFallbackShown">
+                        <i class="bi bi-select-all"></i> انتخاب دوباره
+                    </button>
+                    <button type="button" class="btn btn-primary" @onclick="CloseCopyFallback">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    // کنترل رابط صرفاً برای تجربهٔ کاربر است؛ API نیز همین سطح‌ها را قطعی کنترل می‌کند.
+    private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+    private bool CanCreate => Can("Moadian.InvoiceCreate");
+    private bool CanUpdate => Can("Moadian.InvoiceUpdate");
+    private bool CanDelete => Can("Moadian.InvoiceDelete");
+    private bool CanSend => Can("Moadian.InvoiceSend");
+    private bool CanInquiry => Can("Moadian.InvoiceInquiry");
+
+    private static readonly (string Code, string Title, string Icon, string Color)[] Tabs =
+    {
+        ("همه", "همه", "bi-collection", "gray"),
+        ("0", "ارسال نشده", "bi-inbox", "slate"),
+        ("1", "در انتظار استعلام", "bi-arrow-repeat", "sky"),
+        ("2", "در انتظار بررسی", "bi-search", "amber"),
+        ("3", "ارسال شده", "bi-send-check", "indigo"),
+        ("4", "در انتظار واکنش", "bi-hourglass-split", "orange"),
+        ("5", "دارای خطا", "bi-exclamation-triangle", "red"),
+        ("6", "بدون نیاز به واکنش", "bi-archive", "stone"),
+        // فیلترهای «تأیید شده» (۷) و «رد شده» (۸) طبق درخواست حذف شدند؛
+        // این صورتحساب‌ها همچنان در تب «همه» و از طریق جستجو دیده می‌شوند.
+    };
+
+    private PagedList<InvoiceVM>? data;
+    private List<InvoiceVM>? items;
+    private InvoiceVM? labels;
+    private string fOp = "همه";
+    private string search = "";
+    private DateTime? fFrom, fTo;
+    private int pno = 1;
+    private const int PageSize = 10;
+    private bool loading;
+    private int loadVersion;
+    private string? loadError;
+    private string? dateFilterError;
+    private bool HasActiveFilters => !string.IsNullOrWhiteSpace(search) || fFrom.HasValue || fTo.HasValue || fOp != "همه";
+    private IEnumerable<int> VisiblePages
+    {
+        get
+        {
+            var total = data?.TotalPages ?? 1;
+            var start = Math.Max(1, pno - 2);
+            var end = Math.Min(total, pno + 2);
+            if (start > 1) yield return 1;
+            if (start > 2) yield return -1;
+            for (var page = start; page <= end; page++) yield return page;
+            if (end < total - 1) yield return -1;
+            if (end < total) yield return total;
+        }
+    }
+    private System.Timers.Timer? searchTimer;
+
+    // ---------- عملیات ردیف‌ها: ارسال / استعلام / خطاها ----------
+    private bool acting;
+    private bool modalOpen;
+    private string modalTitle = "";
+
+    // ---------- ثبت دستی واکنش خریدار (مدال) ----------
+    private bool reactOpen;
+    private InvoiceVM? reactInvoice;
+    private string? reactTarget;
+
+    private void OpenReactModal(InvoiceVM inv) { reactInvoice = inv; reactOpen = true; reactTarget = null; }
+    private void CloseReactModal() { if (acting) return; reactOpen = false; reactInvoice = null; reactTarget = null; }
+
+    private async Task SubmitReact(string status)
+    {
+        if (reactInvoice is null) return;
+        reactTarget = status; acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.SetInvoiceStatusAsync(InvoiceId(reactInvoice), status);
+            if (r.Success)
+            {
+                Toast.Success(r.Message ?? "وضعیت صورتحساب ثبت شد.");
+                reactOpen = false;
+                await LoadAsync(pno);
+            }
+            else
+            {
+                Toast.Error(r.Message ?? "ثبت وضعیت ناموفق بود.");
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reactTarget = null; acting = false; StateHasChanged(); }
+    }
+    private string modalBody = "";
+
+    [Inject] private IJSRuntime JS { get; set; }
+
+    private List<InvoiceVM> Items => items ?? new();
+
+    // پاسخ‌های قدیمیِ API در بعضی نصب‌ها شناسه را فقط در Name (به‌صورت رشته) داشتند.
+    // Id معتبر همیشه اولویت دارد؛ fallback فقط جلوی مسیر /invoices/0 و خطای کاذب «یافت نشد» را می‌گیرد.
+    private static int InvoiceId(InvoiceVM invoice)
+        => invoice.Id > 0
+            ? invoice.Id
+            : int.TryParse(invoice.Name, out var legacyId) && legacyId > 0 ? legacyId : 0;
+
+    // در رکوردهای اصلاحی/ابطالی/برگشت از فروش، TaxNumber «شمارهٔ مالیاتی مرجع» (Irtaxid)
+    // و NewTaxNumber شمارهٔ مالیاتی خودِ همین صورتحساب است. در صورتحساب اصلی، شمارهٔ
+    // مالیاتی در TaxNumber (و گاهی NewTaxNumber) قرار می‌گیرد.
+    private static bool IsReferenceSubject(InvoiceVM invoice)
+    {
+        var subject = invoice.Subject?.Trim() ?? string.Empty;
+        return subject.Contains("اصلاحی", StringComparison.Ordinal)
+            || subject.Contains("ابطالی", StringComparison.Ordinal)
+            || subject.Contains("برگشت از فروش", StringComparison.Ordinal);
+    }
+
+    private static string GetTaxPrimary(InvoiceVM invoice)
+    {
+        if (!string.IsNullOrWhiteSpace(invoice.NewTaxNumber))
+            return invoice.NewTaxNumber.Trim();
+
+        // برای اسناد ارجاعی، TaxNumber به‌تنهایی شمارهٔ مرجع است، نه شمارهٔ خود سند.
+        if (IsReferenceSubject(invoice))
+            return string.Empty;
+
+        return invoice.TaxNumber?.Trim() ?? string.Empty;
+    }
+
+    private static string GetTaxReference(InvoiceVM invoice)
+    {
+        if (!IsReferenceSubject(invoice) || string.IsNullOrWhiteSpace(invoice.TaxNumber))
+            return string.Empty;
+
+        var reference = invoice.TaxNumber.Trim();
+        return string.Equals(reference, GetTaxPrimary(invoice), StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : reference;
+    }
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += OnCtxChanged;
+        searchTimer = new System.Timers.Timer(350) { AutoReset = false };
+        searchTimer.Elapsed += (sender, e) => _ = InvokeAsync(() => LoadAsync(1));
+        if (Ctx.CpInfoId > 0) _ = LoadAsync(1);
+    }
+
+    private void OnCtxChanged() => _ = LoadAsync(1);
+
+    // شمارنده‌ها فقط در API برای وضعیت‌های مشخص فراهم‌اند؛ وضعیت فاقد شمارنده را با صفر جعل نمی‌کنیم.
+    private int? CountOf(string code) => (code, labels) switch
+    {
+        ("همه", var l) => l?.lblAll,
+        ("0", var l) => l?.lblNotSentToSystem,
+        ("4", var l) => l?.lblSentToSystem,
+        ("2", var l) => l?.lblLackOfResponsiveness,
+        ("5", var l) => l?.lblError,
+        _ => null
+    };
+
+    private void SetOp(string code)
+    {
+        fOp = code;
+        _ = LoadAsync(1);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) { search = e.Value?.ToString() ?? ""; searchTimer?.Stop(); searchTimer?.Start(); }
+    private void ClearSearchBox() { search = ""; searchTimer?.Stop(); _ = LoadAsync(1); }
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { searchTimer?.Stop(); _ = LoadAsync(1); }
+    }
+    private void OnFrom(DateTime? v) { fFrom = v; _ = LoadAsync(1); }
+    private void OnTo(DateTime? v) { fTo = v; _ = LoadAsync(1); }
+
+    private void ResetFilters()
+    {
+        search = ""; fFrom = null; fTo = null; fOp = "همه"; dateFilterError = null;
+        _ = LoadAsync(1);
+    }
+
+    private void GoPage(int p) => _ = LoadAsync(p);
+
+    private async Task LoadAsync(int p)
+    {
+        if (Ctx.CpInfoId <= 0) return;
+        var requestVersion = Interlocked.Increment(ref loadVersion);
+        if (fFrom.HasValue != fTo.HasValue)
+        {
+            dateFilterError = "برای جلوگیری از خطای فهرست، بازهٔ تاریخ را با هر دو تاریخ «از» و «تا» کامل کنید یا هر دو را پاک کنید.";
+            loading = false;
+            StateHasChanged();
+            return;
+        }
+        dateFilterError = null;
+        var cpInfoId = Ctx.CpInfoId;
+        var operation = fOp;
+        var from = fFrom;
+        var to = fTo;
+        var query = search;
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            loadError = null;
+            var model = await Moadian.GetAllInvoicesAsync(operation, cpInfoId, from, to, query, p, PageSize);
+            if (requestVersion != Volatile.Read(ref loadVersion)) return;
+            var resp = MoadianService.AsStrict<InvoiceResponse>(model, "دریافت فهرست صورتحساب‌ها");
+            data = resp?.Invoices;
+            items = resp?.Invoices?.Items?.ToList();
+            labels = resp?.Labels;
+        }
+        catch (Exception ex)
+        {
+            if (requestVersion == Volatile.Read(ref loadVersion))
+            {
+                loadError = ex.Message;
+                Toast.Error(ex.Message);
+            }
+        }
+        finally
+        {
+            if (requestVersion == Volatile.Read(ref loadVersion))
+            {
+                pno = p;
+                loading = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// کپیِ شماره در کلیپ‌بورد. روی http (شبکهٔ داخلی) navigator.clipboard در دسترس نیست؛
+    /// ClipboardInterop با execCommand کپی می‌کند و اگر مرورگر باز هم اجازه نداد، همان متن
+    /// در پنجره‌ای انتخاب‌شده نمایش داده می‌شود تا کاربر با Ctrl+C کپی کند.
+    /// </summary>
+    private async Task CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) { Toast.Info("مقداری برای کپی وجود ندارد."); return; }
+        var ok = await ClipboardInterop.CopyAsync(JS, text);
+        if (ok) { Toast.Info("شمارهٔ مالیاتی کپی شد."); return; }
+        copyFallbackText = text;
+        copyFallbackOpen = true;
+        StateHasChanged();
+    }
+
+    // ---------- کپیِ دستی (وقتی مرورگر اجازهٔ کپی نمی‌دهد) ----------
+    private bool copyFallbackOpen;
+    private string copyFallbackText = "";
+    private const string CopyFallbackInputId = "mi-copy-fallback";
+
+    private async Task OnCopyFallbackShown()
+    {
+        await ClipboardInterop.SelectAllAsync(JS, CopyFallbackInputId);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // بعد از باز شدن پنجرهٔ کپیِ دستی، متن داخل فیلد انتخاب شود
+        if (copyFallbackOpen && !_copyFallbackSelected)
+        {
+            _copyFallbackSelected = true;
+            await OnCopyFallbackShown();
+        }
+        else if (!copyFallbackOpen) _copyFallbackSelected = false;
+    }
+
+    private bool _copyFallbackSelected;
+
+    private void CloseCopyFallback() { copyFallbackOpen = false; copyFallbackText = ""; }
+
+    // ==================== رفتن به صورتحسابِ مرجع ====================
+    private int _flashId;
+
+    /// <summary>صورتحسابِ مرجعی که شمارهٔ مالیاتی‌اش برابر مقدار داده‌شده است.</summary>
+    private static InvoiceVM? FindByOwnTaxNumber(IEnumerable<InvoiceVM>? source, string taxNumber)
+    {
+        if (source is null) return null;
+        var t = (taxNumber ?? "").Trim();
+        if (t.Length == 0) return null;
+        return source.FirstOrDefault(x =>
+            string.Equals(GetTaxPrimary(x).Trim(), t, StringComparison.OrdinalIgnoreCase)
+            || string.Equals((x.NewTaxNumber ?? "").Trim(), t, StringComparison.OrdinalIgnoreCase)
+            || (!IsReferenceSubject(x) && string.Equals((x.TaxNumber ?? "").Trim(), t, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// کلیک روی «شمارهٔ مرجع»: ابتدا در همان صفحهٔ جاری دنبال صورتحسابی می‌گردد که
+    /// شمارهٔ مالیاتیِ خودش همان مقدار است. اگر در این صفحه نبود (صفحهٔ دیگر یا فیلتر
+    /// فعال)، فیلترها پاک و با همان شماره جستجو می‌شود و در نهایت روی همان ردیف
+    /// اسکرول و هایلایت انجام می‌شود.
+    /// </summary>
+    private async Task GoToReferenceAsync(string? reference)
+    {
+        var refNo = (reference ?? "").Trim();
+        if (refNo.Length == 0) return;
+
+        var hit = FindByOwnTaxNumber(items, refNo);
+        if (hit is not null && InvoiceId(hit) > 0)
+        {
+            await FocusInvoiceRowAsync(InvoiceId(hit), refNo);
+            return;
+        }
+
+        // در صفحهٔ جاری نبود → جستجوی سروری با پاک‌کردن فیلترهای مزاحم
+        // (جستجوی سرور روی TaxNumber و NewTaxNumber هر دو اعمال می‌شود)
+        fOp = "همه"; fFrom = null; fTo = null; dateFilterError = null; search = refNo;
+        await LoadAsync(1);
+
+        var found = FindByOwnTaxNumber(items, refNo);
+        // جستجو ممکن است چند صفحه نتیجه بدهد (سند اصلاحی + سند اصلی)؛ تا سقف ۱۰ صفحه
+        // جلو می‌رویم تا همان ردیفی که «شمارهٔ مالیاتیِ خودش» برابر مرجع است پیدا شود.
+        var guard = 0;
+        while (found is null && guard++ < 10 && pno < (data?.TotalPages ?? 1))
+        {
+            await LoadAsync(pno + 1);
+            found = FindByOwnTaxNumber(items, refNo);
+        }
+        if (found is not null && InvoiceId(found) > 0)
+        {
+            await FocusInvoiceRowAsync(InvoiceId(found), refNo);
+            return;
+        }
+
+        Toast.Info($"صورتحسابِ مرجع با شمارهٔ مالیاتی {refNo} در این فهرست پیدا نشد.");
+    }
+
+    /// <summary>اسکرول به ردیفِ هدف و هایلایتِ موقتِ آن</summary>
+    private async Task FocusInvoiceRowAsync(int invoiceId, string refNo)
+    {
+        _flashId = invoiceId;
+        StateHasChanged();
+        await ClipboardInterop.ScrollToAsync(JS, $"mi-row-{invoiceId}");
+        await ClipboardInterop.ScrollToAsync(JS, $"mi-card-{invoiceId}");
+        Toast.Success($"صورتحسابِ مرجع {refNo} مشخص شد.");
+        _ = ClearFlashLaterAsync(invoiceId);
+    }
+
+    private async Task ClearFlashLaterAsync(int invoiceId)
+    {
+        try
+        {
+            await Task.Delay(3500);
+            if (_flashId != invoiceId) return;
+            _flashId = 0;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* کامپوننت بسته شده است */ }
+    }
+
+    /// <summary>a) ارسال ردیف به سامانهٔ مودیان — ابتدا جزئیات کامل صورتحساب واکشی، سپس همان فلوی صفحهٔ جزئیات ارسال می‌شود.</summary>
+    private async Task SendToMoadian(InvoiceVM inv)
+    {
+        if (!MoadianUi.CanSend(inv.StatusSentToSystemInt, inv.ShowButtons))
+        {
+            Toast.Info("ارسال برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای ارسال یافت نشد."); return; }
+            full.Subject = "ارسال به سامانه";
+            var r = await Moadian.SendInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} به سامانهٔ مودیان ارسال شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ارسال به سامانه.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>برگشت از فروش — یک صورتحساب «برگشت از فروش» (Ins=4) بر اساس صورتحساب اصلی به سامانه ارسال می‌شود.</summary>
+    private async Task SalesReturnRow(InvoiceVM inv)
+    {
+        if (!MoadianUi.CanReference(inv.StatusSentToSystemInt, inv.ReferenceId))
+        {
+            Toast.Info("برگشت از فروش برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"برای صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} یک صورتحساب «برگشت از فروش» صادر و به سامانه ارسال می‌شود. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای برگشت از فروش یافت نشد."); return; }
+            full.Subject = "برگشت از فروش";
+            var r = await Moadian.SendInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"برگشت از فروش صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} ارسال شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ارسال برگشت از فروش.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>ابطال صورتحساب در سامانهٔ مودیان — با تایید کاربر؛ صورتحساب ابطالی جدید (الگوی ابطال) ثبت می‌شود.</summary>
+    private async Task EbtalRow(InvoiceVM inv)
+    {
+        if (!MoadianUi.CanEbtal(inv.StatusSentToSystemInt, inv.ReferenceId))
+        {
+            Toast.Info("ابطال برای وضعیت فعلی این صورتحساب در دسترس نیست.");
+            return;
+        }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} در سامانه مودیان ابطال می‌شود. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var full = await Moadian.GetInvoiceAsync(InvoiceId(inv));
+            if (full is null) { Toast.Error("جزئیات صورتحساب برای ابطال یافت نشد."); return; }
+            var r = await Moadian.EbtalInvoiceAsync(full);
+            if (r.Success)
+            {
+                Toast.Success($"ابطال صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} ثبت شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در ابطال صورتحساب.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>حذف صورتحساب ارسال‌نشده از دیتابیس محلی — با تایید کاربر.</summary>
+    private async Task DeleteRow(InvoiceVM inv)
+    {
+        if (!MoadianUi.CanDelete(inv.StatusSentToSystemInt, inv.ShowButtons)) { Toast.Info("فقط صورتحساب‌های مجاز و ارسال‌نشده قابل حذف‌اند."); return; }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"} حذف می‌شود؛ این کار قابل بازگشت نیست. ادامه می‌دهید؟");
+        if (!ok) return;
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.DeleteInvoiceAsync(InvoiceId(inv));
+            if (r.Success)
+            {
+                Toast.Success("صورتحساب حذف شد.");
+                await LoadAsync(pno);
+            }
+            else Toast.Error(r.Message ?? "خطا در حذف صورتحساب.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>b) استعلام وضعیت صورتحساب از سامانهٔ مودیان (با شمارهٔ مرجع) — نتیجه در پنجره نمایش داده و وضعیت ردیف به‌روزرسانی می‌شود.</summary>
+    private async Task EstelamRow(InvoiceVM inv)
+    {
+        if (!MoadianUi.HasReference(inv.ReferenceId)) { Toast.Info("برای استعلام، ابتدا صورتحساب باید ارسال شده باشد."); return; }
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.EstelamInvoiceAsync(inv.ReferenceId!, InvoiceId(inv),
+                (inv.DateOrder ?? DateOnly.FromDateTime(DateTime.Today)).ToString("yyyy-MM-dd"));
+            modalTitle = $"استعلام صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"}";
+            modalBody = r.Data?.ToString() ?? r.Message ?? "پاسخی از سامانه دریافت نشد.";
+            modalOpen = true;
+            if (r.Success) Toast.Success("وضعیت صورتحساب به‌روزرسانی شد.");
+            else Toast.Error(r.Message ?? "استعلام ناموفق بود.");
+            await LoadAsync(pno);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    /// <summary>c) نمایش خطاهای صورتحساب — کد، پیام و شرح خطاها/هشدارها از سامانهٔ مودیان.</summary>
+    private async Task ShowErrorsRow(InvoiceVM inv)
+    {
+        if (!MoadianUi.HasReference(inv.ReferenceId)) { Toast.Info("این صورتحساب هنوز به سامانه ارسال نشده است."); return; }
+        acting = true; StateHasChanged();
+        try
+        {
+            var r = await Moadian.ErrorInvoiceAsync(inv.ReferenceId!);
+            var err = MoadianService.As<ErroreMesage>(r);
+            modalTitle = $"خطاهای صورتحساب شمارهٔ {inv.NumberInvoice?.NoGroup() ?? "—"}";
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrWhiteSpace(err?.code)) sb.AppendLine($"کد: {err!.code}");
+            if (!string.IsNullOrWhiteSpace(err?.message)) sb.AppendLine($"پیام: {err!.message}");
+            if (!string.IsNullOrWhiteSpace(err?.errorsAndWarnings)) sb.AppendLine($"خطاها و هشدارها: {err!.errorsAndWarnings}");
+            modalBody = sb.Length == 0 ? (r.Success ? "خطایی برای این صورتحساب ثبت نشده است." : (r.Message ?? "دریافت خطاها ناموفق بود.")) : sb.ToString();
+            modalOpen = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { acting = false; StateHasChanged(); }
+    }
+
+    public void Dispose()
+    {
+        Ctx.Changed -= OnCtxChanged;
+        searchTimer?.Dispose();
+    }
+}
