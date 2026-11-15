@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -68,6 +70,7 @@ public static class Program
                 "verify" => Verify(rest),
                 "inspect-request" => InspectRequest(rest),
                 "companies" => Companies(rest),
+                "keys" => Keys(rest),
                 _ => Unknown(command)
             };
         }
@@ -169,6 +172,11 @@ public static class Program
 
         var document = BuildDocument(profile, installationId, out var warnings);
 
+        // ⚠️ محافظ ریشه‌ای: اگر کلید امضا در بیلد Release محصول بارگذاری نشود (کلید توسعه یا
+        // کلیدی که در Keys/manifest.json نیست)، مشتری همان خطای «کلید امضا شناخته‌شده نیست»
+        // را می‌گیرد. این هشدار پیش از شمارش/تحویل، جلوی آن چرخهٔ شکست را می‌گیرد.
+        WarnIfCustomerCannotVerify(document.KeyId);
+
         var existing = LoadExisting(args);
         var preview = BuildPreview(existing.Append(document).ToList());
         PrintPreview(document, preview, warnings, existing.Count);
@@ -190,6 +198,36 @@ public static class Program
         Console.WriteLine($"✅ لایسنس صادر شد: {outPath}");
         Console.WriteLine($"   سریال: {document.Serial}   |   SHA256 فایل: {Sha256Hex(bytes)}");
         return 0;
+    }
+
+    /// <summary>
+    /// هشدار پیش از صدور: آیا نصب مشتری می‌تواند امضای این کلید را تأیید کند؟
+    /// مرجع، همان حلقهٔ کلیدهای جاسازی‌شده در محصول است (نه حدس).
+    /// </summary>
+    private static void WarnIfCustomerCannotVerify(string? keyId)
+    {
+        if (string.IsNullOrWhiteSpace(keyId)) return;
+        try
+        {
+            var ring = PublicKeyRing.FromEmbedded();
+            if (ring.KeyIds.Contains(keyId!, StringComparer.OrdinalIgnoreCase)) return;
+
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"⚠️ هشدار مهم: کلید «{keyId}» در حلقهٔ اعتماد بیلد محصول نیست.");
+            Console.Error.WriteLine("   لایسنسی که با این کلید امضا شود، روی نصب مشتری پیام «کلید امضا شناخته‌شده نیست» می‌دهد.");
+            Console.Error.WriteLine(ring.KeyIds.Count == 0
+                ? "   این بیلد ابزار هیچ کلید تولیدی ندارد (احتمالاً بیلد Debug یا manifest ناقص)."
+                : "   کلیدهای معتبر این بیلد: " + string.Join("، ", ring.KeyIds));
+            if (ring.LoadErrors.Count > 0)
+                Console.Error.WriteLine("   یادداشت بارگذاری کلیدها: " + string.Join(" ", ring.LoadErrors.Take(3)));
+            Console.Error.WriteLine("   راه‌حل: با --key-id یکی از کلیدهای بالا امضا کنید، یا کلید فعلی را در manifest محصول ثبت و بیلد کنید.");
+            Console.Error.WriteLine("   بررسی نصب مشتری: LicenseTool keys --assembly <Inventory.Licensing.dll> --expect " + keyId);
+            Console.Error.WriteLine();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"⚠️ بررسی کلیدهای محصول ممکن نشد: {ex.Message}");
+        }
     }
 
     // ==================== bridge ====================
@@ -309,6 +347,200 @@ public static class Program
             Console.WriteLine($"   • [{issue.Severity}] {issue.Code}: {issue.Message}");
 
         return issues.Any(i => i.Severity == LicenseIssueSeverity.Error) ? 6 : 0;
+    }
+
+    /// <summary>
+    /// بازرسی «کلیدهای جاسازی‌شده» در یک اسمبلی ساخته‌شده — بدون اجرا و بدون بارگذاری کد.
+    ///
+    /// <para>
+    /// این دستور مشکل پرتکرار «کلید امضای … روی این نصب شناخته‌شده نیست» را ریشه‌ای تشخیص
+    /// می‌دهد: همان فایل <c>Inventory.Licensing.dll</c> که روی سرور/مشتری اجرا می‌شود را
+    /// می‌دهید و می‌بینید واقعاً چه کلیدهایی داخلش جاسازی شده‌اند (keyId، اثر انگشت، فایل).
+    /// اگر <c>sup-202611</c> در این فهرست نباشد، مشکل در بیلد/نصب است، نه در فایل لایسنس.
+    /// </para>
+    /// </summary>
+    private static int Keys(string[] args)
+    {
+        var assemblyPath = Arg(args, "--assembly");
+        var dir = Arg(args, "--dir");
+
+        if (string.IsNullOrWhiteSpace(assemblyPath) && !string.IsNullOrWhiteSpace(dir))
+        {
+            if (!Directory.Exists(dir))
+            {
+                Console.Error.WriteLine($"❌ پوشه نیست: {dir}");
+                return 2;
+            }
+
+            var found = Directory.EnumerateFiles(dir, "Inventory.Licensing.dll", SearchOption.AllDirectories)
+                .ToList();
+            if (found.Count == 0)
+            {
+                Console.Error.WriteLine($"❌ در «{dir}» فایل Inventory.Licensing.dll پیدا نشد.");
+                Console.Error.WriteLine("   اگر انتشار Single-File است، همان exe را بدهید: --assembly <app.exe>");
+                return 2;
+            }
+
+            if (found.Count > 1)
+            {
+                Console.WriteLine($"⚠️ {found.Count} نسخهٔ Inventory.Licensing.dll در این پوشه هست؛ همه بررسی می‌شوند:");
+                foreach (var f in found) Console.WriteLine($"   - {f}");
+                Console.WriteLine();
+            }
+
+            var worst = 0;
+            foreach (var file in found)
+                worst = Math.Max(worst, InspectKeysOf(file, args));
+            return worst;
+        }
+
+        if (string.IsNullOrWhiteSpace(assemblyPath))
+        {
+            Console.Error.WriteLine("❌ استفاده: keys --assembly <Inventory.Licensing.dll | app.exe>  یا  keys --dir <پوشهٔ انتشار>");
+            return 2;
+        }
+
+        if (!File.Exists(assemblyPath))
+        {
+            Console.Error.WriteLine($"❌ فایل نیست: {assemblyPath}");
+            return 2;
+        }
+
+        return InspectKeysOf(assemblyPath, args);
+    }
+
+    /// <summary>خواندن منابع جاسازی‌شده از PE بدون بارگذاری اسمبلی (بی‌خطر و سریع).</summary>
+    private static int InspectKeysOf(string path, string[] args)
+    {
+        Console.WriteLine($"■ اسمبلی: {path}");
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var pe = new PEReader(stream);
+            var md = pe.GetMetadataReader();
+
+            var resourcesDirectory = pe.PEHeaders.CorHeader?.ResourcesDirectory ?? default;
+            string? manifestJson = null;
+            var pems = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var allNames = new List<string>();
+
+            foreach (var handle in md.ManifestResources)
+            {
+                var resource = md.GetManifestResource(handle);
+                var name = md.GetString(resource.Name);
+                allNames.Add(name);
+
+                if (!resource.Implementation.IsNil) continue;   // در فایل دیگری است
+
+                var bytes = ReadEmbeddedResource(pe, resourcesDirectory.RelativeVirtualAddress, resource.Offset);
+                if (bytes is null) continue;
+                var text = Encoding.UTF8.GetString(bytes);
+
+                if (name.EndsWith("Keys.manifest.json", StringComparison.OrdinalIgnoreCase))
+                    manifestJson = text;
+                else if (name.EndsWith(".pem", StringComparison.OrdinalIgnoreCase))
+                    pems[name] = text;
+            }
+
+            if (manifestJson is null)
+            {
+                Console.Error.WriteLine("  ⛔ در این اسمبلی Keys/manifest.json جاسازی نشده است.");
+                Console.Error.WriteLine("     یعنی این بیلد هیچ کلید عمومی‌ای ندارد ⇒ هر لایسنس امضاشده‌ای «ناشناخته» می‌شود.");
+                Console.Error.WriteLine($"     (تعداد منابع اسمبلی: {allNames.Count})");
+                Console.Error.WriteLine("     ⚠️ اگر انتشار Single-File است و این فایل داخل exe است، همان exe را با --assembly بدهید.");
+                return 6;
+            }
+
+            using var manifestDoc = JsonDocument.Parse(manifestJson);
+            var entries = new List<(string KeyId, string Algorithm, string File, string? Sha256, bool DebugOnly)>();
+            if (manifestDoc.RootElement.TryGetProperty("keys", out var keysElement) && keysElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var key in keysElement.EnumerateArray())
+                {
+                    entries.Add((
+                        key.TryGetProperty("keyId", out var k) ? k.GetString() ?? "" : "",
+                        key.TryGetProperty("algorithm", out var a) ? a.GetString() ?? "RS256" : "RS256",
+                        key.TryGetProperty("file", out var f) ? f.GetString() ?? "" : "",
+                        key.TryGetProperty("sha256", out var h) ? h.GetString() : null,
+                        key.TryGetProperty("debugOnly", out var d) && d.ValueKind == JsonValueKind.True));
+                }
+            }
+
+            Console.WriteLine($"  ردیف‌های manifest: {entries.Count}");
+            var expectedKeyId = Arg(args, "--expect");
+            var productionKeys = 0;
+
+            foreach (var entry in entries)
+            {
+                var pemName = allNames.FirstOrDefault(n => n.EndsWith("Keys." + entry.File, StringComparison.OrdinalIgnoreCase));
+                var present = pemName is not null && pems.ContainsKey(pemName);
+                string? fingerprint = null;
+                if (present)
+                {
+                    try
+                    {
+                        var der = KeyImport.DerFromPem(pems[pemName!]);
+                        fingerprint = Convert.ToHexString(SHA256.HashData(der)).ToLowerInvariant();
+                    }
+                    catch { fingerprint = null; }
+                }
+
+                var allowed = PublicKeyRing.IsKeyAllowedInBuild(entry.DebugOnly);
+                var fpOk = entry.Sha256 is null || (fingerprint is not null && fingerprint.StartsWith(entry.Sha256!, StringComparison.OrdinalIgnoreCase));
+                if (!entry.DebugOnly && allowed && present && fpOk) productionKeys++;
+
+                var mark = !present ? "⛔ فایل کلید نیست"
+                         : !fpOk ? "⛔ اثر انگشت نمی‌خواند"
+                         : !allowed ? "⛔ فقط Debug (در Release بارگذاری نمی‌شود)"
+                         : "✔";
+                Console.WriteLine($"    {mark} {entry.KeyId,-14} {entry.Algorithm,-6} {entry.File,-24} " +
+                                  $"debugOnly={entry.DebugOnly}");
+                if (fingerprint is not null) Console.WriteLine($"        اثر انگشت: {fingerprint}");
+            }
+
+            Console.WriteLine();
+            if (!string.IsNullOrWhiteSpace(expectedKeyId))
+            {
+                var match = entries.FirstOrDefault(e => string.Equals(e.KeyId, expectedKeyId, StringComparison.OrdinalIgnoreCase));
+                if (match.KeyId is null)
+                {
+                    Console.Error.WriteLine($"  ⛔ کلید «{expectedKeyId}» در manifest این بیلد نیست ⇒ خطای «کلید شناخته‌شده نیست» طبیعی است.");
+                    return 6;
+                }
+                Console.WriteLine($"  ✔ کلید «{expectedKeyId}» در manifest این بیلد هست.");
+            }
+
+            if (productionKeys == 0)
+            {
+                Console.Error.WriteLine("  ⛔ این بیلد هیچ کلید تولیدی معتبری ندارد ⇒ هیچ لایسنس واقعی روی آن فعال نمی‌شود.");
+                return 6;
+            }
+
+            Console.WriteLine($"  ✔ کلیدهای تولیدی معتبر در این بیلد: {productionKeys}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ خواندن اسمبلی ناموفق بود: {ex.GetType().Name}: {ex.Message}");
+            return 2;
+        }
+    }
+
+    /// <summary>خواندن دادهٔ یک ManifestResource جاسازی‌شده با نقشهٔ RVA → فایل.</summary>
+    private static byte[]? ReadEmbeddedResource(PEReader pe, int resourcesRva, long offset)
+    {
+        if (resourcesRva == 0) return null;
+        var data = pe.GetSectionData((int)(resourcesRva + offset));
+        if (data.Length == 0) return null;
+
+        var bytes = data.GetContent().ToArray();     // ImmutableArray<byte> → byte[]
+        if (bytes.Length < 4) return null;
+        var length = BitConverter.ToInt32(bytes, 0);
+        if (length <= 0 || length > bytes.Length - 4) return null;
+
+        var payload = new byte[length];
+        Array.Copy(bytes, 4, payload, 0, length);
+        return payload;
     }
 
     /// <summary>
@@ -889,6 +1121,10 @@ public static class Program
 
           bridge --days N --installation-id <id> --private-key <pem> --out <out.lic> [--yes]
                  لایسنس پل: همهٔ ۳۳ ماژول، اشتراکی، بدون سقف کاربر و سهمیه.
+
+          keys --assembly <Inventory.Licensing.dll> [--expect sup-202611]
+          keys --dir <پوشهٔ انتشار> [--expect sup-202611]
+                 چه کلیدهایی واقعاً داخل این بیلد جاسازی شده‌اند؟ (تشخیص ریشه‌ای خطای «کلید ناشناخته»)
 
           companies <a.lic> [b.lic ...] [--public-key <pem>|--manifest <json>]
                  نمای «هر شرکت چه ماژول و چند صندلی دارد» (چند شرکت روی یک نصب).
