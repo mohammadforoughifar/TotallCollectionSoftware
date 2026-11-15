@@ -85,3 +85,17 @@ ol.steps,ul.steps{margin:.3rem 0;padding-inline-start:1.1rem;font-size:13px}
 .jdp-btn:hover{background:#e7ebf3}
 input.jdate{background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%237a8699' stroke-width='2'><rect x='3' y='5' width='18' height='16' rx='2'/><path d='M8 3v4M16 3v4M3 10h18'/></svg>") no-repeat;
   background-position:left .5rem center;padding-left:1.9rem;cursor:pointer}
+
+/* ── «چشم» فیلدهای رمز ───────────────────────────────────────────────── */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap > input[type="password"],
+.pw-wrap > input[type="text"] { padding-left: 2.2rem; width: 100%; }
+.pw-eye {
+    position: absolute; left: .35rem; top: 50%; transform: translateY(-50%);
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.75rem; height: 1.75rem; padding: 0; border: 0; border-radius: .45rem;
+    background: transparent; color: #6b7280; cursor: pointer; line-height: 1;
+}
+.pw-eye:hover { background: #eef2f7; color: #111827; }
+.pw-eye:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
+.pw-eye.is-on { color: #2563eb; }
