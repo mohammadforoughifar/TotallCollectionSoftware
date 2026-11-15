@@ -3,12 +3,50 @@
 @inject SupportDbContext Db
 @inject SupportSettingsService Settings
 @inject AuditChainService Audit
+@inject SigningRunner Signing
+@inject SignerKeyService Keys
+@inject SignerOptions Options
 @{
     ViewData["Title"] = "تنظیمات";
 }
 @functions {
     public string Error { get; set; } = "";
     public string OkMessage { get; set; } = "";
+    public KeyGenResult? KeyResult { get; set; }
+    public List<string> KeyWarnings { get; set; } = new();
+
+    public async Task<IActionResult> OnPostKeygenAsync()
+    {
+        var keyId = Request.Form["keyId"].ToString();
+        var folder = Request.Form["keyFolder"].ToString();
+        var password = Request.Form["keyPass"].ToString();
+        var confirm = Request.Form["keyPass2"].ToString();
+        var overwrite = Request.Form["overwrite"].ToString() == "on";
+
+        if (password != confirm)
+        {
+            Error = "رمز و تکرار رمز یکسان نیستند.";
+            return Page();
+        }
+
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        KeyResult = await Keys.CreateAsync(keyId, folder, password, overwrite, actor);
+        if (!KeyResult.Ok) Error = KeyResult.Message;
+        else
+        {
+            OkMessage = KeyResult.Message;
+            KeyWarnings = KeyResult.Warnings;
+        }
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostKeyDisconnectAsync()
+    {
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        await Keys.DisconnectAsync(actor);
+        OkMessage = "اتصال از کلید ثبت‌شده قطع شد (فایل کلیدها پاک نشد).";
+        return Page();
+    }
 
     public async Task<IActionResult> OnPostSmtpAsync()
     {
@@ -36,6 +74,8 @@
     }
 }
 @{
+    var signStatus = Signing.GetStatus();
+    var savedKey = await Keys.LoadAsync();
     var smtp = await Settings.GetSmtpAsync();
     var template = await Settings.GetTemplateAsync();
     var passwordAvailable = Settings.SmtpPasswordAvailable;
@@ -46,6 +86,84 @@
 </div>
 @if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
 @if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+
+<div class="card"><div class="card-head">کلیدهای امضا — ساخت خودکار جفت‌کلید</div><div class="card-body">
+    <table class="table">
+        <tr><th style="width:34%">مورد</th><th style="width:16%">وضعیت</th><th>مقدار فعلی</th></tr>
+        <tr><td>ابزار LicenseTool</td>
+            <td>@(signStatus.ToolPath is null ? Html.Raw("<span class=\"badge err\">پیدا نشد</span>") : Html.Raw("<span class=\"badge ok\">آماده</span>"))</td>
+            <td class="mono">@(signStatus.ToolPath ?? "—")</td></tr>
+        <tr><td>کلید خصوصی</td>
+            <td>@(signStatus.PrivateKeyFound ? Html.Raw("<span class=\"badge ok\">یافت شد</span>") : Html.Raw("<span class=\"badge err\">پیدا نشد</span>"))</td>
+            <td class="mono">@(signStatus.PrivateKeyPath is { Length: > 0 } p ? p : "—")</td></tr>
+        <tr><td>کلید عمومی</td>
+            <td>@(signStatus.PublicKeyFound ? Html.Raw("<span class=\"badge ok\">یافت شد</span>") : Html.Raw("<span class=\"badge err\">پیدا نشد</span>"))</td>
+            <td class="mono">@(signStatus.PublicKeyPath is { Length: > 0 } pu ? pu : "—")</td></tr>
+        <tr><td>Key ID</td>
+            <td>@(string.IsNullOrWhiteSpace(signStatus.KeyId) ? "—" : Html.Raw("<span class=\"badge ok\">تعیین‌شده</span>"))</td>
+            <td class="mono">@(signStatus.KeyId is { Length: > 0 } k ? k : "—")</td></tr>
+        <tr><td>منبع کلید فعال</td><td colspan="2">
+            @if (savedKey is not null && System.IO.File.Exists(savedKey.PrivateKeyPath))
+            {
+                <span>ساخته‌شده از همین صفحه — شناسهٔ <span class="mono">@savedKey.KeyId</span>،
+                    اثر انگشت <span class="mono small">@(savedKey.Fingerprint is { Length: > 16 } fp ? fp[..16] + "…" : savedKey.Fingerprint)</span></span>
+            }
+            else
+            {
+                <span>پیکربندی محیطی (<span class="mono">Signer__PrivateKeyPath</span>) — هیچ کلیدی از این صفحه ساخته نشده است.</span>
+            }
+            @if (signStatus.Ready)
+            {
+                <div class="hint" style="margin:.35rem 0 0">وضعیت کلی: <b>آمادهٔ امضا</b> — گذرواژهٔ کلید هنگام امضا در فرم وارد می‌شود.</div>
+            }
+            else
+            {
+                <div class="hint" style="margin:.35rem 0 0">وضعیت کلی: <b>آماده نیست</b> — @signStatus.Reason</div>
+            }
+        </td></tr>
+    </table>
+
+    <form method="post" asp-page-handler="Keygen" style="margin-top:1rem">
+        <div class="grid">
+            <div class="field"><label for="keyId">شناسهٔ کلید (Key ID)</label>
+                <input id="keyId" name="keyId" class="mono" value="sup-@DateTime.Now.ToString("yyyyMM")" /></div>
+            <div class="field"><label for="keyFolder">پوشهٔ کلیدها (بیرون از مخزن)</label>
+                <input id="keyFolder" name="keyFolder" class="mono" value="@(savedKey?.Folder ?? Keys.SuggestedFolder())" /></div>
+            <div class="field"><label for="keyPass">رمز کلید خصوصی</label>
+                <input id="keyPass" name="keyPass" type="password" autocomplete="new-password" /></div>
+            <div class="field"><label for="keyPass2">تکرار رمز</label>
+                <input id="keyPass2" name="keyPass2" type="password" autocomplete="new-password" /></div>
+        </div>
+        <div class="field"><label><input type="checkbox" name="overwrite" /> اگر کلیدی با این شناسه بود، بازنویسی شود</label></div>
+        <p class="hint">جفت‌کلید RSA 3072 ساخته می‌شود؛ کلید خصوصی <b>رمزنگاری‌شده</b> (AES‑256، ۱۰۰٬۰۰۰ تکرار) روی
+            همین ماشین نوشته و پنل بلافاصله به آن وصل می‌شود — بدون ری‌استارت و بدون ست‌کردن دستی متغیر محیطی.
+            رمز <b>هیچ‌جا ذخیره نمی‌شود</b> (نه DB، نه لاگ، نه فایل)؛ آن را نگه دارید چون هنگام هر امضا یا با
+            <span class="mono">@Options.KeyPasswordEnvironmentVariable</span> لازم است.</p>
+        <button type="submit" class="btn">ساخت جفت‌کلید و اتصال به پنل</button>
+        @if (savedKey is not null)
+        {
+            <button type="submit" formnovalidate asp-page-handler="KeyDisconnect" class="btn ghost"
+                    onclick="return confirm('اتصال از کلید ثبت‌شده قطع شود؟ فایل‌ها پاک نمی‌شوند.')">قطع اتصال از کلید ثبت‌شده</button>
+        }
+    </form>
+
+    @if (KeyResult is { Ok: true, Key: not null })
+    {
+        <div class="card" style="margin-top:.8rem;box-shadow:none;border:1px solid #cfe8d5">
+            <div class="card-body">
+                <p><b>کلید ساخته شد:</b> <span class="mono">@KeyResult.Key.KeyId</span></p>
+                <table class="table">
+                    <tr><th style="width:32%">کلید عمومی</th><td class="mono">@KeyResult.Key.PublicKeyPath</td></tr>
+                    <tr><th>کلید خصوصی</th><td class="mono">@KeyResult.Key.PrivateKeyPath</td></tr>
+                    <tr><th>اثر انگشت (sha256)</th><td class="mono small">@KeyResult.Key.Fingerprint</td></tr>
+                </table>
+                <ul class="hint" style="line-height:1.9">
+                    @foreach (var w in KeyWarnings) { <li>@w</li> }
+                </ul>
+            </div>
+        </div>
+    }
+</div></div>
 
 <div class="card"><div class="card-head">SMTP (اختیاری)</div><div class="card-body">
     <form method="post" asp-page-handler="Smtp">

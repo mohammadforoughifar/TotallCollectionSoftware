@@ -106,6 +106,7 @@ builder.Services.AddSingleton<LicenseToolRunner>();
 builder.Services.AddSingleton<LicenseInspector>();
 builder.Services.AddScoped<SigningRunner>();
 builder.Services.AddScoped<SupportSettingsService>();
+builder.Services.AddScoped<SignerKeyService>();
 builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<SeedService>();
@@ -150,6 +151,10 @@ using (var scope = app.Services.CreateScope())
 {
     var seed = scope.ServiceProvider.GetRequiredService<SeedService>();
     await seed.SeedAsync();
+
+    // کلیدی که از صفحهٔ تنظیمات ساخته شده، بر پیکربندی محیطی اولویت دارد (اگر فایل‌هایش سرجایشان باشند).
+    var keys = scope.ServiceProvider.GetRequiredService<SignerKeyService>();
+    await keys.ApplySavedAsync();
 }
 
 app.UseStaticFiles();
