@@ -173,9 +173,11 @@ class RepairContracts(unittest.TestCase):
         success = section.split('@if (SmsDetailSuccess(sms.Status))', 1)[1].split('else', 1)[0]
         self.assertIn('bi-check-circle-fill', success)
         self.assertIn('class="visually-hidden">@SmsDetailStatus(sms.Status)', success)
-        self.assertNotIn('code.Value', success)
-        self.assertIn('code.HasValue', section)
-        self.assertIn('@code.Value', section)
+        self.assertNotIn('returnedCode.Value', success)
+        self.assertIn('var returnedCode = SmsDetailCode(sms);', section)
+        self.assertIn('returnedCode.HasValue', section)
+        self.assertIn('@(returnedCode.Value)', section)
+        self.assertNotRegex(section, r'@code\b')  # Razor would interpret this as a directive.
         self.assertIn('RefreshSmsStatus', section)
         self.assertNotIn('SmsStatusText(', section)
         self.assertNotIn('ProviderCode', section)

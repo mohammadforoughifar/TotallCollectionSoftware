@@ -838,7 +838,7 @@
                 {
                     @foreach (var sms in viewing.SmsNotifications)
                     {
-                        var code = SmsDetailCode(sms);
+                        var returnedCode = SmsDetailCode(sms);
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1 fs-8">
                             <span>@SmsEventName(sms.EventType)</span>
                             <span class="fw-700 @(SmsDetailSuccess(sms.Status) ? "text-success" : SmsDetailFailure(sms.Status) ? "text-danger" : "text-muted")">
@@ -849,9 +849,9 @@
                                 else
                                 {
                                     @SmsDetailStatus(sms.Status)
-                                    @if (code.HasValue)
+                                    @if (returnedCode.HasValue)
                                     {
-                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@code.Value</bdi>
+                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>
                                     }
                                 }
                             </span>
