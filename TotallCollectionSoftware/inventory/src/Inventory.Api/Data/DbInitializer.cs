@@ -297,6 +297,14 @@ public static class DbInitializer
                 // داشبورد شخصی کاربر — جدول داشبوردها و ویجت‌های چیده‌شده
                 await DashboardSchemaV1.EnsureAsync(db);
 
+                // ایندکس‌های داشبورد دستور کار — بدون این‌ها ویجت‌های دستور کار
+                // روی دادهٔ واقعی به اسکن کامل WorkOrderAssignees می‌خورند.
+                await WorkOrderDashboardIndexSchemaV1.EnsureAsync(db);
+                if (WorkOrderDashboardIndexSchemaV1.LastError is { Length: > 0 } ixErr)
+                    Console.WriteLine("[DB] ⚠ ایندکس‌های داشبورد دستور کار ساخته نشدند: " + ixErr);
+                else
+                    Console.WriteLine("[DB] ✔ ایندکس‌های داشبورد دستور کار آماده‌اند.");
+
                 // گزارش‌ساز قدیمی حذف شده و از نو طراحی می‌شود — جدول‌های باقی‌مانده پاک می‌شوند
                 await ReportBuilderCleanupV1.RunAsync(db);
 

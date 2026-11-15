@@ -40,6 +40,14 @@ public static class WidgetCatalog
         Choices = new List<string> { "3", "5", "8", "10", "15" }, Default = def.ToString()
     };
 
+    /// <summary>دامنهٔ دید کاربر روی دستور کار — مقادیر همان برچسب‌اند چون UI مقدار را نمایش می‌دهد.</summary>
+    private static WidgetOptionDefDto WoScopeOption() => new()
+    {
+        Key = "scope", Label = "دامنه", Kind = "select",
+        Choices = new List<string> { "هر دو", "محول‌شده به من", "صادرشده توسط من" },
+        Default = "هر دو"
+    };
+
     public static readonly WidgetDefDto[] All = Build();
 
     private static WidgetDefDto[] Build()
@@ -112,13 +120,90 @@ public static class WidgetCatalog
               DashChartType.Pie, DashChartType.Doughnut, DashChartType.Bar),
 
             // ==================== دستور کار ====================
+            // همهٔ ویجت‌های این بخش توسط WorkOrderWidgets پاسخ داده می‌شوند (نه switch اصلی).
+            // دامنه پیش‌فرض «هر دو» = دستورهای صادرشده توسط من یا محول‌شده به من، در شرکت فعال.
             W("wo-open", "دستور کارهای باز", "دستور کار", "bi-card-checklist", "WorkOrders",
-              DashWidgetKind.Kpi, 3, 2, false, "عدد", "work-orders", "دستورهای کار بازِ محول‌شده به من یا از طرف من"),
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders", "دستورهای کار بازِ محول‌شده به من یا از طرف من"),
             W("wo-overdue", "دستور کارهای معوق", "دستور کار", "bi-alarm", "WorkOrders",
-              DashWidgetKind.Kpi, 3, 2, false, "عدد", "work-orders?tab=mine", "دستورهای بازی که از مهلتشان گذشته"),
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders?tab=mine", "دستورهای بازی که از مهلتشان گذشته"),
             W("wo-by-status", "وضعیت دستور کارها", "دستور کار", "bi-kanban", "WorkOrders",
-              DashWidgetKind.Chart, 4, 3, false, "عدد", "work-orders?tab=stats", "توزیع وضعیت دستورهای کار",
+              DashWidgetKind.Chart, 4, 3, false, "دستور", "work-orders?tab=stats", "توزیع باز/بسته در دستورهای من",
               DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+
+            // ---------- خانوادهٔ A: میز کار من ----------
+            W("wo-my-inbox", "محول‌شده به من", "دستور کار", "bi-inbox-fill", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders?tab=assigned",
+              "دستورهای بازی که دیگران به من واگذار کرده‌اند"),
+            W("wo-my-unseen", "دستورهای دیده‌نشده", "دستور کار", "bi-eye-slash", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders?tab=assigned",
+              "دستورهای بازِ محول‌شده به من که هنوز باز نکرده‌ام"),
+            W("wo-due-today", "مهلت امروز", "دستور کار", "bi-calendar-day", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders?tab=calendar",
+              "دستورهای بازی که مهلتشان امروز است"),
+            W("wo-due-week", "مهلت ۷ روز آینده", "دستور کار", "bi-calendar-week", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "دستور", "work-orders?tab=calendar",
+              "دستورهای بازی که مهلتشان از فردا تا هفت روز آینده است"),
+            W("wo-my-next", "نزدیک‌ترین مهلت‌ها", "دستور کار", "bi-calendar-event", "WorkOrders",
+              DashWidgetKind.Table, 6, 3, false, "", "work-orders?tab=calendar",
+              "دستورهای بازِ من به ترتیب نزدیکی مهلت — با کلیک روی هر سطر، خود دستور باز می‌شود"),
+
+            // ---------- خانوادهٔ B: سلامت جریان ----------
+            W("wo-ontime-rate", "نرخ انجام به‌موقع", "دستور کار", "bi-bullseye", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, true, "٪", "work-orders?tab=stats",
+              "سهم انجام به‌موقع از دستورهای بسته‌شدهٔ بازه (مخرج: به‌موقع + با تأخیر + بسته بدون انجام)"),
+            W("wo-outcome-mix", "ترکیب نتیجهٔ دستورها", "دستور کار", "bi-pie-chart-fill", "WorkOrders",
+              DashWidgetKind.Chart, 4, 3, true, "دستور", "work-orders?tab=stats",
+              "پنج حالت: باز، گذشته از مهلت، انجام به‌موقع، انجام با تأخیر، بسته بدون انجام",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("wo-closed-nodone", "بسته بدون انجام", "دستور کار", "bi-x-octagon", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, true, "دستور", "work-orders?tab=archive",
+              "دستورهایی که بسته شده‌اند ولی همهٔ گیرندگان «انجام شد» نزده‌اند"),
+            W("wo-open-age", "سن معوق‌ها", "دستور کار", "bi-hourglass-bottom", "WorkOrders",
+              DashWidgetKind.Chart, 4, 3, false, "دستور", "work-orders?tab=mine",
+              "توزیع دستورهای معوق در سبدهای ۱ روز، ۲ تا ۷، ۸ تا ۳۰ و بیش از ۳۰ روز",
+              DashChartType.Bar, DashChartType.Doughnut),
+            W("wo-created-vs-closed", "ایجاد در برابر بستن", "دستور کار", "bi-arrow-left-right", "WorkOrders",
+              DashWidgetKind.Chart, 6, 3, false, "دستور", "work-orders?tab=stats",
+              "دوازده ماه شمسی اخیر: چند دستور ایجاد و چند دستور بسته شده است",
+              DashChartType.Bar, DashChartType.Line),
+            W("wo-first-response", "زمان تا اولین پاسخ", "دستور کار", "bi-stopwatch", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, true, "ساعت", "work-orders?tab=perf",
+              "میانگین فاصلهٔ ثبت دستور تا اولین پاسخ گیرنده — هرچه کمتر، بهتر"),
+
+            // ---------- خانوادهٔ C: تیم ----------
+            W("wo-pending-approval", "در انتظار تأیید من", "دستور کار", "bi-hourglass-split", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "پاسخ", "work-orders?tab=mine",
+              "پاسخ‌هایی که گیرنده داده ولی من هنوز تأیید یا رد نکرده‌ام"),
+            W("wo-pending-approval-list", "فهرست در انتظار تأیید", "دستور کار", "bi-list-check", "WorkOrders",
+              DashWidgetKind.Table, 6, 3, false, "", "work-orders?tab=mine",
+              "پاسخ‌های تأییدنشده به ترتیب نزدیکی مهلت"),
+            W("wo-team-load", "بار کاری هر نفر", "دستور کار", "bi-people-fill", "WorkOrders",
+              DashWidgetKind.Chart, 6, 3, false, "دستور", "work-orders?tab=kanban",
+              "تعداد دستور بازِ واگذارشده به هر گیرنده، در دستورهای صادرشده توسط من",
+              DashChartType.Bar, DashChartType.Doughnut),
+            W("wo-team-scoreboard", "عملکرد گیرندگان", "دستور کار", "bi-trophy", "WorkOrders",
+              DashWidgetKind.Table, 9, 4, true, "", "work-orders?tab=perf",
+              "کل دریافتی، انجام‌شده، به‌موقع، بی‌پاسخ و درصد به‌موقع برای گیرندگانِ دستورهای من"),
+            W("wo-unanswered", "بی‌پاسخ‌ترین گیرندگان", "دستور کار", "bi-chat-left-dots", "WorkOrders",
+              DashWidgetKind.Table, 6, 3, false, "", "work-orders?tab=perf",
+              "گیرندگانی که بیشترین دستور بازِ بی‌پاسخ را دارند"),
+
+            // ---------- خانوادهٔ D/E: کیفیت فرآیند ----------
+            W("wo-extension-hot", "تمدیدهای مکرر", "دستور کار", "bi-arrow-repeat", "WorkOrders",
+              DashWidgetKind.Table, 6, 3, false, "", "work-orders?tab=mine",
+              "دستورهایی که سه بار یا بیشتر تمدید شده‌اند (سقف مجاز ۵ بار)"),
+            W("wo-checklist-rate", "تکمیل چک‌لیست", "دستور کار", "bi-check2-square", "WorkOrders",
+              DashWidgetKind.Kpi, 3, 2, false, "٪", "work-orders?tab=mine",
+              "درصد آیتم‌های تیک‌خوردهٔ چک‌لیست روی دستورهای باز"),
+            W("wo-source-mix", "مبدأ دستورها", "دستور کار", "bi-diagram-3", "WorkOrders",
+              DashWidgetKind.Chart, 4, 3, true, "دستور", "work-orders",
+              "دستورها از کجا آمده‌اند: ثبت دستی، نامه، مدرک، صورتجلسه یا هشدار سرور",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+
+            // ---------- پروژه کاری ----------
+            W("wp-my-progress", "پیشرفت پروژه‌های من", "پروژه کاری", "bi-briefcase", "WorkProjects",
+              DashWidgetKind.Table, 9, 4, false, "", "work-projects",
+              "پروژه‌های بازِ من با پیشرفت وزنی، تعداد دستور باز و معوق"),
 
             // ==================== اتوماسیون اداری ====================
             W("off-letters-count", "نامه‌های ثبت‌شده", "اتوماسیون اداری", "bi-envelope-paper", "InnerLetters",
@@ -197,6 +282,19 @@ public static class WidgetCatalog
         foreach (var k in new[] { "fac-top-parties", "fac-top-products", "prod-reorder-list", "trs-cheques-due", "doc-expiring",
                                   "off-out-top-receivers", "off-inner-top-senders" })
             list.First(x => x.Key == k).Options.Add(Limit(k == "trs-cheques-due" || k == "doc-expiring" ? 8 : 5));
+
+        // ---------- گزینه‌های دستور کار ----------
+        // «دامنه» فقط شخصی است. نمای کل شرکت عمداً اضافه نشده تا بدون مجوز تازه، دادهٔ
+        // دیگران قابل دیدن نباشد.
+        foreach (var k in new[] { "wo-open", "wo-overdue", "wo-by-status", "wo-due-today", "wo-due-week",
+                                  "wo-ontime-rate", "wo-outcome-mix", "wo-closed-nodone", "wo-open-age",
+                                  "wo-created-vs-closed", "wo-first-response", "wo-extension-hot",
+                                  "wo-checklist-rate", "wo-source-mix" })
+            list.First(x => x.Key == k).Options.Add(WoScopeOption());
+
+        foreach (var k in new[] { "wo-my-next", "wo-pending-approval-list", "wo-team-load",
+                                  "wo-team-scoreboard", "wo-unanswered", "wo-extension-hot", "wp-my-progress" })
+            list.First(x => x.Key == k).Options.Add(Limit(k == "wo-team-scoreboard" ? 15 : 10));
 
         return list.ToArray();
     }

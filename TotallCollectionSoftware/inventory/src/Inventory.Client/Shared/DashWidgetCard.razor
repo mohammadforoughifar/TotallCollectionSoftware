@@ -120,10 +120,11 @@
             {
                 case DashWidgetKind.Kpi:
                     <div class="dash-kpi">
-                        <div class="dash-kpi-value num">@FormatNumber(Data.Value ?? 0)<span class="dash-kpi-unit">@Data.Unit</span></div>
+                        <div class="dash-kpi-value num">@(Data.Value is null ? "—" : FormatNumber(Data.Value.Value))<span class="dash-kpi-unit">@(Data.Value is null ? "" : Data.Unit)</span></div>
                         @if (!string.IsNullOrEmpty(Data.DeltaText))
                         {
-                            <div class="dash-kpi-delta @(Data.DeltaUp == true ? "up" : "down")">
+                            @* جهت فلش از DeltaUp؛ رنگ از قطبیت شاخص (کاهش معوق = سبز، نه قرمز) *@
+                            <div class="dash-kpi-delta @((Data.DeltaUp == (Data.HigherIsBetter ?? true)) ? "up" : "down")">
                                 <i class="bi @(Data.DeltaUp == true ? "bi-arrow-up-short" : "bi-arrow-down-short")"></i>
                                 @Data.DeltaText
                             </div>
@@ -203,7 +204,10 @@
         if (Data is null || Def.Kind != DashWidgetKind.Chart) return;
 
         // فقط وقتی داده عوض شده دوباره نمودار را بکش
-        var sig = string.Join("|", Data.Series.Select(s => s.Name + ":" + string.Join(",", s.Values)));
+        // نوع نمودار و برچسب‌ها هم باید در امضا باشند؛ وگرنه عوض‌کردن «میله‌ای ↔ دایره‌ای»
+        // یا عوض‌شدن برچسب‌ها با مقادیر یکسان، نمودار را دوباره نمی‌کشید.
+        var sig = (int)Data.ChartType + "#" + string.Join("|", Data.Series.Select(s =>
+            s.Name + ":" + string.Join(",", s.Labels) + ":" + string.Join(",", s.Values)));
         if (!firstRender && sig == lastRendered) return;
         lastRendered = sig;
 
