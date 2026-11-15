@@ -173,7 +173,125 @@ public static class LicenseValidator
             issues.Add(Error("USER_POLICY_CONFLICT",
                 "این فایل هم «کاربر نام‌دار» و هم «کاربر هم‌زمان» دارد. در یک نصب فقط یکی مجاز است؛ فایل را اصلاح کنید."));
 
+        // ---------- شرکت‌های مجاز ----------
+        ValidateCompanies(document, now, issues);
+
         return issues;
+    }
+
+    /// <summary>
+    /// اعتبارسنجی فهرست شرکت‌های مجاز سند.
+    ///
+    /// <para>چرا این لایه لازم است؟ فهرست شرکت‌ها «دادهٔ امضاشده» است و نرم‌افزار مشتری
+    /// تنها مرجع تصمیم‌گیری دربارهٔ فعال بودن یک شرکت است. اگر سندِ امضاشده از نظر منطقی
+    /// ناسازگار باشد (مثلاً شرکتی با ماژولی که فروخته نشده، یا جمع سقف کاربران بیشتر از
+    /// سقف سند)، مشتری عملاً «لایسنس معیوب» می‌گیرد و بعد از امضا قابل اصلاح نیست.</para>
+    /// </summary>
+    private static void ValidateCompanies(LicenseDocument document, DateTime now, List<LicenseIssue> issues)
+    {
+        if (document.Companies.Count == 0) return;   // خالی = بدون محدودیت شرکت
+
+        // ماژول‌هایی که همین سند واقعاً می‌فروشد (همهٔ آیتم‌ها، حتی شروع‌نشده‌ها؛
+        // چون شرکت‌ها معمولاً پیش از شروع دوره تعریف می‌شوند).
+        var licensedModules = document.Items
+            .SelectMany(i => i.Scope)
+            .Select(ModuleCodes.Normalize)
+            .Where(ModuleCodes.IsKnown)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // سقف کاربرِ کل سند = بیشترین سقف بین آیتم‌هایی که سیاست کاربر دارند.
+        var seatCap = document.Items
+            .Where(i => i.Users.Mode != LicenseUserMode.None && i.Users.Max > 0)
+            .Select(i => i.Users.Max)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var explicitSeats = 0;
+        var companiesWithSeats = 0;
+
+        foreach (var company in document.Companies)
+        {
+            var id = company.CompanyId?.Trim() ?? "";
+            var tag = id.Length == 0 ? "(بی‌شناسه)" : id;
+
+            if (id.Length == 0)
+            {
+                issues.Add(Error("COMPANY_ID_MISSING", "یکی از شرکت‌های لایسنس شناسه ندارد."));
+                continue;
+            }
+
+            if (!seen.Add(id))
+                issues.Add(Error("COMPANY_ID_DUPLICATE", $"شناسهٔ شرکت «{id}» در فهرست شرکت‌های لایسنس تکراری است."));
+
+            if (string.IsNullOrWhiteSpace(company.Name))
+                issues.Add(Warning("COMPANY_NAME_MISSING",
+                    $"شرکت «{id}» نام نمایشی ندارد؛ در صفحهٔ وضعیت لایسنس با شناسه نشان داده می‌شود."));
+
+            // ---- ماژول‌های شرکت ----
+            if (company.Modules.Count > 0)
+            {
+                foreach (var raw in company.Modules)
+                {
+                    var code = ModuleCodes.Normalize(raw);
+                    if (!ModuleCodes.IsKnown(code))
+                    {
+                        issues.Add(Error("COMPANY_MODULE_UNKNOWN",
+                            $"شرکت «{tag}» ماژول ناشناختهٔ «{raw}» دارد. کد ماژول‌ها در نرم‌افزار ثابت‌اند."));
+                        continue;
+                    }
+
+                    if (ModuleCodes.IsAlwaysOn(code))
+                    {
+                        issues.Add(Warning("COMPANY_MODULE_ALWAYS_ON",
+                            $"شرکت «{tag}» ماژول همیشه‌فعال «{ModuleCodes.TitleOf(code)}» را نام برده؛ نیازی به ذکر ندارد."));
+                        continue;
+                    }
+
+                    if (!licensedModules.Contains(code))
+                        issues.Add(Error("COMPANY_MODULE_OUT_OF_SCOPE",
+                            $"شرکت «{tag}» ماژول «{ModuleCodes.TitleOf(code)}» را دارد که در هیچ آیتم این سند فروخته نشده است."));
+                }
+            }
+
+            // ---- سقف کاربر شرکت ----
+            if (company.MaxUsers is { } seats)
+            {
+                if (seats < 0)
+                {
+                    issues.Add(Error("COMPANY_USERS_NEGATIVE", $"سقف کاربر شرکت «{tag}» منفی است."));
+                    continue;
+                }
+
+                if (seats == 0)
+                    issues.Add(Warning("COMPANY_USERS_ZERO",
+                        $"سقف کاربر شرکت «{tag}» صفر است؛ عملاً این شرکت نمی‌تواند کاربر داشته باشد."));
+
+                if (seatCap == 0)
+                {
+                    issues.Add(Warning("COMPANY_USERS_WITHOUT_POLICY",
+                        $"شرکت «{tag}» سقف کاربر دارد ولی این سند سیاست کاربری (Named/Concurrent) ندارد؛ عدد نادیده گرفته می‌شود."));
+                }
+                else
+                {
+                    explicitSeats += seats;
+                    companiesWithSeats++;
+                }
+            }
+        }
+
+        if (seatCap > 0 && explicitSeats > seatCap)
+            issues.Add(Error("COMPANY_USERS_EXCEED_SEATS",
+                $"جمع سقف کاربران شرکت‌ها ({explicitSeats}) از سقف کاربران این سند ({seatCap}) بیشتر است."));
+
+        if (seatCap > 0 && companiesWithSeats > 0 && companiesWithSeats < seen.Count)
+            issues.Add(Warning("COMPANY_USERS_PARTIAL",
+                "برای بعضی شرکت‌ها سقف کاربر تعیین شده و برای بعضی نه؛ شرکت‌های بدون سقف از باقی‌ماندهٔ سقف سند استفاده می‌کنند."));
+
+        // شرکتی که در دورهٔ جاری فعال است ولی همهٔ ماژول‌هایش خالی است و سند هم ماژولی ندارد
+        if (licensedModules.Count == 0)
+            issues.Add(Warning("COMPANY_WITHOUT_MODULES",
+                $"فهرست شرکت‌ها پر است ولی این سند هیچ ماژول معتبری ندارد (تاریخ مرجع: {now:yyyy-MM-dd})."));
     }
 
     private static void ValidateTerm(LicenseItem item, string tag, DateTime now, List<LicenseIssue> issues)

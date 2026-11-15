@@ -381,6 +381,9 @@ namespace LicenseSigner.Data.Migrations
                     b.Property<string>("ByName")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CompaniesJson")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
@@ -497,6 +500,9 @@ namespace LicenseSigner.Data.Migrations
 
                     b.Property<int?>("InstallationRefId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("InterestedCompaniesJson")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("InterestedModulesCsv")
                         .HasColumnType("TEXT");

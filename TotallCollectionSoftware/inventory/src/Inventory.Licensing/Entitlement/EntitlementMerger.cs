@@ -195,6 +195,10 @@ public static class EntitlementMerger
         // ---------- سیاست کاربر ----------
         var seats = BuildSeats(items, issues);
 
+        // ---------- شرکت‌های مجاز ----------
+        var companies = BuildCompanies(documents, seats, issues);
+        var companiesRestricted = companies.Count > 0;
+
         // ---------- نسخه و آیتم دائمی ----------
         var perpetual = items.Where(i => i.TermType == LicenseTermType.Perpetual).ToList();
         var hasPerpetualItem = perpetual.Count > 0;
@@ -217,6 +221,8 @@ public static class EntitlementMerger
             Modules = modules,
             Limits = limits,
             Seats = seats,
+            Companies = companies,
+            CompaniesRestricted = companiesRestricted,
             Issues = issues,
             UpdatesUntil = updatesUntil,
             HasPerpetualItem = hasPerpetualItem,
@@ -225,6 +231,93 @@ public static class EntitlementMerger
     }
 
     // ==================== کمکی‌ها ====================
+
+    /// <summary>
+    /// ادغام فهرست شرکت‌های مجازِ همهٔ اسناد.
+    ///
+    /// <para>قواعد:</para>
+    /// <list type="bullet">
+    /// <item>هر شناسهٔ شرکت فقط یک‌بار می‌آید (بدون حساسیت به بزرگی/کوچکی حروف).</item>
+    /// <item>ماژول‌ها = <b>اجتماع</b> ماژول‌های همان شرکت در همهٔ اسناد؛ اگر یکی از اسناد
+    /// فهرست ماژول را خالی گذاشته باشد (یعنی «همهٔ ماژول‌های سند»)، نتیجه هم خالی می‌ماند.</item>
+    /// <item>سقف کاربر = <b>جمع</b> سقف‌های صریح (خرید افزودنی صندلی برای همان شرکت)؛ اگر
+    /// یکی از اسناد سقف نداده باشد (null = تابع سقف کل)، نتیجه هم null می‌ماند.</item>
+    /// </list>
+    ///
+    /// <para>
+    /// چرا جمع، نه بیشترین؟ چون آیتم‌های مختلف یک مشتری معمولاً بستهٔ افزایشی‌اند: سند پایه
+    /// ۳ صندلی برای شرکت الف می‌دهد و سند افزودنی ۲ صندلی دیگر — انتظار مشتری ۵ است.
+    /// برای ماژول‌ها اجتماع درست است، چون دسترسی فقط باید اضافه شود.
+    /// </para>
+    /// </summary>
+    private static List<CompanyEntitlement> BuildCompanies(
+        IReadOnlyCollection<LicenseDocument> documents, UserSeatPolicy seats, List<LicenseIssue> issues)
+    {
+        var map = new Dictionary<string, (string Id, string? Name, List<string> Modules, bool UnrestrictedModules,
+                                          int? Seats, List<string> Serials)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var doc in documents)
+        {
+            foreach (var company in doc.Companies)
+            {
+                var id = company.CompanyId?.Trim();
+                if (string.IsNullOrEmpty(id)) continue;
+
+                if (!map.TryGetValue(id, out var acc))
+                    acc = (id, null, new List<string>(), false, 0, new List<string>());
+
+                var modules = company.Modules
+                    .Select(ModuleCodes.Normalize)
+                    .Where(ModuleCodes.IsKnown)
+                    .Where(m => !ModuleCodes.IsAlwaysOn(m))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var unrestricted = modules.Count == 0;
+                foreach (var m in modules)
+                    if (!acc.Modules.Contains(m, StringComparer.OrdinalIgnoreCase)) acc.Modules.Add(m);
+                if (unrestricted) acc.UnrestrictedModules = true;
+
+                int? seatsTotal;
+                if (company.MaxUsers is null || acc.Seats is null) seatsTotal = null;
+                else seatsTotal = acc.Seats.Value + Math.Max(0, company.MaxUsers.Value);
+
+                map[id] = (acc.Id,
+                           acc.Name ?? (string.IsNullOrWhiteSpace(company.Name) ? null : company.Name!.Trim()),
+                           acc.Modules,
+                           acc.UnrestrictedModules,
+                           seatsTotal,
+                           acc.Serials.Concat(new[] { doc.Serial }).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList());
+            }
+        }
+
+        if (map.Count == 0) return new List<CompanyEntitlement>();
+
+        var list = map.Values
+            .OrderBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(c => new CompanyEntitlement
+            {
+                CompanyId = c.Id,
+                Name = c.Name,
+                // خالی ماندن فهرست = «همهٔ ماژول‌های سند»؛ حتی اگر سند دیگر فهرست داده باشد.
+                Modules = c.UnrestrictedModules ? Array.Empty<string>() : c.Modules.ToArray(),
+                MaxUsers = c.Seats,
+                SourceSerials = c.Serials
+            })
+            .ToList();
+
+        // ---- سازگاری با سقف کل کاربران ----
+        var allocated = list.Where(c => c.MaxUsers is > 0).Sum(c => c.MaxUsers!.Value);
+        var globalCap = seats.GlobalMax ?? seats.ModuleMax.Values.DefaultIfEmpty(0).Max();
+        if (seats.HasUserLimit && globalCap > 0 && allocated > globalCap)
+        {
+            issues.Add(new LicenseIssue("COMPANY_SEATS_OVER_CAP", LicenseIssueSeverity.Warning,
+                $"جمع صندلی‌های تخصیص‌یافته به شرکت‌ها ({allocated}) از سقف کاربران لایسنس ({globalCap}) بیشتر است؛ " +
+                "مرجع نهایی همان سقف لایسنس است و تخصیص شرکت‌ها باید اصلاح شود."));
+        }
+
+        return list;
+    }
 
     private enum TermState { NotStarted, Active, Expired }
 

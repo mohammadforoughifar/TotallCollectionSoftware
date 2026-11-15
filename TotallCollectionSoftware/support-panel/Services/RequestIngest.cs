@@ -17,6 +17,12 @@ public sealed class ParsedRequest
     public string? ContactEmail { get; set; }
     public string? CustomerNote { get; set; }
     public List<string> InterestedModules { get; } = new();
+
+    /// <summary>
+    /// شرکت‌هایی که مشتری در درخواست نام برده است (شناسه + نام). فقط پیشنهاد برای پیش‌نویس؛
+    /// اعتبار نهایی از سند امضاشده می‌آید.
+    /// </summary>
+    public List<(string CompanyId, string? Name)> InterestedCompanies { get; } = new();
     public List<string> HintIssues { get; } = new();
     public List<string> Warnings { get; } = new();
     public string? Deployment { get; set; }
@@ -54,6 +60,9 @@ public static class RequestParser
     public const int MaxPhoneLength = 30;
     public const int MaxEmailLength = 150;
     public const int MaxNoteLength = 500;
+
+    /// <summary>سقف تعداد شرکت‌های قابل ذکر در یک درخواست (ضد سوءاستفاده).</summary>
+    public const int MaxCompanies = 50;
 
     private static readonly JsonDocumentOptions DocOptions = new()
     {
@@ -145,6 +154,38 @@ public static class RequestParser
 
                     if (!result.InterestedModules.Contains(code, StringComparer.OrdinalIgnoreCase))
                         result.InterestedModules.Add(code.ToLowerInvariant());
+                }
+            }
+
+            // ---- شرکت‌های اعلام‌شده توسط مشتری (پیشنهاد، نه سند) ----
+            // قالب پذیرفته‌شده: ["C-1001", ...] یا [{ "companyId": "C-1001", "name": "شرکت الف" }, ...]
+            if (root.TryGetProperty("companies", out var companies) && companies.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var company in companies.EnumerateArray())
+                {
+                    string? id = null;
+                    string? name = null;
+
+                    if (company.ValueKind == JsonValueKind.String)
+                    {
+                        id = Clean(company.GetString(), 60);
+                    }
+                    else if (company.ValueKind == JsonValueKind.Object)
+                    {
+                        id = Clean(GetString(company, "companyId") ?? GetString(company, "id"), 60);
+                        name = Clean(GetString(company, "name") ?? GetString(company, "title"), 200);
+                    }
+
+                    if (string.IsNullOrWhiteSpace(id)) continue;
+                    if (result.InterestedCompanies.Any(c => string.Equals(c.CompanyId, id, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    result.InterestedCompanies.Add((id!.Trim(), name));
+                    if (result.InterestedCompanies.Count >= MaxCompanies)
+                    {
+                        result.Warnings.Add($"تعداد شرکت‌های درخواست بیش از سقف {MaxCompanies} است؛ بقیه نادیده گرفته شد.");
+                        break;
+                    }
                 }
             }
 

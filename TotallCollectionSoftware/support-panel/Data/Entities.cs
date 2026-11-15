@@ -71,6 +71,13 @@ public class LicenseRequest
     public string? ContactEmail { get; set; }
     public string? CustomerNote { get; set; }
     public string? InterestedModulesCsv { get; set; }
+
+    /// <summary>
+    /// شرکت‌هایی که مشتری در فایل درخواست اعلام کرده است (JSON آرایه‌ای از
+    /// <c>{ companyId, name }</c>). فقط «پیشنهاد» است؛ فهرست معتبر همان است که
+    /// پشتیبان در پیش‌نویس تأیید می‌کند و در سند امضا می‌شود.
+    /// </summary>
+    public string? InterestedCompaniesJson { get; set; }
     public string? Deployment { get; set; }
     public string? MachineName { get; set; }
     public string? EngineVersion { get; set; }
@@ -150,6 +157,17 @@ public class LicenseDraft
     public string AppliesTo { get; set; } = "Global";
     public string? PresetsCsv { get; set; }
     public string? ModulesCsv { get; set; }
+
+    /// <summary>
+    /// فهرست شرکت‌های مجازِ این پیش‌نویس (JSON آرایه‌ای از
+    /// <c>{ companyId, name, maxUsers, modules[] }</c>).
+    ///
+    /// <para>
+    /// چرا در پیش‌نویس و نه در تنظیمات؟ چون این فهرست بخشی از سند امضاشده است:
+    /// پس از امضا تغییر نمی‌کند و افزودن شرکت تازه = سند تازه.
+    /// </para>
+    /// </summary>
+    public string? CompaniesJson { get; set; }
     public string? QuotasJson { get; set; }
     public string? Note { get; set; }
     public string ProfileJson { get; set; } = "";

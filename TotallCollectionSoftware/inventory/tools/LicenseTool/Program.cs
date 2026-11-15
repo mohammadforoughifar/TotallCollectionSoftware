@@ -67,6 +67,7 @@ public static class Program
                 "bridge" => Bridge(rest),
                 "verify" => Verify(rest),
                 "inspect-request" => InspectRequest(rest),
+                "companies" => Companies(rest),
                 _ => Unknown(command)
             };
         }
@@ -275,6 +276,20 @@ public static class Program
         Console.WriteLine($"   سریال: {doc.Serial} | مشتری: {doc.CustomerId} ({doc.CustomerName})");
         Console.WriteLine($"   حالت: {doc.Deployment} | نصب: {doc.InstallationId ?? "—"}");
         Console.WriteLine($"   صدور: {doc.IssuedAt:yyyy-MM-dd HH:mm} | آیتم‌ها: {doc.Items.Count}");
+        if (doc.Companies.Count > 0)
+        {
+            Console.WriteLine($"   شرکت‌های مجاز: {doc.Companies.Count}");
+            foreach (var c in doc.Companies)
+            {
+                var mods = c.Modules.Count == 0 ? "همهٔ ماژول‌های سند" : string.Join(", ", c.Modules);
+                var seats = c.MaxUsers is { } n ? $" | کاربر: {n}" : "";
+                Console.WriteLine($"     • {c.CompanyId} ({c.Name ?? "بی‌نام"}) | {mods}{seats}");
+            }
+        }
+        else
+        {
+            Console.WriteLine("   شرکت‌های مجاز: — (این سند محدودیت شرکت ندارد)");
+        }
 
         var expectInstallation = Arg(args, "--installation-id");
         if (!string.IsNullOrWhiteSpace(expectInstallation))
@@ -294,6 +309,104 @@ public static class Program
             Console.WriteLine($"   • [{issue.Severity}] {issue.Code}: {issue.Message}");
 
         return issues.Any(i => i.Severity == LicenseIssueSeverity.Error) ? 6 : 0;
+    }
+
+    /// <summary>
+    /// نمای «به‌ازای هر شرکت» از یک یا چند فایل لایسنس.
+    ///
+    /// <para>
+    /// جریان کار: هر شرکت فعال، ادمین خودش را دارد و ادمین همان شرکت درخواست می‌فرستد؛ پشتیبان
+    /// سند را امضا می‌کند و ادمین شرکت بارگذاری می‌کند. این دستور نشان می‌دهد روی یک نصب، هر شرکت
+    /// با کدام سند چه ماژول‌ها و چند صندلی دارد — و آیا سندی هست که شرکت را نام نبرده باشد.
+    /// </para>
+    /// </summary>
+    private static int Companies(string[] args)
+    {
+        // مقدار گزینه‌ها نباید به‌عنوان نام فایل لایسنس شمرده شود.
+        var valueOptions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "--public-key", "--manifest", "--key-id", "--installation-id" };
+        var files = new List<string>();
+        for (var i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            if (valueOptions.Contains(a)) { i++; continue; }
+            if (a.StartsWith("--")) continue;
+            files.Add(a);
+        }
+        if (files.Count == 0)
+        {
+            Console.Error.WriteLine("❌ استفاده: companies <file.lic> [file2.lic ...] [--public-key <pem>|--manifest <json>]");
+            return 2;
+        }
+
+        var documents = new List<LicenseDocument>();
+        foreach (var file in files)
+        {
+            if (!File.Exists(file))
+            {
+                Console.Error.WriteLine($"❌ فایل نیست: {file}");
+                return 2;
+            }
+
+            string? envelopeKeyId = null;
+            try { envelopeKeyId = LicenseJson.ReadEnvelope(File.ReadAllText(file))?.KeyId; } catch { /* زیر گزارش می‌شود */ }
+            var ring = BuildRing(args, envelopeKeyId);
+            var result = LicenseVerifier.Verify(File.ReadAllText(file), ring);
+            if (!result.Ok || result.Document is null)
+            {
+                Console.Error.WriteLine($"❌ {Path.GetFileName(file)}: {result.ErrorText}");
+                return 4;
+            }
+
+            var issues = Inventory.Licensing.Validation.LicenseValidator.Validate(result.Document,
+                new Inventory.Licensing.Validation.LicenseValidationContext { Now = PersianPeriodKey.NowIran().Date });
+            var errors = issues.Where(i => i.Severity == LicenseIssueSeverity.Error).ToList();
+            if (errors.Count > 0)
+            {
+                Console.Error.WriteLine($"❌ {Path.GetFileName(file)} ساختار معتبر ندارد:");
+                foreach (var e in errors) Console.Error.WriteLine($"   • [{e.Code}] {e.Message}");
+                return 6;
+            }
+
+            documents.Add(result.Document);
+        }
+
+        var resolver = CompanyLicenseResolver.Resolve(documents);
+        Console.WriteLine($"فایل‌های بررسی‌شده: {documents.Count} | شرکت‌های دارای لایسنس: {resolver.ByCompany.Count}");
+        Console.WriteLine();
+
+        foreach (var companyId in resolver.CompanyIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+        {
+            var ent = resolver.For(companyId);
+            var info = ent.FindCompany(companyId);
+            var modules = ent.Modules
+                .Where(kv => kv.Value.IsReadable && !kv.Value.IsAlwaysOn)
+                .Select(kv => ModuleCodes.TitleOf(kv.Key))
+                .OrderBy(x => x)
+                .ToList();
+
+            Console.WriteLine($"■ {companyId} — {info?.Name ?? "(بی‌نام)"}");
+            Console.WriteLine($"   وضعیت: {ent.Status} | صندلی: {resolver.SeatCap(companyId)?.ToString() ?? "بدون سقف"}" +
+                              $" | سریال: {string.Join(", ", ent.AppliedSerials)}");
+            Console.WriteLine($"   ماژول‌ها ({(modules.Count == 0 ? "هیچ" : modules.Count.ToString())}): " +
+                              (modules.Count == 0 ? "—" : string.Join("، ", modules)));
+            if (info is { HasModuleRestriction: true })
+                Console.WriteLine($"   محدود به ماژول‌های سند: {string.Join(", ", info.Modules)}");
+
+            var warnings = ent.Issues.Where(i => i.Severity != LicenseIssueSeverity.Error).ToList();
+            foreach (var w in warnings.Take(5))
+                Console.WriteLine($"   • [{w.Code}] {w.Message}");
+            Console.WriteLine();
+        }
+
+        if (resolver.Unscoped is not null)
+        {
+            Console.WriteLine($"⚠️ {resolver.Unscoped.AppliedSerials.Count} سند بدون فهرست شرکت روی این نصب هست: " +
+                              string.Join(", ", resolver.Unscoped.AppliedSerials));
+            Console.WriteLine("   این اسناد به هیچ شرکتی نسبت داده نمی‌شوند؛ برای فعال‌سازی درست، سند باید companyId داشته باشد.");
+        }
+
+        return 0;
     }
 
     private static int InspectRequest(string[] args)
@@ -327,6 +440,23 @@ public static class Program
         public List<string> UsePresets { get; set; } = new();
         public List<ItemProfile> Items { get; set; } = new();
         public List<LicenseQuota> Quotas { get; set; } = new();
+
+        /// <summary>
+        /// شرکت‌های مجاز (شرکت‌هایی که در نرم‌افزار اصلی تعریف شده‌اند).
+        /// خالی = بدون محدودیت شرکت. هر شرکت: شناسه، نام، سقف کاربر و ماژول‌های مجاز.
+        /// </summary>
+        public List<CompanyProfile> Companies { get; set; } = new();
+
+        public string? Note { get; set; }
+    }
+
+    /// <summary>یک شرکت در پروفایل صدور — به <c>LicenseCompany</c> سند نگاشت می‌شود.</summary>
+    private sealed class CompanyProfile
+    {
+        public string CompanyId { get; set; } = "";
+        public string? Name { get; set; }
+        public int? MaxUsers { get; set; }
+        public List<string> Modules { get; set; } = new();
         public string? Note { get; set; }
     }
 
@@ -482,6 +612,45 @@ public static class Program
             });
         }
 
+        // ---------- شرکت‌های مجاز ----------
+        foreach (var company in profile.Companies)
+        {
+            var cid = company.CompanyId?.Trim() ?? "";
+            if (cid.Length == 0)
+            {
+                warnings.Add("یک شرکت بدون companyId در پروفایل بود و نادیده گرفته شد.");
+                continue;
+            }
+
+            if (document.Companies.Any(c => string.Equals(c.CompanyId, cid, StringComparison.OrdinalIgnoreCase)))
+            {
+                warnings.Add($"شرکت «{cid}» در پروفایل تکراری بود؛ فقط اولی نوشته شد.");
+                continue;
+            }
+
+            var modules = new List<string>();
+            foreach (var raw in company.Modules)
+            {
+                var code = ModuleCodes.Normalize(raw);
+                if (!ModuleCodes.IsKnown(code))
+                {
+                    warnings.Add($"شرکت «{cid}»: ماژول ناشناخته «{raw}» نادیده گرفته شد.");
+                    continue;
+                }
+                if (ModuleCodes.IsAlwaysOn(code)) continue;      // همیشه‌فعال، نیازی به ذکر ندارد
+                if (!modules.Contains(code, StringComparer.OrdinalIgnoreCase)) modules.Add(code);
+            }
+
+            document.Companies.Add(new LicenseCompany
+            {
+                CompanyId = cid,
+                Name = string.IsNullOrWhiteSpace(company.Name) ? null : company.Name!.Trim(),
+                MaxUsers = company.MaxUsers is null or < 0 ? null : company.MaxUsers,
+                Modules = modules,
+                Note = company.Note
+            });
+        }
+
         // تعارض سیاست کاربر: در یک سند، آیتم‌هایی که کاربر تعریف می‌کنند باید هم‌خانواده باشند.
         var userModes = document.Items.Where(i => i.Users.Mode != LicenseUserMode.None).Select(i => i.Users.Mode).Distinct().ToList();
         if (userModes.Count > 1)
@@ -522,6 +691,18 @@ public static class Program
             Console.WriteLine($"    • {item.Id}: {string.Join(", ", item.Scope)} | {item.Term.Type} " +
                               $"{item.Term.ValidFrom:yyyy-MM-dd}→{(item.Term.ValidUntil?.ToString("yyyy-MM-dd") ?? "—")} | " +
                               $"کاربر: {item.Users.Mode} {item.Users.Max} | سهمیه: {item.Quotas.Count}");
+
+        if (document.Companies.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  شرکت‌های مجاز ({document.Companies.Count}):");
+            foreach (var c in document.Companies)
+            {
+                var mods = c.Modules.Count == 0 ? "همهٔ ماژول‌های سند" : string.Join(", ", c.Modules);
+                var seats = c.MaxUsers is { } n ? $" | کاربر: {n}" : " | کاربر: تابع سقف سند";
+                Console.WriteLine($"    • {c.CompanyId} ({c.Name ?? "بی‌نام"}) | {mods}{seats}");
+            }
+        }
 
         Console.WriteLine();
         Console.WriteLine("  وضعیت ماژول‌ها بعد از ادغام با لایسنس‌های موجود:");
@@ -708,6 +889,9 @@ public static class Program
 
           bridge --days N --installation-id <id> --private-key <pem> --out <out.lic> [--yes]
                  لایسنس پل: همهٔ ۳۳ ماژول، اشتراکی، بدون سقف کاربر و سهمیه.
+
+          companies <a.lic> [b.lic ...] [--public-key <pem>|--manifest <json>]
+                 نمای «هر شرکت چه ماژول و چند صندلی دارد» (چند شرکت روی یک نصب).
 
           verify <file.lic> [--installation-id <id>] [--public-key <pem>|--manifest <json>]
           inspect-request <license-request.json>

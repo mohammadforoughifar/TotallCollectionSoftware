@@ -9,8 +9,31 @@ namespace LicenseSigner.Services;
 /// پیش‌نویس امضا: از فرم به ردیف DB و از ردیف DB به پروفایل JSON ابزار.
 /// قاعدهٔ سخت: <b>مبنای امضا همان پروفایل ذخیره‌شده است</b>، نه ورودی فرم هنگام امضا.
 /// </summary>
+/// <summary>
+/// یک شرکت در پیش‌نویس امضا — پیش از تبدیل به JSON پروفایل.
+/// </summary>
+/// <param name="CompanyId">شناسهٔ شرکت در نرم‌افزار اصلی.</param>
+/// <param name="Name">نام نمایشی (اختیاری).</param>
+/// <param name="MaxUsers">سقف کاربر شرکت؛ <c>null</c> = تابع سقف کل سند.</param>
+/// <param name="Modules">ماژول‌های مجاز شرکت؛ خالی = همهٔ ماژول‌های سند.</param>
+public sealed record CompanyLine(string CompanyId, string? Name, int? MaxUsers, List<string> Modules)
+{
+    /// <summary>بازگردانی به خط قابل ویرایش؛ فیلدهای خالی انتهایی حذف می‌شوند.</summary>
+    public string ToText()
+    {
+        var parts = new List<string> { CompanyId, Name ?? "", MaxUsers is { } n ? n.ToString() : "", string.Join(",", Modules) };
+        while (parts.Count > 1 && parts[^1].Length == 0) parts.RemoveAt(parts.Count - 1);
+        // اگر سقف خالی ولی ماژول دارد، جای سقف باید حفظ شود: «شناسه | نام |  | ماژول‌ها»
+        if (parts.Count == 3 && parts[2].Length == 0) parts.RemoveAt(2);
+        return string.Join(" | ", parts);
+    }
+}
+
 public sealed class DraftService(SupportDbContext db, SignerOptions options, ILogger<DraftService> log)
 {
+    /// <summary>سقف تعداد شرکت در یک پیش‌نویس (هم‌راستا با سقف درخواست مشتری).</summary>
+    public const int MaxCompanies = 50;
+
     private static readonly JsonSerializerOptions ProfileOptions = new()
     {
         WriteIndented = true,
@@ -85,6 +108,51 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         target.AppliesTo = Normalize(draft.AppliesTo, "Global");
         target.PresetsCsv = NormalizeCsv(draft.PresetsCsv);
         target.ModulesCsv = NormalizeCsv(draft.ModulesCsv);
+
+        // ---- شرکت‌های مجاز ----
+        // ورودی فرم یا همین‌جا JSON است (از صفحهٔ پیش‌نویس) یا متن خطی؛ هر دو پشتیبانی می‌شود
+        // تا فراخوان‌های برنامه‌ای هم کار کنند.
+        List<CompanyLine> companies;
+        if (!string.IsNullOrWhiteSpace(draft.CompaniesJson) && draft.CompaniesJson!.TrimStart().StartsWith('['))
+        {
+            companies = FromCompaniesJson(draft.CompaniesJson);
+        }
+        else
+        {
+            var (parsed, parseErrors) = ParseCompanyText(draft.CompaniesJson);
+            if (parseErrors.Count > 0)
+                return (false, string.Join(" ", parseErrors));
+            companies = parsed;
+        }
+
+        // سقف کل کاربران این پیش‌نویس — جمع سقف شرکت‌ها نباید از آن بیشتر شود.
+        var seatCap = target.UserMode == "None" ? 0 : Math.Clamp(draft.UserMax, 0, 100_000);
+        var allocated = companies.Where(c => c.MaxUsers is > 0).Sum(c => c.MaxUsers!.Value);
+        if (seatCap > 0 && allocated > seatCap)
+            return (false, $"جمع سقف کاربران شرکت‌ها ({allocated}) از سقف کاربران این پیش‌نویس ({seatCap}) بیشتر است.");
+        if (seatCap == 0 && companies.Any(c => c.MaxUsers is > 0))
+            return (false, "برای شرکت‌ها سقف کاربر تعیین کرده‌اید ولی سیاست کاربری پیش‌نویس «بدون سقف» است.");
+
+        // ماژول‌های شرکت باید زیرمجموعهٔ ماژول‌های همین پیش‌نویس باشند.
+        var draftModules = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var presetCode in SplitCsv(target.PresetsCsv))
+        {
+            var preset = await db.Presets.AsNoTracking().FirstOrDefaultAsync(p => p.Code == presetCode, ct);
+            if (preset?.Json is null) continue;
+            foreach (var module in ReadPresetScope(preset.Json)) draftModules[module] = true;
+        }
+        foreach (var module in SplitCsv(target.ModulesCsv)) draftModules[module.ToLowerInvariant()] = true;
+
+        foreach (var company in companies)
+        {
+            foreach (var module in company.Modules)
+            {
+                if (!draftModules.ContainsKey(module))
+                    return (false, $"شرکت «{company.CompanyId}» ماژول «{module}» را دارد که در این پیش‌نویس انتخاب نشده است.");
+            }
+        }
+
+        target.CompaniesJson = ToCompaniesJson(companies);
         target.Note = string.IsNullOrWhiteSpace(draft.Note) ? null : Clamp(draft.Note!, 400);
         target.ByName = actor.DisplayName;
         target.UpdatedAt = DateTime.UtcNow;
@@ -94,7 +162,8 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         await db.SaveChangesAsync(ct);
 
         await requests.AddEventAsync(requestId, "DRAFT", null, null,
-            $"پیش‌نویس امضا ذخیره شد (مدت {target.Months} ماه، کاربر {target.UserMode} {target.UserMax}).", actor, ct);
+            $"پیش‌نویس امضا ذخیره شد (مدت {target.Months} ماه، کاربر {target.UserMode} {target.UserMax}"
+            + (companies.Count > 0 ? $"، شرکت‌های مجاز: {companies.Count}" : "") + ").", actor, ct);
         await db.SaveChangesAsync(ct);
         log.LogInformation("پیش‌نویس درخواست {Id} ذخیره شد.", requestId);
         return (true, null);
@@ -162,6 +231,16 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
             });
         }
 
+        var companies = FromCompaniesJson(draft.CompaniesJson)
+            .Select(c => new Dictionary<string, object?>
+            {
+                ["companyId"] = c.CompanyId,
+                ["name"] = c.Name,
+                ["maxUsers"] = c.MaxUsers,
+                ["modules"] = c.Modules
+            })
+            .ToList();
+
         var profile = new Dictionary<string, object?>
         {
             ["customer"] = new Dictionary<string, object?>
@@ -172,6 +251,7 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
             ["deployment"] = draft.Deployment,
             ["usePresets"] = fallbackPresets,
             ["items"] = items,
+            ["companies"] = companies.Count == 0 ? null : companies,
             ["note"] = draft.Note
         };
 
@@ -234,6 +314,155 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         return Path.IsPathRooted(license.FilePath)
             ? license.FilePath
             : Path.Combine(options.EffectiveWorkFolder(), license.FilePath);
+    }
+
+    // ==================== شرکت‌های مجاز ====================
+
+    /// <summary>
+    /// تجزیهٔ متن شرکت‌ها از فرم پیش‌نویس. هر خط یک شرکت:
+    /// <c>companyId | نام | سقف‌کاربر | ماژول۱,ماژول۲</c>
+    ///
+    /// <para>
+    /// فقط شناسه اجباری است؛ «|» و فیلدهای بعدی اختیاری‌اند. خط خالی و خطی که با # شروع شود
+    /// نادیده گرفته می‌شود. حداکثر <see cref="MaxCompanies"/> شرکت.
+    /// </para>
+    /// </summary>
+    public static (List<CompanyLine> Companies, List<string> Errors) ParseCompanyText(string? text)
+    {
+        var list = new List<CompanyLine>();
+        var errors = new List<string>();
+        if (string.IsNullOrWhiteSpace(text)) return (list, errors);
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var lineNo = 0;
+
+        foreach (var rawLine in lines)
+        {
+            lineNo++;
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+
+            var parts = line.Split('|', StringSplitOptions.None);
+            var id = parts[0].Trim();
+            if (id.Length == 0)
+            {
+                errors.Add($"خط {lineNo}: شناسهٔ شرکت خالی است.");
+                continue;
+            }
+
+            if (id.Length > 60)
+            {
+                errors.Add($"خط {lineNo}: شناسهٔ شرکت بیش از ۶۰ نویسه است.");
+                continue;
+            }
+
+            if (!seen.Add(id))
+            {
+                errors.Add($"خط {lineNo}: شرکت «{id}» تکراری است.");
+                continue;
+            }
+
+            var name = parts.Length > 1 && parts[1].Trim().Length > 0 ? parts[1].Trim() : null;
+            if (name is { Length: > 200 }) name = name[..200];
+
+            int? seats = null;
+            if (parts.Length > 2 && parts[2].Trim().Length > 0)
+            {
+                if (!int.TryParse(parts[2].Trim(), out var parsed) || parsed < 0)
+                    errors.Add($"خط {lineNo}: سقف کاربر «{parts[2].Trim()}» عدد معتبر نیست (خالی = تابع سقف سند).");
+                else seats = parsed;
+            }
+
+            var modules = new List<string>();
+            if (parts.Length > 3)
+            {
+                foreach (var module in SplitCsv(parts[3]))
+                {
+                    var code = Inventory.Licensing.Modules.ModuleCodes.Normalize(module);
+                    if (!Inventory.Licensing.Modules.ModuleCodes.IsKnown(code))
+                    {
+                        errors.Add($"خط {lineNo}: ماژول ناشناخته «{module}» برای شرکت «{id}».");
+                        continue;
+                    }
+                    if (Inventory.Licensing.Modules.ModuleCodes.IsAlwaysOn(code)) continue;
+                    if (!modules.Contains(code, StringComparer.OrdinalIgnoreCase)) modules.Add(code);
+                }
+            }
+
+            list.Add(new CompanyLine(id, name, seats, modules));
+            if (list.Count > MaxCompanies)
+            {
+                errors.Add($"تعداد شرکت‌ها بیش از سقف {MaxCompanies} است.");
+                break;
+            }
+        }
+
+        return (list, errors);
+    }
+
+    /// <summary>تبدیل فهرست شرکت‌ها به JSON برای ذخیره در پیش‌نویس.</summary>
+    public static string? ToCompaniesJson(IEnumerable<CompanyLine> companies)
+    {
+        var list = companies.ToList();
+        if (list.Count == 0) return null;
+        return JsonSerializer.Serialize(list.Select(c => new Dictionary<string, object?>
+        {
+            ["companyId"] = c.CompanyId,
+            ["name"] = c.Name,
+            ["maxUsers"] = c.MaxUsers,
+            ["modules"] = c.Modules
+        }), ProfileOptions);
+    }
+
+    /// <summary>خواندن فهرست شرکت‌ها از JSON پیش‌نویس (تحمل دادهٔ خراب: خروجی خالی).</summary>
+    public static List<CompanyLine> FromCompaniesJson(string? json)
+    {
+        var list = new List<CompanyLine>();
+        if (string.IsNullOrWhiteSpace(json)) return list;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) return list;
+            foreach (var item in document.RootElement.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                var id = item.TryGetProperty("companyId", out var idEl) ? idEl.GetString()?.Trim() : null;
+                if (string.IsNullOrWhiteSpace(id)) continue;
+                var name = item.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+                int? seats = item.TryGetProperty("maxUsers", out var seatsEl) && seatsEl.ValueKind == JsonValueKind.Number
+                             && seatsEl.TryGetInt32(out var parsed) ? parsed : null;
+                var modules = new List<string>();
+                if (item.TryGetProperty("modules", out var modsEl) && modsEl.ValueKind == JsonValueKind.Array)
+                    modules.AddRange(modsEl.EnumerateArray().Where(m => m.ValueKind == JsonValueKind.String)
+                        .Select(m => (m.GetString() ?? "").Trim()).Where(m => m.Length > 0));
+                list.Add(new CompanyLine(id!, name, seats, modules));
+            }
+        }
+        catch (JsonException)
+        {
+            return new List<CompanyLine>();
+        }
+        return list;
+    }
+
+    /// <summary>متن قابل‌ویرایش شرکت‌ها برای پرکردن textarea.</summary>
+    public static string ToCompanyText(IEnumerable<CompanyLine> companies)
+        => string.Join("\n", companies.Select(c => c.ToText()));
+
+    /// <summary>
+    /// پیشنهاد شرکت‌ها از فایل درخواست مشتری (اگر همراه درخواست فرستاده باشد).
+    /// چیزی که مشتری گفته «فهرست شرکت‌های من» است؛ پشتیبان تأیید/ویرایش می‌کند.
+    /// </summary>
+    public async Task<(List<CompanyLine> Companies, string Source)> SuggestCompaniesAsync(
+        int requestId, CancellationToken ct = default)
+    {
+        var request = await db.Requests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId, ct);
+        if (request is null || string.IsNullOrWhiteSpace(request.InterestedCompaniesJson))
+            return (new List<CompanyLine>(), "");
+
+        var list = FromCompaniesJson(request.InterestedCompaniesJson);
+        return (list, list.Count > 0 ? "request" : "");
     }
 
     public static IEnumerable<string> SplitCsv(string? csv) =>

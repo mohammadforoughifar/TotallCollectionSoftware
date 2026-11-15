@@ -204,6 +204,21 @@ else
                 <dt>تماس</dt><dd>@(string.IsNullOrWhiteSpace(request.ContactName) ? "—" : request.ContactName)
                     · <span class="mono">@(request.ContactPhone ?? "—")</span></dd>
                 <dt>ماژول‌های موردنظر</dt><dd class="mono">@(request.InterestedModulesCsv ?? "—")</dd>
+                <dt>شرکت‌های اعلام‌شده</dt>
+                <dd>
+                    @{
+                        var requestedCompanies = DraftService.FromCompaniesJson(request.InterestedCompaniesJson);
+                    }
+                    @if (requestedCompanies.Count == 0)
+                    {
+                        <span class="mono">—</span>
+                    }
+                    else
+                    {
+                        <span class="mono">@string.Join("، ", requestedCompanies.Select(c => $"{c.CompanyId}{(string.IsNullOrWhiteSpace(c.Name) ? "" : $" ({c.Name})")}"))</span>
+                        <span class="hint"> (فقط پیشنهاد؛ فهرست معتبر همان است که در پیش‌نویس تأیید و امضا شود.)</span>
+                    }
+                </dd>
                 <dt>هش محتوا</dt><dd class="mono">@Ui.Clip(request.PayloadSha256, 16)</dd>
             </dl>
         </div></div>

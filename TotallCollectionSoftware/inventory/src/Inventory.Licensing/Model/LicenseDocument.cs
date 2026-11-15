@@ -58,9 +58,67 @@ public sealed class LicenseDocument
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
+    /// <summary>
+    /// فهرست <b>شرکت‌های مجاز</b> این سند — شرکت‌هایی که در نرم‌افزار اصلی تعریف شده‌اند.
+    ///
+    /// <para>
+    /// خالی بودن این فهرست = «محدودیتی از سوی شرکت‌ها اعمال نمی‌شود» (سازگاری عقب‌رو با
+    /// اسناد نسخهٔ ۳ که شرکت نداشتند). اگر خالی نباشد، نرم‌افزار باید فقط همین
+    /// <c>companyId</c>ها را مجاز بداند و افزودن شرکت تازه نیازمند سند امضاشدهٔ جدید است.
+    /// </para>
+    ///
+    /// <para>
+    /// ⚠️ این فهرست هم مثل بقیهٔ سند <b>دادهٔ امضاشده</b> است؛ نباید از appsettings یا
+    /// دیتابیس مشتری قابل افزایش باشد، وگرنه «دور زدن» ممکن می‌شود.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("companies")]
+    public List<LicenseCompany> Companies { get; set; } = new();
+
     /// <summary>آیتم‌های لایسنس — شرط می‌شود حداقل یکی باشد.</summary>
     [JsonPropertyName("items")]
     public List<LicenseItem> Items { get; set; } = new();
+}
+
+/// <summary>
+/// یک <b>شرکت مجاز</b> — نگاشت شناسهٔ شرکتِ تعریف‌شده در نرم‌افزار اصلی به سهمیهٔ همین سند.
+///
+/// <para>
+/// مثال: <c>{ "companyId": "C-1001", "name": "شرکت الف", "maxUsers": 5,
+/// "modules": ["sales","hr_fa"] }</c>
+/// </para>
+/// </summary>
+public sealed class LicenseCompany
+{
+    /// <summary>
+    /// شناسهٔ شرکت در نرم‌افزار اصلی (کلید تطبیق، بدون حساسیت به بزرگی/کوچکی حروف).
+    /// مقدار تکراری در یک سند مجاز نیست.
+    /// </summary>
+    [JsonPropertyName("companyId")]
+    public string CompanyId { get; set; } = "";
+
+    /// <summary>نام شرکت — فقط برای نمایش در صفحهٔ وضعیت لایسنس؛ اعتبارسنجی به آن وابسته نیست.</summary>
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    /// <summary>
+    /// سقف کاربر این شرکت. <c>null</c> یعنی «تابع سقف کل سند».
+    /// جمع سقف‌های صریح نباید از سقف کاربران سند بیشتر شود.
+    /// </summary>
+    [JsonPropertyName("maxUsers")]
+    public int? MaxUsers { get; set; }
+
+    /// <summary>
+    /// ماژول‌های مجاز این شرکت. <b>خالی = همهٔ ماژول‌های همین سند</b>.
+    /// اگر پر باشد باید زیرمجموعهٔ <c>scope</c> آیتم‌های همین سند باشد (نمی‌توان در یک شرکت
+    /// ماژولی را روشن کرد که برای مشتری فروخته نشده است).
+    /// </summary>
+    [JsonPropertyName("modules")]
+    public List<string> Modules { get; set; } = new();
+
+    /// <summary>یادداشت آزاد صادرکننده.</summary>
+    [JsonPropertyName("note")]
+    public string? Note { get; set; }
 }
 
 /// <summary>

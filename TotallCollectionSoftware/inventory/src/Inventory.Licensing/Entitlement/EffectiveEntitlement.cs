@@ -150,6 +150,50 @@ public sealed class UserSeatPolicy
     }
 }
 
+/// <summary>
+/// یک شرکت مؤثر (ادغام‌شده از همهٔ اسناد معتبر).
+///
+/// <para>
+/// این کلاس <b>فقط گزارش وضعیت</b> نیست؛ مرجع تصمیم نرم‌افزار اصلی است:
+/// «آیا این شرکت مجاز است؟» و «کدام ماژول‌ها برای این شرکت مجاز است؟».
+/// داده‌اش از سند امضاشده می‌آید، نه از دیتابیس مشتری.
+/// </para>
+/// </summary>
+public sealed class CompanyEntitlement
+{
+    /// <summary>شناسهٔ شرکت در نرم‌افزار اصلی.</summary>
+    public required string CompanyId { get; init; }
+
+    /// <summary>نام نمایشی (اگر در سند آمده باشد).</summary>
+    public string? Name { get; init; }
+
+    /// <summary>
+    /// ماژول‌های مجاز همین شرکت. <b>خالی = همهٔ ماژول‌های لایسنس</b>.
+    /// برای تست از <see cref="IsModuleAllowed"/> استفاده کنید.
+    /// </summary>
+    public IReadOnlyList<string> Modules { get; init; } = Array.Empty<string>();
+
+    /// <summary>آیا این شرکت فهرست ماژول اختصاصی دارد؟ (خالی = محدودیتی روی ماژول ندارد)</summary>
+    public bool HasModuleRestriction => Modules.Count > 0;
+
+    /// <summary>سقف کاربر این شرکت؛ <c>null</c> = تابع سقف کل سند.</summary>
+    public int? MaxUsers { get; init; }
+
+    /// <summary>سریال اسنادی که این شرکت را معرفی کرده‌اند.</summary>
+    public IReadOnlyList<string> SourceSerials { get; init; } = Array.Empty<string>();
+
+    /// <summary>آیا ماژول داده‌شده برای این شرکت مجاز است؟ (ماژول همیشه‌فعال همیشه مجاز است)</summary>
+    public bool IsModuleAllowed(string? module)
+    {
+        var code = Inventory.Licensing.Modules.ModuleCodes.Normalize(module);
+        if (code.Length == 0) return false;
+        if (Inventory.Licensing.Modules.ModuleCodes.IsAlwaysOn(code)) return true;
+        if (!HasModuleRestriction) return true;
+        return Inventory.Licensing.Modules.ModuleCodes.IsAlwaysOn(code)
+               || Modules.Contains(code, StringComparer.OrdinalIgnoreCase);
+    }
+}
+
 /// <summary>وضعیت کلی نصب.</summary>
 public enum LicenseOverallStatus
 {
@@ -188,6 +232,58 @@ public sealed class EffectiveEntitlement
     public IReadOnlyList<MetricLimit> Limits { get; init; } = Array.Empty<MetricLimit>();
 
     public UserSeatPolicy Seats { get; init; } = new();
+
+    /// <summary>
+    /// شرکت‌های مؤثر (ادغام همهٔ اسناد). خالی + <see cref="CompaniesRestricted"/> = false
+    /// یعنی هیچ سندی فهرست شرکت نداشته و محدودیتی از این ناحیه اعمال نمی‌شود.
+    /// </summary>
+    public IReadOnlyList<CompanyEntitlement> Companies { get; init; } = Array.Empty<CompanyEntitlement>();
+
+    /// <summary>
+    /// آیا دست‌کم یک سند معتبر فهرست شرکت داشته است؟
+    /// اگر <c>true</c> باشد، فقط <see cref="Companies"/> مجازند.
+    /// </summary>
+    public bool CompaniesRestricted { get; init; }
+
+    /// <summary>جمع سقف‌های صریح شرکت‌ها (برای نمایش «تخصیص یافته از کل»).</summary>
+    public int CompanySeatsAllocated => Companies.Where(c => c.MaxUsers is > 0).Sum(c => c.MaxUsers!.Value);
+
+    /// <summary>
+    /// آیا این شرکت مجاز است؟ (بدون حساسیت به بزرگی/کوچکی حروف)
+    ///
+    /// <para>
+    /// قاعده: اگر هیچ سندی فهرست شرکت نداشته باشد ⇒ <c>true</c> (رفتار قدیمی، سازگاری عقب‌رو).
+    /// اگر داشته باشد ⇒ فقط شناسه‌های داخل فهرست. شناسهٔ خالی همیشه رد می‌شود.
+    /// </para>
+    /// </summary>
+    public bool IsCompanyAllowed(string? companyId)
+    {
+        var id = companyId?.Trim();
+        if (string.IsNullOrEmpty(id)) return false;
+        if (!CompaniesRestricted) return true;
+        return FindCompany(id) is not null;
+    }
+
+    /// <summary>یافتن شرکت مؤثر با شناسه (بدون حساسیت به بزرگی/کوچکی حروف).</summary>
+    public CompanyEntitlement? FindCompany(string? companyId)
+    {
+        var id = companyId?.Trim();
+        if (string.IsNullOrEmpty(id)) return null;
+        return Companies.FirstOrDefault(c => string.Equals(c.CompanyId, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// آیا این ماژول برای این شرکت مجاز است؟ (شرط شرکت + شرط ماژول شرکت)
+    /// ماژول همیشه‌فعال برای شرکت مجاز، همیشه مجاز است.
+    /// </summary>
+    public bool IsModuleAllowedForCompany(string? companyId, string module)
+    {
+        var code = ModuleCodes.Normalize(module);
+        if (ModuleCodes.IsAlwaysOn(code)) return IsCompanyAllowed(companyId);
+        var company = CompaniesRestricted ? FindCompany(companyId) : null;
+        if (CompaniesRestricted && company is null) return false;
+        return company?.IsModuleAllowed(code) ?? true;
+    }
 
     public IReadOnlyList<LicenseIssue> Issues { get; init; } = Array.Empty<LicenseIssue>();
 

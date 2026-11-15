@@ -139,6 +139,9 @@ public static class Program
             return 4;
         }
 
+        // ---------- ۲٫۴) شرکت‌های مجاز (دادهٔ امضاشده) ----------
+        PrintCompanies(entitlement);
+
         // ---------- ۲٫۵) کاربران و صندلی (مرحله ۳) ----------
         await PrintSeatsAsync(connection, entitlement);
 
@@ -754,6 +757,38 @@ VALUES (@id, @mode, NULL, NULL, NULL, @now, @now)", connection))
     /// <para>همهٔ کوئری‌ها SELECT هستند. اگر جدول‌ها وجود نداشته باشند، پیام راهنما چاپ
     /// می‌شود و شبیه‌ساز سهمیه ادامه می‌دهد.</para>
     /// </summary>
+    /// <summary>
+    /// نمایش فهرست شرکت‌های مجازِ سند امضاشده.
+    /// «شرکت» همان شرکت‌هایی است که در نرم‌افزار اصلی تعریف می‌شوند؛ این گزارش نشان می‌دهد
+    /// نصب مشتری اجازهٔ فعال بودن کدام‌ها را دارد و سهم هر کدام چقدر است.
+    /// </summary>
+    private static void PrintCompanies(EffectiveEntitlement? ent)
+    {
+        Console.WriteLine();
+        Console.WriteLine("────────── شرکت‌های مجاز (از سند امضاشده) ──────────");
+
+        if (ent is null)
+        {
+            Console.WriteLine("  ℹ️ فایل لایسنسی داده نشده؛ محدودیت شرکت قابل بررسی نیست.");
+            return;
+        }
+
+        if (!ent.CompaniesRestricted)
+        {
+            Console.WriteLine("  ℹ️ هیچ سندی فهرست شرکت ندارد ⇒ محدودیتی از سوی شرکت‌ها اعمال نمی‌شود (رفتار سازگار با اسناد قدیمی).");
+            return;
+        }
+
+        Console.WriteLine($"  تعداد: {ent.Companies.Count}  |  صندلی تخصیص‌یافته: {ent.CompanySeatsAllocated}"
+                          + (ent.Seats.MaxExempt > 0 ? $"  |  معاف: {ent.Seats.MaxExempt}" : ""));
+        foreach (var c in ent.Companies)
+        {
+            var mods = c.HasModuleRestriction ? string.Join(", ", c.Modules) : "همهٔ ماژول‌های سند";
+            var seats = c.MaxUsers is { } n ? n.ToString() : "تابع سقف سند";
+            Console.WriteLine($"    • {c.CompanyId,-14} {c.Name ?? "(بی‌نام)",-24} | کاربر: {seats,-14} | {mods}");
+        }
+    }
+
     private static async Task PrintSeatsAsync(SqlConnection connection, EffectiveEntitlement? ent)
     {
         var seats = ent?.Seats ?? new UserSeatPolicy();

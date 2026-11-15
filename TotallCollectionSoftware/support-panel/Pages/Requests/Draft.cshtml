@@ -23,6 +23,15 @@
     public List<string> ModulesSelected { get; set; } = new();
     public string Note { get; set; } = "";
 
+    /// <summary>متن خطی شرکت‌های مجاز: companyId | نام | سقف‌کاربر | ماژول‌ها</summary>
+    public string CompaniesText { get; set; } = "";
+
+    /// <summary>منبع پیشنهاد شرکت‌ها: request | خالی</summary>
+    public string CompaniesFrom { get; set; } = "";
+
+    /// <summary>خطاهای تجزیهٔ خط شرکت‌ها (نمایش مستقیم به کاربر)</summary>
+    public List<string> CompanyErrors { get; set; } = new();
+
     /// <summary>منبع پیشنهاد ماژول‌ها: request | last-license | خالی</summary>
     public string SuggestedFrom { get; set; } = "";
 
@@ -36,6 +45,14 @@
             ModulesSelected = suggested;
             if (suggestedPresets.Count > 0) PresetsSelected = suggestedPresets;
             SuggestedFrom = source;
+
+            // شرکت‌ها: اگر مشتری در فایل درخواست فرستاده باشد، همان‌ها پیشنهاد می‌شوند.
+            var (suggestedCompanies, companiesSource) = await Drafts.SuggestCompaniesAsync(RequestId);
+            if (suggestedCompanies.Count > 0)
+            {
+                CompaniesText = DraftService.ToCompanyText(suggestedCompanies);
+                CompaniesFrom = companiesSource;
+            }
             return;
         }
         TermMode = existing.TermMode;
@@ -50,6 +67,7 @@
         PresetsSelected = DraftService.SplitCsv(existing.PresetsCsv).ToList();
         ModulesSelected = DraftService.SplitCsv(existing.ModulesCsv).ToList();
         Note = existing.Note ?? "";
+        CompaniesText = DraftService.ToCompanyText(DraftService.FromCompaniesJson(existing.CompaniesJson));
     }
 
     private void ReadForm()
@@ -64,6 +82,7 @@
         AppliesTo = Request.Form["appliesTo"].ToString() is { Length: > 0 } scope ? scope : "Global";
         DeploymentValue = Request.Form["deployment"].ToString() is { Length: > 0 } deploy ? deploy : "OnPrem";
         Note = Request.Form["note"].ToString();
+        CompaniesText = Request.Form["companies"].ToString();
         PresetsSelected = Request.Form["presets"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
         ModulesSelected = Request.Form["modules"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
     }
@@ -82,6 +101,7 @@
             AppliesTo = AppliesTo,
             PresetsCsv = string.Join(",", PresetsSelected),
             ModulesCsv = string.Join(",", ModulesSelected),
+            CompaniesJson = CompaniesText,
             Note = Note
         };
 
@@ -280,6 +300,28 @@ else
                         <b>PerTenant</b>: مخصوص SaaS؛ در فایل .lic به Global نگاشت می‌شود چون هر مستأجر
                         نصب/لایسنس مستقل دارد.
                     </p></div>
+            </div>
+            <div class="field"><label for="companies">شرکت‌های مجاز (از شرکت‌های تعریف‌شده در نرم‌افزار مشتری)</label>
+                <textarea id="companies" name="companies" class="mono" rows="4" spellcheck="false"
+                          placeholder="C-1001 | شرکت الف | 5 | sales,hr_fa&#10;C-1002 | شرکت ب | 3">@CompaniesText</textarea>
+                <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                    هر خط یک شرکت: <span class="mono">شناسه | نام | سقف‌کاربر | ماژول‌ها</span> — فقط شناسه اجباری است.
+                    خالی گذاشتن سطر = بدون محدودیت شرکت (رفتار قدیمی).<br />
+                    شرکت‌ها <b>داخل سند امضاشده</b> می‌روند: افزودن شرکت تازه بعداً یعنی صدور لایسنس جدید،
+                    و با ویرایش دیتابیس مشتری قابل دور زدن نیست.<br />
+                    ماژول‌های هر شرکت باید از میان ماژول‌های انتخاب‌شدهٔ همین پیش‌نویس باشد؛
+                    جمع سقف کاربران شرکت‌ها از «سقف کاربر» بالا بیشتر نشود.
+                    @if (CompaniesFrom == "request")
+                    {
+                        <br /><text>فهرست از <b>فایل درخواست همین مشتری</b> پیشنهاد شد؛ تأیید یا ویرایش کنید.</text>
+                    }
+                </p>
+                @if (CompanyErrors.Count > 0)
+                {
+                    <ul class="hint" style="margin:.35rem 0 0;color:#b42318">
+                        @foreach (var companyError in CompanyErrors) { <li>@companyError</li> }
+                    </ul>
+                }
             </div>
             <div class="field"><label for="note">یادداشت پیش‌نویس</label><input id="note" name="note" value="@Note" /></div>
             <p>
