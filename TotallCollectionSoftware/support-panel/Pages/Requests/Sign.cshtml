@@ -88,14 +88,72 @@ else
     {
         <div class="alert error">درخواست پیدا نشد.</div>
     }
+    else if (!status.Ready)
+    {
+        @if (!signCheck.Ok)
+        {
+            <div class="alert error">امضا ممکن نیست: @signCheck.Error</div>
+        }
+        <div class="alert warn">ابزار آماده نیست: @status.Reason</div>
+        <div class="card"><div class="card-head">آماده‌سازی امضا — چه چیزی کم است؟</div><div class="card-body">
+            <table>
+                <thead><tr><th>مورد</th><th>وضعیت</th><th>مقدار فعلی</th></tr></thead>
+                <tbody>
+                    <tr><td>ابزار LicenseTool</td>
+                        <td><span class="badge @(status.ToolPath is null ? "err" : "ok")">@(status.ToolPath is null ? "پیدا نشد" : "آماده")</span></td>
+                        <td class="mono">@(status.ToolPath ?? "—")</td></tr>
+                    <tr><td>کلید خصوصی</td>
+                        <td><span class="badge @(status.PrivateKeyFound ? "ok" : "err")">@(status.PrivateKeyFound ? "پیدا شد" : "پیدا نشد")</span></td>
+                        <td class="mono">@(status.PrivateKeyPath ?? "تنظیم نشده")</td></tr>
+                    <tr><td>کلید عمومی</td>
+                        <td><span class="badge @(status.PublicKeyFound ? "ok" : "err")">@(status.PublicKeyFound ? "پیدا شد" : "پیدا نشد")</span></td>
+                        <td class="mono">@(status.PublicKeyPath ?? "تنظیم نشده")</td></tr>
+                    <tr><td>Key ID</td>
+                        <td><span class="badge @(string.IsNullOrWhiteSpace(status.KeyId) ? "review" : "ok")">@(string.IsNullOrWhiteSpace(status.KeyId) ? "خالی" : "تعیین‌شده")</span></td>
+                        <td class="mono">@(status.KeyId ?? "—")</td></tr>
+                    <tr><td>presets.json (بسته‌های آماده)</td>
+                        <td><span class="badge @(status.PresetsPath is null ? "review" : "ok")">@(status.PresetsPath is null ? "پیدا نشد" : "آماده")</span></td>
+                        <td class="mono">@(status.PresetsPath ?? "—")</td></tr>
+                    <tr><td>پوشهٔ کار (فایل‌های .lic)</td><td><span class="badge ok">تعیین‌شده</span></td>
+                        <td class="mono">@status.WorkFolder</td></tr>
+                </tbody>
+            </table>
+
+            <h2 style="font-size:13px;margin:.9rem 0 .3rem">۱) جفت‌کلید آزمون بسازید (یک‌بار)</h2>
+            <pre class="mono">dotnet LicenseTool.dll keygen --key-id dev-test --out-dir /secure/keys
+#  خروجی: dev-test.private.pem (خصوصی، محافظت‌شده با گذرواژه) و dev-test.pem (عمومی)</pre>
+
+            <h2 style="font-size:13px;margin:.9rem 0 .3rem">۲) به پنل بگویید کلیدها کجاست</h2>
+            <p class="hint" style="margin:.2rem 0 .4rem">راه اول — متغیر محیطی (بهتر؛ چیزی داخل فایل ذخیره نمی‌شود):</p>
+            <pre class="mono"># Linux / macOS
+export Signer__KeyId=dev-test
+export Signer__PrivateKeyPath=/secure/keys/dev-test.private.pem
+export Signer__PublicKeyPath=/secure/keys/dev-test.pem
+export LICENSETOOL_KEY_PASSWORD=***     # گذرواژهٔ کلید خصوصی
+
+# Windows PowerShell
+$env:Signer__KeyId="dev-test"
+$env:Signer__PrivateKeyPath="C:\secure\keys\dev-test.private.pem"
+$env:Signer__PublicKeyPath="C:\secure\keys\dev-test.pem"
+$env:LICENSETOOL_KEY_PASSWORD="..."</pre>
+            <p class="hint" style="margin:.2rem 0 .4rem">راه دوم — <span class="mono">appsettings.Development.json</span> (فقط توسعه؛ گذرواژه را ننویسید):</p>
+            <pre class="mono">"Signer": {
+  "KeyId": "dev-test",
+  "PrivateKeyPath": "C:\\secure\\keys\\dev-test.private.pem",
+  "PublicKeyPath": "C:\\secure\\keys\\dev-test.pem",
+  "WorkFolder": "C:\\SupportWork"
+}</pre>
+
+            <h2 style="font-size:13px;margin:.9rem 0 .3rem">۳) پنل را دوباره اجرا کنید</h2>
+            <p class="hint" style="margin:0">متغیرهای محیطی هنگام روشن‌شدن خوانده می‌شوند؛ بعد از تغییر، پنل را ببندید و دوباره اجرا کنید.
+                مسیر کلید خصوصی را هرگز داخل مخزن گیت نگذارید و گذرواژه را در فایل ذخیره نکنید.</p>
+        </div></div>
+        <p><a class="btn ghost" href="/Settings">رفتن به تنظیمات</a></p>
+    }
     else if (!signCheck.Ok)
     {
         <div class="alert error">امضا ممکن نیست: @signCheck.Error</div>
         <p><a class="btn ghost" href="/Requests/Details?id=@request.Id">بازگشت به درخواست</a></p>
-    }
-    else if (!status.Ready)
-    {
-        <div class="alert warn">ابزار آماده نیست: @status.Reason</div>
     }
     else if (draft is null)
     {

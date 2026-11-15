@@ -88,7 +88,7 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         target.Note = string.IsNullOrWhiteSpace(draft.Note) ? null : Clamp(draft.Note!, 400);
         target.ByName = actor.DisplayName;
         target.UpdatedAt = DateTime.UtcNow;
-        target.ProfileJson = BuildProfile(request, target);
+        target.ProfileJson = await BuildProfileAsync(request, target, ct);
 
         if (existing is null) db.Drafts.Add(target);
         await db.SaveChangesAsync(ct);
@@ -100,14 +100,67 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         return (true, null);
     }
 
-    /// <summary>ساخت پروفایل سازگار با <c>LicenseTool issue --profile</c>.</summary>
-    private static string BuildProfile(LicenseRequest request, LicenseDraft draft)
+    /// <summary>
+    /// ساخت پروفایل سازگار با <c>LicenseTool issue --profile</c>.
+    ///
+    /// نکتهٔ مهم: بسته‌های آماده (presets) به‌جای <c>usePresets</c> به آیتم‌های صریح باز می‌شوند
+    /// تا <b>سیاست کاربر یکسان</b> روی همهٔ آیتم‌ها اعمال شود. پیش از این، بسته سیاست خودش را
+    /// (مثلاً Named) می‌آورد و آیتم دستی سیاست پنل را؛ نتیجه یک سند با دو سیاست و خطای
+    /// USER_POLICY_CONFLICT بود که امضا را متوقف می‌کرد.
+    /// </summary>
+    private async Task<string> BuildProfileAsync(LicenseRequest request, LicenseDraft draft, CancellationToken ct)
     {
         var termType = draft.TermMode == "perpetual" ? "Perpetual" : "Subscription";
         var usersMode = draft.UserMode is "None" or "Concurrent" or "Named" ? draft.UserMode : "Named";
-
-        var scope = SplitCsv(draft.ModulesCsv).ToList();
         var appliesTo = MapUserScope(draft.AppliesTo);
+
+        var term = new Dictionary<string, object?>
+        {
+            ["type"] = termType,
+            ["months"] = draft.TermMode == "months" ? draft.Months ?? 12 : null,
+            ["from"] = draft.TermMode == "until" ? JalaliDate.TehranNow().Date : null,
+            ["until"] = draft.TermMode == "until" ? draft.Until : null,
+            ["updatesUntil"] = draft.UpdatesUntil
+        };
+
+        var users = new Dictionary<string, object?>
+        {
+            ["mode"] = usersMode,
+            ["max"] = draft.UserMax,
+            ["appliesTo"] = appliesTo,
+            ["exempt"] = draft.Exempt
+        };
+
+        var items = new List<object>();
+        var presetCodes = SplitCsv(draft.PresetsCsv).Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        var fallbackPresets = new List<string>();   // بسته‌هایی که JSON‌شان پیدا نشد
+
+        foreach (var code in presetCodes)
+        {
+            var preset = await db.Presets.AsNoTracking().FirstOrDefaultAsync(p => p.Code == code, ct);
+            var scope = preset?.Json is null ? new List<string>() : ReadPresetScope(preset.Json);
+            if (scope.Count == 0) { fallbackPresets.Add(code); continue; }
+
+            items.Add(new Dictionary<string, object?>
+            {
+                ["id"] = code,
+                ["scope"] = scope,
+                ["term"] = term,
+                ["users"] = users
+            });
+        }
+
+        var explicitScope = SplitCsv(draft.ModulesCsv).ToList();
+        if (explicitScope.Count > 0 || items.Count == 0)
+        {
+            items.Add(new Dictionary<string, object?>
+            {
+                ["id"] = "MANUAL",
+                ["scope"] = explicitScope,
+                ["term"] = term,
+                ["users"] = users
+            });
+        }
 
         var profile = new Dictionary<string, object?>
         {
@@ -117,34 +170,32 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
                 ["name"] = request.Customer?.Name
             },
             ["deployment"] = draft.Deployment,
-            ["usePresets"] = SplitCsv(draft.PresetsCsv).ToList(),
-            ["items"] = new List<object>
-            {
-                new Dictionary<string, object?>
-                {
-                    ["id"] = "MANUAL",
-                    ["scope"] = scope,
-                    ["term"] = new Dictionary<string, object?>
-                    {
-                        ["type"] = termType,
-                        ["months"] = draft.TermMode == "months" ? draft.Months ?? 12 : null,
-                        ["from"] = draft.TermMode == "until" ? JalaliDate.TehranNow().Date : null,
-                        ["until"] = draft.TermMode == "until" ? draft.Until : null,
-                        ["updatesUntil"] = draft.UpdatesUntil
-                    },
-                    ["users"] = new Dictionary<string, object?>
-                    {
-                        ["mode"] = usersMode,
-                        ["max"] = draft.UserMax,
-                        ["appliesTo"] = appliesTo,
-                        ["exempt"] = draft.Exempt
-                    }
-                }
-            },
+            ["usePresets"] = fallbackPresets,
+            ["items"] = items,
             ["note"] = draft.Note
         };
 
         return JsonSerializer.Serialize(profile, ProfileOptions);
+    }
+
+    /// <summary>کدهای ماژول یک بستهٔ آماده از JSON آن (فیلد scope).</summary>
+    private static List<string> ReadPresetScope(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.Array)
+                return new List<string>();
+            return scope.EnumerateArray()
+                .Where(m => m.ValueKind == JsonValueKind.String)
+                .Select(m => (m.GetString() ?? "").Trim().ToLowerInvariant())
+                .Where(m => m.Length > 0)
+                .Distinct().ToList();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     /// <summary>

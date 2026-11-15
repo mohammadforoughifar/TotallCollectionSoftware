@@ -23,7 +23,8 @@ public sealed record SignOutcome
 
 /// <summary>وضعیت آمادگی امضا (ابزار/کلیدها/پوشه).</summary>
 public sealed record SigningStatus(bool Ready, string Reason, string? ToolPath, string WorkFolder,
-    bool PrivateKeyFound, bool PublicKeyFound, string? PresetsPath);
+    bool PrivateKeyFound, bool PublicKeyFound, string? PresetsPath,
+    string? PrivateKeyPath = null, string? PublicKeyPath = null, string? KeyId = null);
 
 /// <summary>
 /// چرخهٔ امضا از داخل پنل: پروفایل پیش‌نویس → <c>LicenseTool issue</c> → بازبینی فوری →
@@ -81,7 +82,8 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
             : "";
 
         return new SigningStatus(tool is not null && privateKey && publicKey, reason, tool,
-            options.EffectiveWorkFolder(), privateKey, publicKey, ResolvePresetsPath(tool));
+            options.EffectiveWorkFolder(), privateKey, publicKey, ResolvePresetsPath(tool),
+            options.PrivateKeyPath, options.PublicKeyPath, options.KeyId);
     }
 
     private sealed record Prepared(string? Error, string? ToolPath, List<string> Args, string WorkFolder,

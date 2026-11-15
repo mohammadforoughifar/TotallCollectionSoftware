@@ -38,9 +38,14 @@ public sealed class LicenseToolRunner(SignerOptions options, ILogger<LicenseTool
         if (isDll) psi.ArgumentList.Add(toolPath);
         foreach (var arg in args) psi.ArgumentList.Add(arg);
 
+        // گذرواژه فقط به فرایند فرزند داده می‌شود؛ هرگز در DB/لاگ/فایل نوشته نمی‌شود.
+        // اولویت: مقدار فرم ← متغیر محیطی خودِ پنل (تا راه‌اندازی env-only هم کار کند).
         psi.Environment.Remove("LICENSETOOL_PRIVATE_KEY");
-        psi.Environment.Remove(options.KeyPasswordEnvironmentVariable);
-        if (!string.IsNullOrEmpty(keyPassword))
+        if (string.IsNullOrEmpty(keyPassword))
+            keyPassword = Environment.GetEnvironmentVariable(options.KeyPasswordEnvironmentVariable) ?? "";
+        if (string.IsNullOrEmpty(keyPassword))
+            psi.Environment.Remove(options.KeyPasswordEnvironmentVariable);
+        else
             psi.Environment[options.KeyPasswordEnvironmentVariable] = keyPassword;
 
         using var process = new Process { StartInfo = psi };
