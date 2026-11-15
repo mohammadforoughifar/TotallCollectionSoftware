@@ -61,6 +61,11 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         return File.Exists(beside) ? beside : null;
     }
 
+    private static bool LooksLikeMissingPublicKey(string? text) =>
+        !string.IsNullOrWhiteSpace(text) &&
+        (text.Contains("کلید عمومی پیدا نشد", StringComparison.Ordinal)
+         || text.Contains("--public-key یا --manifest", StringComparison.Ordinal));
+
     private static bool LooksLikeWrongPassword(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
@@ -142,10 +147,28 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
             args.Add(options.KeyId);
         }
 
-        foreach (var (_, path) in await drafts.PreviousLicenseFilesAsync(request.InstallationId, ct))
+        var previousFiles = await drafts.PreviousLicenseFilesAsync(request.InstallationId, ct);
+        if (previousFiles.Count > 0)
         {
-            args.Add("--existing");
-            args.Add(path);
+            // برای بازبینی لایسنس‌های قبلی، ابزار به کلید عمومی نیاز دارد؛ وگرنه با
+            // «InvalidOperationException: کلید عمومی پیدا نشد» متوقف می‌شود.
+            if (!string.IsNullOrWhiteSpace(options.PublicKeyPath) && File.Exists(options.PublicKeyPath))
+            {
+                args.Add("--public-key");
+                args.Add(options.PublicKeyPath);
+            }
+            else
+            {
+                return new Prepared("این نصب لایسنس فعال قبلی دارد و برای ادغام باید کلید عمومی در دسترس باشد " +
+                                    "(Signer:PublicKeyPath)؛ مسیر را در «تنظیمات ← کلیدهای امضا» بررسی کنید.",
+                    tool, new List<string>(), folder, warnings, () => { }, outPath, requestPath);
+            }
+
+            foreach (var (_, path) in previousFiles)
+            {
+                args.Add("--existing");
+                args.Add(path);
+            }
         }
 
         var previousCount = await db.IssuedLicenses.CountAsync(
@@ -251,6 +274,17 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
             if (!run.Ok)
             {
                 // «رمز اشتباه» شایع‌ترین خطای کد ۲ است؛ پیام رمزنگاری خام به کاربر نشان داده نمی‌شود.
+                if (LooksLikeMissingPublicKey(run.Text))
+                {
+                    return new SignOutcome
+                    {
+                        Error = "امضا انجام نشد: ابزار برای بازبینی/ادغام لایسنس‌های قبلی این نصب به «کلید عمومی» نیاز دارد " +
+                                "و آن را پیدا نکرد. مسیر Signer:PublicKeyPath را بررسی کنید (تنظیمات ← کلیدهای امضا) " +
+                                "یا فایل کلید عمومی را کنار ابزار در پوشهٔ Keys/manifest.json ثبت کنید.",
+                        Preview = run.Text
+                    };
+                }
+
                 if (LooksLikeWrongPassword(run.Text))
                 {
                     var source = run.PasswordSource switch

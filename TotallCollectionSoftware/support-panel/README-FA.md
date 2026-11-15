@@ -241,6 +241,7 @@ dotnet SupportPanel.dll
 |---|---|
 | «ابزار آماده نیست: کلید خصوصی پیدا نشد» | `Signer:PrivateKeyPath` + دسترسی فایل |
 | «presets.json کنار فایل اجرایی LicenseTool نیست…» | `prepare.sh` را اجرا کنید (یا فایل را کنار `LicenseTool.dll` کپی کنید) |
+| «کلید عمومی پیدا نشد. --public-key یا --manifest بدهید» | ابزار برای بازبینی/ادغام لایسنس قبلی به کلید عمومی نیاز دارد؛ `Signer:PublicKeyPath` را ست کنید (پنل از نسخهٔ فعلی خودکار `--public-key` می‌دهد) |
 | «The EncryptedPrivateKeyInfo … password may be incorrect» | رمز کلید خصوصی نمی‌خواند: رمز فرم را با رمزِ ساخت کلید هم‌تراز کنید یا در تنظیمات دکمهٔ «بررسی رمز کلید فعال» را بزنید (پنل پیش از امضا هم رمز را بررسی می‌کند) |
 | «ابزار ورودی را نپذیرفت (کد ۲)» | متن ابزار در همان پیام است؛ معمولاً presets یا مقدار غیرمجاز (مثلاً `OnPremise` به‌جای `OnPrem`) |
 | «SMTP تنظیم نشده است» | `تنظیمات → SMTP` + `LICENSESIGNER_SMTP_PASSWORD` |
