@@ -10,6 +10,10 @@ namespace LicenseSigner.Services;
 public sealed record SignerKeyRecord(string KeyId, string PrivateKeyPath, string PublicKeyPath,
     string Fingerprint, DateTime CreatedAtUtc, string Folder);
 
+/// <summary>توصیف کلید فعال پنل (از پیکربندی یا از تنظیمات) — برای ثبت در manifest محصول.</summary>
+public sealed record ActiveKeyInfo(bool Exists, string KeyId, string? PublicKeyPath, string? PrivateKeyPath,
+    string? Fingerprint, bool Encrypted);
+
 /// <summary>نتیجهٔ بررسی «آیا این رمز به کلید خصوصی فعال می‌خورد؟»</summary>
 public sealed record KeyPasswordCheck(bool KeyExists, bool Encrypted, bool Matches, string Message);
 
@@ -164,6 +168,48 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
         return new KeyGenResult(true, "جفت‌کلید ساخته و به پنل وصل شد.", record, true, warnings);
     }
 
+    /// <summary>
+    /// کلید فعال را توصیف می‌کند (شناسه، مسیرها، اثر انگشت sha256 و رمزدار بودن).
+    /// مستقل از این است که کلید از صفحهٔ تنظیمات ساخته شده باشد یا از پیکربندی محیطی آمده باشد؛
+    /// همین باعث می‌شود قطعهٔ manifest در هر دو حالت نمایش داده شود.
+    /// </summary>
+    public ActiveKeyInfo DescribeActiveKey()
+    {
+        var publicPath = options.PublicKeyPath;
+        var privatePath = options.PrivateKeyPath;
+        var keyId = string.IsNullOrWhiteSpace(options.KeyId)
+            ? (string.IsNullOrWhiteSpace(publicPath) ? "" : Path.GetFileNameWithoutExtension(publicPath))
+            : options.KeyId;
+
+        if (string.IsNullOrWhiteSpace(publicPath) || !File.Exists(publicPath))
+            return new ActiveKeyInfo(false, keyId, publicPath, privatePath, null, false);
+
+        string? fingerprint = null;
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportFromPem(File.ReadAllText(publicPath));
+            fingerprint = Convert.ToHexString(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+        }
+        catch
+        {
+            // فایل کلید عمومی خراب/غیرقابل خواندن — اثر انگشت خالی می‌ماند.
+        }
+
+        var encrypted = false;
+        try
+        {
+            encrypted = !string.IsNullOrWhiteSpace(privatePath) && File.Exists(privatePath) &&
+                        File.ReadAllText(privatePath).Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal);
+        }
+        catch
+        {
+            // بی‌صدا
+        }
+
+        return new ActiveKeyInfo(true, keyId, publicPath, privatePath, fingerprint, encrypted);
+    }
+
     /// <summary>رمز موجود در متغیر محیطی پنل (اگر ست شده باشد) — فقط برای مقایسه، نه ذخیره.</summary>
     public string? EnvironmentPassword =>
         Environment.GetEnvironmentVariable(options.KeyPasswordEnvironmentVariable) is { Length: > 0 } value ? value : null;
@@ -208,6 +254,106 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
         catch (Exception ex)
         {
             return new KeyPasswordCheck(true, true, false, $"بررسی رمز ممکن نشد: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// ثبت کلید فعال در <c>Keys/manifest.json</c> نرم‌افزار مشتری: کلید عمومی را کنار فایل کپی می‌کند و
+    /// ردیف متناظر را (بر اساس <c>keyId</c>) اضافه یا به‌روزرسانی می‌کند. ردیف‌های دیگر دست‌نخورده می‌مانند
+    /// تا لایسنس‌های صادرشده با کلیدهای قدیمی معتبر بمانند. نسخهٔ پشتیبان manifest ساخته می‌شود.
+    /// </summary>
+    public async Task<(bool Ok, string Message)> RegisterInManifestAsync(string keysFolder, SupportUser actor,
+        CancellationToken ct = default)
+    {
+        var info = DescribeActiveKey();
+        if (!info.Exists || info.Fingerprint is not { Length: 64 })
+            return (false, "کلید عمومی فعال پیدا نشد یا خوانده نشد؛ ابتدا جفت‌کلید را بسازید/وصل کنید.");
+        if (string.IsNullOrWhiteSpace(info.KeyId))
+            return (false, "شناسهٔ کلید (Key ID) خالی است؛ آن را در فرم بالا پر کنید.");
+
+        keysFolder = (keysFolder ?? "").Trim().Trim('"');
+        if (keysFolder.Length == 0) return (false, "مسیر پوشهٔ Keys محصول را وارد کنید.");
+
+        try
+        {
+            keysFolder = Path.IsPathRooted(keysFolder)
+                ? Path.GetFullPath(keysFolder)
+                : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, keysFolder));
+        }
+        catch (Exception ex)
+        {
+            return (false, $"مسیر نامعتبر است: {ex.Message}");
+        }
+
+        var manifestPath = Path.Combine(keysFolder, "manifest.json");
+        if (!File.Exists(manifestPath))
+            return (false, $"در این پوشه manifest.json پیدا نشد: {manifestPath}");
+
+        var publicPath = info.PublicKeyPath!;
+        var fileName = Path.GetFileName(publicPath);
+        var targetPem = Path.Combine(keysFolder, fileName);
+
+        try
+        {
+            var root = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(manifestPath, ct));
+            if (root is not System.Text.Json.Nodes.JsonObject json)
+                return (false, "ساختار manifest.json قابل خواندن نیست (ریشه باید شیء JSON باشد).");
+
+            if (json["keys"] is not System.Text.Json.Nodes.JsonArray keys)
+            {
+                keys = new System.Text.Json.Nodes.JsonArray();
+                json["keys"] = keys;
+            }
+
+            System.Text.Json.Nodes.JsonObject? existing = null;
+            foreach (var node in keys)
+            {
+                if (node is System.Text.Json.Nodes.JsonObject entry &&
+                    string.Equals(entry["keyId"]?.GetValue<string>(), info.KeyId, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing = entry;
+                    break;
+                }
+            }
+
+            var action = existing is null ? "افزوده شد" : "به‌روزرسانی شد";
+            var entryJson = new System.Text.Json.Nodes.JsonObject
+            {
+                ["keyId"] = info.KeyId,
+                ["algorithm"] = "RS256",
+                ["file"] = fileName,
+                ["sha256"] = info.Fingerprint,
+                ["note"] = "کلید تولیدی — کلید خصوصی بیرون از مخزن",
+                ["debugOnly"] = false
+            };
+
+            if (existing is null) keys.Add(entryJson);
+            else
+            {
+                var index = keys.IndexOf(existing);
+                keys[index] = entryJson;
+            }
+
+            var backup = manifestPath + $".bak-{DateTime.Now:yyyyMMdd-HHmmss}";
+            File.Copy(manifestPath, backup, overwrite: false);
+
+            await File.WriteAllTextAsync(manifestPath,
+                json.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }),
+                ct);
+
+            if (!File.Exists(targetPem) || !string.Equals(await File.ReadAllTextAsync(targetPem, ct), await File.ReadAllTextAsync(publicPath, ct), StringComparison.Ordinal))
+                File.Copy(publicPath, targetPem, overwrite: true);
+
+            await audit.AppendAsync(actor.UserName, "SIGNER_KEY_REGISTERED", "Setting", SettingKey,
+                JsonSerializer.Serialize(new { info.KeyId, info.Fingerprint, KeysFolder = keysFolder, Action = action }),
+                actor.Id, ct);
+
+            return (true, $"ردیف کلید «{info.KeyId}» در manifest.json {action} و فایل {fileName} کنار آن کپی شد. " +
+                          $"نسخهٔ پشتیبان: {Path.GetFileName(backup)}. اکنون بیلد Release بگیرید و نصب مشتری را به‌روزرسانی کنید.");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"ثبت در manifest ناموفق بود: {ex.Message}");
         }
     }
 

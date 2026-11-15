@@ -14,6 +14,8 @@
     public string OkMessage { get; set; } = "";
     public KeyGenResult? KeyResult { get; set; }
     public KeyPasswordCheck? PasswordCheck { get; set; }
+    public string ManifestMessage { get; set; } = "";
+    public bool ManifestOk { get; set; }
     public List<string> KeyWarnings { get; set; } = new();
 
     public async Task<IActionResult> OnPostKeygenAsync()
@@ -38,6 +40,15 @@
             OkMessage = KeyResult.Message;
             KeyWarnings = KeyResult.Warnings;
         }
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostRegisterKey()
+    {
+        var folder = Request.Form["keysFolder"].ToString();
+        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
+        var (ok, message) = await Keys.RegisterInManifestAsync(folder, actor);
+        ManifestOk = ok; ManifestMessage = message;
         return Page();
     }
 
@@ -83,6 +94,7 @@
 @{
     var signStatus = Signing.GetStatus();
     var savedKey = await Keys.LoadAsync();
+    var activeKey = Keys.DescribeActiveKey();
     var smtp = await Settings.GetSmtpAsync();
     var template = await Settings.GetTemplateAsync();
     var passwordAvailable = Settings.SmtpPasswordAvailable;
@@ -93,6 +105,7 @@
 </div>
 @if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
 @if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
+@if (!string.IsNullOrEmpty(ManifestMessage)) { <div class="alert @(ManifestOk ? "ok" : "error")">@ManifestMessage</div> }
 
 <div class="card"><div class="card-head">کلیدهای امضا — ساخت خودکار جفت‌کلید</div><div class="card-body">
     <table class="table">
@@ -112,7 +125,7 @@
         <tr><td>منبع کلید فعال</td><td colspan="2">
             @if (savedKey is not null && System.IO.File.Exists(savedKey.PrivateKeyPath))
             {
-                <span>ساخته‌شده از همین صفحه — شناسهٔ <span class="mono">@savedKey.KeyId</span>،
+                <span>ساخته‌شده از همین صفحه — شناسهٔ <span class="mono">@activeKey.KeyId</span>،
                     اثر انگشت <span class="mono small">@(savedKey.Fingerprint is { Length: > 16 } fp ? fp[..16] + "…" : savedKey.Fingerprint)</span></span>
             }
             else
@@ -175,14 +188,14 @@
             رمز در پاسخ صفحه یا لاگ نوشته نمی‌شود.</p>
     </form>
 
-    @if (savedKey is not null)
+    @if (activeKey.Exists && activeKey.Fingerprint is { Length: 64 })
     {
-        var fileName = System.IO.Path.GetFileName(savedKey.PublicKeyPath);
+        var fileName = System.IO.Path.GetFileName(activeKey.PublicKeyPath!);
         var json = "{\n" +
-                   $"  \"keyId\": \"{savedKey.KeyId}\",\n" +
+                   $"  \"keyId\": \"{activeKey.KeyId}\",\n" +
                    "  \"algorithm\": \"RS256\",\n" +
                    $"  \"file\": \"{fileName}\",\n" +
-                   $"  \"sha256\": \"{savedKey.Fingerprint}\",\n" +
+                   $"  \"sha256\": \"{activeKey.Fingerprint}\",\n" +
                    "  \"note\": \"کلید تولیدی — کلید خصوصی بیرون از مخزن\",\n" +
                    "  \"debugOnly\": false\n" +
                    "}";
@@ -190,7 +203,7 @@
             <summary style="cursor:pointer"><b>ثبت این کلید در نرم‌افزار مشتری (Keys/manifest.json)</b></summary>
             <p class="hint" style="line-height:1.95;margin:.7rem 0">
                 تا این ردیف در محصول ثبت و نسخهٔ Release دوباره ساخته نشود، نرم‌افزار مشتری لایسنس امضاشده با
-                شناسهٔ <span class="mono">@savedKey.KeyId</span> را نمی‌پذیرد و پیام «کلید امضا روی این نصب شناخته‌شده نیست» می‌دهد.
+                شناسهٔ <span class="mono">@activeKey.KeyId</span> را نمی‌پذیرد و پیام «کلید امضا روی این نصب شناخته‌شده نیست» می‌دهد.
             </p>
             <ol class="hint" style="line-height:2;margin:.2rem 0 .6rem">
                 <li>فایل کلید عمومی <span class="mono">@fileName</span> را در پوشهٔ
@@ -202,6 +215,15 @@
             </ol>
             <pre class="mono" style="direction:ltr;text-align:left;background:#0f172a;color:#e6edf7;padding:.8rem 1rem;border-radius:.5rem;overflow:auto">@json</pre>
             <p class="hint">اثر انگشت بالا از SHA-256 کلید عمومی در قالب DER (SubjectPublicKeyInfo) است و هنگام بارگذاری در محصول بررسی می‌شود.</p>
+
+            <form method="post" asp-page-handler="RegisterKey" style="border-top:1px solid #e6e9ef;margin-top:.8rem;padding-top:.8rem">
+                <div class="field"><label for="keysFolder">یا خودکار ثبت کن: مسیر پوشهٔ Keys محصول</label>
+                    <input id="keysFolder" name="keysFolder" class="mono"
+                           placeholder="C:\src\TotallCollectionSoftware\inventory\src\Inventory.Licensing\Keys" /></div>
+                <button type="submit" class="btn ghost">افزودن/به‌روزرسانی ردیف در manifest و کپی کلید عمومی</button>
+                <p class="hint">پوشه‌ای که <span class="mono">manifest.json</span> در آن است. نسخهٔ پشتیبان از manifest گرفته می‌شود،
+                    ردیف‌های قبلی حذف نمی‌شوند و بعد از آن باید بیلد Release بگیرید (کلیدها داخل اسمبلی جاسازی می‌شوند).</p>
+            </form>
         </details>
     }
 
