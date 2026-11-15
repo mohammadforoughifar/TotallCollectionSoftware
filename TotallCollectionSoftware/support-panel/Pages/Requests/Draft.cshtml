@@ -23,10 +23,21 @@
     public List<string> ModulesSelected { get; set; } = new();
     public string Note { get; set; } = "";
 
+    /// <summary>منبع پیشنهاد ماژول‌ها: request | last-license | خالی</summary>
+    public string SuggestedFrom { get; set; } = "";
+
     private async Task LoadAsync()
     {
         var existing = await Drafts.CurrentAsync(RequestId);
-        if (existing is null) return;
+        if (existing is null)
+        {
+            // پیش‌نویس تازه: ماژول‌ها از درخواست مشتری یا آخرین لایسنس همان مشتری پیشنهاد می‌شود
+            var (suggested, suggestedPresets, source) = await Drafts.SuggestModulesAsync(RequestId);
+            ModulesSelected = suggested;
+            if (suggestedPresets.Count > 0) PresetsSelected = suggestedPresets;
+            SuggestedFrom = source;
+            return;
+        }
         TermMode = existing.TermMode;
         Months = (existing.Months ?? 12).ToString();
         UntilText = existing.Until is { } until ? JalaliDate.Short(until) : "";
@@ -105,6 +116,20 @@
 
     public Task<IActionResult> OnPostAsync() => OnPostSaveAsync();
 
+    /// <summary>پرکردن ماژول‌ها از آخرین لایسنس صادرشدهٔ همین مشتری (بدون ذخیره).</summary>
+    public async Task<IActionResult> OnPostCopyLastAsync()
+    {
+        RequestId = ResolveId();
+        ReadForm();
+        var (modules, presets, _) = await Drafts.SuggestModulesAsync(RequestId);
+        ModulesSelected = modules;
+        if (presets.Count > 0) PresetsSelected = presets;
+        SuggestedFrom = (modules.Count > 0 || presets.Count > 0) ? "last-license" : "";
+        Error = SuggestedFrom.Length > 0 ? "" : "پیش‌نویس امضاشده‌ای برای این مشتری پیدا نشد.";
+        if (SuggestedFrom.Length > 0) OkMessage = "ماژول‌ها از آخرین لایسنس همین مشتری پر شد؛ ذخیره را بزنید.";
+        return Page();
+    }
+
     public async Task<IActionResult> OnPostPreviewAsync()
     {
         RequestId = ResolveId();
@@ -175,7 +200,26 @@ else
                         {
                             <option value="@module.Code" selected="@ModulesSelected.Contains(module.Code, StringComparer.OrdinalIgnoreCase)">@module.Title (@module.Code)</option>
                         }
-                    </select></div>
+                    </select>
+                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                        @if (SuggestedFrom == "request")
+                        {
+                            <text>ماژول‌ها به‌صورت خودکار از <b>فایل درخواست همین مشتری</b> انتخاب شدند؛ هر تغییری لازم است همین‌جا بدهید.</text>
+                        }
+                        else if (SuggestedFrom == "last-license")
+                        {
+                            <text>ماژول‌ها از <b>آخرین لایسنس صادرشدهٔ همین مشتری</b> پیشنهاد شده‌اند (فقط پیشنهاد، نه امضا).</text>
+                        }
+                        else
+                        {
+                            <text>درخواست مشتری ماژولی همراه نداشت؛ می‌توانید از دکمهٔ «کپی از آخرین لایسنس مشتری» استفاده کنید.</text>
+                        }
+                        <br />در لیست چندتایی با <span class="mono">Ctrl</span> (یا <span class="mono">⌘</span>) چند ماژول را با هم انتخاب کنید.
+                    </p>
+                    <p style="margin:.4rem 0 0">
+                        <button type="submit" formnovalidate asp-page-handler="CopyLast" class="btn small ghost">کپی از آخرین لایسنس مشتری</button>
+                    </p>
+                </div>
                 <div>
                     <div class="field"><label for="termMode">حالت مدت</label>
                         <select id="termMode" name="termMode">

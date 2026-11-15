@@ -22,6 +22,47 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
     public Task<LicenseDraft?> CurrentAsync(int requestId, CancellationToken ct = default) =>
         db.Drafts.AsNoTracking().OrderByDescending(d => d.Id).FirstOrDefaultAsync(d => d.RequestId == requestId, ct);
 
+    /// <summary>
+    /// پیشنهاد ماژول/بسته برای پیش‌نویس تازه، به‌ترتیب اولویت:
+    /// ۱) ماژول‌هایی که مشتری در فایل درخواست خواسته است (InterestedModulesCsv)
+    /// ۲) ماژول‌ها و بسته‌های آخرین پیش‌نویسِ امضاشدهٔ همین مشتری (از آخرین لایسنس صادرشده)
+    /// خروجی: (ماژول‌ها، بسته‌ها، منبع) — منبع: request | last-license | خالی
+    /// </summary>
+    public async Task<(List<string> Modules, List<string> Presets, string Source)> SuggestModulesAsync(
+        int requestId, CancellationToken ct = default)
+    {
+        var request = await db.Requests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId, ct);
+        if (request is null) return (new List<string>(), new List<string>(), "");
+
+        var fromRequest = SplitCsv(request.InterestedModulesCsv)
+            .Select(m => m.Trim().ToLowerInvariant()).Where(m => m.Length > 0).Distinct().ToList();
+        if (fromRequest.Count > 0) return (fromRequest, new List<string>(), "request");
+
+        if (request.CustomerId is not int customerId) return (new List<string>(), new List<string>(), "");
+
+        /* آخرین پرونده‌ای که برای این مشتری لایسنس گرفته است */
+        var lastRequestId = await db.IssuedLicenses.AsNoTracking()
+            .Where(l => l.CustomerId == customerId)
+            .OrderByDescending(l => l.Id)
+            .Select(l => (int?)l.RequestId)
+            .FirstOrDefaultAsync(ct);
+        if (lastRequestId is not int sourceRequestId) return (new List<string>(), new List<string>(), "");
+
+        var previous = await db.Drafts.AsNoTracking()
+            .Where(d => d.RequestId == sourceRequestId)
+            .OrderByDescending(d => d.Id)
+            .FirstOrDefaultAsync(ct);
+        if (previous is null) return (new List<string>(), new List<string>(), "");
+
+        var modules = SplitCsv(previous.ModulesCsv)
+            .Select(m => m.Trim().ToLowerInvariant()).Where(m => m.Length > 0).Distinct().ToList();
+        var presets = SplitCsv(previous.PresetsCsv)
+            .Select(p => p.Trim()).Where(p => p.Length > 0).Distinct().ToList();
+        if (modules.Count == 0 && presets.Count == 0) return (new List<string>(), new List<string>(), "");
+
+        return (modules, presets, "last-license");
+    }
+
     public async Task<(bool Ok, string? Error)> SaveAsync(int requestId, LicenseDraft draft, SupportUser actor,
         RequestService requests, CancellationToken ct = default)
     {
