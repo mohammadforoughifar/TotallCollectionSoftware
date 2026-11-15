@@ -210,7 +210,12 @@ else
                         {
                             <option value="@mode" selected="@(UserMode == mode)">@mode</option>
                         }
-                    </select></div>
+                    </select>
+                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                        <b>Named</b>: کاربر نام‌دار — به تعداد حساب‌های فعال شمرده می‌شود (سقف = «سقف کاربر»).<br />
+                        <b>Concurrent</b>: کاربر هم‌زمان — به تعداد نشست‌های باز شمرده می‌شود، نه تعداد حساب‌ها.<br />
+                        <b>None</b>: این آیتم سهمیهٔ کاربر ندارد (مثلاً فقط سهمیهٔ فاکتور می‌فروشد)؛ سقف و معاف نادیده گرفته می‌شود.
+                    </p></div>
                 <div class="field"><label for="userMax">سقف کاربر</label><input id="userMax" name="userMax" class="mono" value="@UserMax" /></div>
                 <div class="field"><label for="exempt">کاربران مستثنا</label><input id="exempt" name="exempt" class="mono" value="@Exempt" /></div>
                 <div class="field"><label for="appliesTo">دامنه</label>
@@ -219,7 +224,11 @@ else
                         {
                             <option value="@scope" selected="@(AppliesTo == scope)">@scope</option>
                         }
-                    </select></div>
+                    </select>
+                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                        <b>Global</b>: سهمیه روی همهٔ کاربران همان نصب (یا کل سیستم) شمرده می‌شود.<br />
+                        <b>PerTenant</b>: هر مستأجر سهمیهٔ خودش را دارد — مناسب حالت SaaS.
+                    </p></div>
             </div>
             <div class="field"><label for="note">یادداشت پیش‌نویس</label><input id="note" name="note" value="@Note" /></div>
             <p>
