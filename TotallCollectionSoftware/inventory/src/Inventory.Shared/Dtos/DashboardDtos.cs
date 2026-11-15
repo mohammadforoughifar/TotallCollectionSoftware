@@ -132,6 +132,17 @@ public class WidgetDataDto
     /// <summary>متن روند (مثل «+۱۲٪ نسبت به ماه قبل»)</summary>
     public string? DeltaText { get; set; }
     public bool? DeltaUp { get; set; }
+
+    /// <summary>
+    /// قطبیت شاخص: آیا «بیشتر» بهتر است؟ پیش‌فرض (null) = بله.
+    /// <para>
+    /// چرا لازم است: در بعضی شاخص‌ها کاهش خبر خوب است (معوق، بسته بدون انجام، زمان تا اولین پاسخ).
+    /// بدون این فیلد، کاهش معوق با رنگ قرمز نشان داده می‌شد.
+    /// کلاینت رنگ را این‌طور می‌سازد: <c>DeltaUp == (HigherIsBetter ?? true)</c> ⇒ سبز.
+    /// جهت فلش همچنان فقط از <see cref="DeltaUp"/> می‌آید.
+    /// </para>
+    /// </summary>
+    public bool? HigherIsBetter { get; set; }
     /// <summary>عدد ثانویه (مثل تعداد سند)</summary>
     public decimal? SubValue { get; set; }
     public string? SubLabel { get; set; }

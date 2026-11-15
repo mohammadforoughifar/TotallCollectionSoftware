@@ -235,9 +235,10 @@ public class DashboardsController : ControllerBase
         if (await ForbiddenUnlessAsync("Design") is ObjectResult fb) return fb;
         if (await EnsureDashDbAsync() is ObjectResult dbErr) return dbErr;
 
+        // هیچ سقفی برای تعداد داشبوردهای هر کاربر وجود ندارد.
+        // (پیش‌تر محدودیت ۱۰ تایی اینجا بود؛ برداشته شد تا کاربر آزادانه طراحی کند.)
+        // شمارش فقط برای نام پیش‌فرض و ترتیب نمایش لازم است.
         var count = await _db.UserDashboards.CountAsync(d => d.UserId == MyUserId);
-        if (count >= 10)
-            return BadRequest(new { message = "حداکثر ۱۰ داشبورد می‌توانید بسازید." });
 
         var d = new UserDashboard
         {

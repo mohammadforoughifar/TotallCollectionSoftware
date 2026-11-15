@@ -19,11 +19,22 @@ public interface IWidgetDataService
 public class WidgetDataService : IWidgetDataService
 {
     private readonly AppDbContext _db;
-    public WidgetDataService(AppDbContext db) => _db = db;
+    private readonly IWorkOrderWidgets _workOrders;
+
+    public WidgetDataService(AppDbContext db, IWorkOrderWidgets workOrders)
+    {
+        _db = db;
+        _workOrders = workOrders;
+    }
 
     public async Task<WidgetDataDto> GetAsync(WidgetDefDto def, int userId, DashChartType? chartType,
         DashRange range, IReadOnlyDictionary<string, string> config)
     {
+        // ویجت‌های دستور کار و پروژه کاری موتور مستقل دارند (دامنه، شرکت فعال و
+        // نتیجهٔ پنج‌حالتهٔ مشترک). این کار باعث می‌شود switch زیر برای بقیهٔ ماژول‌ها بماند.
+        if (_workOrders.Handles(def.Key))
+            return await _workOrders.GetAsync(def, userId, chartType, range, config);
+
         var res = new WidgetDataDto
         {
             Key = def.Key,
@@ -378,36 +389,8 @@ public class WidgetDataService : IWidgetDataService
                     break;
                 }
 
-                // ==================== دستور کار ====================
-                case "wo-open":
-                {
-                    var open = await MyWorkOrders(userId).CountAsync(w => w.Status == "Open");
-                    var all = await MyWorkOrders(userId).CountAsync();
-                    FillKpi(res, open, all, null, null);
-                    res.SubLabel = "کل دستورهای کار من";
-                    break;
-                }
-                case "wo-overdue":
-                {
-                    var now = DateTime.Now;
-                    var late = await MyWorkOrders(userId).CountAsync(w => w.Status == "Open" && w.DueAt < now);
-                    var open = await MyWorkOrders(userId).CountAsync(w => w.Status == "Open");
-                    FillKpi(res, late, open, null, null);
-                    res.SubLabel = "دستور باز";
-                    break;
-                }
-                case "wo-by-status":
-                {
-                    var rows = await _db.WorkOrders.Where(w => w.DeletedAt == null)
-                        .GroupBy(w => w.Status)
-                        .Select(g => new { Status = g.Key, Cnt = g.Count() })
-                        .ToListAsync();
-                    var ser = new DashSeriesDto { Name = "دستور کار" };
-                    ser.Labels = rows.Select(r => WoStatusFa(r.Status)).ToList();
-                    ser.Values = rows.Select(r => (decimal)r.Cnt).ToList();
-                    res.Series.Add(ser);
-                    break;
-                }
+                // دستور کار → WorkOrderWidgets (ابتدای همین متد). شاخه‌ای اینجا نمانده
+                // تا دو پیاده‌سازی موازی و واگرا نداشته باشیم.
 
                 // ==================== اتوماسیون اداری ====================
                 case "off-letters-count":
@@ -754,12 +737,6 @@ public class WidgetDataService : IWidgetDataService
     //  کمکی‌ها
     // =====================================================================
 
-    /// <summary>دستورهای کاری که کاربر یا دستوردهندهٔ آن است یا به او محول شده.</summary>
-    private IQueryable<WorkOrder> MyWorkOrders(int userId) =>
-        _db.WorkOrders.Where(w => w.DeletedAt == null
-            && (w.OwnerUserId == userId
-                || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == userId)));
-
     /// <summary>همهٔ نامه‌ها (داخلی/صادره/وارده) که تاریخ ثبتشان در بازه است.</summary>
     private IQueryable<LetterSource> LettersIn(DateTime from, DateTime to) =>
         _db.LetterSources.Where(x => !x.IsDelete
@@ -861,14 +838,6 @@ public class WidgetDataService : IWidgetDataService
 
     private static int Int(IReadOnlyDictionary<string, string> cfg, string key, int def) =>
         cfg.TryGetValue(key, out var v) && int.TryParse(v, out var n) && n > 0 ? Math.Min(n, 50) : def;
-
-    private static string WoStatusFa(string s) => s switch
-    {
-        "Open" => "باز",
-        "Closed" => "بسته",
-        "Cancelled" => "لغوشده",
-        _ => s
-    };
 
     private record MonthBucket(int Year, int Month, DateTime From, DateTime To, string Label);
 

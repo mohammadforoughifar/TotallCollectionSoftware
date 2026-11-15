@@ -209,6 +209,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Moadian.IConnectService, Inven
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
+builder.Services.AddScoped<Inventory.Api.Services.Dashboards.IWorkOrderWidgets, Inventory.Api.Services.Dashboards.WorkOrderWidgets>(); // ویجت‌های دستور کار و پروژه کاری
 builder.Services.AddScoped<Inventory.Api.Services.Dashboards.IWidgetDataService, Inventory.Api.Services.Dashboards.WidgetDataService>(); // داشبورد شخصی کاربر — تولید دادهٔ ویجت‌ها
 builder.Services.AddScoped<Inventory.Api.Services.Core.IEffectivePermissions, Inventory.Api.Services.Core.EffectivePermissions>(); // دسترسی‌های مؤثر کاربر (مشترک بین داشبورد و گزارش‌ساز)
 // گزارش‌ساز حرفه‌ای — کاتالوگ، اجرا و کنترل دسترسی
