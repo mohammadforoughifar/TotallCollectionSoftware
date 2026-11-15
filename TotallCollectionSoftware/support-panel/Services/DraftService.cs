@@ -66,6 +66,7 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         var usersMode = draft.UserMode is "None" or "Concurrent" or "Named" ? draft.UserMode : "Named";
 
         var scope = SplitCsv(draft.ModulesCsv).ToList();
+        var appliesTo = MapUserScope(draft.AppliesTo);
 
         var profile = new Dictionary<string, object?>
         {
@@ -94,7 +95,7 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
                     {
                         ["mode"] = usersMode,
                         ["max"] = draft.UserMax,
-                        ["appliesTo"] = draft.AppliesTo,
+                        ["appliesTo"] = appliesTo,
                         ["exempt"] = draft.Exempt
                     }
                 }
@@ -104,6 +105,17 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
 
         return JsonSerializer.Serialize(profile, ProfileOptions);
     }
+
+    /// <summary>
+    /// نگاشت «دامنه» پنل به دامنهٔ شناخته‌شدهٔ سند لایسنس (LicenseUserScope).
+    /// ابزار امضا فقط Global و Modules را می‌شناسد؛ PerTenant (حالت SaaS) در سند به Global نگاشت
+    /// می‌شود، چون هر مستأجر نصب/لایسنس مستقل خودش را دارد و مرز مستأجر جای دیگری کنترل می‌شود.
+    /// </summary>
+    public static string MapUserScope(string? appliesTo) => appliesTo switch
+    {
+        "Modules" => "Modules",
+        _ => "Global"   // Global و PerTenant
+    };
 
     /// <summary>فایل‌های لایسنس فعال قبلی همین نصب (برای ادغام در پیش‌نمایش ابزار).</summary>
     public async Task<List<(int Id, string Path)>> PreviousLicenseFilesAsync(string installationId,

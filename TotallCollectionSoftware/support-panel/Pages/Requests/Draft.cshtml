@@ -217,17 +217,24 @@ else
                         <b>None</b>: این آیتم سهمیهٔ کاربر ندارد (مثلاً فقط سهمیهٔ فاکتور می‌فروشد)؛ سقف و معاف نادیده گرفته می‌شود.
                     </p></div>
                 <div class="field"><label for="userMax">سقف کاربر</label><input id="userMax" name="userMax" class="mono" value="@UserMax" /></div>
-                <div class="field"><label for="exempt">کاربران مستثنا</label><input id="exempt" name="exempt" class="mono" value="@Exempt" /></div>
+                <div class="field"><label for="exempt">کاربران مستثنا</label><input id="exempt" name="exempt" class="mono" value="@Exempt" />
+                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                        حساب‌های معاف (مدیر سیستم/ناظر/سرویس) که از سقف صندلی کم نمی‌شوند. عدد باید از
+                        «سقف کاربر» بیشتر نباشد و در حالت None بی‌اثر است.
+                    </p></div>
                 <div class="field"><label for="appliesTo">دامنه</label>
                     <select id="appliesTo" name="appliesTo">
-                        @foreach (var scope in new[] { "Global", "PerTenant" })
+                        @foreach (var scope in new[] { "Global", "Modules", "PerTenant" })
                         {
                             <option value="@scope" selected="@(AppliesTo == scope)">@scope</option>
                         }
                     </select>
                     <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
-                        <b>Global</b>: سهمیه روی همهٔ کاربران همان نصب (یا کل سیستم) شمرده می‌شود.<br />
-                        <b>PerTenant</b>: هر مستأجر سهمیهٔ خودش را دارد — مناسب حالت SaaS.
+                        <b>Global</b>: سهمیه روی همهٔ کاربران همان نصب شمرده می‌شود.<br />
+                        <b>Modules</b>: فقط کاربرانی که به ماژول‌های همین آیتم دسترسی دارند شمرده می‌شوند
+                        (سقف به‌ازای ماژول).<br />
+                        <b>PerTenant</b>: مخصوص SaaS؛ در فایل .lic به Global نگاشت می‌شود چون هر مستأجر
+                        نصب/لایسنس مستقل دارد.
                     </p></div>
             </div>
             <div class="field"><label for="note">یادداشت پیش‌نویس</label><input id="note" name="note" value="@Note" /></div>
