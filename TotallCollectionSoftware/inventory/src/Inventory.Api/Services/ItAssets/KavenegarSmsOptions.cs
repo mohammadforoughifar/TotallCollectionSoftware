@@ -13,6 +13,7 @@ public sealed class KavenegarSmsOptions
     // Names must match the approved lookup templates on the server's Kavenegar account.
     public string RepairAcceptTemplate { get; set; } = "RepairAccept";
     public string RepairReadyTemplate { get; set; } = "RepairReady";
+    public string RepairDeliveredTemplate { get; set; } = "RepairDelivered";
 
     // Independent of the existing work-order and profile SMS services; default is off.
     public bool SdkSendEnabled { get; set; }

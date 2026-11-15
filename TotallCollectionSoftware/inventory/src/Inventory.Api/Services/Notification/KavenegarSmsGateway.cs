@@ -5,6 +5,7 @@ using Inventory.Api.Services.ItAssets;
 using Kavenegar;
 using Kavenegar.Exceptions;
 using Kavenegar.Models;
+using Kavenegar.Models.Enums;
 using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services;
@@ -39,6 +40,7 @@ public interface IKavenegarSmsGateway
     bool IsLookupConfigured { get; }
     Task<KavenegarSmsSendResult> SendAsync(string recipient, string message);
     Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template);
+    Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string token20, string template);
 }
 
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
@@ -78,17 +80,30 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
         return await SendCoreAsync(api => api.SendAsync(_options.Sender.Trim(), recipient.Trim(), message));
     }
 
-    public async Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template)
+    public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
+        SendLookupCoreAsync(recipient, token, companyName, template, token20: null, requireToken20: false);
+
+    public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string token20, string template) =>
+        SendLookupCoreAsync(recipient, token, companyName, template, token20, requireToken20: true);
+
+    private async Task<KavenegarSmsSendResult> SendLookupCoreAsync(string recipient, string token, string companyName,
+        string template, string? token20, bool requireToken20)
     {
         if (!IsEnabled) return new(KavenegarSmsSendState.Disabled);
         if (!IsLookupConfigured) return new(KavenegarSmsSendState.NotConfigured);
         if (!KavenegarSmsValidation.Recipient(recipient) || !KavenegarSmsValidation.NumericToken(token)
-            || !KavenegarSmsValidation.CompanyToken(companyName) || !KavenegarSmsValidation.TemplateName(template))
+            || !KavenegarSmsValidation.CompanyToken(companyName) || !KavenegarSmsValidation.TemplateName(template)
+            || (requireToken20 && !KavenegarSmsValidation.Token20(token20)))
             return new(KavenegarSmsSendState.InvalidRequest);
 
         // The SDK source examined concatenates form fields without encoding. Encode each value
         // exactly once before calling it: Persian, &, +, = and % must survive as one value and
         // must not inject additional form fields. Do not use this for the separate SendAsync path.
+        if (requireToken20)
+            return await SendCoreAsync(api => api.VerifyLookupAsync(
+                Uri.EscapeDataString(recipient), Uri.EscapeDataString(token), null!, null!,
+                Uri.EscapeDataString(companyName), Uri.EscapeDataString(token20!),
+                Uri.EscapeDataString(template), VerifyLookupType.Sms));
         return await SendCoreAsync(api => api.VerifyLookupAsync(
             Uri.EscapeDataString(recipient), Uri.EscapeDataString(token), null!, null!,
             Uri.EscapeDataString(companyName), Uri.EscapeDataString(template)));

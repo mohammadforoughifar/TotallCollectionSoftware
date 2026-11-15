@@ -13,18 +13,22 @@ public static class RepairSmsPolicy
         previous != RepairStatus.Ready && current == RepairStatus.Ready ? RepairSmsEventType.Ready : null;
 
     public static RepairSmsStatus InitialStatus(string? mobile, bool moduleEnabled, bool gatewayEnabled,
-        bool lookupConfigured, string? companyName, string? number) =>
+        bool lookupConfigured, string? companyName, string? number,
+        RepairSmsEventType kind = RepairSmsEventType.Registration, string? customerName = null) =>
         NormalizeMobile(mobile) is null ? RepairSmsStatus.InvalidMobile :
         !moduleEnabled ? RepairSmsStatus.ModuleDisabled :
         !gatewayEnabled ? RepairSmsStatus.Disabled :
         !lookupConfigured ? RepairSmsStatus.NotConfigured :
         !KavenegarSmsValidation.CompanyToken(companyName) ? RepairSmsStatus.InvalidCompanyName :
-        NumberToken(number) is null ? RepairSmsStatus.InvalidRepairNumber : RepairSmsStatus.Pending;
+        NumberToken(number) is null ? RepairSmsStatus.InvalidRepairNumber :
+        kind == RepairSmsEventType.Delivery && !KavenegarSmsValidation.Token20(customerName)
+            ? RepairSmsStatus.InvalidCustomerName : RepairSmsStatus.Pending;
 
     public static string? TemplateName(RepairSmsEventType kind, KavenegarSmsOptions options) => kind switch
     {
         RepairSmsEventType.Registration => options.RepairAcceptTemplate,
         RepairSmsEventType.Ready => options.RepairReadyTemplate,
+        RepairSmsEventType.Delivery => options.RepairDeliveredTemplate,
         _ => null
     };
 

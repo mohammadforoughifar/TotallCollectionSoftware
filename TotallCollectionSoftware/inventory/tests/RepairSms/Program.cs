@@ -250,6 +250,7 @@ var legacyReady = await repairs.SetStatusAsync(legacyNumber.Id, RepairStatus.Rea
 Check(legacyReady.SmsNotifications.Any(n => n.EventType == RepairSmsEventType.Ready && n.Status == RepairSmsStatus.InvalidRepairNumber),
     "legacy number incompatible with literal RP prefix is warned, never silently altered");
 
+await DeliveryChecks.RunAsync();
 Console.WriteLine("All offline repair SMS checks passed.");
 
 sealed class FakeSmsGateway : IKavenegarSmsGateway
@@ -258,14 +259,18 @@ sealed class FakeSmsGateway : IKavenegarSmsGateway
     public bool IsConfigured { get; set; } = true;
     public bool IsLookupConfigured { get; set; } = true;
     public KavenegarSmsSendResult Result { get; set; } = new(KavenegarSmsSendState.Accepted, 42, 1, 200);
-    public List<(string Recipient, string Token, string CompanyName, string Template)> Sent { get; } = new();
+    public List<(string Recipient, string Token, string CompanyName, string Template, string? CustomerName)> Sent { get; } = new();
     public TaskCompletionSource<bool>? Hold { get; set; }
     public TaskCompletionSource<bool>? Entered { get; set; }
     public Task<KavenegarSmsSendResult> SendAsync(string recipient, string message) =>
         throw new InvalidOperationException("Repair SMS must use lookup, not ordinary send.");
-    public async Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template)
+    public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
+        RecordAsync(recipient, token, companyName, template, null);
+    public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template) =>
+        RecordAsync(recipient, token, companyName, template, customerName);
+    private async Task<KavenegarSmsSendResult> RecordAsync(string recipient, string token, string companyName, string template, string? customerName)
     {
-        Sent.Add((recipient, token, companyName, template));
+        Sent.Add((recipient, token, companyName, template, customerName));
         Entered?.TrySetResult(true);
         if (Hold is not null) await Hold.Task;
         return Result;

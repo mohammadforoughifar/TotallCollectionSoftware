@@ -20,4 +20,10 @@ public static class KavenegarSmsValidation
     public static bool CompanyToken(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 100 &&
         value.Count(c => c == ' ') <= 5 && value.All(c => c != '_' && !char.IsControl(c) &&
             (!char.IsWhiteSpace(c) || c == ' '));
+
+    // token20 permits at most eight spaces. Repair delivery uses the actual customer's name;
+    // invalid values are reported rather than truncated, invented or silently substituted.
+    public static bool Token20(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 100 &&
+        value.Count(c => c == ' ') <= 8 && value.All(c => c != '_' && !char.IsControl(c) &&
+            (!char.IsWhiteSpace(c) || c == ' '));
 }

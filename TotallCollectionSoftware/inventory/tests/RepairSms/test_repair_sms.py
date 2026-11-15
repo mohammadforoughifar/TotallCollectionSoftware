@@ -29,10 +29,11 @@ class SchemaTests(unittest.TestCase):
                         (kind, status, '09123456789', '2026-11-01 00:00:00'))
 
     def test_schema_idempotent_unique_per_order_and_event(self):
-        self.insert(1); self.insert(2)
+        self.insert(1); self.insert(2); self.insert(3)
         with self.assertRaises(sqlite3.IntegrityError): self.insert(1)
         with self.assertRaises(sqlite3.IntegrityError): self.insert(2)
-        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM RepairSmsNotifications').fetchone()[0], 2)
+        with self.assertRaises(sqlite3.IntegrityError): self.insert(3)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM RepairSmsNotifications').fetchone()[0], 3)
 
     def test_repair_delete_cascades_notifications(self):
         self.insert(); self.db.execute('DELETE FROM RepairOrders WHERE Id=1')
@@ -47,9 +48,20 @@ class SchemaTests(unittest.TestCase):
 
     def test_terminal_or_unknown_cannot_be_claimed_as_pending(self):
         self.insert(status=6)
+        self.insert(kind=3, status=14)  # Existing integer columns accept the new delivery/name values.
         n = self.db.execute('UPDATE RepairSmsNotifications SET Status=2 WHERE Status=1').rowcount
         self.assertEqual(n, 0)
-        self.assertEqual(self.db.execute('SELECT Status FROM RepairSmsNotifications').fetchone()[0], 6)
+        self.assertEqual(self.db.execute('SELECT Status FROM RepairSmsNotifications ORDER BY Id').fetchall(), [(6,), (14,)])
+
+    def test_delivery_and_outbox_rollback_together_in_sqlite(self):
+        self.db.execute('ALTER TABLE RepairOrders ADD COLUMN Status INTEGER NOT NULL DEFAULT 2')
+        self.db.commit()
+        self.db.execute('BEGIN')
+        self.db.execute('UPDATE RepairOrders SET Status=3 WHERE Id=1')
+        self.insert(kind=3)
+        self.db.rollback()
+        self.assertEqual(self.db.execute('SELECT Status FROM RepairOrders WHERE Id=1').fetchone()[0], 2)
+        self.assertEqual(self.db.execute('SELECT COUNT(*) FROM RepairSmsNotifications').fetchone()[0], 0)
 
     def test_competing_workers_claim_once(self):
         with tempfile.TemporaryDirectory() as d:
@@ -58,7 +70,7 @@ class SchemaTests(unittest.TestCase):
             db.execute('CREATE TABLE RepairOrders (Id INTEGER PRIMARY KEY)')
             db.execute('INSERT INTO RepairOrders VALUES (1)')
             db.executescript(SQLITE)
-            db.execute("INSERT INTO RepairSmsNotifications (RepairOrderId,PartyId,EventType,Status,CreatedAtUtc) VALUES (1,2,1,1,'2026-11-01')")
+            db.execute("INSERT INTO RepairSmsNotifications (RepairOrderId,PartyId,EventType,Status,CreatedAtUtc) VALUES (1,2,3,1,'2026-11-01')")
             db.commit(); db.close()
             barrier = threading.Barrier(2); results = []; errors = []
             def claim():
@@ -85,6 +97,13 @@ class RepairContracts(unittest.TestCase):
             self.assertLess(method.index('RepairSmsQueue.StageAsync('), method.index('transaction.CommitAsync()'))
             self.assertNotIn('SendAsync(', method)
         self.assertIn('if (dto.Id != 0) entity.Status = dto.Status', src)
+        invoice = src[src.index('InvoiceAsync(int id'):src.index('private async Task<int> WarrantyInvoiceIdAsync(')]
+        stage = invoice.index('RepairSmsQueue.StageAsync(')
+        self.assertIn('RepairSmsEventType.Delivery', invoice[stage:])
+        self.assertLess(invoice.index('return previous;'), stage)
+        self.assertLess(invoice.index('r.Status = RepairStatus.Delivered'), stage)
+        self.assertLess(stage, invoice.index('transaction.CommitAsync()', stage))
+        self.assertNotIn('SendLookupAsync(', invoice)
 
     def test_outbox_model_has_db_enforced_uniqueness_tenant_and_cascade(self):
         ctx = read('src/Inventory.Api/Data/AppDbContext.cs')
@@ -105,6 +124,10 @@ class RepairContracts(unittest.TestCase):
         self.assertIn('p.CompanyId == job.CompanyId', src)
         self.assertIn('NormalizeMobile(party.Mobile) != job.Recipient', src)
         self.assertIn('repair.Status == RepairStatus.Ready', src)
+        self.assertIn('repair.Status == RepairStatus.Delivered', src)
+        self.assertIn('repair.InvoiceTransactionId is > 0 || repair.WarrantyProcessed', src)
+        self.assertIn('KavenegarSmsValidation.Token20(party.Name)', src)
+        self.assertIn('gateway.SendLookupWithToken20Async(job.Recipient, token, companyName!, party.Name, template!)', src)
         self.assertIn('n.Status == RepairSmsStatus.Pending', src)
         self.assertIn('n.Status == RepairSmsStatus.Sending && n.AttemptStartedAtUtc < cutoff', src)
         self.assertIn('SetProperty(n => n.Status, RepairSmsStatus.Unknown)', src)
@@ -121,10 +144,28 @@ class RepairContracts(unittest.TestCase):
         self.assertIn('RepairSmsStatus.Accepted', policy)
         self.assertIn('RepairSmsStatus.Delivered', policy)
         self.assertIn('NumberToken(number)', policy)
+        self.assertIn('RepairSmsEventType.Delivery => options.RepairDeliveredTemplate', policy)
+        self.assertIn('RepairSmsStatus.InvalidCustomerName', policy)
+
+    def test_delivery_enum_template_and_sdk_default(self):
+        dtos = read('src/Inventory.Shared/Dtos/RepairDtos.cs')
+        self.assertRegex(dtos, r'Registration\s*=\s*1,\s*Ready\s*=\s*2,\s*Delivery\s*=\s*3')
+        self.assertRegex(dtos, r'InvalidRepairNumber\s*=\s*13,\s*InvalidCustomerName\s*=\s*14')
+        options = read('src/Inventory.Api/Services/ItAssets/KavenegarSmsOptions.cs')
+        self.assertIn('RepairDeliveredTemplate { get; set; } = "RepairDelivered"', options)
+        settings = read('src/Inventory.Api/appsettings.json')
+        block = re.search(r'"KavenegarSms"\s*:\s*\{([^}]*)\}', settings, re.S).group(1)
+        # Never include the block in an assertion failure: an existing key may be present.
+        self.assertTrue(bool(re.search(r'"SdkSendEnabled"\s*:\s*false', block)))
+        self.assertTrue(bool(re.search(r'"RepairDeliveredTemplate"\s*:\s*"RepairDelivered"', block)))
+        doc = read('docs/KAVENEGAR-SDK-FA.md')
+        self.assertIn('%token20، مشتری گرامی، سفارش شما با شماره RP-%token تحویل داده شد.  '
+                      'از اعتماد شما به مجموعه %token10 صمیمانه سپاسگزاریم.   '
+                      'سامانه یکپارچه فروغ آریا', doc)
 
     def test_operator_can_see_all_states_and_refresh(self):
         ui = read('src/Inventory.Client/Pages/Repairs/Repairs.razor')
-        for value in ('InvalidMobile', 'Disabled', 'NotConfigured', 'Accepted', 'Delivered', 'Failed', 'Unknown', 'Cancelled', 'ModuleDisabled', 'InvalidCompanyName', 'InvalidRepairNumber'):
+        for value in ('InvalidMobile', 'Disabled', 'NotConfigured', 'Accepted', 'Delivered', 'Failed', 'Unknown', 'Cancelled', 'ModuleDisabled', 'InvalidCompanyName', 'InvalidRepairNumber', 'InvalidCustomerName'):
             self.assertIn('RepairSmsStatus.' + value, ui)
         self.assertIn('RefreshSmsStatus', ui)
         self.assertIn('تحویل قطعی نیست', ui)

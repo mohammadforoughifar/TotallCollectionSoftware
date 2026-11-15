@@ -20,7 +20,7 @@ class Test {
    db.SystemCompanies.Add(new SystemCompany { Id=2, Name="فروشگاه دوم" });
    var permission=new CompanySmsSetting { CompanyId=1, ModuleKey=SmsModuleCatalog.ShopRepairs, Enabled=true };
    db.CompanySmsSettings.Add(permission);
-   var p=new DbParty {Id=7,CompanyId=1,Mobile="۰۹۱۲۳۴۵۶۷۸۹"}; db.Parties.Add(p);
+   var p=new DbParty {Id=7,CompanyId=1,Name="علی رضایی",Mobile="۰۹۱۲۳۴۵۶۷۸۹"}; db.Parties.Add(p);
    var r=new RepairOrder {Id=1,CompanyId=1,PartyId=7,Number="RP-1",Status=RepairStatus.Received}; db.RepairOrders.Add(r);
    await RepairSmsQueue.StageAsync(db,g,config,r,p,RepairSmsEventType.Registration);
    db.RepairSmsNotifications.Single().Id=1;
@@ -126,7 +126,7 @@ class Test {
    db.CompanySmsSettings.Add(new CompanySmsSetting { CompanyId=2, ModuleKey="Shop.Future", Enabled=true });
    C((await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,SmsModuleCatalog.ShopRepairs)) is null &&
      (await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,"Shop.Future")) is null, "other/unknown module is not repair permission");
-   var p2=new DbParty {Id=22,CompanyId=2,Mobile="09120000002"}; db.Parties.Add(p2);
+   var p2=new DbParty {Id=22,CompanyId=2,Name="مریم احمدی",Mobile="09120000002"}; db.Parties.Add(p2);
    var other=new RepairOrder {Id=21,CompanyId=2,PartyId=22,Number="RP-0042",Status=RepairStatus.Received}; db.RepairOrders.Add(other);
    await RepairSmsQueue.StageAsync(db,g,config,other,p2,RepairSmsEventType.Registration); var denied=db.RepairSmsNotifications.Last();denied.Id=13;
    C(denied.Status==RepairSmsStatus.ModuleDisabled && !await dispatcher.ProcessOneAsync(),"company 2 disabled is terminal");
@@ -227,17 +227,143 @@ class Test {
    C((await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,SmsModuleCatalog.ShopRepairs)) is null,
       "inactive company fails closed even with its module enabled");
    company2.IsActive=true;
+   await DeliveryChecks();
    Console.WriteLine($"{count} checks passed");
+ }
+
+ // Runs the production outbox/policy with in-memory query shims; this is not an EF transaction test.
+ static async Task DeliveryChecks() {
+   var db=new AppDbContext(); var gateway=new Fake(); var options=new KavenegarSmsOptions();
+   var dispatcher=new RepairSmsDispatcher(db,gateway,new OptionsWrapper<KavenegarSmsOptions>(options));
+   var one=new SystemCompany {Id=1,Name="فروشگاه اول"}; var two=new SystemCompany {Id=2,Name="فروشگاه دوم"};
+   db.SystemCompanies.Add(one); db.SystemCompanies.Add(two);
+   var permission1=new CompanySmsSetting {CompanyId=1,ModuleKey=SmsModuleCatalog.ShopRepairs,Enabled=true};
+   var permission2=new CompanySmsSetting {CompanyId=2,ModuleKey=SmsModuleCatalog.ShopRepairs,Enabled=true};
+   db.CompanySmsSettings.Add(permission1); db.CompanySmsSettings.Add(permission2);
+   var a=new DbParty {Id=1,CompanyId=1,Name="علی رضایی",Mobile="۰۹۱۲۳۴۵۶۷۸۹"};
+   var b=new DbParty {Id=2,CompanyId=2,Name="مریم احمدی",Mobile="09120000002"};
+   db.Parties.Add(a); db.Parties.Add(b);
+   var nextJob=1;
+   RepairOrder Make(int id,DbParty customer,bool warranty=false) {
+     var r=new RepairOrder {Id=id,CompanyId=customer.CompanyId,PartyId=customer.Id,Number=$"RP-{id:0000}",
+       Status=RepairStatus.Delivered,InvoiceTransactionId=warranty?null:id,WarrantyProcessed=warranty};
+     db.RepairOrders.Add(r); return r;
+   }
+   async Task<RepairSmsNotification> Stage(RepairOrder r,DbParty? customer) {
+     await RepairSmsQueue.StageAsync(db,gateway,options,r,customer,RepairSmsEventType.Delivery);
+     var n=db.RepairSmsNotifications.Single(x=>x.RepairOrderId==r.Id && x.EventType==RepairSmsEventType.Delivery);
+     n.Id=nextJob++; return n;
+   }
+
+   var paid=Make(1,a); var paidEvent=await Stage(paid,a);
+   await RepairSmsQueue.StageAsync(db,gateway,options,paid,a,RepairSmsEventType.Delivery);
+   C(db.RepairSmsNotifications.Count()==1 && paidEvent.Status==RepairSmsStatus.Pending && gateway.Calls==0,
+     "delivery event is staged once without a provider call");
+   await dispatcher.ProcessOneAsync();
+   C(paidEvent.Status==RepairSmsStatus.Accepted && gateway.Calls==1 && gateway.Recipient=="09123456789" &&
+     gateway.Token=="0001" && gateway.CompanyName=="فروشگاه اول" && gateway.CustomerName=="علی رضایی" &&
+     gateway.Template=="RepairDelivered" && !await dispatcher.ProcessOneAsync(),
+     "invoice delivery uses the same customer's mobile/name, own company, exact number and template once");
+   var free=Make(2,b,warranty:true); var freeEvent=await Stage(free,b); await dispatcher.ProcessOneAsync();
+   C(freeEvent.Status==RepairSmsStatus.Accepted && gateway.CustomerName=="مریم احمدی" &&
+     gateway.CompanyName=="فروشگاه دوم" && gateway.Recipient=="09120000002" && gateway.Token=="0002",
+     "free warranty delivery uses the second company and customer");
+   C(RepairSmsPolicy.TemplateName(RepairSmsEventType.Delivery,options)=="RepairDelivered" &&
+     RepairSmsPolicy.EventFor(false,RepairStatus.Ready,RepairStatus.Delivered)==null,
+     "delivery has its own template and is not emitted by the generic status transition");
+   C(KavenegarSmsValidation.Token20("یک دو سه چهار پنج شش هفت هشت نه") &&
+     !KavenegarSmsValidation.Token20("یک دو سه چهار پنج شش هفت هشت نه ده") &&
+     KavenegarSmsValidation.Token20("نام فارسی & + = درصد%20") &&
+     KavenegarSmsValidation.Token20(new string('ا',100)) &&
+     !KavenegarSmsValidation.Token20("") && !KavenegarSmsValidation.Token20(null) &&
+     !KavenegarSmsValidation.Token20(new string('ا',101)) &&
+     !KavenegarSmsValidation.Token20("نام_مشتری") && !KavenegarSmsValidation.Token20("نام\nمشتری"),
+     "customer token accepts up to eight spaces and rejects invalid names without truncation");
+
+   var calls=gateway.Calls; var badName=new DbParty {Id=3,CompanyId=1,Name=new string('ا',101),Mobile="09120000003"};
+   db.Parties.Add(badName); var invalid=await Stage(Make(3,badName),badName);
+   badName.Name="نام صحیح";
+   C(invalid.Status==RepairSmsStatus.InvalidCustomerName && invalid.Recipient==null && invalid.CompletedAtUtc.HasValue &&
+     !await dispatcher.ProcessOneAsync() && gateway.Calls==calls,
+     "bad name produces a terminal warning at delivery and is not sent after correction");
+   var changed=Make(4,a); var changedEvent=await Stage(changed,a);
+   a.Name="نام\nنامعتبر"; await dispatcher.ProcessOneAsync(); a.Name="علی رضایی";
+   C(changedEvent.Status==RepairSmsStatus.InvalidCustomerName && gateway.Calls==calls,
+     "customer name is revalidated before dispatch");
+   var renamed=Make(5,a); var renamedEvent=await Stage(renamed,a);
+   a.Name="علی رستمی"; await dispatcher.ProcessOneAsync();
+   C(renamedEvent.Status==RepairSmsStatus.Accepted && gateway.CustomerName=="علی رستمی",
+     "dispatch uses the current valid name of the same party");
+   a.Name="علی رضایی"; calls=gateway.Calls;
+
+   var moved=Make(6,a); var movedEvent=await Stage(moved,a);
+   a.Mobile="09120000111"; await dispatcher.ProcessOneAsync(); a.Mobile="۰۹۱۲۳۴۵۶۷۸۹";
+   C(movedEvent.Status==RepairSmsStatus.Cancelled && gateway.Calls==calls,"changed mobile cancels delivery SMS");
+   var mismatch=Make(7,a); var mismatchEvent=await Stage(mismatch,a);
+   mismatchEvent.CompanyId=2; await dispatcher.ProcessOneAsync();
+   C(mismatchEvent.Status==RepairSmsStatus.Cancelled && gateway.Calls==calls,"cross-company delivery job is rejected");
+   var wrongParty=Make(8,a); var wrongPartyEvent=await Stage(wrongParty,b);
+   C(wrongPartyEvent.Status==RepairSmsStatus.InvalidMobile && !await dispatcher.ProcessOneAsync(),
+     "a party belonging to another company cannot become the delivery recipient");
+   var notDelivered=Make(9,a); var stale=await Stage(notDelivered,a); notDelivered.Status=RepairStatus.Ready;
+   await dispatcher.ProcessOneAsync();
+   C(stale.Status==RepairSmsStatus.Cancelled && gateway.Calls==calls,"a delivery job requires delivered status at dispatch");
+   var noMarker=Make(10,a); noMarker.InvoiceTransactionId=null; var unfinalized=await Stage(noMarker,a);
+   await dispatcher.ProcessOneAsync();
+   C(unfinalized.Status==RepairSmsStatus.Cancelled && gateway.Calls==calls,
+     "a delivered status without invoice or warranty finalization cannot send");
+   var denied=Make(11,a); permission1.Enabled=false; var deniedEvent=await Stage(denied,a); permission1.Enabled=true;
+   C(deniedEvent.Status==RepairSmsStatus.ModuleDisabled && !await dispatcher.ProcessOneAsync(),
+     "a delivery made while module permission is disabled never sends after re-enable");
+   var disabled=Make(12,a); gateway.IsEnabled=false; var disabledEvent=await Stage(disabled,a); gateway.IsEnabled=true;
+   C(disabledEvent.Status==RepairSmsStatus.Disabled && !await dispatcher.ProcessOneAsync(),
+     "a delivery made while the SDK is disabled never sends after re-enable");
+   options.RepairDeliveredTemplate="Invalid_Name";
+   var badTemplate=await Stage(Make(13,a),a); options.RepairDeliveredTemplate="RepairDelivered";
+   C(badTemplate.Status==RepairSmsStatus.NotConfigured && !await dispatcher.ProcessOneAsync(),
+     "invalid delivery template cannot be revived by later configuration");
+   var pendingA=await Stage(Make(14,a),a); var pendingB=await Stage(Make(15,b),b);
+   permission1.Enabled=false; await new RepairSmsRevocationHandler(db).CancelPendingAsync(1,DateTime.UtcNow,CancellationToken.None);
+   permission1.Enabled=true; await dispatcher.ProcessOneAsync();
+   C(pendingA.Status==RepairSmsStatus.ModuleDisabled && pendingA.Recipient==null &&
+     pendingB.Status==RepairSmsStatus.Accepted && gateway.CompanyName=="فروشگاه دوم" && !await dispatcher.ProcessOneAsync(),
+     "revocation cancels only the first company's pending delivery SMS");
+   calls=gateway.Calls; gateway.Result=new(KavenegarSmsSendState.Unknown);
+   var unknown=await Stage(Make(16,a),a); await dispatcher.ProcessOneAsync();
+   C(unknown.Status==RepairSmsStatus.Unknown && gateway.Calls==calls+1 && !await dispatcher.ProcessOneAsync(),
+     "an uncertain delivery send is not retried");
+   gateway.Result=new(KavenegarSmsSendState.Accepted,42,1,200); calls=gateway.Calls;
+   var cycle=await Stage(Make(17,a),a);
+   permission1.Enabled=false; permission1.Revision++; permission1.Enabled=true; permission1.Revision++;
+   await dispatcher.ProcessOneAsync();
+   C(cycle.Status==RepairSmsStatus.ModuleDisabled && gateway.Calls==calls && !await dispatcher.ProcessOneAsync(),
+     "delivery permission revision cannot be revived by an off/on cycle");
+   var reassigned=Make(18,a); var reassignedEvent=await Stage(reassigned,a); reassigned.PartyId=b.Id;
+   await dispatcher.ProcessOneAsync();
+   C(reassignedEvent.Status==RepairSmsStatus.Cancelled && gateway.Calls==calls,
+     "delivery job cannot follow an acceptance reassigned to another customer");
+   var concurrent=await Stage(Make(19,a),a);
+   gateway.Hold=new(); gateway.Entered=new();
+   var first=dispatcher.ProcessOneAsync(); await gateway.Entered.Task;
+   C(!await dispatcher.ProcessOneAsync() && gateway.Calls==calls+1,
+     "a second worker cannot claim a delivery already being sent");
+   gateway.Hold.SetResult(true); await first; gateway.Hold=null; gateway.Entered=null;
+   C(concurrent.Status==RepairSmsStatus.Accepted && gateway.Calls==calls+1 && !await dispatcher.ProcessOneAsync(),
+     "overlapping delivery workers make only one provider call in the fake fixture");
  }
 }
 class Fake : IKavenegarSmsGateway {
- public bool IsEnabled {get;set;}=true; public bool IsConfigured {get;set;}=true; public bool IsLookupConfigured {get;set;}=true; public int Calls; public string? Recipient,Token,CompanyName,Template;
+ public bool IsEnabled {get;set;}=true; public bool IsConfigured {get;set;}=true; public bool IsLookupConfigured {get;set;}=true; public int Calls; public string? Recipient,Token,CompanyName,CustomerName,Template;
  public KavenegarSmsSendResult Result=new(KavenegarSmsSendState.Accepted,42,1,200);
  public bool Throw;
  public TaskCompletionSource<bool>? Hold, Entered;
  public Task<KavenegarSmsSendResult> SendAsync(string r,string m) => throw new Exception("wrong ordinary send path");
- public async Task<KavenegarSmsSendResult> SendLookupAsync(string r,string token,string name,string template) {
-   Calls++;Recipient=r;Token=token;CompanyName=name;Template=template;if(Throw) throw new Exception("fake failure");
+ public Task<KavenegarSmsSendResult> SendLookupAsync(string r,string token,string name,string template) =>
+   RecordAsync(r,token,name,null,template);
+ public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string r,string token,string companyName,string customerName,string template) =>
+   RecordAsync(r,token,companyName,customerName,template);
+ private async Task<KavenegarSmsSendResult> RecordAsync(string r,string token,string companyName,string? customerName,string template) {
+   Calls++;Recipient=r;Token=token;CompanyName=companyName;CustomerName=customerName;Template=template;if(Throw) throw new Exception("fake failure");
    Entered?.TrySetResult(true);if(Hold is not null) await Hold.Task;return Result;
  }
 }

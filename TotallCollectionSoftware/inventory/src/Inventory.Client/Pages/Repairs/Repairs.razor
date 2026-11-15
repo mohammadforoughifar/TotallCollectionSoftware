@@ -1634,6 +1634,7 @@ else
     {
         RepairSmsEventType.Registration => "ثبت پذیرش",
         RepairSmsEventType.Ready => "آماده تحویل",
+        RepairSmsEventType.Delivery => "تحویل",
         _ => "رویداد نامشخص"
     };
 
@@ -1651,6 +1652,7 @@ else
         RepairSmsStatus.ModuleDisabled => "مجوز پیامک تعمیرات برای این رویداد غیرفعال بود یا لغو شد؛ ارسال نشد",
         RepairSmsStatus.InvalidCompanyName => "نام شرکت با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
         RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش با الگوی پیامک سازگار نیست؛ ارسال نشد",
+        RepairSmsStatus.InvalidCustomerName => "نام مشتری ثبت نشده یا با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
         RepairSmsStatus.Cancelled => "اطلاعات مشتری یا وضعیت پذیرش تغییر کرده؛ ارسال نشد",
         _ => "وضعیت نامشخص"
     };
@@ -1668,9 +1670,10 @@ else
     private static string SmsSummary(RepairOrderDto r)
     {
         if (r.SmsNotifications is not { Count: > 0 }) return "";
-        var problem = r.SmsNotifications.FirstOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
+        var problem = r.SmsNotifications.LastOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
             or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled
-            or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber);
+            or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber
+            or RepairSmsStatus.InvalidCustomerName);
         var current = problem ?? r.SmsNotifications[^1];
         var shortStatus = current.Status switch
         {
@@ -1686,6 +1689,7 @@ else
             RepairSmsStatus.ModuleDisabled => "مجوز رویداد غیرفعال یا لغوشده",
             RepairSmsStatus.InvalidCompanyName => "نام شرکت نامعتبر برای الگو",
             RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش ناسازگار با الگو",
+            RepairSmsStatus.InvalidCustomerName => "نام مشتری نامعتبر برای الگو",
             RepairSmsStatus.Cancelled => "ارسال لغو شد",
             _ => "نامشخص"
         };
@@ -1695,7 +1699,7 @@ else
     private static string SmsSummaryCss(RepairOrderDto r) =>
         r.SmsNotifications?.Any(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown or RepairSmsStatus.InvalidMobile
             or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.InvalidCompanyName
-            or RepairSmsStatus.InvalidRepairNumber) == true ? "text-danger" : "text-muted";
+            or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName) == true ? "text-danger" : "text-muted";
 
     private static string PartyTel(RepairOrderDto r)
         => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!
@@ -2237,6 +2241,7 @@ else
             Toast.Success(res.InvoiceTransactionId is > 0
                 ? $"فاکتور {res.InvoiceNumber} به صورت {payLabel} صادر و دستگاه تحویل شد."
                 : "پذیرش بدون مبلغ و با ثبت قطعات مصرف‌شده تحویل شد.");
+            NotifyRepairSms(res, RepairSmsEventType.Delivery);
             invoicing = null;
             await Load();
         }

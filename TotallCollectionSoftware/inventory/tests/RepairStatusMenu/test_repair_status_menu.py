@@ -106,8 +106,16 @@ class RepairStatusMenuContracts(unittest.TestCase):
         self.assertIn('r.Status = RepairStatus.Delivered', invoice)
         self.assertIn('ConsumeWarrantyStockAsync(', invoice)
         self.assertIn('CreateOrderAsync(', invoice)
-        self.assertIn('transaction.CommitAsync()', invoice)
-        self.assertNotIn('RepairSmsQueue.StageAsync(', invoice)  # No unapproved delivery SMS.
+        stage = invoice.index('RepairSmsQueue.StageAsync(')
+        self.assertIn('RepairSmsEventType.Delivery', invoice[stage:])
+        self.assertLess(invoice.index('return previous;'), stage)  # Idempotent/historical deliveries are not backfilled.
+        self.assertLess(invoice.index('r.Status = RepairStatus.Delivered'), stage)
+        self.assertLess(invoice.index('CreateOrderAsync('), stage)
+        self.assertLess(invoice.index('ConsumeWarrantyStockAsync('), stage)
+        self.assertLess(stage, invoice.index('var result = await ToDtoAsync(r)', stage))
+        self.assertLess(stage, invoice.index('transaction.CommitAsync()', stage))
+        self.assertNotIn('SendLookupAsync(', invoice)  # The provider is called only by the worker.
+        self.assertIn('NotifyRepairSms(res, RepairSmsEventType.Delivery)', self.ui)
 
     def test_menu_is_outside_scrolling_containers_and_loaded_for_published_app(self):
         list_end = self.ui.index('@* منو بیرون از جدول')

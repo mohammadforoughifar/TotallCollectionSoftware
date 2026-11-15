@@ -152,9 +152,35 @@ var fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyE
     .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
         pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
 Check(fields.Count == 8 && fields["receptor"] == "09120000000" && fields["token"] == "0001" &&
-    fields["token10"] == companyName && fields["template"] == "RepairAccept",
+    fields["token10"] == companyName && fields["token20"] == "" && fields["template"] == "RepairAccept",
     "Form decode preserves Persian, literal percent, ampersand, plus, equals and exactly one company value.");
 Check(!fields.ContainsKey("sender") && !fields.ContainsKey("message"), "Lookup does not pass ordinary SMS fields.");
+
+var customerName = "علی فارسی & + = درصد%20";
+lookupBefore = fake.Count;
+result = await gateway.SendLookupWithToken20Async("09120000000", "0007", companyName, customerName, "RepairDelivered");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fake.Count == lookupBefore + 1 &&
+    fake.Uri?.AbsolutePath.EndsWith("/verify/lookup.json") == true && fields.Count == 8 &&
+    fields["receptor"] == "09120000000" && fields["token"] == "0007" && fields["token10"] == companyName &&
+    fields["token20"] == customerName && fields["template"] == "RepairDelivered" &&
+    fields["token2"] == "" && fields["token3"] == "",
+    "Delivery lookup encodes and round-trips customer/company separately with no form injection or double encoding.");
+Check(!fields.ContainsKey("sender") && !fields.ContainsKey("message") &&
+    fake.RequestBody!.Contains("%2520", StringComparison.OrdinalIgnoreCase) &&
+    fake.RequestBody.Contains("%2B", StringComparison.OrdinalIgnoreCase) &&
+    fake.RequestBody.Contains("%26", StringComparison.OrdinalIgnoreCase),
+    "Delivery lookup escapes literal percent, plus and ampersand once and has no ordinary SMS fields.");
+lookupBefore = fake.Count;
+foreach (var invalidName in new string?[] { null, "", "   ", new string('ا', 101),
+    "یک دو سه چهار پنج شش هفت هشت نه ده", "نام_مشتری", "نام\nمشتری", "نام\tمشتری" })
+{
+    result = await gateway.SendLookupWithToken20Async("09120000000", "0007", "فروشگاه", invalidName!, "RepairDelivered");
+    Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+        "A missing or incompatible customer name must not reach the provider.");
+}
 lookupBefore = fake.Count;
 foreach (var (recipient, token, name, template) in new[] {
     ("09120000000,09120000001", "0001", "نام", "RepairAccept"),
@@ -185,6 +211,9 @@ lookupBefore = fake.Count;
 result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
 Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
     "Default-off gateway prevents a lookup.");
+result = await gateway.SendLookupWithToken20Async("09120000000", "0007", "فروشگاه", "علی رضایی", "RepairDelivered");
+Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
+    "Default-off gateway also prevents the delivery lookup.");
 
 Console.WriteLine($"Kavenegar SDK gateway: {assertions} offline assertions passed.");
 

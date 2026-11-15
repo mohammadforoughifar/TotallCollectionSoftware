@@ -243,11 +243,14 @@ class StatusHarness
               capturedCash.CashType == CashType.CardReader && capturedCash.CashAmount == 0,
             "cash delivery forwards the existing warehouse and payment fields to InvoiceAsync");
         invoicePending.SetResult(new RepairOrderDto { Id = delivering.Id, Number = delivering.Number,
-            Status = RepairStatus.Delivered, InvoiceTransactionId = 42, InvoiceNumber = "S-42" });
+            Status = RepairStatus.Delivered, InvoiceTransactionId = 42, InvoiceNumber = "S-42",
+            SmsNotifications = new() { new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.Pending } } });
         await invoiceTask;
         Check(!delivery.saving && delivery.invoicing is null && delivery.items[0].Status == RepairStatus.Delivered &&
               delivery.RepairSvc.Calls == 0 && delivery.reloads == 1,
             "only successful InvoiceAsync changes the list to delivered and refreshes it");
+        Check(delivery.Toast.Infos.Count == 1 && delivery.Toast.Infos[0].Contains("پیامک تحویل") &&
+              delivery.Toast.Infos[0].Contains("در صف ارسال"), "successful delivery reports the queued SMS separately");
 
         var creditRepair = Item(RepairStatus.Ready);
         creditRepair.TotalPrice = 1000;
@@ -280,8 +283,9 @@ class StatusHarness
         await failedInvoice.OpenInvoice(failingRepair);
         await failedInvoice.DoInvoice();
         Check(failedInvoice.items[0].Status == RepairStatus.Ready && failedInvoice.invoicing == failingRepair &&
-              !failedInvoice.saving && failedInvoice.Toast.Errors.Count == 1,
-            "failed invoice leaves the dialog and previous status intact");
+              !failedInvoice.saving && failedInvoice.Toast.Errors.Count == 1 &&
+              failedInvoice.Toast.Infos.Count == 0 && failedInvoice.Toast.Warnings.Count == 0,
+            "failed invoice leaves the dialog and previous status intact and shows no SMS result");
 
         var stale = For(Item(RepairStatus.Ready));
         stale.RepairSvc.GetHandler = id => Task.FromResult(new RepairOrderDto { Id = id, Number = "RP-1", Status = RepairStatus.Delivered, WarrantyProcessed = true });
@@ -308,12 +312,21 @@ class StatusHarness
         var freeWarranty = For(free);
         freeWarranty.RepairSvc.GetHandler = id => Task.FromResult(free);
         freeWarranty.RepairSvc.InvoiceHandler = (id, request) => Task.FromResult(new RepairOrderDto {
-            Id = id, Number = "RP-1", Status = RepairStatus.Delivered, WarrantyProcessed = true });
+            Id = id, Number = "RP-1", Status = RepairStatus.Delivered, WarrantyProcessed = true,
+            SmsNotifications = new() { new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.InvalidCustomerName } } });
         await freeWarranty.OpenInvoice(free);
         await freeWarranty.DoInvoice();
         Check(freeWarranty.RepairSvc.InvoiceCalls == 1 && freeWarranty.items[0].Status == RepairStatus.Delivered &&
               freeWarranty.items[0].InvoiceTransactionId is null && freeWarranty.items[0].WarrantyProcessed,
             "free warranty delivery still goes through InvoiceAsync and can finish without a sale invoice");
+        Check(freeWarranty.Toast.Successes.Count == 1 && freeWarranty.Toast.Warnings.Count == 1 &&
+              freeWarranty.Toast.Warnings[0].Contains("نام مشتری") && freeWarranty.Toast.Warnings[0].Contains("ارسال نشد"),
+            "an invalid SMS customer name warns without hiding successful warranty delivery");
+        var summaryRepair = new RepairOrderDto { SmsNotifications = new() {
+            new() { EventType = RepairSmsEventType.Registration, Status = RepairSmsStatus.InvalidMobile },
+            new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.InvalidCustomerName } } };
+        Check(SmsSummary(summaryRepair).Contains("تحویل") && SmsSummary(summaryRepair).Contains("نام مشتری") &&
+              SmsSummaryCss(summaryRepair) == "text-danger", "latest delivery warning is visible despite older SMS problems");
 
         Console.WriteLine($"{assertions} status and delivery UI contract checks passed.");
     }

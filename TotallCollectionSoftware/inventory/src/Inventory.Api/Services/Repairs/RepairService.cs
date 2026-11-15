@@ -545,6 +545,11 @@ public class RepairService : IRepairService
             r.Status = RepairStatus.Delivered;
             r.DeliveredAt = now;
             await _db.SaveChangesAsync();
+            // Stage only a new successful delivery, in the same transaction as invoice/stock.
+            // Retries and historical deliveries returned or rejected above never create an event.
+            var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
+            await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, r, party, RepairSmsEventType.Delivery);
+            await _db.SaveChangesAsync();
             var result = await ToDtoAsync(r);
             await transaction.CommitAsync();
             return result;

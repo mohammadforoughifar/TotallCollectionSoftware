@@ -1,0 +1,336 @@
+// Combined with the production InvoiceAsync by run_invoice_contracts.py.
+// The transaction, inventory, database and SMS queue below are fakes: this is
+// not EF, SQL Server, stock/financial accounting or an HTTP integration test.
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Threading.Tasks;
+using Db = FakeData;
+
+public enum RepairStatus { Received, InProgress, Ready, Delivered, Cancelled }
+public enum WarrantyDecision { Unspecified, Accepted, Rejected }
+public enum RepairSmsEventType { Registration = 1, Ready = 2, Delivery = 3 }
+public enum PaymentMethod { Cash, Credit, Cheque, Installment, Mixed }
+public enum CashType { Cash, CardReader, CardTransfer }
+public enum PartyType { Customer, Supplier }
+public enum TransactionType { Sale }
+public sealed class RepairInvoiceRequest
+{
+    public int WarehouseId { get; set; }
+    public PaymentMethod PaymentMethod { get; set; }
+    public CashType? CashType { get; set; }
+    public int? TrsAccountId { get; set; }
+    public DateTime? DueDate { get; set; }
+    public decimal CashAmount { get; set; }
+}
+public sealed class RepairOrderDto
+{
+    public int Id { get; set; }
+    public RepairStatus Status { get; set; }
+    public int? InvoiceTransactionId { get; set; }
+    public bool WarrantyProcessed { get; set; }
+    public List<RepairSmsEventType> Events { get; set; } = new();
+}
+public sealed class ShopWarrantyItemDto
+{
+    public int? ProductId { get; set; }
+    public string Description { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal UnitCost { get; set; }
+    public WarrantyDecision Decision { get; set; }
+    public bool Supplied { get; set; }
+}
+public sealed class OrderLineInput
+{
+    public int ProductId { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Price { get; set; }
+    public decimal? UnitCostSnapshot { get; set; }
+    public string? SourceDescription { get; set; }
+}
+public sealed class OrderCommand
+{
+    public int WarehouseId { get; set; }
+    public int PartyId { get; set; }
+    public TransactionType Type { get; set; }
+    public DateTime Date { get; set; }
+    public string Description { get; set; } = "";
+    public PaymentMethod PaymentMethod { get; set; }
+    public bool IsWarrantyInvoice { get; set; }
+    public CashType? CashType { get; set; }
+    public int? TrsAccountId { get; set; }
+    public DateTime? DueDate { get; set; }
+    public decimal CashAmount { get; set; }
+    public List<OrderLineInput> Lines { get; set; } = new();
+}
+public static class ShopInvoiceAmounts
+{
+    public const decimal MaximumQuantity = 999999999;
+    public static bool IsWholePrice(decimal price) => price >= 0 && price == decimal.Truncate(price);
+    public static bool TryGross(decimal quantity, decimal price, out decimal gross)
+    { gross = quantity * price; return gross >= 0 && gross <= OrderLineAmounts.MaxVatValue; }
+    public static decimal Gross(decimal quantity, decimal price) => quantity * price;
+}
+public static class OrderLineAmounts { public const decimal MaxVatValue = 9999999999999999m; }
+namespace FakeData
+{
+    public sealed class RepairOrder
+    {
+        public int Id { get; set; }
+        public int? CompanyId { get; set; }
+        public int PartyId { get; set; }
+        public string Number { get; set; } = "RP-0001";
+        public string DeviceType { get; set; } = "test";
+        public string? DeviceModel { get; set; }
+        public RepairStatus Status { get; set; }
+        public DateTime ReceivedAt { get; set; } = DateTime.Today;
+        public DateTime? DeliveredAt { get; set; }
+        public int? InvoiceTransactionId { get; set; }
+        public int? WarrantyStockTransactionId { get; set; }
+        public bool WarrantyProcessed { get; set; }
+        public List<RepairItem> Items { get; set; } = new();
+        public List<RepairDevice> Devices { get; set; } = new();
+    }
+    public sealed class RepairItem
+    {
+        public int Id { get; set; }
+        public int? CompanyId { get; set; }
+        public int? ProductId { get; set; }
+        public string Description { get; set; } = "";
+        public decimal Quantity { get; set; } = 1;
+        public decimal Cost { get; set; }
+        public decimal Price { get; set; }
+        public WarrantyDecision WarrantyDecision { get; set; }
+        public bool WarrantySupplied { get; set; }
+        public bool WarrantyPerformed { get; set; }
+    }
+    public sealed class RepairDevice { public int? CompanyId { get; set; } }
+    public sealed class Product { public int Id { get; set; } public int? CompanyId { get; set; } public bool IsService { get; set; } }
+    public sealed class Warehouse { public int Id { get; set; } public int? CompanyId { get; set; } public bool IsActive { get; set; } }
+    public sealed class Party { public int Id { get; set; } public int? CompanyId { get; set; } public PartyType Type { get; set; } }
+}
+static class FakeQueries
+{
+    public static IEnumerable<T> Include<T, P>(this IEnumerable<T> items, Func<T, P> selector) => items;
+    public static IEnumerable<T> AsSplitQuery<T>(this IEnumerable<T> items) => items;
+    public static Task<T?> FirstOrDefaultAsync<T>(this IEnumerable<T> items, Func<T, bool> predicate) where T : class
+        => Task.FromResult(items.FirstOrDefault(predicate));
+    public static Task<bool> AnyAsync<T>(this IEnumerable<T> items, Func<T, bool> predicate) => Task.FromResult(items.Any(predicate));
+    public static Task<Dictionary<K, T>> ToDictionaryAsync<T, K>(this IEnumerable<T> items, Func<T, K> key) where K : notnull
+        => Task.FromResult(items.ToDictionary(key));
+}
+sealed class FakeChangeTracker(FakeDb db) { public void Clear() => db.Log.Add("clear-tracking"); }
+sealed class FakeDb
+{
+    public List<Db.RepairOrder> RepairOrders = new();
+    public List<Db.Product> Products = new();
+    public List<Db.Party> Parties = new();
+    public List<Db.Warehouse> Warehouses = new();
+    public List<string> Log = new();
+    public List<(int RepairId, RepairSmsEventType Kind)> Events = new();
+    public List<(OrderCommand Command, bool TrackShopCash)> Sales = new();
+    public List<List<ShopWarrantyItemDto>> StockOuts = new();
+    public bool FailStage, FailInvoice, FailStock;
+    public FakeDatabase Database;
+    public FakeChangeTracker ChangeTracker;
+    public FakeDb() { Database = new(this); ChangeTracker = new(this); }
+    public Task<int> SaveChangesAsync() { Log.Add("save"); return Task.FromResult(1); }
+}
+sealed class FakeDatabase(FakeDb db)
+{
+    public FakeTransaction? CurrentTransaction;
+    public Task<FakeTransaction> BeginTransactionAsync(IsolationLevel isolation)
+    {
+        db.Log.Add("begin:" + isolation);
+        CurrentTransaction = new FakeTransaction(db, this);
+        return Task.FromResult(CurrentTransaction);
+    }
+}
+sealed class FakeTransaction : IAsyncDisposable
+{
+    private readonly FakeDb db;
+    private readonly FakeDatabase database;
+    private readonly int events, sales, stock;
+    private readonly List<(Db.RepairOrder Entity, RepairStatus Status, DateTime? Delivered, int? Invoice, int? Stock, bool Processed)> original;
+    public FakeTransaction(FakeDb db, FakeDatabase database)
+    {
+        this.db = db; this.database = database;
+        events = db.Events.Count; sales = db.Sales.Count; stock = db.StockOuts.Count;
+        original = db.RepairOrders.Select(r => (r, r.Status, r.DeliveredAt, r.InvoiceTransactionId,
+            r.WarrantyStockTransactionId, r.WarrantyProcessed)).ToList();
+    }
+    public Task CommitAsync() { db.Log.Add("commit"); database.CurrentTransaction = null; return Task.CompletedTask; }
+    public Task RollbackAsync()
+    {
+        db.Log.Add("rollback");
+        db.Events.RemoveRange(events, db.Events.Count - events);
+        db.Sales.RemoveRange(sales, db.Sales.Count - sales);
+        db.StockOuts.RemoveRange(stock, db.StockOuts.Count - stock);
+        foreach (var r in original)
+        {
+            r.Entity.Status = r.Status; r.Entity.DeliveredAt = r.Delivered;
+            r.Entity.InvoiceTransactionId = r.Invoice; r.Entity.WarrantyStockTransactionId = r.Stock;
+            r.Entity.WarrantyProcessed = r.Processed;
+        }
+        database.CurrentTransaction = null;
+        return Task.CompletedTask;
+    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+sealed class FakeInventory(FakeDb db)
+{
+    public Task<int?> ConsumeWarrantyStockAsync(int warehouseId, int partyId, string number, DateTime at,
+        IReadOnlyCollection<ShopWarrantyItemDto> items)
+    {
+        db.Log.Add("stock");
+        if (db.FailStock) throw new InvalidOperationException("fake stock failure");
+        if (items.Count == 0) return Task.FromResult<int?>(null);
+        db.StockOuts.Add(items.ToList()); return Task.FromResult<int?>(200 + db.StockOuts.Count);
+    }
+    public Task<FakeSale> CreateOrderAsync(OrderCommand command, string? user, bool trackShopCash)
+    {
+        db.Log.Add("sale");
+        if (db.FailInvoice) throw new InvalidOperationException("fake invoice failure");
+        db.Sales.Add((command, trackShopCash));
+        return Task.FromResult(new FakeSale { Id = 100 + db.Sales.Count });
+    }
+}
+sealed class FakeSale { public int Id { get; set; } }
+static class RepairLaborProduct
+{
+    public static Task<int> GetOrCreateAsync(FakeDb db, int? companyId)
+    { db.Log.Add("labor-product"); return Task.FromResult(99); }
+}
+static class RepairSmsQueue
+{
+    public static Task StageAsync(FakeDb db, object gateway, object options, Db.RepairOrder repair, Db.Party? party, RepairSmsEventType kind)
+    {
+        db.Log.Add("stage:" + kind);
+        if (db.FailStage) throw new InvalidOperationException("fake stage failure");
+        if (!db.Events.Any(e => e.RepairId == repair.Id && e.Kind == kind)) db.Events.Add((repair.Id, kind));
+        return Task.CompletedTask;
+    }
+}
+sealed class InvoiceHarness
+{
+    private readonly FakeDb _db = new();
+    private readonly FakeInventory _inventory;
+    private readonly object _smsGateway = new(), _smsOptions = new();
+    private InvoiceHarness(Db.RepairOrder r)
+    {
+        _inventory = new(_db);
+        _db.RepairOrders.Add(r);
+        _db.Products.Add(new Db.Product { Id = 1, CompanyId = 1, IsService = true });
+        _db.Products.Add(new Db.Product { Id = 2, CompanyId = 1, IsService = false });
+        _db.Warehouses.Add(new Db.Warehouse { Id = 1, CompanyId = 1, IsActive = true });
+        _db.Parties.Add(new Db.Party { Id = 1, CompanyId = 1, Type = PartyType.Customer });
+    }
+    private static string DeviceSummary(IEnumerable<Db.RepairDevice> devices, string type, string? model) => "device";
+    private Task<RepairOrderDto> ToDtoAsync(Db.RepairOrder repair)
+    {
+        _db.Log.Add("dto");
+        return Task.FromResult(new RepairOrderDto { Id = repair.Id, Status = repair.Status,
+            InvoiceTransactionId = repair.InvoiceTransactionId, WarrantyProcessed = repair.WarrantyProcessed,
+            Events = _db.Events.Where(e => e.RepairId == repair.Id).Select(e => e.Kind).ToList() });
+    }
+
+    // <PRODUCTION_INVOICE_METHOD>
+
+    private static int assertions;
+    private static void Check(bool condition, string text)
+    {
+        if (!condition) throw new Exception("FAIL: " + text);
+        assertions++; Console.WriteLine("PASS: " + text);
+    }
+    private static async Task<bool> Rejects(Func<Task> action)
+    { try { await action(); return false; } catch (InvalidOperationException) { return true; } }
+    private static Db.RepairOrder Order(params Db.RepairItem[] items) => new()
+    { Id = 1, CompanyId = 1, PartyId = 1, Status = RepairStatus.Ready, Items = items.ToList() };
+    private static Db.RepairItem Work(decimal price = 150) => new()
+    { Id = 1, CompanyId = 1, ProductId = 1, Description = "labor", Price = price, Cost = 20 };
+    private static Db.RepairItem Part(int id, WarrantyDecision decision) => new()
+    { Id = id, CompanyId = 1, ProductId = 2, Description = decision.ToString(), Price = 140, Cost = 80,
+      WarrantyDecision = decision, WarrantySupplied = true };
+    private static RepairInvoiceRequest Cash() => new() { WarehouseId = 1, PaymentMethod = PaymentMethod.Cash, CashType = CashType.Cash };
+
+    public static async Task RunAsync()
+    {
+        var cashOrder = Order(Work()); var cash = new InvoiceHarness(cashOrder);
+        var done = await cash.InvoiceAsync(1, Cash());
+        Check(done.Status == RepairStatus.Delivered && done.InvoiceTransactionId == 101 &&
+            done.Events.SequenceEqual(new[] { RepairSmsEventType.Delivery }) &&
+            cash._db.Log.SequenceEqual(new[] { "begin:Serializable", "sale", "save", "stage:Delivery", "save", "dto", "commit" }),
+            "cash delivery creates the sale and stages its SMS before commit");
+        var retry = await cash.InvoiceAsync(1, Cash());
+        Check(retry.InvoiceTransactionId == done.InvoiceTransactionId && cash._db.Sales.Count == 1 && cash._db.Events.Count == 1,
+            "repeating cash delivery returns the same invoice and event");
+
+        var creditOrder = Order(Work(200)); var credit = new InvoiceHarness(creditOrder);
+        var due = DateTime.Today.AddDays(30);
+        var creditResult = await credit.InvoiceAsync(1, new RepairInvoiceRequest { WarehouseId = 1,
+            PaymentMethod = PaymentMethod.Credit, DueDate = due, CashAmount = 30, CashType = CashType.Cash });
+        var sale = credit._db.Sales.Single();
+        Check(creditResult.Events.Single() == RepairSmsEventType.Delivery && sale.Command.PaymentMethod == PaymentMethod.Credit &&
+            sale.Command.CashAmount == 30 && sale.Command.DueDate == due && !sale.TrackShopCash,
+            "credit delivery forwards prepayment/due date and stages the same event");
+
+        var freeItem = Work(0); freeItem.WarrantyDecision = WarrantyDecision.Accepted; freeItem.WarrantyPerformed = true;
+        var freeOrder = Order(freeItem); var free = new InvoiceHarness(freeOrder);
+        var freeDone = await free.InvoiceAsync(1, Cash());
+        Check(freeDone.Status == RepairStatus.Delivered && freeDone.WarrantyProcessed && freeDone.InvoiceTransactionId is null &&
+            free._db.Sales.Count == 0 && free._db.Events.Count == 1 && free._db.Log.Contains("stock"),
+            "free warranty still stages delivery without a sale invoice");
+        await free.InvoiceAsync(1, Cash());
+        Check(free._db.Events.Count == 1 && free._db.Sales.Count == 0, "free warranty retry stages nothing new");
+
+        var mixedOrder = Order(Part(1, WarrantyDecision.Accepted), Part(2, WarrantyDecision.Rejected));
+        var mixed = new InvoiceHarness(mixedOrder);
+        var mixedDone = await mixed.InvoiceAsync(1, new RepairInvoiceRequest { WarehouseId = 1,
+            PaymentMethod = PaymentMethod.Credit, DueDate = due, CashAmount = 20, CashType = CashType.Cash });
+        Check(mixedDone.WarrantyProcessed && mixedDone.InvoiceTransactionId == 101 && mixedOrder.WarrantyStockTransactionId == 201 &&
+            mixed._db.StockOuts.Single().Single().Decision == WarrantyDecision.Accepted &&
+            mixed._db.Sales.Single().Command.Lines.Single().SourceDescription == "Rejected" &&
+            mixed._db.Sales.Single().TrackShopCash && mixedDone.Events.Single() == RepairSmsEventType.Delivery,
+            "mixed warranty keeps accepted stock-out and rejected charge before staging delivery");
+
+        var cancelledOrder = Order(Work()); cancelledOrder.Status = RepairStatus.Cancelled;
+        var cancelled = new InvoiceHarness(cancelledOrder);
+        Check(await Rejects(() => cancelled.InvoiceAsync(1, Cash())) && cancelled._db.Events.Count == 0 &&
+            cancelled._db.Sales.Count == 0 && cancelledOrder.Status == RepairStatus.Cancelled,
+            "cancelled repair cannot stage or invoice delivery");
+        var badPriceOrder = Order(Part(1, WarrantyDecision.Rejected)); badPriceOrder.Items[0].Price = 0;
+        var badPrice = new InvoiceHarness(badPriceOrder);
+        Check(await Rejects(() => badPrice.InvoiceAsync(1, Cash())) && badPrice._db.Events.Count == 0 &&
+            badPrice._db.StockOuts.Count == 0 && badPrice._db.Sales.Count == 0,
+            "invalid rejected warranty price creates neither stock, sale nor SMS");
+        var crossOrder = Order(Part(1, WarrantyDecision.Accepted)); var cross = new InvoiceHarness(crossOrder);
+        cross._db.Parties.Single().CompanyId = 2;
+        Check(await Rejects(() => cross.InvoiceAsync(1, Cash())) && cross._db.Events.Count == 0,
+            "another company's customer cannot pass warranty delivery validation");
+
+        var failedSaleOrder = Order(Part(1, WarrantyDecision.Accepted), Part(2, WarrantyDecision.Rejected));
+        var failedSale = new InvoiceHarness(failedSaleOrder); failedSale._db.FailInvoice = true;
+        Check(await Rejects(() => failedSale.InvoiceAsync(1, Cash())) && failedSale._db.Events.Count == 0 &&
+            failedSale._db.StockOuts.Count == 0 && failedSaleOrder.Status == RepairStatus.Ready &&
+            failedSale._db.Log.Contains("rollback"), "invoice failure rolls back the fake stock-out and never stages SMS");
+        var failedStageOrder = Order(Work()); var failedStage = new InvoiceHarness(failedStageOrder);
+        failedStage._db.FailStage = true;
+        Check(await Rejects(() => failedStage.InvoiceAsync(1, Cash())) && failedStage._db.Events.Count == 0 &&
+            failedStage._db.Sales.Count == 0 && failedStageOrder.Status == RepairStatus.Ready &&
+            failedStage._db.Log.Contains("rollback") && failedStage._db.Log.Contains("clear-tracking") &&
+            !failedStage._db.Log.Contains("commit"), "outbox failure rolls back the fake sale and status");
+
+        var historicalOrder = Order(Work()); historicalOrder.Status = RepairStatus.Delivered; historicalOrder.InvoiceTransactionId = 7;
+        var historical = new InvoiceHarness(historicalOrder);
+        await historical.InvoiceAsync(1, Cash());
+        Check(historical._db.Events.Count == 0 && historical._db.Sales.Count == 0,
+            "already-invoiced historical delivery is not backfilled");
+        var legacyOrder = Order(Work()); legacyOrder.Status = RepairStatus.Delivered;
+        var legacy = new InvoiceHarness(legacyOrder);
+        Check(await Rejects(() => legacy.InvoiceAsync(1, Cash())) && legacy._db.Events.Count == 0 && legacy._db.Sales.Count == 0,
+            "legacy delivered record without markers is never invoiced or messaged");
+        Console.WriteLine($"{assertions} production InvoiceAsync checks passed with fake inventory, DB and queue.");
+    }
+}
+class Program { static async Task Main() => await InvoiceHarness.RunAsync(); }

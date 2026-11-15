@@ -58,7 +58,7 @@ def generated_source():
         '// <PRODUCTION_SHARED_AND_ACCESS>': real_types,
         '// <PRODUCTION_APPEARANCE>': 'internal static class RepairStatusAppearance' + appearance.split('internal static class RepairStatusAppearance', 1)[1],
         '// <PRODUCTION_FIELDS>': part(page, '    private static readonly RepairStatus[] StatusChoices =', '    protected override async Task OnInitializedAsync()'),
-        '// <PRODUCTION_SMS_METHODS>': part(page, '    private static string SmsEventName(', '    private static string SmsSummary('),
+        '// <PRODUCTION_SMS_METHODS>': part(page, '    private static string SmsEventName(', '    private static string PartyTel('),
         '// <PRODUCTION_PERMISSION_AND_IDS>': part(page, '    private bool CanChangeStatus(RepairOrderDto r)', '    private void ToggleStatusMenu('),
         '// <PRODUCTION_MENU_METHODS>': part(page, '    private void ToggleStatusMenu(RepairOrderDto r, string view)', '    // ---------------- فرم ----------------'),
         '// <PRODUCTION_INVOICE_METHODS>': part(page, '    private static bool IsFreeWarranty(RepairOrderDto repair)', '    private async Task PrintDeliveryReceipt('),
