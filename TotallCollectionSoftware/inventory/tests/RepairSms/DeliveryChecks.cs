@@ -100,6 +100,15 @@ internal static class DeliveryChecks
             sent.CompanyName == "فروشگاه اول" && sent.Token == cash.Number[3..] && sent.Template == "RepairDelivered" &&
             !await worker.ProcessOneAsync(), "cash delivery addresses the exact customer, company and number once");
 
+        var failedMessage = await Draft(repairs, customer.Id, Labor(service.Id));
+        await repairs.InvoiceAsync(failedMessage.Id, Cash(warehouse.Id));
+        gateway.Result = new(KavenegarSmsSendState.Failed, 44, 6, 200);
+        await worker.ProcessOneAsync();
+        var failedInfo = Delivery((await repairs.GetRepairAsync(failedMessage.Id))!);
+        Check(failedInfo.Status == RepairSmsStatus.Failed && failedInfo.ProviderCode == 200 && failedInfo.ProviderMessageStatus == 6,
+            "repair details expose the provider's actual message status when its API response was 200");
+        gateway.Result = new(KavenegarSmsSendState.Accepted, 42, 1, 200);
+
         var credit = await Draft(repairs, customer.Id, Labor(service.Id, 200));
         var creditRequest = new RepairInvoiceRequest { WarehouseId = warehouse.Id, PaymentMethod = PaymentMethod.Credit,
             DueDate = DateTime.Today.AddDays(30), CashAmount = 50, CashType = CashType.Cash };

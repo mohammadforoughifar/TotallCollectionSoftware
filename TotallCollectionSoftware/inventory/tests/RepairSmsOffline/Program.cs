@@ -350,6 +350,10 @@ class Test {
    gateway.Hold.SetResult(true); await first; gateway.Hold=null; gateway.Entered=null;
    C(concurrent.Status==RepairSmsStatus.Accepted && gateway.Calls==calls+1 && !await dispatcher.ProcessOneAsync(),
      "overlapping delivery workers make only one provider call in the fake fixture");
+   gateway.Result=new(KavenegarSmsSendState.Failed,44,6,200);
+   var failedMessage=await Stage(Make(20,a),a); await dispatcher.ProcessOneAsync();
+   C(failedMessage.Status==RepairSmsStatus.Failed && failedMessage.ProviderCode==200 && failedMessage.ProviderMessageStatus==6,
+     "failed message status and API response code are retained separately");
  }
 }
 class Fake : IKavenegarSmsGateway {

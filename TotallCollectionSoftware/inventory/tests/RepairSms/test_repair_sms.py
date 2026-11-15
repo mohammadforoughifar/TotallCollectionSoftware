@@ -163,6 +163,33 @@ class RepairContracts(unittest.TestCase):
                       'از اعتماد شما به مجموعه %token10 صمیمانه سپاسگزاریم.   '
                       'سامانه یکپارچه فروغ آریا', doc)
 
+    def test_details_show_only_compact_result_and_returned_code(self):
+        ui = read('src/Inventory.Client/Pages/Repairs/Repairs.razor')
+        section = ui.split('<section class="border rounded p-3 mb-3" aria-label="وضعیت پیامک مشتری">', 1)[1].split('</section>', 1)[0]
+        self.assertIn('SmsEventName(sms.EventType)', section)
+        self.assertIn('SmsDetailStatus(sms.Status)', section)
+        self.assertIn('SmsDetailCode(sms)', section)
+        self.assertIn('SmsDetailSuccess(sms.Status)', section)
+        success = section.split('@if (SmsDetailSuccess(sms.Status))', 1)[1].split('else', 1)[0]
+        self.assertIn('bi-check-circle-fill', success)
+        self.assertIn('class="visually-hidden">@SmsDetailStatus(sms.Status)', success)
+        self.assertNotIn('code.Value', success)
+        self.assertIn('code.HasValue', section)
+        self.assertIn('@code.Value', section)
+        self.assertIn('RefreshSmsStatus', section)
+        self.assertNotIn('SmsStatusText(', section)
+        self.assertNotIn('ProviderCode', section)
+        self.assertNotIn('ProviderMessageId', section)
+        self.assertNotIn('شناسه کاوه‌نگار', section)
+        self.assertNotIn('کد پاسخ', section)
+        self.assertNotIn('تحویل نهایی نیست', section)
+        self.assertNotIn('خودکار دوباره ارسال نمی‌شود', section)
+        self.assertIn('پیامکی ثبت نشده است.', section)
+        dto = read('src/Inventory.Shared/Dtos/RepairDtos.cs')
+        service = read('src/Inventory.Api/Services/Repairs/RepairService.cs')
+        self.assertIn('int? ProviderMessageStatus', dto)
+        self.assertIn('ProviderMessageStatus = n.ProviderMessageStatus', service)
+
     def test_operator_can_see_all_states_and_refresh(self):
         ui = read('src/Inventory.Client/Pages/Repairs/Repairs.razor')
         for value in ('InvalidMobile', 'Disabled', 'NotConfigured', 'Accepted', 'Delivered', 'Failed', 'Unknown', 'Cancelled', 'ModuleDisabled', 'InvalidCompanyName', 'InvalidRepairNumber', 'InvalidCustomerName'):

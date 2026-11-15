@@ -832,22 +832,31 @@
                 </div>
                 @if (viewing.SmsNotifications is not { Count: > 0 })
                 {
-                    <div class="fs-8 text-muted">رویداد پیامکی ثبت نشده است؛ پیام ثبت پذیرش برای پذیرش‌های قدیمی به گذشته ارسال نمی‌شود.</div>
+                    <div class="fs-8 text-muted">پیامکی ثبت نشده است.</div>
                 }
                 else
                 {
                     @foreach (var sms in viewing.SmsNotifications)
                     {
-                        <div class="d-flex flex-wrap justify-content-between gap-2 py-1 fs-8">
+                        var code = SmsDetailCode(sms);
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1 fs-8">
                             <span>@SmsEventName(sms.EventType)</span>
-                            <span class="fw-700">@SmsStatusText(sms.Status)</span>
+                            <span class="fw-700 @(SmsDetailSuccess(sms.Status) ? "text-success" : SmsDetailFailure(sms.Status) ? "text-danger" : "text-muted")">
+                                @if (SmsDetailSuccess(sms.Status))
+                                {
+                                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">@SmsDetailStatus(sms.Status)</span>
+                                }
+                                else
+                                {
+                                    @SmsDetailStatus(sms.Status)
+                                    @if (code.HasValue)
+                                    {
+                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@code.Value</bdi>
+                                    }
+                                }
+                            </span>
                         </div>
-                        @if (sms.ProviderMessageId.HasValue || sms.ProviderCode.HasValue)
-                        {
-                            <div class="fs-8 text-muted">شناسه کاوه‌نگار: @(sms.ProviderMessageId?.ToString() ?? "—") · کد پاسخ: @(sms.ProviderCode?.ToString() ?? "—")</div>
-                        }
                     }
-                    <div class="fs-8 text-muted mt-2">پذیرش توسط درگاه به معنی تحویل نهایی نیست. نتیجهٔ نامشخص خودکار دوباره ارسال نمی‌شود.</div>
                 }
             </section>
             <div class="d-flex justify-content-end gap-2 mb-3">
@@ -1637,6 +1646,34 @@ else
         RepairSmsEventType.Delivery => "تحویل",
         _ => "رویداد نامشخص"
     };
+
+    // Detail rows intentionally stay compact; the fuller descriptions remain in the toast/list.
+    private static bool SmsDetailSuccess(RepairSmsStatus status) =>
+        status is RepairSmsStatus.Accepted or RepairSmsStatus.Delivered;
+
+    private static bool SmsDetailFailure(RepairSmsStatus status) => status is
+        RepairSmsStatus.Failed or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or
+        RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.ModuleDisabled or
+        RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName;
+
+    private static string SmsDetailStatus(RepairSmsStatus status) => status switch
+    {
+        RepairSmsStatus.Accepted or RepairSmsStatus.Delivered => "موفق",
+        RepairSmsStatus.Pending => "در صف ارسال",
+        RepairSmsStatus.Sending => "در حال ارسال",
+        _ when SmsDetailFailure(status) => "ناموفق",
+        _ => "نامشخص"
+    };
+
+    private static int? SmsDetailCode(RepairSmsNotificationDto sms)
+    {
+        if (!SmsDetailFailure(sms.Status)) return null;
+        // A successful API response (200) can contain a failed message status.
+        // Show the actual failure status instead of displaying 200 as the error.
+        if (sms.ProviderCode is int code && code != 200) return code;
+        return sms.Status == RepairSmsStatus.Failed && sms.ProviderMessageStatus is int messageStatus && messageStatus != 200
+            ? messageStatus : null;
+    }
 
     private static string SmsStatusText(RepairSmsStatus status) => status switch
     {

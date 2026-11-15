@@ -328,6 +328,51 @@ class StatusHarness
         Check(SmsSummary(summaryRepair).Contains("تحویل") && SmsSummary(summaryRepair).Contains("نام مشتری") &&
               SmsSummaryCss(summaryRepair) == "text-danger", "latest delivery warning is visible despite older SMS problems");
 
+        Check(SmsEventName(RepairSmsEventType.Registration) == "ثبت پذیرش" &&
+              SmsEventName(RepairSmsEventType.Ready) == "آماده تحویل" &&
+              SmsEventName(RepairSmsEventType.Delivery) == "تحویل", "details retain the repair SMS event names");
+        foreach (var status in new[] { RepairSmsStatus.Accepted, RepairSmsStatus.Delivered })
+        {
+            var sms = new RepairSmsNotificationDto { Status = status, ProviderCode = 200, ProviderMessageId = 123,
+                ProviderMessageStatus = status == RepairSmsStatus.Delivered ? 10 : 1 };
+            Check(SmsDetailSuccess(status) && !SmsDetailFailure(status) && SmsDetailStatus(status) == "موفق" &&
+                  SmsDetailCode(sms) is null, "accepted or delivered SMS shows success without provider codes or message IDs");
+        }
+        foreach (var status in new[] { RepairSmsStatus.Failed, RepairSmsStatus.InvalidMobile, RepairSmsStatus.Disabled,
+                     RepairSmsStatus.NotConfigured, RepairSmsStatus.Cancelled, RepairSmsStatus.ModuleDisabled,
+                     RepairSmsStatus.InvalidCompanyName, RepairSmsStatus.InvalidRepairNumber, RepairSmsStatus.InvalidCustomerName })
+            Check(!SmsDetailSuccess(status) && SmsDetailFailure(status) && SmsDetailStatus(status) == "ناموفق" &&
+                  SmsDetailCode(new RepairSmsNotificationDto { Status = status }) is null,
+                  "a definite failure without a provider code has only a short failure label");
+        Check(SmsDetailStatus(RepairSmsStatus.Pending) == "در صف ارسال" &&
+              SmsDetailStatus(RepairSmsStatus.Sending) == "در حال ارسال" &&
+              !SmsDetailFailure(RepairSmsStatus.Pending) && !SmsDetailFailure(RepairSmsStatus.Sending),
+            "queued and in-progress SMS are not misreported as failed");
+        Check(SmsDetailStatus(RepairSmsStatus.Unknown) == "نامشخص" && !SmsDetailFailure(RepairSmsStatus.Unknown) &&
+              SmsDetailStatus((RepairSmsStatus)999) == "نامشخص", "unknown results are not reported as definite failure");
+        foreach (var status in new[] { RepairSmsStatus.Pending, RepairSmsStatus.Sending, RepairSmsStatus.Unknown, (RepairSmsStatus)999 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = status, ProviderCode = 409, ProviderMessageStatus = 100 }) is null,
+                "only a definite failure displays a returned code");
+        foreach (var code in new[] { 403, 427, 501 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = code, ProviderMessageId = 123 }) == code,
+                "a provider rejection displays its actual error code, not the message ID");
+        Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 427, ProviderMessageStatus = 6 }) == 427,
+            "a provider rejection takes precedence over a separate message status");
+        foreach (var messageStatus in new[] { 6, 11, 13, 14 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 200, ProviderMessageStatus = messageStatus }) == messageStatus,
+                "a failed message status is displayed instead of the successful API response code 200");
+        Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Unknown, ProviderCode = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderMessageStatus = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderMessageStatus = 6 }) == 6,
+            "a missing failure code is not invented and the success response 200 is never displayed");
+        var webJsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(new RepairSmsNotificationDto {
+            Status = RepairSmsStatus.Failed, ProviderCode = 200, ProviderMessageStatus = 6 }, webJsonOptions);
+        var roundTrip = System.Text.Json.JsonSerializer.Deserialize<RepairSmsNotificationDto>(serialized, webJsonOptions);
+        Check(roundTrip is not null && SmsDetailCode(roundTrip) == 6,
+            "the provider message status survives the normal web JSON round trip");
+
         Console.WriteLine($"{assertions} status and delivery UI contract checks passed.");
     }
 }

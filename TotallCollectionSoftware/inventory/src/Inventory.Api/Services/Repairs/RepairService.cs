@@ -675,7 +675,8 @@ public class RepairService : IRepairService
             .OrderBy(n => n.Id).Select(n => new RepairSmsNotificationDto
             {
                 EventType = n.EventType, Status = n.Status, ProviderMessageId = n.ProviderMessageId,
-                ProviderCode = n.ProviderCode, CreatedAtUtc = n.CreatedAtUtc, CompletedAtUtc = n.CompletedAtUtc
+                ProviderCode = n.ProviderCode, ProviderMessageStatus = n.ProviderMessageStatus,
+                CreatedAtUtc = n.CreatedAtUtc, CompletedAtUtc = n.CompletedAtUtc
             }).ToListAsync();
 
         return new RepairOrderDto

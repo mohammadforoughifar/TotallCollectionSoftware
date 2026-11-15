@@ -15,6 +15,8 @@ public class RepairSmsNotificationDto
     public RepairSmsStatus Status { get; set; }
     public long? ProviderMessageId { get; set; }
     public int? ProviderCode { get; set; }
+    // The message status can indicate failure even when the API response code is 200.
+    public int? ProviderMessageStatus { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
 }
