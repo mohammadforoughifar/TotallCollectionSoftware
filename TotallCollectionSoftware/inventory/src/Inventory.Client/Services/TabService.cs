@@ -102,6 +102,7 @@ public sealed class TabService
         ("report-studio",               "گزارش‌ساز",             "bi-clipboard-data-fill"),
         ("my-archive",                  "بایگانی شخصی",         "bi-archive-fill"),
         ("cartable",                    "کارتابل من",           "bi-inbox-fill"),
+        ("dashboard",                   "داشبورد",              "bi-speedometer2"),
         ("project-cartable",            "کارتابل پروژه",        "bi-inboxes"),
         ("report-works",                "گزارش‌های کار",        "bi-clock-history"),
         ("type-factors",                "انواع فاکتور",         "bi-card-list"),
@@ -165,7 +166,8 @@ public sealed class TabService
 
     private static (string Title, string Icon) Resolve(string key)
     {
-        if (key.Length == 0) return ("داشبورد", "bi-speedometer2");
+        // ریشهٔ سایت = «کارتابل من» (داشبورد به /dashboard منتقل شده است)
+        if (key.Length == 0) return ("کارتابل من", "bi-inbox-fill");
 
         foreach (var k in Known)
             if (key == k.Prefix
@@ -272,7 +274,8 @@ public sealed class TabService
                 {
                     Key = key,
                     Url = s.Url,
-                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug ? title : savedTitle,
+                    // تبِ خانه (کلید "") عنوانش را از مسیرِ ریشه می‌گیرد، نه از نسخهٔ ذخیره‌شده
+                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug || key.Length == 0 ? title : savedTitle,
                     Icon = string.IsNullOrWhiteSpace(s.Icon) || staleHr ? icon : s.Icon,
                     // تبِ خانه همیشه سنجاق است
                     Pinned = s.Pinned || key.Length == 0

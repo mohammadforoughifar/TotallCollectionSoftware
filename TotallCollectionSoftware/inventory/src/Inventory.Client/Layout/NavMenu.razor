@@ -81,7 +81,7 @@
             <div class="nav-group-items">
                 @if (CanSeeCartable)
                 {
-                <NavLink class="nav-link" href="cartable" @onclick="NotifyClose">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="NotifyClose">
                     <i class="bi bi-inbox-fill"></i><span>کارتابل من</span>
                 </NavLink>
                 }
@@ -366,7 +366,7 @@
                             <div class="nav-sub-items">
                                 @if (Auth.Has("Dashboards.Financial"))
                                 {
-                                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                                    <NavLink class="nav-link" href="dashboard" @onclick="NotifyClose">
                                         <i class="bi bi-cash-coin"></i><span>داشبورد مالی</span>
                                     </NavLink>
                                 }
