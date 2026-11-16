@@ -1840,8 +1840,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     var scale = Math.Min(maxSignatureWidth / signature.Width, maxSignatureHeight / signature.Height);
                     var imageWidth = signature.Width * scale;
                     var imageHeight = signature.Height * scale;
+                    // عرض و ارتفاع قبلاً با حفظ نسبت تصویر محاسبه شده‌اند؛ FitArea در کنار
+                    // Width/Height صریح در QuestPDF باعث تضاد محدودیت‌های سایز (DocumentLayoutException)
+                    // می‌شود، پس فقط dimensions صریح اعمال می‌شود و تصویر پر کانتینر می‌شود.
                     card.Item().AlignCenter().Width(imageWidth).Height(imageHeight)
-                        .Svg(signature.Svg).FitArea();
+                        .Svg(signature.Svg);
                     card.Item().PaddingTop(2).Text(signer.Name)
                         .FontFamily("Vazirmatn-Bold").FontSize(fontSize)
                         .LineHeight(1.2f).AlignCenter().DirectionFromRightToLeft();
@@ -2582,10 +2585,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             {
                 var scale = Math.Min(signatureWidth / Math.Max(1f, signature.Width),
                                      signatureHeight / Math.Max(1f, signature.Height));
+                // عرض و ارتفاع قبلاً با حفظ نسبت تصویر محاسبه شده‌اند؛ FitArea در کنار
+                // Width/Height صریح در QuestPDF باعث تضاد محدودیت‌های سایز می‌شود.
                 column.Item().AlignCenter()
                     .Width(Math.Max(1f, signature.Width * scale))
                     .Height(Math.Max(1f, signature.Height * scale))
-                    .Svg(signature.Svg).FitArea();
+                    .Svg(signature.Svg);
             }
             else
             {
