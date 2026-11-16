@@ -50,6 +50,31 @@ if (!ltxTriggerPrint(session)) throw new Error('مرورگر نتوانست پن
 
 شرح کامل فارسی: `TotallCollectionSoftware/LETTER-PRINT-PREVIEW-FIRST-FA.md`
 
+## تصویر پنجرهٔ پیش‌نمایش
+
+![پیش‌نمایش آماده](screenshots/preview-ready.png)
+
+وضعیت نوار بالا: «پیش‌نمایش نامه آماده است؛ برای چاپ، دکمهٔ «چاپ» را بزنید.» —
+هیچ پنجرهٔ چاپی باز نشده است.
+
+![بعد از کلیک روی چاپ](screenshots/preview-printing.png)
+
+فقط بعد از کلیک روی «چاپ»: دکمه تا پایان کار غیرفعال می‌شود و وضعیت به
+«در حال باز کردن پنجرهٔ چاپ مرورگر…» می‌رود؛ همین‌جا پنجرهٔ چاپ سیستم باز می‌شود.
+
+این دو تصویر با `render-preview-shot.py` ساخته می‌شوند. اسکریپت متن دکمه‌ها، متن‌های وضعیت و
+اینکه کدام دکمه‌ها نمایان‌اند را **از خودِ `app-shell.js` می‌خواند** (و اگر `ltxPrintReady`
+دوباره `print()` صدا بزند با assert می‌شکند)، پس تصویر نمی‌تواند از کد واقعی جدا بیفتد:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install pillow arabic-reshaper python-bidi pypdfium2
+.venv/bin/python docs/prototypes/letter-print-preview/render-preview-shot.py out.png ready
+.venv/bin/python docs/prototypes/letter-print-preview/render-preview-shot.py out2.png printing
+```
+
+> متن نامه روی سربرگ واقعی شرکت (`aria_company1005_letterhead.pdf`) نمونه است؛ مخزن نامهٔ
+> رندرشدهٔ آماده ندارد و ساختنش به مسیر QuestPDF سمت سرور نیاز دارد.
+
 ## اجرای نمونهٔ زنده
 ```bash
 # از ریشهٔ مخزن
