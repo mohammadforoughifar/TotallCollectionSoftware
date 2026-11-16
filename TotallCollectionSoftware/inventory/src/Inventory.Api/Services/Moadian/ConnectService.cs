@@ -341,11 +341,11 @@ namespace Inventory.Api.Services.Moadian
                                     InvoiceId = invoice.Id,
                                     GoodsOrServicesId = (int)item.GoodsOrServicesId,
                                     UniqueIdentifier = item.UniqueIdentifier,
-                                    Count = (decimal)item.Count,
+                                    Count = item.Count ?? 1,
 
-                                    PriceUnit = (int)item.PriceUnit,
+                                    PriceUnit = item.PriceUnit ?? 0,
                                     ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                                    Discount = (decimal)item.Discount,
+                                    Discount = item.Discount ?? 0,
                                 };
                                 list.Add(invoiceItem2);
 
@@ -384,11 +384,11 @@ namespace Inventory.Api.Services.Moadian
                                     InvoiceId = modeldata.Id,
                                     GoodsOrServicesId = (int)item.GoodsOrServicesId,
                                     UniqueIdentifier = item.UniqueIdentifier,
-                                    Count = (decimal)item.Count,
+                                    Count = item.Count ?? 1,
 
-                                    PriceUnit = (int)item.PriceUnit,
+                                    PriceUnit = item.PriceUnit ?? 0,
                                     ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                                    Discount = (decimal)item.Discount,
+                                    Discount = item.Discount ?? 0,
                                 };
                                 list.Add(invoiceItem2);
 
@@ -438,10 +438,10 @@ namespace Inventory.Api.Services.Moadian
                                         InvoiceId = invoice.Id,
                                         GoodsOrServicesId = (int)item.GoodsOrServicesId,
                                         UniqueIdentifier = item.UniqueIdentifier,
-                                        Count = (decimal)item.Count,
-                                        PriceUnit = (int)item.PriceUnit,
+                                        Count = item.Count ?? 1,
+                                        PriceUnit = item.PriceUnit ?? 0,
                                         ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                                        Discount = (decimal)item.Discount,
+                                        Discount = item.Discount ?? 0,
                                     };
                                     list.Add(invoiceItem2);
 
@@ -3058,6 +3058,17 @@ context.Customers.Any(x =>
             }
             else
             {
+                // کالا/خدمت هر ردیف باید انتخاب شده باشد؛ وگرنه تبدیل null به int
+                // یک استثنای داخلی می‌داد و کاربر به‌جای پیام روشن، «خطای سرور» می‌دید.
+                if (modeldata.InvoiceItems.Any(i => i.GoodsOrServicesId is not > 0))
+                {
+                    model.Data = null;
+                    model.Status = 400;
+                    model.Message = "کالا/خدمت همهٔ ردیف‌های صورتحساب را انتخاب کنید.";
+                    model.Success = false;
+                    return model;
+                }
+
 
                 try
                 {
@@ -3102,11 +3113,11 @@ context.Customers.Any(x =>
                                     InvoiceId = invoice.Id,
                                     GoodsOrServicesId = (int)item.GoodsOrServicesId,
                                     UniqueIdentifier = item.UniqueIdentifier,
-                                    Count = (decimal)item.Count,
+                                    Count = item.Count ?? 1,
                               GoodsOrServicesDescripton=item.DescriptionKala    ,
-                                    PriceUnit = (int)item.PriceUnit,
+                                    PriceUnit = item.PriceUnit ?? 0,
                                     ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-                                    Discount = (decimal)item.Discount,
+                                    Discount = item.Discount ?? 0,
                                 
                                 };
                                 list.Add(invoiceItem2);
@@ -3905,11 +3916,11 @@ context.Customers.Any(x =>
             InvoiceId = invoiceId,
             GoodsOrServicesId = item.GoodsOrServicesId!.Value,
             UniqueIdentifier = item.UniqueIdentifier,
-            Count = (decimal)item.Count,
+            Count = item.Count ?? 1,
             GoodsOrServicesDescripton = item.DescriptionKala,
-            PriceUnit = (int)item.PriceUnit,
+            PriceUnit = item.PriceUnit ?? 0,
             ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-            Discount = (decimal)item.Discount,
+            Discount = item.Discount ?? 0,
         };
 
         private async Task<ApiModel> UpdateInvoiceAsync(InvoiceVM modeldata)
@@ -3943,7 +3954,8 @@ context.Customers.Any(x =>
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in UpdateInvoiceAsync: {ex.Message}");
+                Console.WriteLine($"Error in UpdateInvoiceAsync: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine(ex.ToString());
                 return CreateErrorResponse(500);
             }
             return new ApiModel { Data = modeldata, Status = 201, Success = true,
@@ -4004,7 +4016,8 @@ context.Customers.Any(x =>
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error in CreateInvoiceAsync: {ex.Message}");
+                Console.WriteLine($"Error in CreateInvoiceAsync: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine(ex.ToString());
                 return CreateErrorResponse(500);
             }
         }
@@ -4102,13 +4115,13 @@ context.Customers.Any(x =>
         //                            InvoiceId = invoice.Id,
         //                            GoodsOrServicesId = (int)item.GoodsOrServicesId,
         //                            UniqueIdentifier = item.UniqueIdentifier,
-        //                            Count = (decimal)item.Count,
+        //                            Count = item.Count ?? 1,
         //                            GoodsOrServicesDescripton=item.DescriptionKala,
         //                            //PriceNesye = Convert.ToDecimal(modeldata.NesyeText),
         //                            //PriceNaghd = Convert.ToDecimal(modeldata.NaghdText),
-        //                            PriceUnit = (int)item.PriceUnit,
+        //                            PriceUnit = item.PriceUnit ?? 0,
         //                            ValueAddedPercentage = Convert.ToInt32(item.ValueAddedPercentage),
-        //                            Discount = (decimal)item.Discount,
+        //                            Discount = item.Discount ?? 0,
         //                        };
         //                        list.Add(invoiceItem2);
 
