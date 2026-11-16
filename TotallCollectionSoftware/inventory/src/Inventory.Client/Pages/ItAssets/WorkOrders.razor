@@ -1404,6 +1404,7 @@ else
                                     @foreach (var item in smsEvents)
                                     {
                                         var returnedCode = WorkOrderSmsAppearance.ErrorCode(item);
+                                        var returnedReason = WorkOrderSmsAppearance.FailureReason(item);
                                         <div class="d-flex flex-wrap gap-2 align-items-center small py-1 border-bottom">
                                             <span class="text-muted num">@item.CreatedAtUtc.ToLocalTime().ToFaDateTime()</span>
                                             <span>@SmsEventLabel(item.EventType) — @item.RecipientName</span>
@@ -1422,6 +1423,10 @@ else
                                                     }
                                                 }
                                             </span>
+                                            @if (returnedReason is not null)
+                                            {
+                                                <div class="w-100 text-muted fs-9 lh-sm">@returnedReason</div>
+                                            }
                                         </div>
                                     }
                                 }

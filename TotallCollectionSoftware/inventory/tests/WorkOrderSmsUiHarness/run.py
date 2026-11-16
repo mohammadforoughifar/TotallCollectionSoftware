@@ -80,6 +80,7 @@ with tempfile.TemporaryDirectory(prefix='workorder-sms-ui-') as directory:
         ROOT / 'src/Inventory.Client/Pages/ItAssets/WorkOrderSmsAppearance.cs',
         ROOT / 'src/Inventory.Client/Pages/ItAssets/WorkOrderSmsStatusPoller.cs',
         ROOT / 'src/Inventory.Shared/Dtos/WorkOrderSmsDtos.cs',
+        ROOT / 'src/Inventory.Shared/KavenegarCodeText.cs',
         ROOT / 'src/Inventory.Api/Entities/ItAssets/WorkOrderSmsNotification.cs',
     ]
     if args.wasm_runner:

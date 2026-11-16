@@ -136,4 +136,40 @@ using (var inFlight = new WorkOrderSmsStatusPoller(TimeSpan.Zero, 3, (_, _) => T
     Check(!completedRead, "closing the detail cancels an in-flight status read");
 }
 
+// A bare returned number must never be the only explanation the owner gets. The two
+// provider tables do not overlap, so one number is always interpreted unambiguously.
+Check(Inventory.Shared.KavenegarCodeText.MessageStatus(13)!.Contains("لغو") &&
+      Inventory.Shared.KavenegarCodeText.Describe(13) == Inventory.Shared.KavenegarCodeText.MessageStatus(13),
+    "message status 13 reads as a provider cancellation, not as an order-number problem");
+Check(Inventory.Shared.KavenegarCodeText.Describe(424) == Inventory.Shared.KavenegarCodeText.ReturnCode(424) &&
+      Inventory.Shared.KavenegarCodeText.ReturnCode(424)!.Contains("الگو"),
+    "a return code at or above 200 is read from the return-code table");
+Check(Inventory.Shared.KavenegarCodeText.ReturnCode(13) is null &&
+      Inventory.Shared.KavenegarCodeText.MessageStatus(424) is null,
+    "neither table invents a meaning for a code that belongs to the other one");
+Check(Inventory.Shared.KavenegarCodeText.Describe(999) == "کد ناشناختهٔ درگاه پیامک" &&
+      Inventory.Shared.KavenegarCodeText.Describe(3) == "کد ناشناختهٔ درگاه پیامک",
+    "an undocumented code is reported as unknown rather than guessed");
+
+var reason = new WorkOrderSmsEventDto { Status = WorkOrderSmsStatus.Failed, FailureCode = 13 };
+Check(WorkOrderSmsAppearance.FailureReason(reason) == Inventory.Shared.KavenegarCodeText.MessageStatus(13),
+    "a returned provider code is explained with the provider's own meaning");
+reason.Status = WorkOrderSmsStatus.InvalidOrderNumber;
+reason.FailureCode = null;
+Check(WorkOrderSmsAppearance.FailureReason(reason)!.Contains("شمارهٔ دستور کار") &&
+      WorkOrderSmsAppearance.FailureReason(reason) != Inventory.Shared.KavenegarCodeText.MessageStatus(13),
+    "enum value 13 (InvalidOrderNumber) is never confused with provider status 13");
+foreach (var status in new[] { WorkOrderSmsStatus.Accepted, WorkOrderSmsStatus.Delivered,
+                               WorkOrderSmsStatus.Pending, WorkOrderSmsStatus.Sending })
+{
+    reason.Status = status;
+    Check(WorkOrderSmsAppearance.FailureReason(reason) is null, $"{status}: no failure explanation is shown");
+}
+foreach (var status in Enum.GetValues<WorkOrderSmsStatus>())
+{
+    Check(!string.IsNullOrWhiteSpace(WorkOrderSmsAppearance.Detail(status)) &&
+          WorkOrderSmsAppearance.Detail(status) != "وضعیت نامشخص",
+        $"{status}: has its own Persian explanation");
+}
+
 Console.WriteLine($"Work-order SMS appearance and refresh: {checks} offline checks passed.");
