@@ -54,6 +54,13 @@
 .shop-print-pdf-host { flex: 0 1 1000px; width: 100%; max-width: 1000px; height: 100%; overflow: auto; direction: ltr; text-align: center; }
 .shop-print-pdf-host .fpv-pdf-canvas { display: block; margin: 0 auto; background: #fff; box-shadow: 0 3px 18px rgba(15, 23, 42, .15); }
 .shop-print-pdf-frame { position: fixed; left: -10000px; top: 0; width: 100vw; height: 100vh; border: 0; pointer-events: none; }
+/* حالت انتظار: سندی که سرور هنوز در حال ساخت آن است (نامه‌های اتوماسیون اداری). */
+.shop-print-waiting { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .9rem; height: 100%; min-height: 240px; direction: rtl; color: #64748b; font-size: 13px; }
+.shop-print-waiting .shop-print-spinner { width: 30px; height: 30px; border: 3px solid #dbe3ef; border-top-color: #4f46e5; border-radius: 50%; animation: shop-print-spin .9s linear infinite; }
+@keyframes shop-print-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .shop-print-waiting .shop-print-spinner { animation-duration: 2.4s; } }
+.shop-print-preview .shop-print-retry { border-color: #fca5a5; color: #991b1b; background: #fff; }
+.shop-print-preview .shop-print-retry:hover { background: #fef2f2; }
 @media (max-width: 640px) {
     .shop-print-head { gap: .5rem; padding: .6rem .7rem; }
     .shop-print-heading { flex: 1 1 100%; }

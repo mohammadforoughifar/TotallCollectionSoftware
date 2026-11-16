@@ -330,9 +330,10 @@
         {
             var number = letter.SadereNumber ?? letter.LetterNumber ?? letter.LetterId.ToString();
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            var title = $"نامهٔ صادره {number} — {size} {(withMargin ? "با هامش" : "بدون هامش")}";
             await PrintWorkflow.PrintPdfAsync(
                 ct => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
-                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name);
+                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name, title);
         }
         finally { printing = false; }
     }

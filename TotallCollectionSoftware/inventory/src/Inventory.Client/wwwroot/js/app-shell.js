@@ -475,7 +475,7 @@ function ltxTriggerPrint(session) {
         return false;
     }
 }
-window.ltxPrintBegin = function () {
+function ltxLegacyPrintBegin() {
     var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     var popup = null;
     try { popup = window.ltxPrintPendingWindows.shift(); } catch (error) { console.error('[letter-print] reserved popup retrieval failed', error); }
@@ -501,7 +501,7 @@ window.ltxPrintBegin = function () {
     }
     return id;
 };
-window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
+async function ltxLegacyPrintReady(id, payload, fileName, timeoutMs) {
     var session = window.ltxPrintSessions[id];
     if (!session || session.cleaned || !ltxEnsurePrintSurface(session)) return false;
     var timeout = Math.max(1, Number(timeoutMs) || 15000);
@@ -560,7 +560,7 @@ window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
         throw error;
     }
 };
-window.ltxPrintFail = function (id, message) {
+function ltxLegacyPrintFail(id, message) {
     var session = window.ltxPrintSessions[id];
     if (!session) return false;
     if (!ltxEnsurePrintSurface(session)) return false;
@@ -573,14 +573,14 @@ window.ltxPrintFail = function (id, message) {
     return true;
 };
 // متن وضعیت را در حین آماده‌سازی به‌روز می‌کند (رندر طولانی PDF سمت سرور).
-window.ltxPrintStatus = function (id, text) {
+function ltxLegacyPrintStatus(id, text) {
     var session = window.ltxPrintSessions[id];
     if (!session || session.failed) return false;
     if (!ltxEnsurePrintSurface(session)) return false;
     ltxSetPrintStatus(session, String(text || 'در حال آماده‌سازی نسخهٔ چاپ…'));
     return true;
 };
-window.ltxPrintWaitForAction = function (id) {
+function ltxLegacyPrintWaitForAction(id) {
     var session = window.ltxPrintSessions[id];
     if (!session) return Promise.resolve('close');
     if (session.queuedAction) { var queued = session.queuedAction; session.queuedAction = null; return Promise.resolve(queued); }
@@ -594,7 +594,7 @@ window.ltxPrintWaitForAction = function (id) {
         }, 300);
     });
 };
-window.ltxPrintDirectPage = function (id) {
+function ltxLegacyPrintDirectPage(id) {
     var session = window.ltxPrintSessions[id];
     if (session && session.pdfLoaded && session.frame) {
         if (ltxTriggerPrint(session)) return true;
@@ -612,9 +612,77 @@ window.ltxPrintDirectPage = function (id) {
     }
     return true;
 };
-window.ltxPrintCancel = function (id) {
+function ltxLegacyPrintCancel(id) {
     var session = window.ltxPrintSessions[id];
     if (session) ltxPrintCleanup(session, true);
+};
+
+// ================== مسیر پیش‌نمایش چاپ نامه ==================
+// نامه‌های اتوماسیون اداری از همان پیش‌نمایشی استفاده می‌کنند که فاکتور فروشگاهی و
+// گزارش‌ها استفاده می‌کنند (shop-print-preview): هدر با عنوان سند، نوار وضعیت،
+// بزرگ‌نمایی، جابه‌جایی بین صفحه‌ها، «دریافت PDF»، «چاپ (F4)» و «بستن (Esc)».
+// آن کامپوننت دکمهٔ چاپ را تا کامل‌شدن رندر PDF غیرفعال نگه می‌دارد و چاپ را فقط با
+// کلیک/کلید کاربر اجرا می‌کند — دقیقاً همان قراری که این ماژول لازم دارد.
+//
+// اگر کامپوننت یا نمایشگر PDF در دسترس نباشد (نسخهٔ قدیمی کش‌شده، filePreview خراب)،
+// به پوستهٔ قدیمیِ همین فایل برمی‌گردیم تا چاپ نامه هیچ‌وقت بی‌جواب نماند.
+var LTX_SHOP_PREFIX = 'shop:';
+function ltxShopPreview() {
+    var api = window.shopPrintPreview;
+    return api && typeof api.beginPdf === 'function' ? api : null;
+}
+function ltxShopToken(id) {
+    return typeof id === 'string' && id.indexOf(LTX_SHOP_PREFIX) === 0 ? id.slice(LTX_SHOP_PREFIX.length) : null;
+}
+
+window.ltxPrintBegin = function (title) {
+    var api = ltxShopPreview();
+    if (api) {
+        try {
+            var token = api.beginPdf(title || 'نامه', 'در حال ساخت نسخهٔ چاپ نامه…');
+            if (token) return LTX_SHOP_PREFIX + token;
+        } catch (error) { console.error('[letter-print] shared preview unavailable; using the legacy surface', error); }
+    }
+    return ltxLegacyPrintBegin();
+};
+window.ltxPrintReady = function (id, payload, fileName, timeoutMs) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintReady(id, payload, fileName, timeoutMs);
+    return Promise.resolve(window.shopPrintPreview.resolvePdf(token, payload, fileName));
+};
+window.ltxPrintStatus = function (id, text) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintStatus(id, text);
+    return window.shopPrintPreview.statusPdf(token, String(text || 'در حال آماده‌سازی پیش‌نمایش…'), false);
+};
+window.ltxPrintFail = function (id, message) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintFail(id, message);
+    return window.shopPrintPreview.failPdf(token, message);
+};
+window.ltxPrintWaitForAction = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintWaitForAction(id);
+    return window.shopPrintPreview.waitForAction(token);
+};
+window.ltxPrintDirectPage = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintDirectPage(id);
+    // پیش‌نمایش مشترک «چاپ مستقیم صفحه» ندارد و لازم هم ندارد: «دریافت PDF» جایگزین بهتری است.
+    window.shopPrintPreview.cancelPdf(token);
+    return false;
+};
+window.ltxPrintCancel = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintCancel(id);
+    window.shopPrintPreview.cancelPdf(token);
+};
+// «کاربر خودش بست» — تا سمت #C پیام خطای بی‌مورد ندهد.
+var ltxLegacyWasCancelled = window.ltxPrintWasCancelled;
+window.ltxPrintWasCancelled = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyWasCancelled(id);
+    return !window.shopPrintPreview.isOpen(token);
 };
 
 // ================== آدرس سرور API (مهم برای ورود موفق) ==================

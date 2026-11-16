@@ -53,7 +53,12 @@ public sealed class LetterPrintWorkflow
     public Task PrintPdfAsync(Func<Task<byte[]>> loadPdf, string fileName) =>
         PrintPdfAsync(_ => loadPdf(), fileName);
 
-    public async Task PrintPdfAsync(Func<CancellationToken, Task<byte[]>> loadPdf, string fileName)
+    /// <param name="title">
+    /// عنوانی که در هدر پیش‌نمایش زیر «پیش‌نمایش چاپ» نشان داده می‌شود (مثل «نامهٔ صادره ۱۲۷ — A4
+    /// با هامش»). اگر داده نشود، نام فایل استفاده می‌شود.
+    /// </param>
+    public async Task PrintPdfAsync(
+        Func<CancellationToken, Task<byte[]>> loadPdf, string fileName, string? title = null)
     {
         var total = Stopwatch.StartNew();
         long lastStageMs = 0;
@@ -69,7 +74,8 @@ public sealed class LetterPrintWorkflow
         string? printId;
         try
         {
-            printId = await _js.InvokeAsync<string?>("ltxPrintBegin");
+            printId = await _js.InvokeAsync<string?>(
+                "ltxPrintBegin", string.IsNullOrWhiteSpace(title) ? fileName : title);
         }
         catch (Exception ex)
         {

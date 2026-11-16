@@ -1,12 +1,20 @@
-// Verifies the letter print flow: preview first, print ONLY on explicit user click.
+// Letter print flow: the preview is shown first and the browser print dialog opens ONLY on
+// an explicit user action.
+//
+// Two paths are covered:
+//   A. shared preview  — app-shell.js routes letters into shop-print-preview.js (the same
+//                        component the shop invoices and the reports use).
+//   B. legacy surface  — used only when that component / PDF.js is unavailable.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-const path = require('node:path');
-const SRC = path.resolve(__dirname, '../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/app-shell.js');
+const SRC_DIR = path.resolve(__dirname, '../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot');
+const APP_SHELL = path.join(SRC_DIR, 'js/app-shell.js');
+const SHOP_PREVIEW = path.join(SRC_DIR, 'js/shop-print-preview.js');
 
-function extractPrintModule(code) {
+function printSection(code) {
   // Only the print section is exercised; the rest of app-shell.js touches APIs (fetch, signalR…)
   // that are irrelevant here.
   const start = code.indexOf('function ltxPdfBytes(payload) {');
@@ -15,180 +23,204 @@ function extractPrintModule(code) {
   return code.slice(start, end);
 }
 
-function makeEnv({ popupBlocked = false } = {}) {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://app.test/', runScripts: 'outside-only' });
+const stripComments = (s) => s.replace(/^\s*\/\/.*$/gm, '');
+
+function baseWindow() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>',
+    { url: 'https://app.test/', runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
-  const printCalls = [];
-
-  // A popup window is itself a document; jsdom cannot window.open a real one, so a second
-  // JSDOM instance stands in for it.
-  let popupDom = null;
-  window.open = function () {
-    if (popupBlocked) return null;
-    popupDom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'https://app.test/popup', runScripts: 'outside-only' });
-    const pw = popupDom.window;
-    pw.closed = false;
-    pw.close = function () { pw.closed = true; };
-    pw.focus = function () { };
-    pw.opener = window;
-    pw.requestAnimationFrame = function (cb) { return setTimeout(() => cb(Date.now()), 0); };
-    // jsdom's document.write on a fresh document works; keep the real implementation.
-    return pw;
-  };
-  window.focus = function () { };
-  window.print = function () { printCalls.push('main-window'); };
-  window.URL.createObjectURL = function () { return 'blob:fake-' + Math.random().toString(36).slice(2); };
-  window.URL.revokeObjectURL = function () { };
-  window.requestAnimationFrame = function (cb) { return setTimeout(() => cb(Date.now()), 0); };
-
-  const code = extractPrintModule(fs.readFileSync(SRC, 'utf8'));
-  window.eval(code);
-  return { dom, window, printCalls, getPopup: () => popupDom && popupDom.window };
+  window.URL.createObjectURL = () => 'blob:fake-' + Math.random().toString(36).slice(2);
+  window.URL.revokeObjectURL = () => { };
+  if (!window.requestAnimationFrame) window.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
+  return window;
 }
 
-// The iframe inside the print surface is a PDF viewer; jsdom will not load a blob URL,
-// so the load event and a printable contentWindow are simulated.
-function wireFrame(frame, printCalls, label) {
+const pdfPayload = (window) => window.eval("new TextEncoder().encode('%PDF-1.7\\n% letter bytes\\n%%EOF')");
+
+// ===========================================================================================
+// 0. Static guards — neither preview may call print() while merely becoming ready.
+// ===========================================================================================
+function staticGuards() {
+  const app = fs.readFileSync(APP_SHELL, 'utf8');
+  const legacyReady = stripComments(app.slice(
+    app.indexOf('async function ltxLegacyPrintReady'), app.indexOf('function ltxLegacyPrintFail')));
+  assert.ok(legacyReady.length > 200, 'legacy ready body located');
+  assert.ok(!/ltxTriggerPrint/.test(legacyReady),
+    'REGRESSION: showing the preview must not trigger printing');
+  assert.ok(!/\.print\(\)/.test(legacyReady),
+    'REGRESSION: showing the preview must not call print()');
+
+  const shop = stripComments(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
+  const printCalls = shop.split('\n').filter(l => /\.print\(\)/.test(l));
+  assert.equal(printCalls.length, 1, 'shared preview has exactly one print() call site');
+  const printNow = shop.slice(shop.indexOf('async function printNow'), shop.indexOf('function keyboard'));
+  assert.ok(printNow.includes('target.print()'), 'the only print() lives in printNow (the button handler)');
+
+  const loader = shop.slice(shop.indexOf('function loadPdfIntoSession'), shop.indexOf('function openPdf'));
+  assert.ok(!/\.print\(\)/.test(loader), 'REGRESSION: loading the PDF must not print');
+  console.log('  ✓ static guards');
+}
+
+// ===========================================================================================
+// A. shared preview (shop-print-preview) — what letters now use
+// ===========================================================================================
+async function sharedPreview() {
+  const window = baseWindow();
+  const printed = [];
+
+  window.filePreview = {
+    openPdf: async () => ({ success: true, pages: 3 }),
+    renderPdf: async () => ({ success: true }),
+    destroyPdf: async () => { }
+  };
+  window.eval(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
+  window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
+
+  const doc = window.document;
+  const TITLE = 'نامهٔ صادره ۱۲۷ — A4 با هامش';
+
+  // --- the preview opens immediately, before the server has produced anything ---
+  const id = await window.ltxPrintBegin(TITLE);
+  assert.ok(String(id).startsWith('shop:'), 'letters route into the shared preview: ' + id);
+  const overlay = doc.querySelector('.shop-print-preview');
+  assert.ok(overlay, 'the shop preview overlay is used');
+  assert.equal(overlay.querySelector('.shop-print-heading-text strong').textContent, 'پیش‌نمایش چاپ');
+  assert.equal(overlay.querySelector('.shop-print-document-title').textContent, TITLE);
+
+  const printBtn = overlay.querySelector('[data-action="print"]');
+  const closeBtn = overlay.querySelector('[data-action="close"]');
+  const retryBtn = overlay.querySelector('[data-action="retry"]');
+  const download = overlay.querySelector('.shop-print-download');
+  const status = overlay.querySelector('.shop-print-status');
+
+  assert.equal(printBtn.disabled, true, 'print is disabled while the server renders');
+  assert.equal(retryBtn.hidden, true, 'no retry button before a failure');
+  assert.equal(download.hidden, true, 'no download link before the PDF exists');
+  assert.match(status.textContent, /در حال ساخت/, 'status explains the wait: ' + status.textContent);
+
+  // --- slow-render status updates reach the same strip ---
+  assert.equal(await window.ltxPrintStatus(id, 'هنوز در حال ساخت…'), true);
+  assert.equal(status.textContent, 'هنوز در حال ساخت…');
+
+  // --- the PDF arrives: preview renders, print becomes available, nothing prints ---
+  const shown = await window.ltxPrintReady(id, pdfPayload(window), 'letter-127-A4.pdf', 30000);
+  assert.equal(shown, true, 'ltxPrintReady reports the preview is shown');
+  await new Promise(r => setTimeout(r, 0));
+
+  assert.deepEqual(printed, [], 'NO print dialog opened when the preview became ready');
+  assert.equal(printBtn.disabled, false, 'print is now enabled');
+  assert.equal(download.hidden, false, 'دریافت PDF offered');
+  assert.equal(download.download, 'letter-127-A4.pdf');
+  assert.equal(overlay.querySelector('.shop-print-pages').hidden, false, 'page navigation shown');
+  assert.match(status.textContent, /پیش‌نمایش آماده است/, status.textContent);
+  assert.equal(status.classList.contains('is-error'), false);
+
+  // --- only an explicit click prints ---
+  const hidden = doc.querySelector('.shop-print-pdf-frame');
+  assert.ok(hidden, 'hidden print frame created');
+  hidden.dispatchEvent(new window.Event('load'));
+  Object.defineProperty(hidden.contentWindow, 'print', { configurable: true, value: () => printed.push('pdf') });
+  hidden.contentWindow.focus = () => { };
+
+  printBtn.click();
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(printed, ['pdf'], 'the click opened the print dialog exactly once');
+  assert.ok(doc.querySelector('.shop-print-preview'), 'preview survives printing');
+
+  // --- closing is a choice, not an error ---
+  assert.equal(await window.ltxPrintWasCancelled(id), false);
+  closeBtn.click();
+  assert.equal(doc.querySelector('.shop-print-preview'), null, 'close removes the overlay');
+  assert.equal(await window.ltxPrintWasCancelled(id), true, 'closing reports as user cancel');
+  console.log('  ✓ shared preview: opens empty → fills → prints only on click → closes clean');
+}
+
+async function sharedPreviewFailure() {
+  const window = baseWindow();
+  window.filePreview = { openPdf: async () => ({ success: true, pages: 1 }), renderPdf: async () => ({ success: true }), destroyPdf: async () => { } };
+  window.eval(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
+  window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
+
+  const id = await window.ltxPrintBegin('نامهٔ صادره ۹۹');
+  const overlay = window.document.querySelector('.shop-print-preview');
+  const status = overlay.querySelector('.shop-print-status');
+  const retryBtn = overlay.querySelector('[data-action="retry"]');
+
+  assert.equal(await window.ltxPrintFail(id, 'سرور پاسخ نداد'), true);
+  assert.equal(status.textContent, 'سرور پاسخ نداد');
+  assert.equal(status.classList.contains('is-error'), true, 'error styling applied');
+  assert.equal(retryBtn.hidden, false, 'retry offered inside the preview');
+  assert.equal(overlay.querySelector('[data-action="print"]').disabled, true, 'still not printable');
+
+  const waiting = window.ltxPrintWaitForAction(id);
+  retryBtn.click();
+  assert.equal(await waiting, 'retry', 'retry reaches the waiting C# flow');
+  assert.equal(retryBtn.hidden, true, 'retry hides once taken');
+
+  // closing while the flow waits must resolve it, never hang
+  window.ltxPrintFail(id, 'باز هم نشد');
+  const waiting2 = window.ltxPrintWaitForAction(id);
+  overlay.querySelector('[data-action="close"]').click();
+  assert.equal(await waiting2, 'close', 'closing resolves the pending wait');
+  console.log('  ✓ shared preview: failure shows retry in-place and never hangs');
+}
+
+// ===========================================================================================
+// B. legacy surface — only when the shared component is missing
+// ===========================================================================================
+function wireFrame(frame, printed, label) {
   Object.defineProperty(frame, 'contentWindow', {
     configurable: true,
-    value: {
-      focus() { },
-      print() { printCalls.push(label); }
-    }
+    value: { focus() { }, print() { printed.push(label); } }
   });
   Object.defineProperty(frame, 'contentDocument', { configurable: true, value: null });
-  const srcDescriptor = { configurable: true, set(v) { this._src = v; setTimeout(() => this.onload && this.onload(), 0); }, get() { return this._src; } };
-  Object.defineProperty(frame, 'src', srcDescriptor);
+  Object.defineProperty(frame, 'src', {
+    configurable: true,
+    set(v) { this._src = v; setTimeout(() => this.onload && this.onload(), 0); },
+    get() { return this._src; }
+  });
 }
 
-async function run() {
-  // ---------- 0. static guard: ltxPrintReady must never call the print dialog itself ----------
-  {
-    const code = fs.readFileSync(SRC, 'utf8');
-    const start = code.indexOf('window.ltxPrintReady = async function');
-    const end = code.indexOf('window.ltxPrintFail = function', start);
-    assert.ok(start > 0 && end > start, 'ltxPrintReady located');
-    // Comments mention ltxTriggerPrint on purpose; only executable code is checked.
-    const body = code.slice(start, end).replace(/^\s*\/\/.*$/gm, '');
-    assert.ok(!/ltxTriggerPrint/.test(body),
-      'REGRESSION: ltxPrintReady must not trigger printing — the preview is shown and nothing else.');
-    assert.ok(!/\.print\(\)/.test(body),
-      'REGRESSION: ltxPrintReady must not call print() — only the user\u2019s «چاپ» click may.');
-  }
+async function legacyFallback() {
+  const window = baseWindow();           // no window.shopPrintPreview at all
+  const printed = [];
+  let popupDom = null;
+  window.open = function () {
+    popupDom = new JSDOM('<!doctype html><html><body></body></html>',
+      { url: 'https://app.test/popup', runScripts: 'outside-only' });
+    const pw = popupDom.window;
+    pw.closed = false;
+    pw.close = () => { pw.closed = true; };
+    pw.focus = () => { };
+    pw.opener = window;
+    pw.requestAnimationFrame = (cb) => setTimeout(() => cb(Date.now()), 0);
+    return pw;
+  };
+  window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
 
-  // ---------- 1. popup preview: PDF ready must NOT open the browser print dialog ----------
-  {
-    const { window, printCalls, getPopup } = makeEnv();
-    const id = window.ltxPrintBegin();
-    const popup = getPopup();
-    assert.ok(id, 'session id returned');
-    assert.ok(popup, 'preview window opened');
+  const id = await window.ltxPrintBegin('نامهٔ داخلی ۵');
+  assert.ok(!String(id).startsWith('shop:'), 'falls back to the legacy surface');
+  const popup = popupDom.window;
+  const frame = popup.document.getElementById('ltx-print-frame');
+  wireFrame(frame, printed, 'legacy');
 
-    const frame = popup.document.getElementById('ltx-print-frame');
-    assert.ok(frame, 'preview iframe exists');
-    wireFrame(frame, printCalls, 'preview-iframe');
+  assert.equal(await window.ltxPrintReady(id, pdfPayload(window), 'letter-5.pdf', 5000), true);
+  assert.deepEqual(printed, [], 'legacy surface does not auto-print either');
+  assert.equal(popup.document.getElementById('ltx-print-now').hidden, false);
 
-    const ok = await window.ltxPrintReady(id, window.eval('new Uint8Array([1,2,3])'), 'letter-42.pdf', 5000);
-    assert.equal(ok, true, 'ltxPrintReady resolves true');
+  popup.document.getElementById('ltx-print-now').click();
+  assert.deepEqual(printed, ['legacy'], 'legacy print button works');
 
-    assert.deepEqual(printCalls, [], 'NO print dialog is opened when the preview becomes ready');
+  popup.document.getElementById('ltx-print-close').click();
+  assert.equal(popup.closed, true);
+  assert.equal(await window.ltxPrintWasCancelled(id), true);
+  console.log('  ✓ legacy fallback still preview-first');
+}
 
-    const status = popup.document.getElementById('ltx-print-status').textContent;
-    assert.match(status, /پیش‌نمایش نامه آماده است/, 'status invites the user to print: ' + status);
-    assert.equal(popup.document.getElementById('ltx-print-now').hidden, false, 'print button visible');
-    assert.equal(popup.document.getElementById('ltx-print-download').hidden, false, 'download button visible');
-    assert.equal(popup.document.title, 'letter-42.pdf', 'window titled with the file');
-    assert.equal(popup.closed, false, 'preview stays open');
-
-    // ---------- 2. clicking «چاپ» opens the print dialog exactly once ----------
-    popup.document.getElementById('ltx-print-now').click();
-    assert.deepEqual(printCalls, ['preview-iframe'], 'user click triggers the print dialog');
-    assert.equal(popup.closed, false, 'preview still open while printing');
-
-    // ---------- 3. after the print dialog closes (print OR cancel) the preview survives ----------
-    const after = popup.document.createEvent('Event');
-    after.initEvent('afterprint', false, false);
-    popup.dispatchEvent(after);
-    assert.equal(popup.closed, false, 'preview is NOT closed by afterprint');
-    assert.ok(window.ltxPrintSessions[id], 'session kept alive for another print');
-    assert.equal(popup.document.getElementById('ltx-print-now').disabled, false, 'print button re-enabled');
-
-    // ---------- 4. the user can print again ----------
-    popup.document.getElementById('ltx-print-now').click();
-    assert.deepEqual(printCalls, ['preview-iframe', 'preview-iframe'], 'second print works');
-    popup.dispatchEvent(after);
-
-    // ---------- 5. «بستن» closes the preview and frees the session ----------
-    popup.document.getElementById('ltx-print-close').click();
-    assert.equal(popup.closed, true, 'close button closes the preview window');
-    assert.equal(window.ltxPrintSessions[id], undefined, 'session cleaned up');
-    assert.equal(window.ltxPrintWasCancelled(id), true, 'closing is reported as a user cancel, not a failure');
-  }
-
-  // ---------- 6. popup blocked → in-page overlay, same rules ----------
-  {
-    const { window, printCalls } = makeEnv({ popupBlocked: true });
-    const id = window.ltxPrintBegin();
-    const overlay = window.document.querySelector('.ltx-print-overlay');
-    assert.ok(overlay, 'in-page overlay created when popups are blocked');
-
-    const frame = overlay.querySelector('.ltx-print-frame');
-    wireFrame(frame, printCalls, 'overlay-iframe');
-
-    const ok = await window.ltxPrintReady(id, window.eval('new Uint8Array([1,2,3])'), 'letter-7.pdf', 5000);
-    assert.equal(ok, true, 'overlay preview ready');
-    assert.deepEqual(printCalls, [], 'overlay preview does not auto-print');
-    assert.equal(overlay.querySelector('.ltx-print-now').hidden, false, 'overlay print button visible');
-
-    overlay.querySelector('.ltx-print-now').click();
-    assert.deepEqual(printCalls, ['overlay-iframe'], 'overlay print button works');
-
-    overlay.querySelector('.ltx-print-close').click();
-    assert.equal(window.document.querySelector('.ltx-print-overlay'), null, 'overlay removed on close');
-    assert.equal(window.ltxPrintSessions[id], undefined, 'overlay session cleaned up');
-  }
-
-  // ---------- 7. failures still offer retry / direct print, and hide the print button ----------
-  {
-    const { window, getPopup } = makeEnv();
-    const id = window.ltxPrintBegin();
-    const popup = getPopup();
-    assert.equal(window.ltxPrintFail(id, 'سرور پاسخ نداد'), true);
-    const doc = popup.document;
-    assert.equal(doc.getElementById('ltx-print-error').hidden, false, 'error shown');
-    assert.match(doc.getElementById('ltx-print-error').textContent, /سرور پاسخ نداد/);
-    assert.equal(doc.getElementById('ltx-print-retry').hidden, false, 'retry offered');
-    assert.equal(doc.getElementById('ltx-print-direct').hidden, false, 'direct print offered');
-    assert.equal(doc.getElementById('ltx-print-now').hidden, true, 'print button hidden while failed');
-
-    const waiting = window.ltxPrintWaitForAction(id);
-    doc.getElementById('ltx-print-retry').click();
-    assert.equal(await waiting, 'retry', 'retry action reaches the C# side');
-  }
-
-  // ---------- 8. closing during a failure resolves the pending C# wait ----------
-  {
-    const { window, getPopup } = makeEnv();
-    const id = window.ltxPrintBegin();
-    const popup = getPopup();
-    window.ltxPrintFail(id, 'خطا');
-    const waiting = window.ltxPrintWaitForAction(id);
-    popup.document.getElementById('ltx-print-close').click();
-    assert.equal(await waiting, 'close', 'close action resolves the pending wait');
-    window.ltxPrintCancel(id);
-    assert.equal(window.ltxPrintSessions[id], undefined, 'cancel cleans up');
-  }
-
-  // ---------- 9. status updates during a slow server render ----------
-  {
-    const { window, getPopup } = makeEnv();
-    const id = window.ltxPrintBegin();
-    assert.equal(window.ltxPrintStatus(id, 'در حال ساخت پیش‌نمایش…'), true);
-    assert.equal(getPopup().document.getElementById('ltx-print-status').textContent, 'در حال ساخت پیش‌نمایش…');
-    window.ltxPrintCancel(id);
-  }
-
+(async () => {
+  staticGuards();
+  await sharedPreview();
+  await sharedPreviewFailure();
+  await legacyFallback();
   console.log('ALL PRINT-FLOW CHECKS PASSED');
-}
-
-run().then(() => process.exit(0), err => { console.error(err && err.stack || err); process.exit(1); });
+})().then(() => process.exit(0), err => { console.error(err && err.stack || err); process.exit(1); });

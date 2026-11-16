@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>چاپ نامه — پیش‌نمایش اول، چاپ با درخواست کاربر</title>
+<link rel="stylesheet" href="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/css/shop-print-preview.css">
+<link rel="stylesheet" href="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/icons/bootstrap-icons.css">
 <style>
   :root { --p1:#0f766e; --p2:#0ea5e9; --ink:#0f172a; --muted:#64748b; --line:#cbd5e1; }
   * { box-sizing:border-box }
@@ -51,17 +53,17 @@
       <div>
         <span class="tag old">قبل</span>
         <ul>
-          <li>پیش‌نمایش باز می‌شد</li>
+          <li>یک پنجرهٔ بازشوِ ساده و مخصوص نامه‌ها باز می‌شد</li>
           <li>بلافاصله و خودکار <code>print()</code> صدا زده می‌شد</li>
-          <li>کاربر فرصت دیدن نامه را نداشت و منتظر رندر سنگین پنجرهٔ چاپ می‌ماند</li>
+          <li>ظاهرش با بقیهٔ برنامه فرق داشت: بدون بزرگ‌نمایی، بدون جابه‌جایی بین صفحه‌ها</li>
         </ul>
       </div>
       <div>
         <span class="tag">بعد</span>
         <ul>
-          <li>فقط پیش‌نمایش نامه باز می‌شود</li>
+          <li>همان پیش‌نمایشی که <b>فاکتور فروشگاهی</b> و گزارش‌ها از آن استفاده می‌کنند</li>
+          <li>بزرگ‌نمایی، «قبلی/بعدی» بین صفحه‌ها، «دریافت PDF»، «چاپ (F4)» و «بستن (Esc)»</li>
           <li>پنجرهٔ چاپ مرورگر <b>تا کلیک روی «چاپ»</b> باز نمی‌شود</li>
-          <li>دکمهٔ «دانلود PDF» هم به‌عنوان راه جایگزین اضافه شده</li>
         </ul>
       </div>
     </div>
@@ -72,7 +74,8 @@
     <div class="row">
       <span class="num">۱۴۰۵/۸/۲۵–۱۲۷</span>
       <span class="title">نامهٔ صادره به ادارهٔ کل — پیگیری قرارداد پشتیبانی</span>
-      <label class="opt"><input type="checkbox" id="slow"> شبیه‌سازی رندر کند سرور (۱۰ ثانیه)</label>
+      <label class="opt"><input type="checkbox" id="slow"> رندر کند سرور (۱۰ ثانیه)</label>
+      <label class="opt"><input type="checkbox" id="boom"> خطای سرور</label>
       <div class="menu">
         <button class="pri" id="print-btn" aria-haspopup="true">🖨 چاپ</button>
         <div class="pop" id="print-menu" hidden>
@@ -85,9 +88,10 @@
       </div>
     </div>
     <p class="note" style="margin:12px 2px 0">
-      انتظار: یک پنجرهٔ پیش‌نمایش باز می‌شود و همان‌جا می‌ماند. هیچ پنجرهٔ چاپی تا وقتی خودتان
-      دکمهٔ «چاپ» را در نوار بالای پیش‌نمایش نزنید باز نمی‌شود. اگر مرورگر popup را مسدود کند،
-      همین پیش‌نمایش داخل همین صفحه نشان داده می‌شود.
+      انتظار: پیش‌نمایش بلافاصله و <b>خالی</b> باز می‌شود (با پیام «در حال دریافت سند از سرور…»)،
+      بعد نامه داخل همان قاب رندر می‌شود و تازه آن‌وقت دکمهٔ «چاپ (F4)» فعال می‌شود. هیچ پنجرهٔ
+      چاپی تا وقتی خودتان آن دکمه را نزنید باز نمی‌شود. گزینهٔ «خطای سرور» هم نشان می‌دهد خطا
+      داخل خود پیش‌نمایش با دکمهٔ «تلاش مجدد» ظاهر می‌شود.
     </p>
   </div>
 
@@ -97,8 +101,10 @@
   </div>
 </div>
 
-<!-- همان فایل تولیدی برنامه؛ بدون هیچ تغییری برای این صفحه -->
+<!-- همان فایل‌های تولیدی برنامه؛ بدون هیچ تغییری برای این صفحه (همان ترتیب index.html) -->
 <script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/app-shell.js"></script>
+<script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/file-preview.js"></script>
+<script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/shop-print-preview.js"></script>
 <script>
 (function () {
   var logEl = document.getElementById('log');
@@ -122,6 +128,7 @@
   // «سرور»: فایل سربرگ واقعی مخزن به‌جای PDF نامه برگردانده می‌شود.
   async function loadPdf(signal) {
     if (document.getElementById('slow').checked) await new Promise(r => setTimeout(r, 10000));
+    if (document.getElementById('boom').checked) throw new Error('سرور در ساخت نامه خطا داد (۵۰۰).');
     var res = await fetch('../../../TotallCollectionSoftware/aria_company1005_letterhead.pdf', { signal: signal });
     if (!res.ok) throw new Error('دریافت PDF از سرور ناموفق بود (' + res.status + ').');
     return new Uint8Array(await res.arrayBuffer());
@@ -130,8 +137,9 @@
   // معادل LetterPrintWorkflow.PrintPdfAsync در سمت #C.
   async function runPrintWorkflow(size, withMargin) {
     var fileName = 'letter-127-' + size + (withMargin ? '-با-هامش' : '-بدون-هامش') + '.pdf';
-    var id = window.ltxPrintBegin();
-    log('ltxPrintBegin → ' + id + '  (پنجرهٔ پیش‌نمایش ساخته شد)');
+    var title = 'نامهٔ صادره ۱۴۰۵/۸/۲۵–۱۲۷ — ' + size + (withMargin ? ' با هامش' : ' بدون هامش');
+    var id = window.ltxPrintBegin(title);
+    log('ltxPrintBegin → ' + id + '  (پیش‌نمایش مشترک باز شد)');
     if (!id) { log('پنجرهٔ پیش‌نمایش ساخته نشد', true); return; }
 
     var hint = setTimeout(function () {
@@ -144,7 +152,7 @@
       clearTimeout(hint);
       log('PDF دریافت شد: ' + bytes.length.toLocaleString('en-US') + ' بایت');
       var shown = await window.ltxPrintReady(id, bytes, fileName, 30000);
-      log('ltxPrintReady → ' + shown + '  ✅ پیش‌نمایش نشان داده شد، چاپ شروع نشد');
+      log('ltxPrintReady → ' + shown + '  ✅ نامه داخل پیش‌نمایش رندر شد، چاپ شروع نشد');
       log('— حالا منتظر تصمیم کاربر: «چاپ» یا «دانلود PDF» یا «بستن»');
     } catch (err) {
       clearTimeout(hint);
@@ -167,6 +175,9 @@
   });
 
   log('آماده. یک گزینهٔ چاپ را انتخاب کنید.');
+  log('پیش‌نمایش مشترک: ' + (window.shopPrintPreview && window.shopPrintPreview.beginPdf
+      ? 'در دسترس ✅ (همان کامپوننت فاکتور فروشگاهی)'
+      : 'در دسترس نیست — پوستهٔ قدیمی استفاده می‌شود'));
 })();
 </script>
 </body>
