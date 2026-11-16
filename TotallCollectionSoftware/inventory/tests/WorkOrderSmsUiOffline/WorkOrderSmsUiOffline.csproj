@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+  <!-- The real UI mapping and DTO are linked; no server, Razor renderer or provider is used. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Shared/Dtos/WorkOrderSmsDtos.cs" Link="WorkOrderSmsDtos.cs" />
+    <Compile Include="../../src/Inventory.Client/Pages/ItAssets/WorkOrderSmsAppearance.cs" Link="WorkOrderSmsAppearance.cs" />
+  </ItemGroup>
+</Project>

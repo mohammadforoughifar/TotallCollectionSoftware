@@ -2668,8 +2668,8 @@ else
                     }
                     @if (isOwnerG)
                     {
-                        <details class="wo-block mt-3">
-                            <summary class="wo-block-title"><i class="bi bi-chat-dots"></i> وضعیت پیامک‌های این دستور</summary>
+                        <details class="wo-block mt-3" open>
+                            <summary class="wo-block-title" style="background:#fff"><i class="bi bi-chat-dots"></i> وضعیت پیامک‌های این دستور</summary>
                             <div class="wo-block-body">
                                 <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
                                     <span class="small text-muted">پذیرش درگاه به معنی تحویل نهایی نیست.</span>
@@ -2685,10 +2685,25 @@ else
                                 {
                                     @foreach (var item in smsEvents)
                                     {
+                                        var returnedCode = WorkOrderSmsAppearance.ErrorCode(item);
                                         <div class="d-flex flex-wrap gap-2 align-items-center small py-1 border-bottom">
                                             <span class="text-muted num">@item.CreatedAtUtc.ToLocalTime().ToFaDateTime()</span>
                                             <span>@SmsEventLabel(item.EventType) — @item.RecipientName</span>
-                                            <span class="ms-auto">@SmsStatusLabel(item.Status)@((item.FailureCode is int code) ? $" ({code})" : "")</span>
+                                            <span class="ms-auto fw-700 @(WorkOrderSmsAppearance.IsSuccess(item.Status) ? "text-success" : WorkOrderSmsAppearance.IsFailure(item.Status) ? "text-danger" : "text-muted")"
+                                                  title="@WorkOrderSmsAppearance.Text(item.Status)">
+                                                @if (WorkOrderSmsAppearance.IsSuccess(item.Status))
+                                                {
+                                                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">@WorkOrderSmsAppearance.Text(item.Status)</span>
+                                                }
+                                                else
+                                                {
+                                                    @WorkOrderSmsAppearance.Text(item.Status)
+                                                    @if (returnedCode.HasValue)
+                                                    {
+                                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>
+                                                    }
+                                                }
+                                            </span>
                                         </div>
                                     }
                                 }
@@ -3279,27 +3294,6 @@ else
         WorkOrderSmsEventType.Referral => "ارجاع",
         WorkOrderSmsEventType.Reply => "پاسخ به دستوردهنده",
         _ => "رویداد نامشخص"
-    };
-
-    private static string SmsStatusLabel(WorkOrderSmsStatus status) => status switch
-    {
-        WorkOrderSmsStatus.Pending => "در صف",
-        WorkOrderSmsStatus.Sending => "در حال ارسال",
-        WorkOrderSmsStatus.Accepted => "پذیرفته‌شده در درگاه",
-        WorkOrderSmsStatus.Delivered => "تحویل‌شده",
-        WorkOrderSmsStatus.Failed => "ناموفق",
-        WorkOrderSmsStatus.Unknown => "نامشخص؛ بدون ارسال مجدد",
-        WorkOrderSmsStatus.InvalidMobile => "موبایل نامعتبر",
-        WorkOrderSmsStatus.Disabled => "درگاه خاموش",
-        WorkOrderSmsStatus.NotConfigured => "الگو یا کلید تنظیم نشده",
-        WorkOrderSmsStatus.Cancelled => "لغو شده",
-        WorkOrderSmsStatus.ModuleDisabled => "پیامک این شرکت یا ماژول غیرفعال",
-        WorkOrderSmsStatus.InvalidCompanyName => "نام شرکت ناسازگار با الگو",
-        WorkOrderSmsStatus.InvalidOrderNumber => "شماره دستور ناسازگار با الگو",
-        WorkOrderSmsStatus.NoCompanyAccess => "گیرنده به شرکت دسترسی ندارد",
-        WorkOrderSmsStatus.InvalidDeadline => "مهلت ناسازگار با الگو",
-        WorkOrderSmsStatus.InvalidTitle => "عنوان ناسازگار با الگو",
-        _ => "نامشخص"
     };
 
     private Task RefreshSmsEvents() => detail is null ? Task.CompletedTask : LoadSmsEvents(detail.Id, smsEventsVersion);

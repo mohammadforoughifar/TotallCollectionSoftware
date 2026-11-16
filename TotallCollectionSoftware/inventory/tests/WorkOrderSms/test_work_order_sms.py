@@ -332,11 +332,32 @@ class WorkOrderSmsSourceContracts(unittest.TestCase):
         for name in ('WorkOrderRegistration', 'WorkOrderReferral', 'WorkOrderReply'):
             self.assertIn(f'`{name}`', block)
 
+    def test_sms_results_are_compact_visible_and_consistent_with_repairs(self):
+        ui=read('src/Inventory.Client/Pages/ItAssets/WorkOrders.razor')
+        area=ui.split('<details class="wo-block mt-3" open>',1)[1].split('</details>',1)[0]
+        self.assertIn('وضعیت پیامک‌های این دستور',area)
+        self.assertIn('SmsEventLabel(item.EventType) — @item.RecipientName',area)
+        self.assertIn('WorkOrderSmsAppearance.ErrorCode(item)',area)
+        self.assertIn('text-success',area)
+        self.assertIn('text-danger',area)
+        self.assertIn('title="@WorkOrderSmsAppearance.Text(item.Status)"',area)
+        success=area.split('@if (WorkOrderSmsAppearance.IsSuccess(item.Status))',1)[1].split('else',1)[0]
+        self.assertIn('bi-check-circle-fill',success)
+        self.assertIn('class="visually-hidden">@WorkOrderSmsAppearance.Text(item.Status)',success)
+        self.assertNotIn('returnedCode.Value',success)
+        self.assertIn('returnedCode.HasValue',area)
+        self.assertIn('<bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>',area)
+        self.assertNotRegex(area,r'@code\b')  # Razor treats @code as a directive.
+        self.assertIn('پذیرش درگاه به معنی تحویل نهایی نیست',area)
+        self.assertIn('RefreshSmsEvents',area)
+
     def test_owner_only_status_ui_and_no_synchronous_success_claim(self):
         endpoint=self.section('Task<IActionResult> SmsEvents(', 'Task<IActionResult> Description(')
         self.assertIn('w.CompanyId == companyId.Value',endpoint)
         self.assertIn('order.OwnerUserId != MyUserId',endpoint)
         self.assertNotIn('n.Recipient,',endpoint)
+        self.assertIn('n.Status != WorkOrderSmsStatus.Failed ? null',endpoint)
+        self.assertIn('n.ProviderCode is not null and not 200 ? n.ProviderCode : n.ProviderMessageStatus',endpoint)
         ui=read('src/Inventory.Client/Pages/ItAssets/WorkOrders.razor')
         self.assertNotIn('@bind="sendSms"',ui)
         self.assertNotIn('@bind="gdAddSms"',ui)
@@ -345,7 +366,8 @@ class WorkOrderSmsSourceContracts(unittest.TestCase):
         self.assertIn('پذیرش درگاه به معنی تحویل نهایی نیست',ui)
         self.assertIn('SmsStageFailed',ui)
         self.assertIn('NotificationsFailed',ui)
-        self.assertIn('WorkOrderSmsStatus.InvalidTitle',ui)
+        appearance=read('src/Inventory.Client/Pages/ItAssets/WorkOrderSmsAppearance.cs')
+        self.assertIn('WorkOrderSmsStatus.InvalidTitle',appearance)
         self.assertIn('WorkOrderSmsEventType.Registration => "ثبت دستور"',ui)
         self.assertIn('WorkOrderSmsEventType.Referral => "ارجاع"',ui)
         self.assertIn('sms-events',ui)
