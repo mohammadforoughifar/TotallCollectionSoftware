@@ -31,6 +31,9 @@ internal static class InnerLetterPdfRenderer
     {
         EnsureFonts(fontDirectory);
         QuestPDF.Settings.License = LicenseType.Community;
+        // نبودِ یک نویسه (ایموجی، نویسهٔ چسبانده‌شده از Word) نباید کل چاپ را قطع کند؛
+        // مقدار پیش‌فرض این تنظیم true است و QuestPDF استثنا پرتاب می‌کرد.
+        QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
         var homepa = homepaBackground is { Length: > 0 };
         // اندازهٔ قلم مثل نامهٔ صادرهٔ ۱۰۰۳: ۱۱pt در A4 و ۹pt در A5 (یکدستی دو چاپ).
         var fontSize = a5 ? 9f : 11f;

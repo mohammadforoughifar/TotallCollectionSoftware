@@ -97,6 +97,20 @@ function staticGuards() {
     'LetterPrintTemplate must own the RLM + Latin-isolation helpers');
   assert.ok(/\u2066/.test(tmpl) || tmpl.includes('\\u2066'), 'Latin runs must be isolated with LRI');
   console.log(`  ✓ inner-letter bidi (${rtl} explicit RTL directions, ${align} AlignRight)`);
+
+  // --- printing must survive any font the letter was typed in ---
+  // The PDF always renders in Vazirmatn: font-family is deliberately NOT read from the
+  // editor HTML. But a character Vazirmatn lacks (emoji, a Word paste) used to throw,
+  // because QuestPDF's CheckIfAllTextGlyphsAreAvailable defaults to true.
+  const rich = fs.readFileSync(path.join(OFFICE, 'Outgoing/RichLetterPdfRenderer.cs'), 'utf8');
+  assert.ok(!/["']font-family["']/.test(rich),
+    'print must not honour font-family from editor HTML; the PDF font is fixed');
+  for (const f of ['Outgoing/OutgoingLetterPrintService.cs', 'InnerLetterPdfRenderer.cs']) {
+    const src = fs.readFileSync(path.join(OFFICE, f), 'utf8');
+    assert.ok(/CheckIfAllTextGlyphsAreAvailable\s*=\s*false/.test(src),
+      `GLYPH REGRESSION: ${f} must not let one unsupported character abort the whole print`);
+  }
+  console.log('  ✓ font safety (fixed print font, missing glyphs never abort a print)');
 }
 
 // ===========================================================================================
@@ -271,10 +285,63 @@ async function legacyFallback() {
   console.log('  ✓ legacy fallback still preview-first');
 }
 
+// ===========================================================================================
+// C. no stray about:blank tab — the shared preview lives in THIS tab, so the legacy
+//    popup reservation must not fire. Regression: users saw an empty tab open on every print.
+// ===========================================================================================
+async function noStrayBlankTab() {
+  const window = baseWindow();
+  const opened = [];
+  window.open = (url) => {
+    const popup = { url: url, closed: false, close() { this.closed = true; } };
+    opened.push(popup);
+    return popup;
+  };
+  window.filePreview = {
+    warm: async () => true,
+    openPdf: async () => ({ success: true, pages: 1 }),
+    renderPdf: async () => ({ success: true }),
+    destroyPdf: async () => { }
+  };
+  window.requestIdleCallback = (cb) => { cb({ didTimeout: false, timeRemaining: () => 9 }); return 1; };
+  window.eval(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
+  window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
+
+  const doc = window.document;
+  const button = doc.createElement('button');
+  button.setAttribute('data-ltx-print-option', '');
+  doc.body.appendChild(button);
+
+  // --- shared preview available: clicking a print option must open NO window ---
+  button.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.equal(opened.length, 0,
+    'REGRESSION: a print click opened ' + opened.length + ' stray about:blank tab(s)');
+
+  const id = window.ltxPrintBegin('نامهٔ صادره — A4');
+  assert.ok(String(id).indexOf('shop:') === 0, 'print routes to the in-page shared preview');
+  assert.equal(opened.length, 0, 'beginning a print must not open a window either');
+  window.ltxPrintCancel(id);
+
+  // --- shared preview missing (stale cache): the legacy popup path still reserves ---
+  delete window.shopPrintPreview;
+  button.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  assert.equal(opened.length, 1, 'legacy fallback must still reserve a window during the gesture');
+
+  // --- a window reserved before the shared preview loaded gets closed, not leaked ---
+  const leaked = { closed: false, close() { this.closed = true; } };
+  window.ltxPrintPendingWindows.push(leaked);
+  window.ltxPrintReleaseReservedWindows();
+  assert.ok(leaked.closed, 'a reserved-but-unused window must be closed');
+  assert.equal(window.ltxPrintPendingWindows.length, 0, 'the reservation queue must be drained');
+
+  console.log('  \u2713 no stray about:blank tab (reservation only for the legacy popup path)');
+}
+
 (async () => {
   staticGuards();
   await sharedPreview();
   await sharedPreviewFailure();
   await legacyFallback();
+  await noStrayBlankTab();
   console.log('ALL PRINT-FLOW CHECKS PASSED');
 })().then(() => process.exit(0), err => { console.error(err && err.stack || err); process.exit(1); });

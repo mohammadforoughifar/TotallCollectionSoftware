@@ -265,8 +265,13 @@ builder.Services.AddScoped<IOrganizationServices, OrganizationServices>();
 // ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
-builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService>(
+    sp => sp.GetRequiredService<Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>());
 builder.Services.AddScoped<Inventory.Api.Services.Office.IInnerLetterPrintService, Inventory.Api.Services.Office.InnerLetterPrintService>();
+// گرم‌کردن مسیر چاپ نامه پس از بالا آمدن، تا اولین چاپِ کاربر هزینهٔ یک‌بارهٔ
+// JIT/فونت/استخراج سربرگ را نپردازد.
+builder.Services.AddHostedService<Inventory.Api.Services.Office.LetterPrintWarmupWorker>();
 // ایمیل سازمانی (پست الکترونیک) — SMTP/IMAP با MailKit + حساب‌های دبیرخانه
 builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, Inventory.Api.Services.Office.Email.EmailService>();
 

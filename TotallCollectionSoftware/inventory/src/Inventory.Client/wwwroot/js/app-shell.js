@@ -225,9 +225,22 @@ window.ltxPrintReserveByClick = function () {
         return false;
     }
 };
+// بستن پنجره‌های رزروشده: وقتی پیش‌نمایش مشترک (همین تب) کار را به دست می‌گیرد، پنجرهٔ
+// رزروشده هیچ‌وقت مصرف نمی‌شود و به‌صورت یک تب about:blank خالی روی دست کاربر می‌ماند.
+window.ltxPrintReleaseReservedWindows = function () {
+    var pending = window.ltxPrintPendingWindows || [];
+    while (pending.length) {
+        var popup = pending.shift();
+        try { if (popup && !popup.closed) popup.close(); } catch (error) { console.error('[letter-print] reserved popup close failed', error); }
+    }
+};
 document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target.closest('[data-ltx-print-option]') : null;
-    if (target) window.ltxPrintReserveByClick();
+    if (!target) return;
+    // پیش‌نمایش مشترک داخل همین تب باز می‌شود، پس popup blocker موضوعیت ندارد و رزرو پنجره
+    // فقط یک تب سفید اضافه می‌ساخت. رزرو تنها برای پوستهٔ قدیمی (که واقعاً پنجره باز می‌کند) لازم است.
+    if (ltxShopPreview()) return;
+    window.ltxPrintReserveByClick();
 }, true);
 
 function ltxEnsurePrintFallbackStyles() {
@@ -640,7 +653,9 @@ window.ltxPrintBegin = function (title) {
     if (api) {
         try {
             var token = api.beginPdf(title || 'نامه', 'در حال ساخت نسخهٔ چاپ نامه…');
-            if (token) return LTX_SHOP_PREFIX + token;
+            // اگر پیش از در دسترس آمدن پیش‌نمایش مشترک پنجره‌ای رزرو شده بود، همین‌جا بسته
+            // می‌شود تا تب سفید باقی نماند.
+            if (token) { window.ltxPrintReleaseReservedWindows(); return LTX_SHOP_PREFIX + token; }
         } catch (error) { console.error('[letter-print] shared preview unavailable; using the legacy surface', error); }
     }
     return ltxLegacyPrintBegin();
