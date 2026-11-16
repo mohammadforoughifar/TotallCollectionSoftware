@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <!-- In-memory shims deliberately do not stand in for real EF/SQL Server integration. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Api/Entities/System/CompanySmsSetting.cs" Link="CompanySmsSetting.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/ItAssets/WorkOrderSmsNotification.cs" Link="WorkOrderSmsNotification.cs" />
+    <Compile Include="../../src/Inventory.Shared/SmsModuleCatalog.cs" Link="SmsModuleCatalog.cs" />
+    <Compile Include="../../src/Inventory.Shared/Dtos/WorkOrderSmsDtos.cs" Link="WorkOrderSmsDtos.cs" />
+    <Compile Include="../../src/Inventory.Api/Infrastructure/ActiveCompanyMiddleware.cs" Link="ActiveCompanyMiddleware.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/CompanySmsServicePolicy.cs" Link="CompanySmsServicePolicy.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/ICompanySmsRevocationHandler.cs" Link="ICompanySmsRevocationHandler.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Notification/KavenegarSmsValidation.cs" Link="KavenegarSmsValidation.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/KavenegarSmsOptions.cs" Link="KavenegarSmsOptions.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/WorkOrderRequestIdentity.cs" Link="WorkOrderRequestIdentity.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/WorkOrderSmsPolicy.cs" Link="WorkOrderSmsPolicy.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/WorkOrderSmsQueue.cs" Link="WorkOrderSmsQueue.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/WorkOrderSmsService.cs" Link="WorkOrderSmsService.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/ItAssets/WorkOrderSmsRevocationHandler.cs" Link="WorkOrderSmsRevocationHandler.cs" />
+  </ItemGroup>
+</Project>

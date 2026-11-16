@@ -21,7 +21,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
             project = ET.parse(SRC / name / f'{name}.csproj')
             self.assertFalse(any(p.get('Include') == 'Kavenegar' for p in project.findall('.//PackageReference')))
 
-    def test_new_gateway_is_registered_for_repair_outbox_without_controller_or_other_modules(self):
+    def test_gateway_is_registered_for_repair_and_work_order_outboxes(self):
         program = read('src/Inventory.Api/Program.cs')
         self.assertIn('AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>()', program)
         uses = []
@@ -33,6 +33,8 @@ class KavenegarFoundationContracts(unittest.TestCase):
             'src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs',
             'src/Inventory.Api/Services/Repairs/RepairService.cs',
             'src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs',
+            'src/Inventory.Api/Services/ItAssets/WorkOrderSmsService.cs',
+            'src/Inventory.Api/Services/ItAssets/WorkOrderSmsQueue.cs',
         })
 
     def test_sdk_gateway_is_disabled_by_default_and_key_is_blank(self):
@@ -46,16 +48,19 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertLess(gateway.index('if (!IsEnabled)'), gateway.index('var api = new KavenegarApi'))
         self.assertLess(gateway.index('if (!IsConfigured)'), gateway.index('var api = new KavenegarApi'))
 
-    def test_existing_sms_services_keep_their_own_configuration_and_registration(self):
+    def test_work_order_no_longer_bypasses_sdk_while_profile_stays_independent(self):
         program = read('src/Inventory.Api/Program.cs')
         work = read('src/Inventory.Api/Services/ItAssets/WorkOrderSmsService.cs')
+        queue = read('src/Inventory.Api/Services/ItAssets/WorkOrderSmsQueue.cs')
         profile = read('src/Inventory.Api/Services/Core/UserContactOtpDelivery.cs')
         self.assertIn('IWorkOrderSmsService, Inventory.Api.Services.ItAssets.WorkOrderSmsService', program)
         self.assertIn('IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery', program)
         self.assertIn('ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender', program)
-        self.assertNotIn('SdkSendEnabled', work)
+        self.assertNotIn('/sms/send.json', work)
+        self.assertNotIn('HttpClient', work)
+        self.assertIn('gateway.SendWorkOrderLookupAsync(', queue)
+        self.assertIn('SmsModuleCatalog.WorkOrders', queue)
         self.assertNotIn('SdkSendEnabled', profile)
-        self.assertIn('/sms/send.json', work)
         self.assertIn('/sms/send.json', profile)
 
     def test_sdk_uses_non_redirecting_transport_and_does_not_log_secrets(self):

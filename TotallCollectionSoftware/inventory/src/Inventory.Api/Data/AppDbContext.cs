@@ -223,6 +223,7 @@ public class AppDbContext : DbContext
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<WorkOrderAssignee> WorkOrderAssignees => Set<WorkOrderAssignee>();
     public DbSet<WorkOrderLog> WorkOrderLogs => Set<WorkOrderLog>();
+    public DbSet<WorkOrderSmsNotification> WorkOrderSmsNotifications => Set<WorkOrderSmsNotification>();
     public DbSet<WorkOrderAttachment> WorkOrderAttachments => Set<WorkOrderAttachment>();
     public DbSet<WorkOrderAllowedAssignee> WorkOrderAllowedAssignees => Set<WorkOrderAllowedAssignee>();
     public DbSet<WorkOrderReminderLog> WorkOrderReminderLogs => Set<WorkOrderReminderLog>();
@@ -1297,6 +1298,14 @@ public class AppDbContext : DbContext
 
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasQueryFilter(w => w.DeletedAt == null);
+        mb.Entity<WorkOrderLog>().HasIndex(l => l.RequestKey).IsUnique().HasFilter("[RequestKey] IS NOT NULL");
+        mb.Entity<WorkOrderLog>().HasIndex(l => new { l.PayloadFingerprint, l.CreatedAt })
+            .HasFilter("[PayloadFingerprint] IS NOT NULL");
+        mb.Entity<WorkOrderSmsNotification>().HasIndex(n => new { n.EventLogId, n.RecipientKey }).IsUnique();
+        mb.Entity<WorkOrderSmsNotification>().HasIndex(n => new { n.Status, n.CreatedAtUtc });
+        mb.Entity<WorkOrderSmsNotification>().HasOne<WorkOrder>().WithMany().HasForeignKey(n => n.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<WorkOrderSmsNotification>().HasOne<WorkOrderLog>().WithMany().HasForeignKey(n => n.EventLogId).OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<WorkOrderSmsNotification>().HasQueryFilter(n => ActiveCompanyId == null || n.CompanyId == ActiveCompanyId);
         mb.Entity<WorkOrder>().HasIndex(w => new { w.RecurrenceSeriesId, w.RecurrenceScheduledAt })
             .IsUnique().HasFilter("[RecurrenceSeriesId] IS NOT NULL AND [RecurrenceScheduledAt] IS NOT NULL");
         mb.Entity<WorkOrder>().HasIndex(w => new { w.SourceModule, w.SourceId });

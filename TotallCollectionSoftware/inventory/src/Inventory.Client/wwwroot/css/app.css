@@ -1064,6 +1064,54 @@ a { text-decoration: none; }
 }
 .m-card-actions .btn:last-child:not(:first-child) { flex: 0 0 auto; min-width: 44px; }
 
+/* وضعیت سریع پذیرش؛ کنترل روی خود نشان است، نه در ستون عملیات. */
+.repair-status-control { display: inline-flex; vertical-align: middle; }
+.repair-status-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    padding: .38rem .55rem; border: 1px solid transparent; border-radius: 999px;
+    font-size: .78rem; font-weight: 700; line-height: 1.35; white-space: nowrap;
+}
+.repair-status-content { display: inline-flex; align-items: center; gap: .3rem; }
+.repair-status-ready { background: #fff4d8; color: #805000; border-color: #f4dfb0; }
+.repair-status-delivered { background: #e5f6ec; color: #12613e; border-color: #c6ead4; }
+.repair-status-delivered .bi { color: #16834d; }
+.repair-status-button { cursor: pointer; font-family: inherit; }
+.repair-status-button:hover:not(:disabled) { filter: brightness(.97); }
+.repair-status-button:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+.repair-status-button:disabled { cursor: wait; opacity: .75; }
+.repair-status-chevron { font-size: .65rem; opacity: .7; }
+.repair-status-spinner { width: .8rem; height: .8rem; border-width: 2px; }
+.repair-card.st-ready { border-right-color: #d69a26; }
+.repair-card.st-delivered { border-right-color: #32a66d; }
+.repair-card-actions { flex-wrap: wrap; }
+.repair-card-actions .btn { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+
+/* منو در سطح صفحه و با مختصات viewport است؛ در جدول و موبایل بریده نمی‌شود. */
+.repair-status-menu {
+    position: fixed; z-index: 4500; width: 238px; max-width: calc(100vw - 16px);
+    overflow-y: auto; overscroll-behavior: contain; padding: .3rem;
+    border: 1px solid #e2e8f0; border-radius: 12px; background: #fff;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .17); direction: rtl;
+}
+.repair-status-menu-head {
+    display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+    padding: .4rem .55rem .55rem; color: #64748b; font-size: .74rem; font-weight: 700;
+    border-bottom: 1px solid #f1f5f9; margin-bottom: .2rem;
+}
+.repair-status-option {
+    display: flex; align-items: center; gap: .6rem; width: 100%; padding: .55rem .6rem;
+    border: 0; border-radius: 8px; background: transparent; color: #334155;
+    font: inherit; font-size: .84rem; text-align: start; line-height: 1.5; cursor: pointer;
+}
+.repair-status-option > i:first-child { flex: 0 0 1.15rem; text-align: center; color: #64748b; }
+.repair-status-option:hover:not(:disabled), .repair-status-option:focus-visible { background: #f1f5f9; outline: none; }
+.repair-status-option.is-current { background: #eef2ff; color: #3730a3; font-weight: 700; }
+.repair-status-option:disabled { opacity: .45; cursor: not-allowed; }
+.repair-status-option > .repair-status-icon-ready { color: #b77912 !important; }
+.repair-status-option > .repair-status-icon-cancelled { color: #c24444 !important; }
+.repair-status-delivery > i:first-child { color: #16834d; }
+.repair-status-option-end { margin-inline-start: auto; font-size: .75rem; }
+
 /* ---------- باکس روش پرداخت لوکس و مدرن (فرم فروش و خرید) ---------- */
 .pay-box {
     border: 1px solid #e2e8f0;

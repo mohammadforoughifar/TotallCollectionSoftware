@@ -20,19 +20,19 @@ namespace Inventory.Shared.Dtos {
  public class Party { }
  public class Product { }
  public enum WarrantyDecision { Unspecified, Accepted, Rejected }
- public enum RepairSmsEventType { Registration=1, Ready=2 }
- public enum RepairSmsStatus { Pending=1, Sending=2, Accepted=3, Delivered=4, Failed=5, Unknown=6, InvalidMobile=7, Disabled=8, NotConfigured=9, Cancelled=10, ModuleDisabled=11, InvalidCompanyName=12, InvalidRepairNumber=13 }
+ public enum RepairSmsEventType { Registration=1, Ready=2, Delivery=3 }
+ public enum RepairSmsStatus { Pending=1, Sending=2, Accepted=3, Delivered=4, Failed=5, Unknown=6, InvalidMobile=7, Disabled=8, NotConfigured=9, Cancelled=10, ModuleDisabled=11, InvalidCompanyName=12, InvalidRepairNumber=13, InvalidCustomerName=14 }
 }
 namespace Inventory.Shared.Entities {}
 namespace Inventory.Api.Services {
  public enum KavenegarSmsSendState { Disabled, NotConfigured, InvalidRequest, Accepted, Delivered, Failed, Unknown }
  public sealed record KavenegarSmsSendResult(KavenegarSmsSendState State, long? MessageId=null, int? MessageStatus=null, int? ProviderCode=null);
- public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string name, string template); }
+ public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string name, string template); Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template); Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template); }
 }
 namespace Inventory.Api.Data {
  public class SystemCompany { public int Id {get;set;} public string Name {get;set;}=""; public bool IsActive {get;set;}=true; }
  public class RepairOrder { public int Id {get;set;} public int? CompanyId {get;set;} public int PartyId {get;set;} public string Number {get;set;}=""; public Inventory.Shared.RepairStatus Status {get;set;} public bool WarrantyProcessed {get;set;} public int? InvoiceTransactionId {get;set;} }
- public class Party { public int Id {get;set;} public int? CompanyId {get;set;} public string? Mobile {get;set;} }
+ public class Party { public int Id {get;set;} public int? CompanyId {get;set;} public string Name {get;set;}=""; public string? Mobile {get;set;} }
  public class Product { public int Id {get;set;} public bool IsService {get;set;} }
  public class ShopWarrantyItem { public int? ProductId {get;set;} }
  public class RepairItem { public int? ProductId {get;set;} public Inventory.Shared.Dtos.WarrantyDecision WarrantyDecision {get;set;} }
@@ -47,6 +47,7 @@ namespace Inventory.Api.Data {
    public Microsoft.EntityFrameworkCore.DbSet<SystemCompany> SystemCompanies {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<CompanySmsSetting> CompanySmsSettings {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<RepairSmsNotification> RepairSmsNotifications {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<WorkOrderSmsNotification> WorkOrderSmsNotifications {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<RepairOrder> RepairOrders {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<Party> Parties {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<ShopWarrantyItem> ShopWarrantyItems {get;}=new();
@@ -119,6 +120,7 @@ namespace Microsoft.EntityFrameworkCore {
  }
  public static class Extensions {
    public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> q)=>q;
+   public static IQueryable<T> IgnoreQueryFilters<T>(this IQueryable<T> q)=>q;
    public static Task<bool> AnyAsync<T>(this IQueryable<T> q, Expression<Func<T,bool>> predicate, CancellationToken ct=default)=>Task.FromResult(q.Any(predicate));
    public static Task<List<T>> ToListAsync<T>(this IQueryable<T> q, CancellationToken ct=default)=>Task.FromResult(q.ToList());
    public static Task<T?> FirstOrDefaultAsync<T>(this IQueryable<T> q, CancellationToken ct=default)=>Task.FromResult(q.FirstOrDefault());

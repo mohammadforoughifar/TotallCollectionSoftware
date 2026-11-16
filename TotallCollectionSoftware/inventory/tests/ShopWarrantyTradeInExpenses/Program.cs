@@ -313,6 +313,10 @@ sealed class DisabledTestSmsGateway : IKavenegarSmsGateway
     public bool IsLookupConfigured => false;
     public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
         throw new InvalidOperationException("The offline warranty test must never send SMS.");
+    public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template) =>
+        throw new InvalidOperationException("The offline warranty test must never send SMS.");
+    public Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template) =>
+        throw new InvalidOperationException("The offline warranty test must never send SMS.");
     public Task<KavenegarSmsSendResult> SendAsync(string recipient, string message) =>
         throw new InvalidOperationException("The offline warranty test must never send SMS.");
 }

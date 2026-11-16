@@ -83,6 +83,51 @@ viaEndpoint = await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.Ready);
 Check(viaEndpoint.SmsNotifications.Any(n => n.EventType == RepairSmsEventType.Ready && n.Status == RepairSmsStatus.Pending),
     "dedicated status endpoint stages Ready too");
 await worker.ProcessOneAsync();
+viaEndpoint = await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.Cancelled);
+Check(viaEndpoint.Status == RepairStatus.Cancelled && viaEndpoint.DeliveredAt.HasValue,
+    "cancellation records the existing exit date");
+viaEndpoint = await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.InProgress);
+Check(viaEndpoint.Status == RepairStatus.InProgress && !viaEndpoint.DeliveredAt.HasValue,
+    "reopening a cancelled repair clears the cancellation exit date");
+viaEndpoint = await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.Cancelled);
+viaEndpoint.Status = RepairStatus.InProgress;
+viaEndpoint = await repairs.SaveRepairAsync(viaEndpoint);
+Check(viaEndpoint.Status == RepairStatus.InProgress && !viaEndpoint.DeliveredAt.HasValue,
+    "the existing edit form also clears the exit date when reopening a cancellation from the list");
+var directDeliveryRejected = false;
+try { await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.Delivered); }
+catch (InvalidOperationException) { directDeliveryRejected = true; }
+Check(directDeliveryRejected && (await repairs.GetRepairAsync(viaEndpoint.Id))!.Status == RepairStatus.InProgress,
+    "status endpoint cannot bypass the delivery transaction");
+// Historical delivered records may not have the newer invoice/warranty markers.
+var legacyDelivered = await db.RepairOrders.SingleAsync(r => r.Id == viaEndpoint.Id);
+legacyDelivered.Status = RepairStatus.Delivered;
+legacyDelivered.DeliveredAt = DateTime.Now;
+await db.SaveChangesAsync();
+var deliveredChangeRejected = false;
+try { await repairs.SetStatusAsync(viaEndpoint.Id, RepairStatus.Ready); }
+catch (InvalidOperationException) { deliveredChangeRejected = true; }
+var stillDelivered = (await repairs.GetRepairAsync(viaEndpoint.Id))!;
+Check(deliveredChangeRejected && stillDelivered.Status == RepairStatus.Delivered &&
+    stillDelivered.InvoiceTransactionId is not > 0 && !stillDelivered.WarrantyProcessed,
+    "even a legacy delivered record without an invoice or warranty marker is not reopened by the status endpoint");
+stillDelivered.Status = RepairStatus.InProgress; // An old edit form might submit a stale status.
+var editDeliveredRejected = false;
+try { await repairs.SaveRepairAsync(stillDelivered); }
+catch (InvalidOperationException) { editDeliveredRejected = true; }
+var deleteDeliveredRejected = false;
+try { await repairs.DeleteRepairAsync(viaEndpoint.Id); }
+catch (InvalidOperationException) { deleteDeliveredRejected = true; }
+var invoiceDeliveredRejected = false;
+try { await repairs.InvoiceAsync(viaEndpoint.Id, new RepairInvoiceRequest()); }
+catch (InvalidOperationException ex) { invoiceDeliveredRejected = ex.Message.Contains("قبلاً تحویل شده"); }
+Check(editDeliveredRejected && deleteDeliveredRejected && invoiceDeliveredRejected &&
+    (await repairs.GetRepairAsync(viaEndpoint.Id))!.Status == RepairStatus.Delivered,
+    "legacy delivery cannot be edited, deleted, or invoiced again through other endpoints");
+// Failed transactions clear tracked entities; the rest of this fixture edits the
+// customer later and must use the newly tracked instances rather than detached ones.
+customer = await db.Parties.SingleAsync(p => p.Id == customer.Id);
+noMobile = await db.Parties.SingleAsync(p => p.Id == noMobile.Id);
 
 var missing = await repairs.SaveRepairAsync(NewOrder(noMobile));
 Check(missing.Id > 0 && missing.SmsNotifications.Single().Status == RepairSmsStatus.InvalidMobile &&
@@ -205,6 +250,7 @@ var legacyReady = await repairs.SetStatusAsync(legacyNumber.Id, RepairStatus.Rea
 Check(legacyReady.SmsNotifications.Any(n => n.EventType == RepairSmsEventType.Ready && n.Status == RepairSmsStatus.InvalidRepairNumber),
     "legacy number incompatible with literal RP prefix is warned, never silently altered");
 
+await DeliveryChecks.RunAsync();
 Console.WriteLine("All offline repair SMS checks passed.");
 
 sealed class FakeSmsGateway : IKavenegarSmsGateway
@@ -213,14 +259,20 @@ sealed class FakeSmsGateway : IKavenegarSmsGateway
     public bool IsConfigured { get; set; } = true;
     public bool IsLookupConfigured { get; set; } = true;
     public KavenegarSmsSendResult Result { get; set; } = new(KavenegarSmsSendState.Accepted, 42, 1, 200);
-    public List<(string Recipient, string Token, string CompanyName, string Template)> Sent { get; } = new();
+    public List<(string Recipient, string Token, string CompanyName, string Template, string? CustomerName)> Sent { get; } = new();
     public TaskCompletionSource<bool>? Hold { get; set; }
     public TaskCompletionSource<bool>? Entered { get; set; }
     public Task<KavenegarSmsSendResult> SendAsync(string recipient, string message) =>
         throw new InvalidOperationException("Repair SMS must use lookup, not ordinary send.");
-    public async Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template)
+    public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
+        RecordAsync(recipient, token, companyName, template, null);
+    public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template) =>
+        RecordAsync(recipient, token, companyName, template, customerName);
+    public Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template) =>
+        throw new InvalidOperationException("Repair tests must not send work-order SMS.");
+    private async Task<KavenegarSmsSendResult> RecordAsync(string recipient, string token, string companyName, string template, string? customerName)
     {
-        Sent.Add((recipient, token, companyName, template));
+        Sent.Add((recipient, token, companyName, template, customerName));
         Entered?.TrySetResult(true);
         if (Hold is not null) await Hold.Task;
         return Result;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -152,9 +153,35 @@ var fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyE
     .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
         pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
 Check(fields.Count == 8 && fields["receptor"] == "09120000000" && fields["token"] == "0001" &&
-    fields["token10"] == companyName && fields["template"] == "RepairAccept",
+    fields["token10"] == companyName && fields["token20"] == "" && fields["template"] == "RepairAccept",
     "Form decode preserves Persian, literal percent, ampersand, plus, equals and exactly one company value.");
 Check(!fields.ContainsKey("sender") && !fields.ContainsKey("message"), "Lookup does not pass ordinary SMS fields.");
+
+var customerName = "علی فارسی & + = درصد%20";
+lookupBefore = fake.Count;
+result = await gateway.SendLookupWithToken20Async("09120000000", "0007", companyName, customerName, "RepairDelivered");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fake.Count == lookupBefore + 1 &&
+    fake.Uri?.AbsolutePath.EndsWith("/verify/lookup.json") == true && fields.Count == 8 &&
+    fields["receptor"] == "09120000000" && fields["token"] == "0007" && fields["token10"] == companyName &&
+    fields["token20"] == customerName && fields["template"] == "RepairDelivered" &&
+    fields["token2"] == "" && fields["token3"] == "",
+    "Delivery lookup encodes and round-trips customer/company separately with no form injection or double encoding.");
+Check(!fields.ContainsKey("sender") && !fields.ContainsKey("message") &&
+    fake.RequestBody!.Contains("%2520", StringComparison.OrdinalIgnoreCase) &&
+    fake.RequestBody.Contains("%2B", StringComparison.OrdinalIgnoreCase) &&
+    fake.RequestBody.Contains("%26", StringComparison.OrdinalIgnoreCase),
+    "Delivery lookup escapes literal percent, plus and ampersand once and has no ordinary SMS fields.");
+lookupBefore = fake.Count;
+foreach (var invalidName in new string?[] { null, "", "   ", new string('ا', 101),
+    "یک دو سه چهار پنج شش هفت هشت نه ده", "نام_مشتری", "نام\nمشتری", "نام\tمشتری" })
+{
+    result = await gateway.SendLookupWithToken20Async("09120000000", "0007", "فروشگاه", invalidName!, "RepairDelivered");
+    Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+        "A missing or incompatible customer name must not reach the provider.");
+}
 lookupBefore = fake.Count;
 foreach (var (recipient, token, name, template) in new[] {
     ("09120000000,09120000001", "0001", "نام", "RepairAccept"),
@@ -169,6 +196,108 @@ foreach (var (recipient, token, name, template) in new[] {
     Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
         "Invalid lookup input must not reach the provider.");
 }
+// Work-order number uses two numeric tokens and literal slashes in the proposed template.
+// token3 carries the compact deadline, token20 the title; reply has no deadline or response body.
+fake.Body = Response();
+lookupBefore = fake.Count;
+var workDue = new PersianCalendar().ToDateTime(1405, 8, 28, 19, 0, 0, 0);
+var workDeadline = WorkOrderSmsPolicy.DeadlineToken(workDue) ?? throw new InvalidOperationException("Deadline could not be formatted.");
+var workTitle = "سرویس دستگاه & بررسی";
+Check(workDeadline == "۲۸آبان۱۴۰۵ساعت۱۹:۰۰", "The real deadline formatter produces the requested digital time.");
+Check(KavenegarSmsValidation.WorkOrderDeadlineToken(workDeadline) &&
+    KavenegarSmsValidation.WorkOrderDeadlineToken("۲۸آبان۱۴۰۵ساعت۱۹:۰۰") &&
+    KavenegarSmsValidation.WorkOrderDeadlineToken("۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۱ممیز۵ثانیهتکرارهفتگی۳نوبت") &&
+    KavenegarSmsValidation.WorkOrderDeadlineToken("19:00") &&
+    KavenegarSmsValidation.WorkOrderDeadlineToken(new string('ا', 95) + "19:00"),
+    "Only the work-order deadline permits one digital colon, including exact seconds, recurrence and the 100-character boundary.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "000123", companyName, workTitle, workDeadline, "WorkOrderRegistration");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fake.Count == lookupBefore + 1 &&
+    fields["token"] == "1405" && fields["token2"] == "000123" && fields["token3"] == workDeadline &&
+    fields["token10"] == companyName && fields["token20"] == workTitle &&
+    fields["template"] == "WorkOrderRegistration" && !fields.ContainsKey("message"),
+    "Work-order registration lookup round-trips the number, title, deadline and company without form injection.");
+var rawDeadline = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Single(part => part.StartsWith("token3=", StringComparison.Ordinal));
+Check(rawDeadline.Contains("%3A", StringComparison.OrdinalIgnoreCase) &&
+    !rawDeadline.Contains("%253A", StringComparison.OrdinalIgnoreCase) && !rawDeadline.Contains(':') &&
+    Uri.UnescapeDataString(rawDeadline["token3=".Length..]) == workDeadline,
+    "The one colon is percent-encoded exactly once and round-trips inside a single token3.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", companyName, workTitle, workDeadline, "WorkOrderReferral");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fields["template"] == "WorkOrderReferral" &&
+    fields["token3"] == workDeadline && fields["token10"] == companyName && fields["token20"] == workTitle,
+    "Work-order referral uses its distinct template with the same exact title, company and deadline.");
+var preciseDeadline = WorkOrderSmsPolicy.DeadlineToken(workDue.AddSeconds(1).AddTicks(5000000), 2, 3);
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", companyName, workTitle, preciseDeadline, "WorkOrderRegistration");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted &&
+    preciseDeadline == "۲۸آبان۱۴۰۵ساعت۱۹:۰۰و۰۱ممیز۵ثانیهتکرارهفتگی۳نوبت" && fields["token3"] == preciseDeadline,
+    "The actual formatter and SDK request preserve sub-minute precision and recurring-series details together.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", companyName, workTitle, null, "WorkOrderReply");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(fields["token3"] == "" && fields["token20"] == workTitle && fields["token2"] == "123" && !fields.ContainsKey("message"),
+    "Work-order reply includes title but no deadline or response text.");
+lookupBefore = fake.Count;
+foreach (var (year, serial, title, deadline, template) in new[] {
+    ("WO/1405", "123", workTitle, workDeadline, "WorkOrderRegistration"),
+    ("1405", "12/3", workTitle, workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "تاریخ\nناقص", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "۲۷آبان۱۴۰۵ساعت۱۴و۳۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "۲۷آبان۱۴۰۵ ساعت۱۴:۳۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "۲۷آبان۱۴۰۵ساعت۱۴:۳۰&token2=9", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۱۴%3A۳۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۱۴:۳۰:۰۱", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۱۴:۶۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۲۴:۰۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۹:۰۵", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "ساعت۱۹:۰۰۰", "WorkOrderRegistration"),
+    ("1405", "123", workTitle, new string('ا', 96) + "19:00", "WorkOrderRegistration"),
+    ("1405", "123", "عنوان_ناسازگار", workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", new string('ا',101), workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", workTitle, workDeadline, "") })
+{
+    result = await gateway.SendWorkOrderLookupAsync("09120000000", year, serial, "شرکت", title, deadline, template);
+    Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+        "Invalid work-order tokens and unconfigured template never reach the provider.");
+}
+
+// Simulated rejection only: the real account's handling of ':' is not established.
+fake.Body = Response(providerStatus: 431);
+lookupBefore = fake.Count;
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 431 && fake.Count == lookupBefore + 1,
+    "A simulated provider 431 is a definite failure with its code preserved and no retry.");
+fake.StatusCode = HttpStatusCode.BadRequest;
+fake.Body = Response(providerStatus: 431, messageStatus: null);
+lookupBefore = fake.Count;
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 431 && fake.Count == lookupBefore + 1,
+    "The simulated 431 is also preserved when the SDK receives an HTTP error.");
+// The reported 427 is simulated here; this says nothing about a live account or line.
+foreach (var httpStatus in new[] { HttpStatusCode.OK, HttpStatusCode.BadRequest })
+{
+    fake.StatusCode = httpStatus;
+    fake.Body = Response(providerStatus: 427, messageStatus: null);
+    lookupBefore = fake.Count;
+    result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+    Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 427 && fake.Count == lookupBefore + 1,
+        "A simulated work-order 427 retains the provider code and makes exactly one request.");
+}
+fake.StatusCode = HttpStatusCode.OK;
+lookupBefore = fake.Count;
+result = await gateway.SendLookupAsync("09120000000", "19:00", "فروشگاه", "RepairAccept");
+Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+    "Permitting the colon in the deadline does not weaken the repair number validation.");
+
 fake.Body = Response(providerStatus: 427);
 result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
 Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 427,
@@ -185,6 +314,12 @@ lookupBefore = fake.Count;
 result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
 Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
     "Default-off gateway prevents a lookup.");
+result = await gateway.SendLookupWithToken20Async("09120000000", "0007", "فروشگاه", "علی رضایی", "RepairDelivered");
+Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
+    "Default-off gateway also prevents the delivery lookup.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
+    "Default-off gateway also prevents the work-order lookup.");
 
 Console.WriteLine($"Kavenegar SDK gateway: {assertions} offline assertions passed.");
 

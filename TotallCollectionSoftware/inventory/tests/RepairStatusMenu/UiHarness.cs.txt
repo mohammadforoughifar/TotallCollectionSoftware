@@ -1,0 +1,387 @@
+// This template is completed by run_ui_contracts.py with the actual methods
+// copied from Repairs.razor. The services are fakes, not EF or a Razor renderer.
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using System.Threading.Tasks;
+using Inventory.Shared;
+using Inventory.Shared.Dtos;
+using Inventory.Client.Services;
+
+// <PRODUCTION_SHARED_AND_ACCESS>
+// <PRODUCTION_APPEARANCE>
+class AuthStub : IAuthState
+{
+    public bool ShopManage, ShopView = true, DirectCreate, DirectUpdate, DirectDelete;
+    public bool IsAdmin => false;
+    public bool HasDirect(string permission) => permission switch
+    {
+        "Shop.Repairs.Manage" => ShopManage,
+        "Shop.Repairs.View" => ShopView,
+        "Repairs.Create" => DirectCreate,
+        "Repairs.Update" => DirectUpdate,
+        "Repairs.Delete" => DirectDelete,
+        _ => false
+    };
+    public bool Has(string permission) => HasDirect(permission);
+    public bool HasModule(string module) => HasModuleDirect(module);
+    public bool HasModuleDirect(string module) => module == "Repairs" && (DirectCreate || DirectUpdate || DirectDelete);
+}
+class JSException : Exception { }
+class JsStub
+{
+    public bool ConfirmResult = true, ThrowOnRelease;
+    public Task InvokeVoidAsync(string name, params object[] args)
+    {
+        if (ThrowOnRelease) throw new JSException();
+        return Task.CompletedTask;
+    }
+    public Task<T> InvokeAsync<T>(string name, params object[] args) => Task.FromResult((T)(object)ConfirmResult);
+}
+class ToastStub
+{
+    public List<string> Successes = new(), Errors = new(), Warnings = new(), Infos = new();
+    public void Success(string text) => Successes.Add(text);
+    public void Error(string text) => Errors.Add(text);
+    public void Warning(string text) => Warnings.Add(text);
+    public void Info(string text) => Infos.Add(text);
+}
+class RepairServiceStub
+{
+    public int Calls, GetCalls, InvoiceCalls;
+    public Func<int, RepairStatus, Task<RepairOrderDto>> Handler = (id, status) =>
+        Task.FromResult(new RepairOrderDto { Id = id, Number = "RP-1", Status = status });
+    public Func<int, Task<RepairOrderDto>> GetHandler = id => Task.FromResult(new RepairOrderDto { Id = id, Number = "RP-1" });
+    public Func<int, RepairInvoiceRequest, Task<RepairOrderDto>> InvoiceHandler = (id, request) =>
+        Task.FromResult(new RepairOrderDto { Id = id, Number = "RP-1", Status = RepairStatus.Delivered, InvoiceTransactionId = 42 });
+    public Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status)
+    {
+        Calls++;
+        return Handler(id, status);
+    }
+    public Task<RepairOrderDto> GetRepairAsync(int id) { GetCalls++; return GetHandler(id); }
+    public Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request) { InvoiceCalls++; return InvoiceHandler(id, request); }
+}
+
+class StatusHarness
+{
+    private AuthStub Auth = new() { ShopManage = true };
+    private readonly JsStub JS = new();
+    private readonly ToastStub Toast = new();
+    private readonly RepairServiceStub RepairSvc = new();
+    private List<RepairOrderDto> items = new();
+    private List<Warehouse> warehouses = new() { new() { Id = 2 } };
+    private List<TrsAccount> bankAccounts = new();
+    private RepairOrderDto? invoicing;
+    private bool invoiceOpening, invoiceFocusPending, saving;
+    private string invWarehouseStr = "1", invCashAmountText = "";
+    private PaymentMethod invPaymentMethod;
+    private CashType invCashType;
+    private DateTime? invDueDate;
+    private int? invTrsAccountId;
+    private decimal invCashAmount;
+    private int reloads;
+
+    private Task Load() { reloads++; return Task.CompletedTask; }
+
+    // <PRODUCTION_FIELDS>
+    // <PRODUCTION_SMS_METHODS>
+    // <PRODUCTION_PERMISSION_AND_IDS>
+    // <PRODUCTION_MENU_METHODS>
+    // <PRODUCTION_INVOICE_METHODS>
+
+    private static int assertions;
+    private static void Check(bool ok, string name)
+    {
+        if (!ok) throw new Exception("FAIL: " + name);
+        assertions++;
+        Console.WriteLine("PASS: " + name);
+    }
+    private static RepairOrderDto Item(RepairStatus status = RepairStatus.Received) =>
+        new() { Id = 1, Number = "RP-1", Status = status };
+    private static StatusHarness For(RepairOrderDto r)
+    {
+        var harness = new StatusHarness();
+        harness.items.Add(r);
+        return harness;
+    }
+    private int Open(RepairOrderDto r, string view = "desktop")
+    {
+        ToggleStatusMenu(r, view);
+        return statusMenuVersion;
+    }
+
+    public static async Task RunAsync()
+    {
+        var r = Item();
+        var h = For(r);
+        Check(h.CanChangeStatus(r), "retail manage permission is sufficient without ERP");
+        h.Auth.ShopManage = false;
+        Check(!h.CanChangeStatus(r), "view-only user has a read-only badge");
+        h.Auth.DirectUpdate = h.Auth.DirectDelete = true;
+        Check(!h.CanChangeStatus(r), "legacy Update/Delete alone do not imply the status POST permission");
+        h.Auth.DirectCreate = true;
+        Check(h.CanChangeStatus(r), "existing direct POST permission remains supported");
+        h.Auth.DirectUpdate = h.Auth.DirectDelete = false;
+        h.Auth.ShopManage = true;
+        h.Auth.DirectCreate = false;
+        r.InvoiceTransactionId = 4;
+        Check(!h.CanChangeStatus(r), "invoiced repair is read-only");
+        r.InvoiceTransactionId = null;
+        r.WarrantyProcessed = true;
+        Check(!h.CanChangeStatus(r), "free warranty delivery is read-only");
+        r.WarrantyProcessed = false;
+        r.Status = RepairStatus.Delivered;
+        Check(!h.CanChangeStatus(r), "delivered status is read-only even on legacy records");
+        r.Status = (RepairStatus)99;
+        Check(!h.CanChangeStatus(r), "unknown historical status is not modified");
+        r.Status = RepairStatus.Received;
+
+        var oldVersion = h.Open(r);
+        Check(h.IsStatusMenuOpen(r, "desktop"), "badge opens the menu");
+        h.ToggleStatusMenu(r, "desktop");
+        Check(h.statusMenuRepair is null, "clicking the same badge closes the menu");
+        var nextVersion = h.Open(r, "mobile");
+        h.CloseStatusMenu(oldVersion);
+        Check(nextVersion == h.statusMenuVersion && h.IsStatusMenuOpen(r, "mobile"),
+            "late outside click cannot close a newer menu");
+        await h.SelectStatusAsync(r, RepairStatus.Received, nextVersion);
+        Check(h.RepairSvc.Calls == 0 && h.statusMenuRepair is null, "same status closes without a mutation");
+
+        var pending = new TaskCompletionSource<RepairOrderDto>();
+        h.RepairSvc.Handler = (id, status) => pending.Task;
+        var version = h.Open(r);
+        var first = h.SelectStatusAsync(r, RepairStatus.Ready, version);
+        Check(!first.IsCompleted && h.statusBusyId == r.Id && h.RepairSvc.Calls == 1,
+            "in-flight status request locks repeated clicks");
+        Check(r.Status == RepairStatus.Received && h.items[0].Status == RepairStatus.Received,
+            "the badge is not changed optimistically");
+        await h.SelectStatusAsync(r, RepairStatus.Ready, version);
+        Check(h.RepairSvc.Calls == 1, "duplicate click does not send a second status request");
+        var readyResponse = Item(RepairStatus.Ready);
+        readyResponse.SmsNotifications.Add(new RepairSmsNotificationDto { EventType = RepairSmsEventType.Ready, Status = RepairSmsStatus.Pending });
+        pending.SetResult(readyResponse);
+        await first;
+        Check(h.items[0].Status == RepairStatus.Ready && h.statusBusyId is null,
+            "successful server response updates the badge and unlocks it");
+        Check(h.Toast.Infos.Count == 1 && h.Toast.Infos[0].Contains("در صف ارسال") && h.reloads == 1,
+            "Ready shows the server's existing SMS result and reloads the list");
+
+        r = h.items[0];
+        h.RepairSvc.GetHandler = id => Task.FromResult(r);
+        version = h.Open(r);
+        await h.SelectStatusAsync(r, RepairStatus.Delivered, version);
+        Check(h.invoicing == r && h.RepairSvc.GetCalls == 1 && h.RepairSvc.Calls == 1 && r.Status == RepairStatus.Ready,
+            "delivery opens the existing workflow without a status request or optimistic check");
+        h.CloseInvoice();
+        Check(h.invoicing is null && h.RepairSvc.InvoiceCalls == 0 && h.items[0].Status == RepairStatus.Ready,
+            "closing the delivery dialog leaves the original status unchanged");
+
+        var failed = Item(RepairStatus.InProgress);
+        var failure = For(failed);
+        failure.RepairSvc.Handler = (id, status) => Task.FromException<RepairOrderDto>(new Exception("server error"));
+        await failure.SelectStatusAsync(failed, RepairStatus.Ready, failure.Open(failed));
+        Check(failure.items[0].Status == RepairStatus.InProgress && failure.Toast.Errors.Count == 1 &&
+              failure.reloads == 1 && failure.statusBusyId is null && failure.Toast.Infos.Count == 0,
+            "failed status change reports the error, refreshes, and never marks Ready");
+        var disabledSmsRepair = Item(RepairStatus.InProgress);
+        var disabledSms = For(disabledSmsRepair);
+        var disabledSmsResponse = Item(RepairStatus.Ready);
+        disabledSmsResponse.SmsNotifications.Add(new RepairSmsNotificationDto { EventType = RepairSmsEventType.Ready, Status = RepairSmsStatus.Disabled });
+        disabledSms.RepairSvc.Handler = (id, status) => Task.FromResult(disabledSmsResponse);
+        await disabledSms.SelectStatusAsync(disabledSmsRepair, RepairStatus.Ready, disabledSms.Open(disabledSmsRepair));
+        Check(disabledSms.items[0].Status == RepairStatus.Ready && disabledSms.Toast.Warnings.Count == 1 &&
+              disabledSms.Toast.Warnings[0].Contains("ارسال نشد"),
+            "disabled existing SMS policy is reported without blocking the Ready status");
+
+        var cancelled = Item();
+        var cancellation = For(cancelled);
+        cancellation.JS.ConfirmResult = false;
+        await cancellation.SelectStatusAsync(cancelled, RepairStatus.Cancelled, cancellation.Open(cancelled));
+        Check(cancellation.RepairSvc.Calls == 0 && cancelled.Status == RepairStatus.Received && cancellation.statusBusyId is null,
+            "declining cancellation does not change the repair");
+        cancellation.JS.ConfirmResult = true;
+        cancellation.JS.ThrowOnRelease = true;
+        await cancellation.SelectStatusAsync(cancelled, RepairStatus.Cancelled, cancellation.Open(cancelled));
+        Check(cancellation.RepairSvc.Calls == 1 && cancellation.items[0].Status == RepairStatus.Cancelled,
+            "confirmed cancellation is saved even if focus restoration fails");
+        var current = cancellation.items[0];
+        var cancelledVersion = cancellation.Open(current);
+        await cancellation.SelectStatusAsync(current, RepairStatus.Delivered, cancelledVersion);
+        Check(cancellation.RepairSvc.GetCalls == 0 && cancellation.RepairSvc.Calls == 1,
+            "cancelled repairs cannot start delivery until reopened");
+        await cancellation.SelectStatusAsync(current, RepairStatus.InProgress, cancelledVersion);
+        Check(cancellation.items[0].Status == RepairStatus.InProgress && cancellation.RepairSvc.Calls == 2,
+            "cancelled repair can be explicitly reopened through the status endpoint");
+
+        var delivering = Item(RepairStatus.Ready);
+        delivering.TotalPrice = 100;
+        delivering.Items.Add(new RepairItemDto { Price = 100 });
+        var delivery = For(delivering);
+        delivery.RepairSvc.GetHandler = id => Task.FromResult(delivering);
+        var opening = new TaskCompletionSource<RepairOrderDto>();
+        delivery.RepairSvc.GetHandler = id => opening.Task;
+        var openTask = delivery.OpenInvoice(delivering);
+        await delivery.OpenInvoice(delivering);
+        Check(delivery.RepairSvc.GetCalls == 1 && delivery.invoiceOpening,
+            "repeated clicks while fetching delivery details issue only one request");
+        opening.SetResult(delivering);
+        await openTask;
+        Check(delivery.invoicing == delivering && delivery.invoiceFocusPending,
+            "fresh repair opens the original delivery dialog and requests focus");
+        var invoicePending = new TaskCompletionSource<RepairOrderDto>();
+        RepairInvoiceRequest? capturedCash = null;
+        delivery.RepairSvc.InvoiceHandler = (id, request) => { capturedCash = request; return invoicePending.Task; };
+        var invoiceTask = delivery.DoInvoice();
+        await delivery.DoInvoice();
+        delivery.CloseInvoice();
+        Check(delivery.saving && delivery.invoicing == delivering && delivery.RepairSvc.InvoiceCalls == 1 &&
+              delivery.items[0].Status == RepairStatus.Ready,
+            "pending delivery cannot be duplicated or dismissed and does not show a green check");
+        Check(capturedCash is not null && capturedCash.WarehouseId == 2 && capturedCash.PaymentMethod == PaymentMethod.Cash &&
+              capturedCash.CashType == CashType.CardReader && capturedCash.CashAmount == 0,
+            "cash delivery forwards the existing warehouse and payment fields to InvoiceAsync");
+        invoicePending.SetResult(new RepairOrderDto { Id = delivering.Id, Number = delivering.Number,
+            Status = RepairStatus.Delivered, InvoiceTransactionId = 42, InvoiceNumber = "S-42",
+            SmsNotifications = new() { new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.Pending } } });
+        await invoiceTask;
+        Check(!delivery.saving && delivery.invoicing is null && delivery.items[0].Status == RepairStatus.Delivered &&
+              delivery.RepairSvc.Calls == 0 && delivery.reloads == 1,
+            "only successful InvoiceAsync changes the list to delivered and refreshes it");
+        Check(delivery.Toast.Infos.Count == 1 && delivery.Toast.Infos[0].Contains("پیامک تحویل") &&
+              delivery.Toast.Infos[0].Contains("در صف ارسال"), "successful delivery reports the queued SMS separately");
+
+        var creditRepair = Item(RepairStatus.Ready);
+        creditRepair.TotalPrice = 1000;
+        creditRepair.Items.Add(new RepairItemDto { Price = 1000 });
+        var credit = For(creditRepair);
+        credit.RepairSvc.GetHandler = id => Task.FromResult(creditRepair);
+        RepairInvoiceRequest? capturedCredit = null;
+        credit.RepairSvc.InvoiceHandler = (id, request) => { capturedCredit = request; return Task.FromResult(
+            new RepairOrderDto { Id = id, Number = "RP-1", Status = RepairStatus.Delivered, InvoiceTransactionId = 43 }); };
+        await credit.OpenInvoice(creditRepair);
+        credit.invPaymentMethod = PaymentMethod.Credit;
+        credit.invDueDate = DateTime.Today.AddDays(20);
+        credit.invCashAmount = 1000;
+        await credit.DoInvoice();
+        Check(credit.RepairSvc.InvoiceCalls == 0 && credit.items[0].Status == RepairStatus.Ready,
+            "invalid credit prepayment is rejected before delivery");
+        credit.invCashAmount = 400;
+        credit.invCashType = CashType.Cash;
+        credit.invTrsAccountId = 7;
+        await credit.DoInvoice();
+        Check(capturedCredit is not null && capturedCredit.PaymentMethod == PaymentMethod.Credit &&
+              capturedCredit.DueDate == credit.invDueDate && capturedCredit.CashAmount == 400 &&
+              capturedCredit.CashType == CashType.Cash && capturedCredit.TrsAccountId == 7,
+            "credit delivery forwards due date, prepayment and selected treasury account unchanged");
+
+        var failingRepair = Item(RepairStatus.Ready);
+        var failedInvoice = For(failingRepair);
+        failedInvoice.RepairSvc.GetHandler = id => Task.FromResult(failingRepair);
+        failedInvoice.RepairSvc.InvoiceHandler = (id, request) => Task.FromException<RepairOrderDto>(new Exception("invoice failed"));
+        await failedInvoice.OpenInvoice(failingRepair);
+        await failedInvoice.DoInvoice();
+        Check(failedInvoice.items[0].Status == RepairStatus.Ready && failedInvoice.invoicing == failingRepair &&
+              !failedInvoice.saving && failedInvoice.Toast.Errors.Count == 1 &&
+              failedInvoice.Toast.Infos.Count == 0 && failedInvoice.Toast.Warnings.Count == 0,
+            "failed invoice leaves the dialog and previous status intact and shows no SMS result");
+
+        var stale = For(Item(RepairStatus.Ready));
+        stale.RepairSvc.GetHandler = id => Task.FromResult(new RepairOrderDto { Id = id, Number = "RP-1", Status = RepairStatus.Delivered, WarrantyProcessed = true });
+        await stale.OpenInvoice(stale.items[0]);
+        Check(stale.invoicing is null && stale.items[0].Status == RepairStatus.Delivered && stale.Toast.Warnings.Count == 1 && stale.reloads == 1,
+            "a delivery already finalized elsewhere is refreshed rather than offered again");
+        var staleCancelled = For(Item(RepairStatus.Ready));
+        staleCancelled.RepairSvc.GetHandler = id => Task.FromResult(Item(RepairStatus.Cancelled));
+        await staleCancelled.OpenInvoice(staleCancelled.items[0]);
+        Check(staleCancelled.invoicing is null && staleCancelled.Toast.Warnings.Count == 1 && staleCancelled.reloads == 1,
+            "a concurrently cancelled repair is not offered for delivery");
+
+        var rejected = Item(RepairStatus.Ready);
+        rejected.Items.Add(new RepairItemDto { WarrantyDecision = WarrantyDecision.Rejected, Price = 0 });
+        var warranty = For(rejected);
+        warranty.RepairSvc.GetHandler = id => Task.FromResult(rejected);
+        await warranty.OpenInvoice(rejected);
+        await warranty.DoInvoice();
+        Check(warranty.RepairSvc.InvoiceCalls == 0 && warranty.Toast.Errors.Count == 1 && warranty.invoicing == rejected,
+            "performed rejected warranty work still needs a customer price");
+
+        var free = Item(RepairStatus.Ready);
+        free.Items.Add(new RepairItemDto { WarrantyDecision = WarrantyDecision.Accepted, Price = 0 });
+        var freeWarranty = For(free);
+        freeWarranty.RepairSvc.GetHandler = id => Task.FromResult(free);
+        freeWarranty.RepairSvc.InvoiceHandler = (id, request) => Task.FromResult(new RepairOrderDto {
+            Id = id, Number = "RP-1", Status = RepairStatus.Delivered, WarrantyProcessed = true,
+            SmsNotifications = new() { new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.InvalidCustomerName } } });
+        await freeWarranty.OpenInvoice(free);
+        await freeWarranty.DoInvoice();
+        Check(freeWarranty.RepairSvc.InvoiceCalls == 1 && freeWarranty.items[0].Status == RepairStatus.Delivered &&
+              freeWarranty.items[0].InvoiceTransactionId is null && freeWarranty.items[0].WarrantyProcessed,
+            "free warranty delivery still goes through InvoiceAsync and can finish without a sale invoice");
+        Check(freeWarranty.Toast.Successes.Count == 1 && freeWarranty.Toast.Warnings.Count == 1 &&
+              freeWarranty.Toast.Warnings[0].Contains("نام مشتری") && freeWarranty.Toast.Warnings[0].Contains("ارسال نشد"),
+            "an invalid SMS customer name warns without hiding successful warranty delivery");
+        var summaryRepair = new RepairOrderDto { SmsNotifications = new() {
+            new() { EventType = RepairSmsEventType.Registration, Status = RepairSmsStatus.InvalidMobile },
+            new() { EventType = RepairSmsEventType.Delivery, Status = RepairSmsStatus.InvalidCustomerName } } };
+        Check(SmsSummary(summaryRepair).Contains("تحویل") && SmsSummary(summaryRepair).Contains("نام مشتری") &&
+              SmsSummaryCss(summaryRepair) == "text-danger", "latest delivery warning is visible despite older SMS problems");
+
+        Check(SmsEventName(RepairSmsEventType.Registration) == "ثبت پذیرش" &&
+              SmsEventName(RepairSmsEventType.Ready) == "آماده تحویل" &&
+              SmsEventName(RepairSmsEventType.Delivery) == "تحویل", "details retain the repair SMS event names");
+        foreach (var status in new[] { RepairSmsStatus.Accepted, RepairSmsStatus.Delivered })
+        {
+            var sms = new RepairSmsNotificationDto { Status = status, ProviderCode = 200, ProviderMessageId = 123,
+                ProviderMessageStatus = status == RepairSmsStatus.Delivered ? 10 : 1 };
+            Check(SmsDetailSuccess(status) && !SmsDetailFailure(status) && SmsDetailStatus(status) == "موفق" &&
+                  SmsDetailCode(sms) is null, "accepted or delivered SMS shows success without provider codes or message IDs");
+        }
+        foreach (var status in new[] { RepairSmsStatus.Failed, RepairSmsStatus.InvalidMobile, RepairSmsStatus.Disabled,
+                     RepairSmsStatus.NotConfigured, RepairSmsStatus.Cancelled, RepairSmsStatus.ModuleDisabled,
+                     RepairSmsStatus.InvalidCompanyName, RepairSmsStatus.InvalidRepairNumber, RepairSmsStatus.InvalidCustomerName })
+            Check(!SmsDetailSuccess(status) && SmsDetailFailure(status) && SmsDetailStatus(status) == "ناموفق" &&
+                  SmsDetailCode(new RepairSmsNotificationDto { Status = status }) is null,
+                  "a definite failure without a provider code has only a short failure label");
+        Check(SmsDetailStatus(RepairSmsStatus.Pending) == "در صف ارسال" &&
+              SmsDetailStatus(RepairSmsStatus.Sending) == "در حال ارسال" &&
+              !SmsDetailFailure(RepairSmsStatus.Pending) && !SmsDetailFailure(RepairSmsStatus.Sending),
+            "queued and in-progress SMS are not misreported as failed");
+        Check(SmsDetailStatus(RepairSmsStatus.Unknown) == "نامشخص" && !SmsDetailFailure(RepairSmsStatus.Unknown) &&
+              SmsDetailStatus((RepairSmsStatus)999) == "نامشخص", "unknown results are not reported as definite failure");
+        foreach (var status in new[] { RepairSmsStatus.Pending, RepairSmsStatus.Sending, RepairSmsStatus.Unknown, (RepairSmsStatus)999 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = status, ProviderCode = 409, ProviderMessageStatus = 100 }) is null,
+                "only a definite failure displays a returned code");
+        foreach (var code in new[] { 403, 427, 501 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = code, ProviderMessageId = 123 }) == code,
+                "a provider rejection displays its actual error code, not the message ID");
+        Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 427, ProviderMessageStatus = 6 }) == 427,
+            "a provider rejection takes precedence over a separate message status");
+        foreach (var messageStatus in new[] { 6, 11, 13, 14 })
+            Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 200, ProviderMessageStatus = messageStatus }) == messageStatus,
+                "a failed message status is displayed instead of the successful API response code 200");
+        Check(SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderCode = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Unknown, ProviderCode = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderMessageStatus = 200 }) is null &&
+              SmsDetailCode(new RepairSmsNotificationDto { Status = RepairSmsStatus.Failed, ProviderMessageStatus = 6 }) == 6,
+            "a missing failure code is not invented and the success response 200 is never displayed");
+        var webJsonOptions = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var serialized = System.Text.Json.JsonSerializer.Serialize(new RepairSmsNotificationDto {
+            Status = RepairSmsStatus.Failed, ProviderCode = 200, ProviderMessageStatus = 6 }, webJsonOptions);
+        var roundTrip = System.Text.Json.JsonSerializer.Deserialize<RepairSmsNotificationDto>(serialized, webJsonOptions);
+        Check(roundTrip is not null && SmsDetailCode(roundTrip) == 6,
+            "the provider message status survives the normal web JSON round trip");
+
+        Console.WriteLine($"{assertions} status and delivery UI contract checks passed.");
+    }
+}
+// <SERVICE_HARNESS>
+class Program
+{
+    static async Task Main()
+    {
+        await StatusHarness.RunAsync();
+        await ServiceHarness.RunAsync();
+    }
+}

@@ -274,7 +274,7 @@ public class RepairService : IRepairService
                     .AsSplitQuery()
                     .FirstOrDefaultAsync(r => r.Id == dto.Id)
                     ?? throw new InvalidOperationException("پذیرش یافت نشد.");
-                if (entity.InvoiceTransactionId is > 0 || entity.WarrantyProcessed)
+                if (entity.Status == RepairStatus.Delivered || entity.InvoiceTransactionId is > 0 || entity.WarrantyProcessed)
                     throw new InvalidOperationException("این پذیرش تحویل یا فاکتور شده و قابل ویرایش نیست.");
                 if (entity.CompanyId != party.CompanyId)
                     throw new InvalidOperationException("مشتری و پذیرش باید متعلق به یک شرکت باشند.");
@@ -329,6 +329,9 @@ public class RepairService : IRepairService
             entity.Note = NullIfEmpty(dto.Note);
             entity.ReceivedAt = dto.ReceivedAt == default ? DateTime.Now : dto.ReceivedAt;
             if (dto.Id != 0) entity.Status = dto.Status;
+            // The edit form can also reopen a cancellation made from the list.
+            if (dto.Id != 0 && previousStatus == RepairStatus.Cancelled && entity.Status != RepairStatus.Cancelled)
+                entity.DeliveredAt = null;
 
             // بازنویسی ردیف‌های کار/قطعه
             entity.Items.Clear();
@@ -388,7 +391,7 @@ public class RepairService : IRepairService
             var r = await _db.RepairOrders.FirstOrDefaultAsync(x => x.Id == id);
             if (r is not null)
             {
-                if (r.InvoiceTransactionId is > 0 || r.WarrantyProcessed)
+                if (r.Status == RepairStatus.Delivered || r.InvoiceTransactionId is > 0 || r.WarrantyProcessed)
                     throw new InvalidOperationException("پذیرش تحویل یا فاکتور شده قابل حذف نیست.");
                 _db.RepairOrders.Remove(r);
                 await _db.SaveChangesAsync();
@@ -410,13 +413,14 @@ public class RepairService : IRepairService
         {
             var r = await _db.RepairOrders.FirstOrDefaultAsync(x => x.Id == id)
                 ?? throw new InvalidOperationException("پذیرش یافت نشد.");
-            if (r.InvoiceTransactionId is > 0 || r.WarrantyProcessed)
+            if (r.Status == RepairStatus.Delivered || r.InvoiceTransactionId is > 0 || r.WarrantyProcessed)
                 throw new InvalidOperationException("این پذیرش تحویل یا فاکتور شده و وضعیت آن قابل تغییر نیست.");
             if (status is not (RepairStatus.Received or RepairStatus.InProgress or RepairStatus.Ready or RepairStatus.Cancelled))
                 throw new InvalidOperationException("تحویل فقط از طریق صدور فاکتور یا تحویل گارانتی انجام می‌شود.");
             var previousStatus = r.Status;
             r.Status = status;
             if (status == RepairStatus.Cancelled) r.DeliveredAt = DateTime.Now;
+            else if (previousStatus == RepairStatus.Cancelled) r.DeliveredAt = null; // Reopened, not delivered.
             await _db.SaveChangesAsync();
             var smsEvent = RepairSmsPolicy.EventFor(false, previousStatus, r.Status);
             if (smsEvent.HasValue)
@@ -454,6 +458,10 @@ public class RepairService : IRepairService
                 await transaction.CommitAsync();
                 return previous;
             }
+            // Some historical deliveries lack the newer invoice/warranty markers.
+            // Do not turn them into a second financial or stock transaction.
+            if (r.Status == RepairStatus.Delivered)
+                throw new InvalidOperationException("این پذیرش قبلاً تحویل شده و قابل فاکتور شدن مجدد نیست.");
             if (r.Status == RepairStatus.Cancelled)
                 throw new InvalidOperationException("پذیرش انصرافی قابل فاکتور شدن نیست.");
             if (r.Items.Count == 0) throw new InvalidOperationException("حداقل یک ردیف کار/قطعه ثبت کنید.");
@@ -536,6 +544,11 @@ public class RepairService : IRepairService
             r.WarrantyProcessed = hasWarranty;
             r.Status = RepairStatus.Delivered;
             r.DeliveredAt = now;
+            await _db.SaveChangesAsync();
+            // Stage only a new successful delivery, in the same transaction as invoice/stock.
+            // Retries and historical deliveries returned or rejected above never create an event.
+            var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
+            await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, r, party, RepairSmsEventType.Delivery);
             await _db.SaveChangesAsync();
             var result = await ToDtoAsync(r);
             await transaction.CommitAsync();
@@ -662,7 +675,8 @@ public class RepairService : IRepairService
             .OrderBy(n => n.Id).Select(n => new RepairSmsNotificationDto
             {
                 EventType = n.EventType, Status = n.Status, ProviderMessageId = n.ProviderMessageId,
-                ProviderCode = n.ProviderCode, CreatedAtUtc = n.CreatedAtUtc, CompletedAtUtc = n.CompletedAtUtc
+                ProviderCode = n.ProviderCode, ProviderMessageStatus = n.ProviderMessageStatus,
+                CreatedAtUtc = n.CreatedAtUtc, CompletedAtUtc = n.CompletedAtUtc
             }).ToListAsync();
 
         return new RepairOrderDto

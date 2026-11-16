@@ -397,7 +397,10 @@
                                 <td class="text-start num">@r.TotalPrice.Money()</td>
                                 <td class="text-start num fw-700 @(r.Profit >= 0 ? "text-success" : "text-danger")">@r.Profit.Money()</td>
                                 <td>
-                                    @StatusBadge(r)
+                                    <RepairStatusBadge Status="@r.Status" Number="@r.Number" Editable="@CanChangeStatus(r)"
+                                        Disabled="@(statusBusyId.HasValue || invoiceOpening || saving)" Busy="@(statusBusyId == r.Id)"
+                                        AnchorId="@(StatusAnchorId(r.Id, "desktop"))" Open="@(IsStatusMenuOpen(r, "desktop"))"
+                                        MenuId="@StatusMenuId(statusMenuVersion)" OnClick="@(() => ToggleStatusMenu(r, "desktop"))" />
                                     @if (!string.IsNullOrEmpty(SmsSummary(r)))
                                     {
                                         <div class="fs-8 @SmsSummaryCss(r) mt-1"><i class="bi bi-chat-left-text"></i> @SmsSummary(r)</div>
@@ -418,7 +421,7 @@
                                     {
                                         <button class="btn btn-sm btn-light text-primary" title="مانده و تسویه" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin"></i></button>
                                     }
-                                    @if (r.InvoiceTransactionId is null && !r.WarrantyProcessed)
+                                    @if (r.InvoiceTransactionId is null && !r.WarrantyProcessed && r.Status != RepairStatus.Delivered)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
                                         <button class="btn btn-sm btn-light" title="تبدیل به فروش و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
@@ -435,13 +438,16 @@
             <div class="cards-mobile">
                 @foreach (var r in items)
                 {
-                    <div class="m-card @StatusCss(r)">
+                    <div class="m-card repair-card @StatusCss(r)">
                         <div class="m-card-head">
                             <div class="m-card-icon"><i class="bi @DeviceIcon(PrimaryDeviceType(r))"></i></div>
                             <div class="flex-grow-1 min-w-0">
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="doc-number fw-800 text-primary">@r.Number</span>
-                                    @StatusBadge(r)
+                                    <RepairStatusBadge Status="@r.Status" Number="@r.Number" Editable="@CanChangeStatus(r)"
+                                        Disabled="@(statusBusyId.HasValue || invoiceOpening || saving)" Busy="@(statusBusyId == r.Id)"
+                                        AnchorId="@(StatusAnchorId(r.Id, "mobile"))" Open="@(IsStatusMenuOpen(r, "mobile"))"
+                                        MenuId="@StatusMenuId(statusMenuVersion)" OnClick="@(() => ToggleStatusMenu(r, "mobile"))" />
                                 </div>
                                 <div class="fw-700 text-truncate">@DeviceSummary(r)</div>
                                 @if (DeviceCount(r) > 1)
@@ -481,7 +487,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="m-card-actions">
+                        <div class="m-card-actions repair-card-actions">
                             <button class="btn btn-light" @onclick="() => OpenView(r)"><i class="bi bi-eye"></i> جزئیات</button>
                             <button class="btn btn-light text-primary" @onclick="() => PrintDeliveryReceipt(r)">
                                 <i class="bi bi-card-checklist"></i> فیش تحویل
@@ -494,7 +500,7 @@
                                 @if (r.WarrantyProcessed) { <button class="btn btn-light text-primary" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin"></i> مانده / تسویه</button> }
                                 <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
                             }
-                            else if (!r.WarrantyProcessed)
+                            else if (!r.WarrantyProcessed && r.Status != RepairStatus.Delivered)
                             {
                                 <button class="btn btn-light text-primary" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil"></i> ویرایش</button>
                                 <button class="btn btn-light text-success" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt"></i> تبدیل به فروش</button>
@@ -516,6 +522,42 @@
         }
     </div>
 </div>
+
+@* منو بیرون از جدول و کارت‌ها رندر می‌شود تا overflow جدول یا کارت موبایل آن را نبرد. *@
+@if (statusMenuRepair is not null)
+{
+    var menuRepair = statusMenuRepair;
+    var menuVersion = statusMenuVersion;
+    <div @key="menuVersion" id="@StatusMenuId(menuVersion)" class="repair-status-menu" role="menu"
+         aria-label="@($"تغییر وضعیت پذیرش {menuRepair.Number}")" style="visibility:hidden">
+        <button type="button" hidden tabindex="-1" aria-hidden="true" data-repair-status-dismiss
+                @onclick="() => CloseStatusMenu(menuVersion)"></button>
+        <div class="repair-status-menu-head" role="presentation">تغییر وضعیت <span class="num" dir="ltr">@menuRepair.Number</span></div>
+        @foreach (var candidate in StatusChoices)
+        {
+            var choice = candidate;
+            @if (choice == RepairStatus.Delivered)
+            {
+                <button type="button" class="repair-status-option repair-status-delivery" role="menuitem" tabindex="-1"
+                        disabled="@(menuRepair.Status == RepairStatus.Cancelled)"
+                        title="@(menuRepair.Status == RepairStatus.Cancelled ? "برای تحویل، ابتدا وضعیت انصراف را تغییر دهید." : "باز کردن فرم تسویه و تحویل")"
+                        @onclick="() => SelectStatusAsync(menuRepair, choice, menuVersion)">
+                    <i class="bi bi-box-arrow-up" aria-hidden="true"></i><span>تحویل دستگاه و تسویه</span>
+                    <i class="bi bi-chevron-left repair-status-option-end" aria-hidden="true"></i>
+                </button>
+            }
+            else
+            {
+                <button type="button" class="repair-status-option @(menuRepair.Status == choice ? "is-current" : "")"
+                        role="menuitemradio" aria-checked="@(menuRepair.Status == choice ? "true" : "false")" tabindex="-1"
+                        @onclick="() => SelectStatusAsync(menuRepair, choice, menuVersion)">
+                    <i class="bi @RepairStatusAppearance.Icon(choice) @RepairStatusAppearance.IconCss(choice)" aria-hidden="true"></i><span>@RepairStatusAppearance.Text(choice)</span>
+                    @if (menuRepair.Status == choice) { <i class="bi bi-check2 repair-status-option-end" aria-hidden="true"></i> }
+                </button>
+            }
+        }
+    </div>
+}
 
 @* ---------------- فرم پذیرش ---------------- *@
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش جدید" : $"ویرایش پذیرش {form.Number}")" Size="modal-xl" OnClose="CloseForm">
@@ -775,7 +817,7 @@
                 </div>
                 <div class="repair-view-shared-item"><div class="fs-8 text-muted">ورود به مجموعه</div><div class="fw-500 num">@viewing.ReceivedAt.ToFaDateTime()</div></div>
                 <div class="repair-view-shared-item"><div class="fs-8 text-muted">خروج از مجموعه</div><div class="fw-500 num">@(viewing.DeliveredAt.HasValue ? viewing.DeliveredAt.Value.ToFaDateTime() : "هنوز در مجموعه است")</div></div>
-                <div class="repair-view-shared-item"><div class="fs-8 text-muted">وضعیت</div><div>@StatusBadge(viewing)</div></div>
+                <div class="repair-view-shared-item"><div class="fs-8 text-muted">وضعیت</div><div><RepairStatusBadge Status="@viewing.Status" Number="@viewing.Number" /></div></div>
                 @if (!string.IsNullOrWhiteSpace(viewing.InvoiceNumber))
                 {
                     <div class="repair-view-shared-item"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
@@ -790,22 +832,31 @@
                 </div>
                 @if (viewing.SmsNotifications is not { Count: > 0 })
                 {
-                    <div class="fs-8 text-muted">رویداد پیامکی ثبت نشده است؛ پیام ثبت پذیرش برای پذیرش‌های قدیمی به گذشته ارسال نمی‌شود.</div>
+                    <div class="fs-8 text-muted">پیامکی ثبت نشده است.</div>
                 }
                 else
                 {
                     @foreach (var sms in viewing.SmsNotifications)
                     {
-                        <div class="d-flex flex-wrap justify-content-between gap-2 py-1 fs-8">
+                        var returnedCode = SmsDetailCode(sms);
+                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1 fs-8">
                             <span>@SmsEventName(sms.EventType)</span>
-                            <span class="fw-700">@SmsStatusText(sms.Status)</span>
+                            <span class="fw-700 @(SmsDetailSuccess(sms.Status) ? "text-success" : SmsDetailFailure(sms.Status) ? "text-danger" : "text-muted")">
+                                @if (SmsDetailSuccess(sms.Status))
+                                {
+                                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">@SmsDetailStatus(sms.Status)</span>
+                                }
+                                else
+                                {
+                                    @SmsDetailStatus(sms.Status)
+                                    @if (returnedCode.HasValue)
+                                    {
+                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>
+                                    }
+                                }
+                            </span>
                         </div>
-                        @if (sms.ProviderMessageId.HasValue || sms.ProviderCode.HasValue)
-                        {
-                            <div class="fs-8 text-muted">شناسه کاوه‌نگار: @(sms.ProviderMessageId?.ToString() ?? "—") · کد پاسخ: @(sms.ProviderCode?.ToString() ?? "—")</div>
-                        }
                     }
-                    <div class="fs-8 text-muted mt-2">پذیرش توسط درگاه به معنی تحویل نهایی نیست. نتیجهٔ نامشخص خودکار دوباره ارسال نمی‌شود.</div>
                 }
             </section>
             <div class="d-flex justify-content-end gap-2 mb-3">
@@ -818,9 +869,9 @@
                         <i class="bi bi-receipt"></i> چاپ فاکتور فروش
                     </button>
                 }
-                else if (!viewing.WarrantyProcessed)
+                else if (!viewing.WarrantyProcessed && viewing.Status != RepairStatus.Delivered)
                 {
-                    <button class="btn btn-sm btn-success" @onclick="() => { var v = viewing; viewing = null; OpenInvoice(v!); }">
+                    <button class="btn btn-sm btn-success" @onclick="async () => { var v = viewing; viewing = null; if (v is not null) await OpenInvoice(v); }">
                         <i class="bi bi-cash-coin"></i> تبدیل به فروش و تحویل
                     </button>
                 }
@@ -909,7 +960,7 @@
 </Modal>
 
 @* ---------------- تبدیل سند تعمیر به فروش ---------------- *@
-<Modal Visible="invoicing is not null" Title="@($"تبدیل به فروش و تحویل — پذیرش {invoicing?.Number}")" Size="modal-lg" OnClose="() => invoicing = null">
+<Modal Visible="invoicing is not null" Title="@($"تبدیل به فروش و تحویل — پذیرش {invoicing?.Number}")" Size="modal-lg" OnClose="CloseInvoice">
     <ChildContent>
         @if (invoicing is not null)
         {
@@ -930,7 +981,7 @@
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label class="form-label">انبار برداشت قطعات <span class="text-danger">*</span></label>
-                    <select class="form-select" @bind="invWarehouseStr">
+                    <select class="form-select" @bind="invWarehouseStr" @ref="invoiceWarehouseControl">
                         @foreach (var w in warehouses)
                         {
                             <option value="@w.Id">@w.Name</option>
@@ -1050,7 +1101,7 @@
         }
     </ChildContent>
     <Footer>
-        <button class="btn btn-light" @onclick="() => invoicing = null">انصراف (Esc)</button>
+        <button class="btn btn-light" @onclick="CloseInvoice" disabled="@saving">انصراف (Esc)</button>
         <button class="btn btn-success" data-hotkey="f1" @onclick="DoInvoice" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             <i class="bi bi-receipt"></i> @(invoicing is not null && IsFreeWarranty(invoicing) ? "تحویل بدون مبلغ" : $"صدور فاکتور فروش ({(invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه")})")
@@ -1197,9 +1248,21 @@ else
     private string techIdStr = "0", statusStr = "0", invWarehouseStr = "1";
     private List<string> deviceQuoteTexts = new();
     private List<string> itemQty = new(), itemCost = new(), itemPrice = new();
-    private ElementReference repairFormRoot;
-    private bool repairFormFocusPending;
+    private ElementReference repairFormRoot, invoiceWarehouseControl;
+    private bool repairFormFocusPending, invoiceFocusPending, invoiceOpening;
     private int? pendingDeviceFocusIndex;
+
+    private static readonly RepairStatus[] StatusChoices =
+    {
+        RepairStatus.Received, RepairStatus.InProgress, RepairStatus.Ready,
+        RepairStatus.Delivered, RepairStatus.Cancelled
+    };
+    private readonly string statusControlKey = Guid.NewGuid().ToString("N");
+    private RepairOrderDto? statusMenuRepair;
+    private string statusMenuAnchorId = "";
+    private int statusMenuVersion;
+    private int? statusBusyId;
+    private bool statusMenuNeedsPlacement;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1304,6 +1367,31 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (statusMenuNeedsPlacement && statusMenuRepair is not null)
+        {
+            var version = statusMenuVersion;
+            var anchorId = statusMenuAnchorId;
+            statusMenuNeedsPlacement = false;
+            var placed = false;
+            try { placed = await JS.InvokeAsync<bool>("repairStatusMenu.open", anchorId, StatusMenuId(version)); }
+            catch (JSException)
+            {
+                if (version == statusMenuVersion) Toast.Error("منوی وضعیت باز نشد؛ دوباره تلاش کنید.");
+            }
+            if (!placed && version == statusMenuVersion && statusMenuRepair is not null)
+            {
+                CloseStatusMenu(version);
+                StateHasChanged();
+            }
+        }
+
+        if (invoiceFocusPending && invoicing is not null)
+        {
+            invoiceFocusPending = false;
+            try { await invoiceWarehouseControl.FocusAsync(); }
+            catch (JSException) { /* The dialog may have been closed meanwhile. */ }
+        }
+
         if (!showForm) return;
 
         if (repairFormFocusPending)
@@ -1480,6 +1568,7 @@ else
 
     private async Task Load()
     {
+        if (statusMenuRepair is not null) CloseStatusMenu(statusMenuVersion);
         var version = ++loadVersion;
         loading = true;
         try
@@ -1521,6 +1610,7 @@ else
     {
         ++loadVersion;
         searchCts?.Cancel();
+        if (statusMenuRepair is not null) CloseStatusMenu(statusMenuVersion);
     }
 
     private async Task OnStatusFilter(ChangeEventArgs e)
@@ -1553,8 +1643,37 @@ else
     {
         RepairSmsEventType.Registration => "ثبت پذیرش",
         RepairSmsEventType.Ready => "آماده تحویل",
+        RepairSmsEventType.Delivery => "تحویل",
         _ => "رویداد نامشخص"
     };
+
+    // Detail rows intentionally stay compact; the fuller descriptions remain in the toast/list.
+    private static bool SmsDetailSuccess(RepairSmsStatus status) =>
+        status is RepairSmsStatus.Accepted or RepairSmsStatus.Delivered;
+
+    private static bool SmsDetailFailure(RepairSmsStatus status) => status is
+        RepairSmsStatus.Failed or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or
+        RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.ModuleDisabled or
+        RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName;
+
+    private static string SmsDetailStatus(RepairSmsStatus status) => status switch
+    {
+        RepairSmsStatus.Accepted or RepairSmsStatus.Delivered => "موفق",
+        RepairSmsStatus.Pending => "در صف ارسال",
+        RepairSmsStatus.Sending => "در حال ارسال",
+        _ when SmsDetailFailure(status) => "ناموفق",
+        _ => "نامشخص"
+    };
+
+    private static int? SmsDetailCode(RepairSmsNotificationDto sms)
+    {
+        if (!SmsDetailFailure(sms.Status)) return null;
+        // A successful API response (200) can contain a failed message status.
+        // Show the actual failure status instead of displaying 200 as the error.
+        if (sms.ProviderCode is int code && code != 200) return code;
+        return sms.Status == RepairSmsStatus.Failed && sms.ProviderMessageStatus is int messageStatus && messageStatus != 200
+            ? messageStatus : null;
+    }
 
     private static string SmsStatusText(RepairSmsStatus status) => status switch
     {
@@ -1570,16 +1689,28 @@ else
         RepairSmsStatus.ModuleDisabled => "مجوز پیامک تعمیرات برای این رویداد غیرفعال بود یا لغو شد؛ ارسال نشد",
         RepairSmsStatus.InvalidCompanyName => "نام شرکت با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
         RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش با الگوی پیامک سازگار نیست؛ ارسال نشد",
+        RepairSmsStatus.InvalidCustomerName => "نام مشتری ثبت نشده یا با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
         RepairSmsStatus.Cancelled => "اطلاعات مشتری یا وضعیت پذیرش تغییر کرده؛ ارسال نشد",
         _ => "وضعیت نامشخص"
     };
 
+    private void NotifyRepairSms(RepairOrderDto repair, RepairSmsEventType eventType)
+    {
+        var sms = repair.SmsNotifications?.FirstOrDefault(x => x.EventType == eventType);
+        if (sms is null) return;
+        var message = $"پیامک {SmsEventName(eventType)}: {SmsStatusText(sms.Status)}. جزئیات در صفحهٔ پذیرش است.";
+        if (sms.Status is RepairSmsStatus.Pending or RepairSmsStatus.Sending or RepairSmsStatus.Accepted or RepairSmsStatus.Delivered)
+            Toast.Info(message);
+        else Toast.Warning(message);
+    }
+
     private static string SmsSummary(RepairOrderDto r)
     {
         if (r.SmsNotifications is not { Count: > 0 }) return "";
-        var problem = r.SmsNotifications.FirstOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
+        var problem = r.SmsNotifications.LastOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
             or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled
-            or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber);
+            or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber
+            or RepairSmsStatus.InvalidCustomerName);
         var current = problem ?? r.SmsNotifications[^1];
         var shortStatus = current.Status switch
         {
@@ -1595,6 +1726,7 @@ else
             RepairSmsStatus.ModuleDisabled => "مجوز رویداد غیرفعال یا لغوشده",
             RepairSmsStatus.InvalidCompanyName => "نام شرکت نامعتبر برای الگو",
             RepairSmsStatus.InvalidRepairNumber => "شماره پذیرش ناسازگار با الگو",
+            RepairSmsStatus.InvalidCustomerName => "نام مشتری نامعتبر برای الگو",
             RepairSmsStatus.Cancelled => "ارسال لغو شد",
             _ => "نامشخص"
         };
@@ -1604,7 +1736,7 @@ else
     private static string SmsSummaryCss(RepairOrderDto r) =>
         r.SmsNotifications?.Any(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown or RepairSmsStatus.InvalidMobile
             or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.InvalidCompanyName
-            or RepairSmsStatus.InvalidRepairNumber) == true ? "text-danger" : "text-muted";
+            or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName) == true ? "text-danger" : "text-muted";
 
     private static string PartyTel(RepairOrderDto r)
         => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!
@@ -1658,14 +1790,94 @@ else
         _ => "bi-tools"
     };
 
-    private RenderFragment StatusBadge(RepairOrderDto r) => r.Status switch
+    // Retail-only users need only Shop.Repairs.Manage. The existing POST endpoint
+    // also permits the legacy direct Repairs.Create permission; the server remains authoritative.
+    private bool CanChangeStatus(RepairOrderDto r) =>
+        (ShopAccess.CanManage(Auth, "Repairs") || Auth.HasDirect("Repairs.Create")) &&
+        r.Id > 0 && r.InvoiceTransactionId is not > 0 && !r.WarrantyProcessed &&
+        r.Status is (RepairStatus.Received or RepairStatus.InProgress or RepairStatus.Ready or RepairStatus.Cancelled);
+
+    private string StatusAnchorId(int id, string view) => $"repair-status-{statusControlKey}-{view}-{id}";
+    private string StatusMenuId(int version) => $"repair-status-menu-{statusControlKey}-{version}";
+    private bool IsStatusMenuOpen(RepairOrderDto r, string view) =>
+        statusMenuRepair?.Id == r.Id && statusMenuAnchorId == StatusAnchorId(r.Id, view);
+
+    private void ToggleStatusMenu(RepairOrderDto r, string view)
     {
-        RepairStatus.Received => @<span class="badge badge-soft-primary">پذیرش شده</span>,
-        RepairStatus.InProgress => @<span class="badge badge-soft-warning">در حال تعمیر</span>,
-        RepairStatus.Ready => @<span class="badge badge-soft-success">آماده تحویل</span>,
-        RepairStatus.Delivered => @<span class="badge badge-soft-muted"><i class="bi bi-check2-all"></i> تحویل شده</span>,
-        _ => @<span class="badge badge-soft-danger">انصراف</span>
-    };
+        if (!CanChangeStatus(r) || statusBusyId.HasValue || invoiceOpening || saving) return;
+        var anchorId = StatusAnchorId(r.Id, view);
+        if (statusMenuRepair is not null && statusMenuAnchorId == anchorId)
+        {
+            CloseStatusMenu(statusMenuVersion);
+            return;
+        }
+        statusMenuRepair = r;
+        statusMenuAnchorId = anchorId;
+        ++statusMenuVersion;
+        statusMenuNeedsPlacement = true;
+    }
+
+    private void CloseStatusMenu(int version)
+    {
+        if (statusMenuRepair is null || version != statusMenuVersion) return;
+        statusMenuRepair = null;
+        statusMenuAnchorId = "";
+        statusMenuNeedsPlacement = false;
+        ++statusMenuVersion; // Ignore a delayed outside-click event from an older menu.
+    }
+
+    private async Task ReleaseStatusMenuAsync(int version, bool restoreFocus)
+    {
+        var menuId = StatusMenuId(version);
+        CloseStatusMenu(version);
+        try { await JS.InvokeVoidAsync("repairStatusMenu.release", menuId, restoreFocus); }
+        catch (JSException) { /* The menu or page may already have gone away. */ }
+    }
+
+    private void ReplaceRepairInList(RepairOrderDto updated)
+    {
+        var index = items.FindIndex(x => x.Id == updated.Id);
+        if (index >= 0) items[index] = updated;
+    }
+
+    private async Task SelectStatusAsync(RepairOrderDto r, RepairStatus choice, int version)
+    {
+        if (version != statusMenuVersion || statusMenuRepair?.Id != r.Id ||
+            statusBusyId.HasValue || !CanChangeStatus(r)) return;
+        if (!StatusChoices.Contains(choice) || (choice == RepairStatus.Delivered && r.Status == RepairStatus.Cancelled)) return;
+        if (choice == r.Status)
+        {
+            await ReleaseStatusMenuAsync(version, restoreFocus: true);
+            return;
+        }
+
+        statusBusyId = r.Id; // Set before any await to prevent repeated submissions.
+        try
+        {
+            await ReleaseStatusMenuAsync(version, restoreFocus: true);
+            if (choice == RepairStatus.Delivered)
+            {
+                // Delivery is never a direct status change: use the existing invoice/warranty workflow.
+                await OpenInvoice(r);
+                return;
+            }
+            if (choice == RepairStatus.Cancelled &&
+                !await JS.InvokeAsync<bool>("confirm", $"وضعیت پذیرش «{r.Number}» به انصراف تغییر کند؟")) return;
+
+            var saved = await RepairSvc.SetStatusAsync(r.Id, choice);
+            ReplaceRepairInList(saved); // Only the server response can change the displayed status.
+            Toast.Success($"وضعیت پذیرش به «{RepairStatusAppearance.Text(saved.Status)}» تغییر کرد.");
+            if (choice == RepairStatus.Ready && saved.Status == RepairStatus.Ready)
+                NotifyRepairSms(saved, RepairSmsEventType.Ready);
+            await Load(); // Apply the current filter and pagination to the new status.
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            await Load(); // Another user may have finalized or removed this acceptance.
+        }
+        finally { statusBusyId = null; }
+    }
 
     // ---------------- فرم ----------------
 
@@ -1693,7 +1905,15 @@ else
         try
         {
             ResetProductOptions();
-            form = await RepairSvc.GetRepairAsync(r.Id);
+            var current = await RepairSvc.GetRepairAsync(r.Id);
+            if (current.Status == RepairStatus.Delivered || current.InvoiceTransactionId is > 0 || current.WarrantyProcessed)
+            {
+                ReplaceRepairInList(current);
+                Toast.Warning("این پذیرش قبلاً تحویل یا فاکتور شده و قابل ویرایش نیست.");
+                await Load();
+                return;
+            }
+            form = current;
             EnsureFormDevices();
             receivedAt = form.ReceivedAt;
             formOriginalStatus = form.Status;
@@ -1927,16 +2147,7 @@ else
             Toast.Success(isNew ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
             var eventType = isNew ? RepairSmsEventType.Registration : RepairSmsEventType.Ready;
             if (isNew || (formOriginalStatus != RepairStatus.Ready && saved.Status == RepairStatus.Ready))
-            {
-                var sms = saved.SmsNotifications?.FirstOrDefault(x => x.EventType == eventType);
-                if (sms is not null)
-                {
-                    var message = $"پیامک {SmsEventName(eventType)}: {SmsStatusText(sms.Status)}. جزئیات در صفحهٔ پذیرش است.";
-                    if (sms.Status is RepairSmsStatus.Pending or RepairSmsStatus.Sending or RepairSmsStatus.Accepted or RepairSmsStatus.Delivered)
-                        Toast.Info(message);
-                    else Toast.Warning(message);
-                }
-            }
+                NotifyRepairSms(saved, eventType);
             await CloseForm();
             await LoadLookupsAsync();
             await Load();
@@ -1985,9 +2196,28 @@ else
 
     private async Task OpenInvoice(RepairOrderDto r)
     {
+        if (invoiceOpening || saving || invoicing is not null) return;
+        invoiceOpening = true;
         try
         {
-            invoicing = await RepairSvc.GetRepairAsync(r.Id);
+            var current = await RepairSvc.GetRepairAsync(r.Id);
+            // A list row may be stale if someone else delivered or cancelled it.
+            if (current.Status == RepairStatus.Delivered || current.InvoiceTransactionId is > 0 || current.WarrantyProcessed)
+            {
+                ReplaceRepairInList(current);
+                Toast.Warning("این پذیرش قبلاً تحویل یا فاکتور شده است.");
+                await Load();
+                return;
+            }
+            if (current.Status == RepairStatus.Cancelled)
+            {
+                ReplaceRepairInList(current);
+                Toast.Warning("برای تحویل، ابتدا وضعیت انصراف را تغییر دهید.");
+                await Load();
+                return;
+            }
+
+            invoicing = current;
             invWarehouseStr = (warehouses.FirstOrDefault()?.Id ?? 1).ToString();
             invPaymentMethod = invoicing.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified) ? PaymentMethod.Credit : PaymentMethod.Cash;
             invCashType = CashType.CardReader;
@@ -1996,8 +2226,17 @@ else
             invCashAmountText = "";
             var defAcc = bankAccounts.FirstOrDefault(a => a.IsDefault) ?? bankAccounts.FirstOrDefault(a => a.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank);
             invTrsAccountId = defAcc?.Id;
+            invoiceFocusPending = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { invoiceOpening = false; }
+    }
+
+    private void CloseInvoice()
+    {
+        if (saving) return;
+        invoicing = null;
+        invoiceFocusPending = false;
     }
 
     private async Task DoInvoice()
@@ -2034,10 +2273,12 @@ else
             };
 
             var res = await RepairSvc.InvoiceAsync(invoicing.Id, req);
+            ReplaceRepairInList(res); // Show delivery only after the invoice/warranty transaction succeeds.
             var payLabel = invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه";
             Toast.Success(res.InvoiceTransactionId is > 0
                 ? $"فاکتور {res.InvoiceNumber} به صورت {payLabel} صادر و دستگاه تحویل شد."
                 : "پذیرش بدون مبلغ و با ثبت قطعات مصرف‌شده تحویل شد.");
+            NotifyRepairSms(res, RepairSmsEventType.Delivery);
             invoicing = null;
             await Load();
         }

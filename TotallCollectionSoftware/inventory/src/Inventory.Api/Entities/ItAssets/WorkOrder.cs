@@ -230,6 +230,11 @@ public class WorkOrderLog
     [MaxLength(4000)]
     public string? Text { get; set; }
 
+    // Hashes only, scoped to the acting user/company and operation. PayloadFingerprint
+    // binds a retry to its original content without storing that content in the SMS queue.
+    [MaxLength(64)] public string? RequestKey { get; set; }
+    [MaxLength(64)] public string? PayloadFingerprint { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
 

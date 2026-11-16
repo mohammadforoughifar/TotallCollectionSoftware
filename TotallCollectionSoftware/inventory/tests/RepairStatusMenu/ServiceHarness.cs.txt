@@ -1,0 +1,163 @@
+// Status-service contract with a deliberately small, in-memory transaction shim.
+// This executes the production method and event policy, but does NOT emulate EF,
+// SQL isolation, database constraints, tenant filters or the actual SMS queue.
+class RepairEntity
+{
+    public int Id, PartyId, CompanyId;
+    public RepairStatus Status;
+    public DateTime? DeliveredAt;
+    public int? InvoiceTransactionId;
+    public bool WarrantyProcessed;
+}
+class RepairParty { public int Id, CompanyId; }
+static class FakeAsyncQueries
+{
+    public static Task<T?> FirstOrDefaultAsync<T>(this IEnumerable<T> source, Func<T, bool> predicate) where T : class
+        => Task.FromResult(source.FirstOrDefault(predicate));
+}
+class FakeChangeTracker
+{
+    private readonly FakeRepairDb db;
+    public FakeChangeTracker(FakeRepairDb db) { this.db = db; }
+    public void Clear() => db.Log.Add("clear-tracking");
+}
+class FakeRepairDb
+{
+    public List<RepairEntity> RepairOrders = new();
+    public List<RepairParty> Parties = new();
+    public List<string> Log = new();
+    public FakeDatabase Database;
+    public FakeChangeTracker ChangeTracker;
+    public bool FailStage;
+    public FakeRepairDb() { Database = new(this); ChangeTracker = new(this); }
+    public Task<int> SaveChangesAsync() { Log.Add("save"); return Task.FromResult(1); }
+}
+class FakeDatabase
+{
+    private readonly FakeRepairDb db;
+    public FakeTransaction? CurrentTransaction;
+    public FakeDatabase(FakeRepairDb db) { this.db = db; }
+    public Task<FakeTransaction> BeginTransactionAsync(System.Data.IsolationLevel isolation)
+    {
+        db.Log.Add("begin:" + isolation);
+        CurrentTransaction = new(db, this);
+        return Task.FromResult(CurrentTransaction);
+    }
+}
+class FakeTransaction : IAsyncDisposable
+{
+    private readonly FakeRepairDb db;
+    private readonly FakeDatabase database;
+    private readonly List<(RepairEntity entity, RepairStatus status, DateTime? exit)> previous;
+    public FakeTransaction(FakeRepairDb db, FakeDatabase database)
+    {
+        this.db = db;
+        this.database = database;
+        previous = db.RepairOrders.Select(r => (r, r.Status, r.DeliveredAt)).ToList();
+    }
+    public Task CommitAsync() { db.Log.Add("commit"); database.CurrentTransaction = null; return Task.CompletedTask; }
+    public Task RollbackAsync()
+    {
+        db.Log.Add("rollback");
+        foreach (var (entity, status, exit) in previous) { entity.Status = status; entity.DeliveredAt = exit; }
+        database.CurrentTransaction = null;
+        return Task.CompletedTask;
+    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+static class RepairSmsPolicy
+{
+    // <PRODUCTION_EVENT_POLICY>
+}
+static class RepairSmsQueue
+{
+    public static Task StageAsync(FakeRepairDb db, object gateway, object options, RepairEntity repair,
+        RepairParty? party, RepairSmsEventType kind)
+    {
+        db.Log.Add("stage:" + kind);
+        if (db.FailStage) throw new InvalidOperationException("fake staging failure");
+        return Task.CompletedTask;
+    }
+}
+class ServiceHarness
+{
+    private readonly FakeRepairDb _db = new();
+    private readonly object _smsGateway = new(), _smsOptions = new();
+
+    private Task<RepairOrderDto?> GetRepairAsync(int id)
+    {
+        _db.Log.Add("read-result");
+        var r = _db.RepairOrders.FirstOrDefault(x => x.Id == id);
+        return Task.FromResult(r is null ? null : new RepairOrderDto { Id = r.Id, Status = r.Status,
+            DeliveredAt = r.DeliveredAt, InvoiceTransactionId = r.InvoiceTransactionId, WarrantyProcessed = r.WarrantyProcessed });
+    }
+    // <PRODUCTION_SERVICE_STATUS>
+
+    private static int assertions;
+    private static void Check(bool ok, string name)
+    {
+        if (!ok) throw new Exception("FAIL: " + name);
+        assertions++;
+        Console.WriteLine("PASS: " + name);
+    }
+    private static ServiceHarness For(RepairEntity r)
+    {
+        var service = new ServiceHarness();
+        service._db.RepairOrders.Add(r);
+        service._db.Parties.Add(new RepairParty { Id = r.PartyId, CompanyId = r.CompanyId });
+        return service;
+    }
+    private static async Task<bool> Rejects(Func<Task> action)
+    {
+        try { await action(); return false; }
+        catch (InvalidOperationException) { return true; }
+    }
+    public static async Task RunAsync()
+    {
+        var entity = new RepairEntity { Id = 1, PartyId = 3, CompanyId = 4, Status = RepairStatus.Received };
+        var service = For(entity);
+        var ready = await service.SetStatusAsync(1, RepairStatus.Ready);
+        Check(ready.Status == RepairStatus.Ready && service._db.Log.SequenceEqual(new[] {
+            "begin:Serializable", "save", "stage:Ready", "save", "read-result", "commit" }),
+            "status service stages the existing Ready event inside its transaction");
+        service._db.Log.Clear();
+        await service.SetStatusAsync(1, RepairStatus.Ready);
+        Check(!service._db.Log.Contains("stage:Ready"), "same Ready status does not stage another event");
+        var cancelled = await service.SetStatusAsync(1, RepairStatus.Cancelled);
+        Check(cancelled.Status == RepairStatus.Cancelled && cancelled.DeliveredAt.HasValue,
+            "cancellation uses the existing recorded exit date");
+        var reopened = await service.SetStatusAsync(1, RepairStatus.InProgress);
+        Check(reopened.Status == RepairStatus.InProgress && !reopened.DeliveredAt.HasValue,
+            "reopening cancellation removes its exit date");
+        service._db.Log.Clear();
+        Check(await Rejects(() => service.SetStatusAsync(1, RepairStatus.Delivered)) &&
+              entity.Status == RepairStatus.InProgress && !service._db.Log.Contains("save") &&
+              service._db.Log.Contains("rollback"), "direct delivery is rejected before any save");
+        service._db.Log.Clear();
+        Check(await Rejects(() => service.SetStatusAsync(1, (RepairStatus)999)) &&
+              entity.Status == RepairStatus.InProgress && !service._db.Log.Contains("save"),
+            "unknown status is rejected before any save");
+
+        foreach (var final in new[] {
+            new RepairEntity { Id = 2, Status = RepairStatus.Delivered },
+            new RepairEntity { Id = 2, Status = RepairStatus.Ready, InvoiceTransactionId = 42 },
+            new RepairEntity { Id = 2, Status = RepairStatus.Ready, WarrantyProcessed = true } })
+        {
+            var finalService = For(final);
+            var before = final.Status;
+            Check(await Rejects(() => finalService.SetStatusAsync(2, RepairStatus.InProgress)) &&
+                  final.Status == before && !finalService._db.Log.Contains("save"),
+                "delivered, invoiced or warranty-processed acceptance cannot change status");
+        }
+
+        var failingEntity = new RepairEntity { Id = 3, Status = RepairStatus.InProgress };
+        var failing = For(failingEntity);
+        failing._db.FailStage = true;
+        Check(await Rejects(() => failing.SetStatusAsync(3, RepairStatus.Ready)) &&
+              failingEntity.Status == RepairStatus.InProgress &&
+              failing._db.Log.Contains("rollback") && failing._db.Log.Contains("clear-tracking") &&
+              !failing._db.Log.Contains("commit"),
+            "staging failure takes the rollback and tracking-cleanup path (fake transaction)");
+        Console.WriteLine($"{assertions} status service checks passed with fake EF and transaction shims.");
+    }
+}

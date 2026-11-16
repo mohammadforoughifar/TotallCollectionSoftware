@@ -1,11 +1,11 @@
 namespace Inventory.Shared.Dtos;
 
-public enum RepairSmsEventType { Registration = 1, Ready = 2 }
+public enum RepairSmsEventType { Registration = 1, Ready = 2, Delivery = 3 }
 public enum RepairSmsStatus
 {
     Pending = 1, Sending = 2, Accepted = 3, Delivered = 4, Failed = 5,
     Unknown = 6, InvalidMobile = 7, Disabled = 8, NotConfigured = 9, Cancelled = 10,
-    ModuleDisabled = 11, InvalidCompanyName = 12, InvalidRepairNumber = 13
+    ModuleDisabled = 11, InvalidCompanyName = 12, InvalidRepairNumber = 13, InvalidCustomerName = 14
 }
 
 /// <summary>وضعیت پیامک این پذیرش؛ شماره و متن پیام در این خروجی تکرار نمی‌شوند.</summary>
@@ -15,6 +15,8 @@ public class RepairSmsNotificationDto
     public RepairSmsStatus Status { get; set; }
     public long? ProviderMessageId { get; set; }
     public int? ProviderCode { get; set; }
+    // The message status can indicate failure even when the API response code is 200.
+    public int? ProviderMessageStatus { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
 }
