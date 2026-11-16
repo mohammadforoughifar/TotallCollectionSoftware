@@ -189,6 +189,18 @@ public static class EntitlementMerger
             }
         }
 
+        // ---------- قابلیت‌های داخلی ماژول (از آیتم‌های فعال) ----------
+        var features = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (entity, source) in quotaSources)
+        {
+            if (!entity.IsActive) continue;
+            foreach (var rawFeature in source.Features)
+            {
+                var featureCode = FeatureCodes.Normalize(rawFeature);
+                if (FeatureCodes.IsKnown(featureCode)) features.Add(featureCode);
+            }
+        }
+
         // ---------- سقف متریک‌ها ----------
         var limits = BuildLimits(quotaSources, issues);
 
@@ -221,6 +233,7 @@ public static class EntitlementMerger
             Modules = modules,
             Limits = limits,
             Seats = seats,
+            Features = features.OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList(),
             Companies = companies,
             CompaniesRestricted = companiesRestricted,
             Issues = issues,

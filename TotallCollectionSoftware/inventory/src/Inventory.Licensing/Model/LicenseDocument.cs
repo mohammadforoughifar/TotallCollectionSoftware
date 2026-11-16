@@ -148,6 +148,19 @@ public sealed class LicenseItem
     [JsonPropertyName("quotas")]
     public List<LicenseQuota> Quotas { get; set; } = new();
 
+    /// <summary>
+    /// قابلیت‌های داخلی همان ماژول‌ها — مثلاً زیر «اتوماسیون اداری»: نامهٔ وارده/صادره/داخلی
+    /// (از <see cref="Modules.FeatureCodes"/>). خالی یعنی «بدون تفکیک قابلیت» (همهٔ قابلیت‌های
+    /// ماژول‌های داخل scope مجازند).
+    ///
+    /// <para>
+    /// هر قابلیت باید ماژول والدش در <see cref="Scope"/> همین آیتم باشد؛ اعتبارسنجی رد می‌کند
+    /// اگر کسی بخواهد قابلیتی را بدون ماژولش در سند بگذارد.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("features")]
+    public List<string> Features { get; set; } = new();
+
     /// <summary>یادداشت آزاد صادرکننده.</summary>
     [JsonPropertyName("note")]
     public string? Note { get; set; }

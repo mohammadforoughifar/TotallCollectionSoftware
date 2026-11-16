@@ -394,6 +394,9 @@ namespace LicenseSigner.Data.Migrations
                     b.Property<int>("Exempt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("FeaturesCsv")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ModulesCsv")
                         .HasColumnType("TEXT");
 

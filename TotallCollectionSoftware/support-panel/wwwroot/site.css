@@ -99,3 +99,17 @@ input.jdate{background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.
 .pw-eye:hover { background: #eef2f7; color: #111827; }
 .pw-eye:focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
 .pw-eye.is-on { color: #2563eb; }
+
+/* ---------- فهرست چک‌باکسی ماژول‌ها و قابلیت‌ها (پیش‌نویس امضا) ---------- */
+.module-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:.6rem;margin-top:.2rem}
+.module-group{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:.5rem .6rem;background:#fff}
+.module-group-head{font-size:12px;font-weight:700;color:#0c568c;margin-bottom:.35rem;border-bottom:1px dashed #e5e7eb;padding-bottom:.25rem}
+.module-row{display:flex;flex-direction:column;gap:.15rem;margin-bottom:.25rem}
+.module-check{display:flex;align-items:center;gap:.45rem;font-size:12.5px;padding:.2rem .1rem;border-radius:6px;cursor:pointer}
+.module-check:hover{background:#f4f7fb}
+.module-check input[type=checkbox]{width:15px;height:15px;accent-color:#0c568c;cursor:pointer}
+.module-check .module-title{font-weight:600;color:#1f2937}
+.module-check .module-code{font-size:10.5px;color:#9ca3af;margin-inline-start:auto}
+.feature-check{margin-inline-start:1.15rem;font-size:12px;color:#374151}
+.feature-check input[type=checkbox]{width:14px;height:14px;accent-color:#16a34a}
+.tag{font-size:9.5px;background:#e8f1f8;color:#0c568c;border-radius:999px;padding:1px 6px}

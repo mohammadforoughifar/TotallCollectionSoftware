@@ -159,6 +159,12 @@ public class LicenseDraft
     public string? ModulesCsv { get; set; }
 
     /// <summary>
+    /// قابلیت‌های داخلی ماژول‌ها (مثل <c>letter.incoming</c> برای «نامهٔ وارده» زیر اتوماسیون اداری).
+    /// خالی = بدون تفکیک قابلیت.
+    /// </summary>
+    public string? FeaturesCsv { get; set; }
+
+    /// <summary>
     /// فهرست شرکت‌های مجازِ این پیش‌نویس (JSON آرایه‌ای از
     /// <c>{ companyId, name, maxUsers, modules[] }</c>).
     ///

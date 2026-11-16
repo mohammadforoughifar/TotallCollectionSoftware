@@ -702,6 +702,9 @@ public static class Program
     {
         public string? Id { get; set; }
         public List<string> Scope { get; set; } = new();
+
+        /// <summary>قابلیت‌های داخلی ماژول‌ها (مثل letter.incoming زیر اتوماسیون اداری).</summary>
+        public List<string> Features { get; set; } = new();
         public TermProfile Term { get; set; } = new();
         public UsersProfile Users { get; set; } = new();
         public List<LicenseQuota> Quotas { get; set; } = new();
@@ -833,10 +836,32 @@ public static class Program
             if (users.ExemptUsers.Count > users.Exempt)
                 warnings.Add($"آیتم {id}: تعداد نام‌های معاف ({users.ExemptUsers.Count}) از سقف exempt ({users.Exempt}) بیشتر است؛ فقط {users.Exempt} نام اثر می‌کند.");
 
+            // قابلیت‌ها: فقط قابلیت‌هایی که ماژول والدشان در scope همین آیتم است.
+            var features = new List<string>();
+            foreach (var rawFeature in item.Features)
+            {
+                var featureCode = FeatureCodes.Normalize(rawFeature);
+                if (!FeatureCodes.IsKnown(featureCode))
+                {
+                    warnings.Add($"آیتم {id}: قابلیت ناشناخته «{rawFeature}» نادیده گرفته شد.");
+                    continue;
+                }
+
+                if (!scope.Contains(FeatureCodes.ModuleOf(featureCode), StringComparer.OrdinalIgnoreCase))
+                {
+                    warnings.Add($"آیتم {id}: قابلیت «{FeatureCodes.TitleOf(featureCode)}» بدون ماژول والدش " +
+                                 $"«{ModuleCodes.TitleOf(FeatureCodes.ModuleOf(featureCode))}» در scope بود؛ نادیده گرفته شد.");
+                    continue;
+                }
+
+                if (!features.Contains(featureCode, StringComparer.OrdinalIgnoreCase)) features.Add(featureCode);
+            }
+
             document.Items.Add(new LicenseItem
             {
                 Id = id,
                 Scope = scope,
+                Features = features,
                 Term = term,
                 Users = users,
                 Quotas = item.Quotas.Concat(profile.Quotas).ToList(),
@@ -923,6 +948,15 @@ public static class Program
             Console.WriteLine($"    • {item.Id}: {string.Join(", ", item.Scope)} | {item.Term.Type} " +
                               $"{item.Term.ValidFrom:yyyy-MM-dd}→{(item.Term.ValidUntil?.ToString("yyyy-MM-dd") ?? "—")} | " +
                               $"کاربر: {item.Users.Mode} {item.Users.Max} | سهمیه: {item.Quotas.Count}");
+
+        var previewFeatures = document.Items.SelectMany(i => i.Features).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (previewFeatures.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"  قابلیت‌های تفکیک‌شده ({previewFeatures.Count}):");
+            foreach (var feature in previewFeatures)
+                Console.WriteLine($"    • {FeatureCodes.TitleOf(feature)} ({feature}) — در ماژول {ModuleCodes.TitleOf(FeatureCodes.ModuleOf(feature))}");
+        }
 
         if (document.Companies.Count > 0)
         {

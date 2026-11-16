@@ -339,4 +339,29 @@ public sealed class EffectiveEntitlement
 
     /// <summary>ماژول‌هایی که وضعیت‌شان اجازهٔ نمایش منو را می‌دهد.</summary>
     public IEnumerable<string> VisibleModules => Modules.Where(kv => kv.Value.IsReadable).Select(kv => kv.Key);
+
+    /// <summary>
+    /// قابلیت‌های خریده‌شده (از آیتم‌های فعال). خالی = «بدون تفکیک قابلیت»؛ در این حالت
+    /// همهٔ قابلیت‌های ماژول‌های مجاز در دسترس‌اند.
+    /// </summary>
+    public IReadOnlyCollection<string> Features { get; init; } = Array.Empty<string>();
+
+    /// <summary>آیا سند قابلیت‌ها را تفکیک کرده است؟</summary>
+    public bool FeaturesRestricted => Features.Count > 0;
+
+    /// <summary>
+    /// آیا این قابلیت مجاز است؟ اگر سند قابلیتی را تفکیک نکرده باشد، قابلیت تابع وضعیت
+    /// ماژول والدش است؛ اگر تفکیک کرده باشد، فقط قابلیت‌های نام‌برده مجازند.
+    /// </summary>
+    public bool HasFeature(string? featureCode)
+    {
+        var code = Inventory.Licensing.Modules.FeatureCodes.Normalize(featureCode);
+        if (code.Length == 0) return false;
+
+        var parent = Inventory.Licensing.Modules.FeatureCodes.ModuleOf(code);
+        if (parent.Length > 0 && !IsWritable(parent)) return false;
+
+        if (!FeaturesRestricted) return true;
+        return Features.Contains(code, StringComparer.OrdinalIgnoreCase);
+    }
 }

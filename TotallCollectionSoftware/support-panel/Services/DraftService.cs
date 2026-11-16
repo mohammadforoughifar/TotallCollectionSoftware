@@ -109,6 +109,28 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         target.PresetsCsv = NormalizeCsv(draft.PresetsCsv);
         target.ModulesCsv = NormalizeCsv(draft.ModulesCsv);
 
+        // ---- قابلیت‌های داخلی ماژول ----
+        // هر قابلیت باید ماژول والدش در همین پیش‌نویس انتخاب شده باشد؛ وگرنه سند معتبر نیست.
+        var selectedModules = SplitCsv(target.ModulesCsv)
+            .Select(Inventory.Licensing.Modules.ModuleCodes.Normalize)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var features = new List<string>();
+        foreach (var rawFeature in SplitCsv(draft.FeaturesCsv))
+        {
+            var code = Inventory.Licensing.Modules.FeatureCodes.Normalize(rawFeature);
+            var feature = Inventory.Licensing.Modules.FeatureCodes.Find(code);
+            if (feature is null)
+                return (false, $"قابلیت ناشناخته: «{rawFeature}».");
+
+            if (!selectedModules.Contains(Inventory.Licensing.Modules.ModuleCodes.Normalize(feature.Module)))
+                return (false, $"قابلیت «{Inventory.Licensing.Modules.FeatureCodes.TitleOf(code)}» بدون ماژول والدش " +
+                               $"«{Inventory.Licensing.Modules.ModuleCodes.TitleOf(feature.Module)}» انتخاب شده است.");
+
+            if (!features.Contains(code, StringComparer.OrdinalIgnoreCase)) features.Add(code);
+        }
+        target.FeaturesCsv = features.Count == 0 ? null : string.Join(",", features);
+
         // ---- شرکت‌های مجاز ----
         // ورودی فرم یا همین‌جا JSON است (از صفحهٔ پیش‌نویس) یا متن خطی؛ هر دو پشتیبانی می‌شود
         // تا فراخوان‌های برنامه‌ای هم کار کنند.
@@ -220,12 +242,19 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
         }
 
         var explicitScope = SplitCsv(draft.ModulesCsv).ToList();
+        var explicitFeatures = SplitCsv(draft.FeaturesCsv)
+            .Select(Inventory.Licensing.Modules.FeatureCodes.Normalize)
+            .Where(Inventory.Licensing.Modules.FeatureCodes.IsKnown)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         if (explicitScope.Count > 0 || items.Count == 0)
         {
             items.Add(new Dictionary<string, object?>
             {
                 ["id"] = "MANUAL",
                 ["scope"] = explicitScope,
+                ["features"] = explicitFeatures.Count == 0 ? null : explicitFeatures,
                 ["term"] = term,
                 ["users"] = users
             });

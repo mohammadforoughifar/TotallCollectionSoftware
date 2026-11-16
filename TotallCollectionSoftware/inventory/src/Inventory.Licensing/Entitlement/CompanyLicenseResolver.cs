@@ -224,6 +224,13 @@ public sealed class CompanyLicenseResolver
                     Exempt = exempt,
                     ExemptUsers = exemptUsers
                 },
+                // قابلیت‌های شرکت: فقط آن‌هایی که ماژول والدشان در scope همین شرکت مانده است.
+                Features = item.Features
+                    .Select(FeatureCodes.Normalize)
+                    .Where(FeatureCodes.IsKnown)
+                    .Where(f => scope.Contains(FeatureCodes.ModuleOf(f), StringComparer.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
                 Quotas = item.Quotas.Select(q => new LicenseQuota
                 {
                     Metric = q.Metric,

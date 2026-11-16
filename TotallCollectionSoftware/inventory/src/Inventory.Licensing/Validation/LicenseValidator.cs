@@ -110,6 +110,39 @@ public static class LicenseValidator
                         $"آیتم «{tag}» ماژول‌های همیشه‌فعال ({string.Join("، ", alwaysOnInScope)}) را هم نام برده؛ این‌ها نیازی به لایسنس ندارند و نادیده گرفته می‌شوند."));
             }
 
+            // ---- قابلیت‌های داخلی ماژول ----
+            if (item.Features.Count > 0)
+            {
+                var seenFeatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var rawFeature in item.Features)
+                {
+                    var featureCode = FeatureCodes.Normalize(rawFeature);
+                    var feature = FeatureCodes.Find(featureCode);
+
+                    if (feature is null)
+                    {
+                        issues.Add(Error("FEATURE_UNKNOWN",
+                            $"آیتم «{tag}» قابلیت ناشناختهٔ «{rawFeature}» دارد. کدهای قابلیت در نرم‌افزار ثابت‌اند."));
+                        continue;
+                    }
+
+                    if (!seenFeatures.Add(feature.Code))
+                    {
+                        issues.Add(Warning("FEATURE_DUPLICATE",
+                            $"قابلیت «{FeatureCodes.TitleOf(feature.Code)}» در آیتم «{tag}» تکراری است."));
+                        continue;
+                    }
+
+                    var parent = ModuleCodes.Normalize(feature.Module);
+                    if (!item.Scope.Any(s => string.Equals(ModuleCodes.Normalize(s), parent, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        issues.Add(Error("FEATURE_MODULE_OUT_OF_SCOPE",
+                            $"آیتم «{tag}» قابلیت «{FeatureCodes.TitleOf(feature.Code)}» را دارد ولی ماژول والدش " +
+                            $"«{ModuleCodes.TitleOf(parent)}» در scope همین آیتم نیست."));
+                    }
+                }
+            }
+
             // ---- term ----
             ValidateTerm(item, tag, now, issues);
 

@@ -21,6 +21,9 @@
     public string DeploymentValue { get; set; } = "OnPrem";
     public List<string> PresetsSelected { get; set; } = new();
     public List<string> ModulesSelected { get; set; } = new();
+
+    /// <summary>قابلیت‌های داخلی انتخاب‌شده (مثل letter.incoming زیر اتوماسیون اداری).</summary>
+    public List<string> FeaturesSelected { get; set; } = new();
     public string Note { get; set; } = "";
 
     /// <summary>متن خطی شرکت‌های مجاز: companyId | نام | سقف‌کاربر | ماژول‌ها</summary>
@@ -66,6 +69,7 @@
         DeploymentValue = existing.Deployment;
         PresetsSelected = DraftService.SplitCsv(existing.PresetsCsv).ToList();
         ModulesSelected = DraftService.SplitCsv(existing.ModulesCsv).ToList();
+        FeaturesSelected = DraftService.SplitCsv(existing.FeaturesCsv).ToList();
         Note = existing.Note ?? "";
         CompaniesText = DraftService.ToCompanyText(DraftService.FromCompaniesJson(existing.CompaniesJson));
     }
@@ -85,6 +89,7 @@
         CompaniesText = Request.Form["companies"].ToString();
         PresetsSelected = Request.Form["presets"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
         ModulesSelected = Request.Form["modules"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
+        FeaturesSelected = Request.Form["features"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
     }
 
     private LicenseDraft BuildFromForm()
@@ -101,6 +106,7 @@
             AppliesTo = AppliesTo,
             PresetsCsv = string.Join(",", PresetsSelected),
             ModulesCsv = string.Join(",", ModulesSelected),
+            FeaturesCsv = string.Join(",", FeaturesSelected),
             CompaniesJson = CompaniesText,
             Note = Note
         };
@@ -144,10 +150,58 @@
         var (modules, presets, _) = await Drafts.SuggestModulesAsync(RequestId);
         ModulesSelected = modules;
         if (presets.Count > 0) PresetsSelected = presets;
+        FeaturesSelected = new List<string>();   // قابلیت‌ها را دستی تیک بزنید
         SuggestedFrom = (modules.Count > 0 || presets.Count > 0) ? "last-license" : "";
         Error = SuggestedFrom.Length > 0 ? "" : "پیش‌نویس امضاشده‌ای برای این مشتری پیدا نشد.";
         if (SuggestedFrom.Length > 0) OkMessage = "ماژول‌ها از آخرین لایسنس همین مشتری پر شد؛ ذخیره را بزنید.";
         return Page();
+    }
+
+    /// <summary>یک گروه نمایشی از ماژول‌ها برای فهرست چک‌باکسی.</summary>
+    public sealed record ModuleGroupView(string Title, List<Inventory.Licensing.Modules.ModuleDefinition> Modules);
+
+    /// <summary>
+    /// گروه‌بندی نمایشی ماژول‌ها (هم‌راستا با دسته‌بندی فرم نقش‌ها): پایه، فروش و انبار، مالی و اداری،
+    /// اتوماسیون و آرشیو، منابع انسانی، هوش و گزارش، سایر.
+    /// </summary>
+    private static List<ModuleGroupView> BuildModuleGroups(List<Inventory.Licensing.Modules.ModuleDefinition> modules)
+    {
+        var map = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["base"] = new[] { "core", "dashboard", "cartable", "backup", "licensing" },
+            ["trade"] = new[] { "catalog", "sales", "salesvisit", "warehousing", "stocktaking", "invoicing", "moadian" },
+            ["finance"] = new[] { "accounting", "treasury", "expenses", "repairs", "projects", "workorders" },
+            ["office"] = new[] { "letters", "docarchive", "office_assets", "it_assets", "chat" },
+            ["hr"] = new[] { "hr_fa", "hr_core", "faham_att", "faham_pay", "faham_lms", "faham_com", "bon_hr" },
+            ["insight"] = new[] { "ai", "reports", "devteam" }
+        };
+        var titles = new (string Key, string Title)[]
+        {
+            ("base", "پایه (همیشه‌فعال)"),
+            ("trade", "فروش، خرید و انبار"),
+            ("finance", "مالی و اداری"),
+            ("office", "اتوماسیون، آرشیو و ارتباطات"),
+            ("hr", "منابع انسانی"),
+            ("insight", "هوش، گزارش و توسعه")
+        };
+
+        var groups = new List<ModuleGroupView>();
+        var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, title) in titles)
+        {
+            var list = new List<Inventory.Licensing.Modules.ModuleDefinition>();
+            if (map.TryGetValue(key, out var codes))
+                foreach (var code in codes)
+                {
+                    var module = modules.FirstOrDefault(m => string.Equals(m.Code, code, StringComparison.OrdinalIgnoreCase));
+                    if (module is not null && placed.Add(module.Code)) list.Add(module);
+                }
+            if (list.Count > 0) groups.Add(new ModuleGroupView(title, list));
+        }
+
+        var rest = modules.Where(m => !placed.Contains(m.Code)).ToList();
+        if (rest.Count > 0) groups.Add(new ModuleGroupView("سایر ماژول‌ها", rest));
+        return groups;
     }
 
     public async Task<IActionResult> OnPostPreviewAsync()
@@ -179,6 +233,7 @@
     ViewData["Request"] = request;
     var presets = await Db.Presets.AsNoTracking().Where(p => p.IsActive).OrderBy(p => p.Code).ToListAsync();
     var modules = Inventory.Licensing.Modules.ModuleCodes.All.ToList();
+    var ModuleGroups = BuildModuleGroups(modules);
     var req = request;
 }
 @if (TempData["ok"] is string okMessage && !string.IsNullOrEmpty(okMessage)) { <div class="alert ok">@okMessage</div> }
@@ -207,24 +262,56 @@ else
         <input type="hidden" name="id" value="@req.Id" />
         <div class="card"><div class="card-head">۱) آیتم‌ها و مدت</div><div class="card-body">
             <div class="grid">
-                <div class="field"><label for="presets">بسته‌های آماده</label>
-                    <select id="presets" name="presets" multiple size="4">
-                        @foreach (var preset in presets)
+                <div class="field" style="grid-column:1 / -1">
+                    <label>ماژول‌ها و قابلیت‌ها (چندانتخابی — تیک بزنید)</label>
+                    <p class="hint" style="margin:.2rem 0 .6rem;line-height:1.9">
+                        فهرست، همان ماژول‌های نرم‌افزار است (هم‌راستا با فرم نقش‌ها در تنظیمات). هر ماژول تیک بخورد،
+                        در سند امضاشده می‌نشیند. قابلیت‌های داخلی هر ماژول با تورفتگی زیر آن آمده‌اند — مثلاً
+                        <b>نامهٔ وارده</b> زیر <b>اتوماسیون اداری</b>. اگر هیچ قابلیتی تیک نخورد، همهٔ قابلیت‌های
+                        ماژول‌های انتخاب‌شده مجاز است.
+                    </p>
+                    <div class="module-list">
+                        @foreach (var group in ModuleGroups)
                         {
-                            <option value="@preset.Code" selected="@PresetsSelected.Contains(preset.Code, StringComparer.OrdinalIgnoreCase)">@preset.Title (@preset.Code)</option>
+                            <div class="module-group">
+                                <div class="module-group-head">@group.Title</div>
+                                @foreach (var module in group.Modules)
+                                {
+                                    var isOn = module.AlwaysOn;
+                                    var isChecked = isOn || ModulesSelected.Contains(module.Code, StringComparer.OrdinalIgnoreCase);
+                                    var features = Inventory.Licensing.Modules.FeatureCodes.ForModule(module.Code);
+                                    <div class="module-row">
+                                        <label class="module-check">
+                                            <input type="checkbox" name="modules" value="@module.Code"
+                                                   class="module-toggle" data-module="@module.Code"
+                                                   checked="@isChecked" disabled="@isOn" />
+                                            <span class="module-title">@module.Title</span>
+                                            <span class="mono module-code">@module.Code</span>
+                                            @if (isOn)
+                                            {
+                                                <span class="tag">همیشه‌فعال</span>
+                                            }
+                                        </label>
+                                        @foreach (var feature in features)
+                                        {
+                                            var featureChecked = FeaturesSelected.Contains(feature.Code, StringComparer.OrdinalIgnoreCase);
+                                            <label class="module-check feature-check">
+                                                <input type="checkbox" name="features" value="@feature.Code"
+                                                       class="feature-toggle" data-parent="@module.Code"
+                                                       checked="@featureChecked" disabled="@(!isChecked)" />
+                                                <span>@feature.Title</span>
+                                                <span class="mono module-code">@feature.Code</span>
+                                            </label>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         }
-                    </select></div>
-                <div class="field"><label for="modules">ماژول‌های صریح</label>
-                    <select id="modules" name="modules" multiple size="10">
-                        @foreach (var module in modules)
-                        {
-                            <option value="@module.Code" selected="@ModulesSelected.Contains(module.Code, StringComparer.OrdinalIgnoreCase)">@module.Title (@module.Code)</option>
-                        }
-                    </select>
-                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                    </div>
+                    <p class="hint" style="margin:.5rem 0 0;line-height:1.9">
                         @if (SuggestedFrom == "request")
                         {
-                            <text>ماژول‌ها به‌صورت خودکار از <b>فایل درخواست همین مشتری</b> انتخاب شدند؛ هر تغییری لازم است همین‌جا بدهید.</text>
+                            <text>ماژول‌ها به‌صورت خودکار از <b>فایل درخواست همین مشتری</b> تیک خوردند؛ هر تغییری لازم است همین‌جا بدهید.</text>
                         }
                         else if (SuggestedFrom == "last-license")
                         {
@@ -234,7 +321,6 @@ else
                         {
                             <text>درخواست مشتری ماژولی همراه نداشت؛ می‌توانید از دکمهٔ «کپی از آخرین لایسنس مشتری» استفاده کنید.</text>
                         }
-                        <br />در لیست چندتایی با <span class="mono">Ctrl</span> (یا <span class="mono">⌘</span>) چند ماژول را با هم انتخاب کنید.
                     </p>
                     <p style="margin:.4rem 0 0">
                         <button type="submit" formnovalidate asp-page-handler="CopyLast" class="btn small ghost">کپی از آخرین لایسنس مشتری</button>
@@ -331,6 +417,27 @@ else
             <p class="hint">پروفایل ذخیره‌شده مبنای امضاست، نه ورودی فرم.</p>
         </div></div>
     </form>
+
+    <script>
+        // تیک ماژول ⇒ قابلیت‌های همان ماژول فعال می‌شوند؛ برداشتن تیک ⇒ قابلیت‌ها هم پاک می‌شوند.
+        document.querySelectorAll('input.module-toggle').forEach(function (box) {
+            box.addEventListener('change', function () {
+                document.querySelectorAll('input.feature-toggle[data-parent="' + box.dataset.module + '"]')
+                    .forEach(function (child) {
+                        child.disabled = !box.checked;
+                        if (!box.checked) child.checked = false;
+                    });
+            });
+        });
+        // تیک قابلیت ⇒ ماژول والدش هم تیک می‌خورد.
+        document.querySelectorAll('input.feature-toggle').forEach(function (box) {
+            box.addEventListener('change', function () {
+                if (!box.checked) return;
+                var parent = document.querySelector('input.module-toggle[data-module="' + box.dataset.parent + '"]');
+                if (parent && !parent.checked) { parent.checked = true; }
+            });
+        });
+    </script>
 
     @if (!string.IsNullOrWhiteSpace(PreviewText))
     {
