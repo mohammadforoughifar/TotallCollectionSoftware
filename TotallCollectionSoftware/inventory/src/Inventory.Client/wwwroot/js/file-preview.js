@@ -121,6 +121,11 @@
         })();
         viewer.queue = task.then(() => {}); return await task;
     }
+    // Start downloading/compiling PDF.js (over 3 MB with its worker) before the document that
+    // needs it exists. Callers that know a PDF is coming — a print preview waiting on a server
+    // render — can overlap that cost with the wait instead of paying for it afterwards.
+    function warm() { return library().then(function () { return true; }, function () { return false; }); }
+
     async function openPdf(host, url, password, key) {
         key = key || host;
         await destroyPdf(key);
@@ -169,7 +174,7 @@
         }
     }
     window.filePreview = {
-        apiVersion: 5, load, abort, revoke, openPdf, renderPdf, destroyPdf, attachModal, detachModal,
+        apiVersion: 5, load, abort, revoke, warm, openPdf, renderPdf, destroyPdf, attachModal, detachModal,
         // Compatibility aliases for any existing callers; real UI uses structured load().
         fetchBlobUrl: async (url, token, hint) => {
             const kind = hint === 'text/html' ? 'html' : hint === 'application/pdf' ? 'pdf' : hint && hint.startsWith('image/') ? 'image' : 'other';

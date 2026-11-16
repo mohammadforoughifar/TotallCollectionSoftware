@@ -57,9 +57,14 @@
             let frame = session.frame;
             if (session.kind === 'pdf') {
                 // Prefer printing the original, vector PDF in browsers with a PDF viewer.
+                // Usually the idle pre-warm already finished and this resolves immediately.
+                if (!session.pdfFrameLoaded && navigator.pdfViewerEnabled !== false) {
+                    setStatus(session, 'در حال آماده‌سازی چاپ…');
+                }
+                frame = await ensurePrintFrame(session);
+                if (current !== session) return;
                 // Without a working viewer, prepare an isolated printable copy using PDF.js.
-                frame = session.pdfFrameLoaded && navigator.pdfViewerEnabled !== false
-                    ? session.pdfFrame : await preparePdfFallback(session);
+                if (!frame) frame = await preparePdfFallback(session);
             }
             if (current !== session) return;
             const target = frame && frame.contentWindow;
@@ -562,6 +567,43 @@
         }
     }
 
+    // The hidden iframe hands the ORIGINAL PDF to the browser's own print engine, which is what
+    // keeps printing vector-sharp. It used to be created the instant the bytes arrived, so every
+    // preview decoded the whole document TWICE in parallel — once in this iframe and once in
+    // PDF.js — and both decodes land exactly in the window the user is waiting on. On a letter
+    // whose every page carries a 300-DPI letterhead scan that doubles the time to first paint.
+    // Build it on demand instead, and pre-warm it in idle time once the page is already visible.
+    function ensurePrintFrame(session) {
+        if (session.printFramePromise) return session.printFramePromise;
+        if (!session.objectUrl || navigator.pdfViewerEnabled === false) return Promise.resolve(null);
+        session.printFramePromise = new Promise(function (resolve) {
+            let settled = false;
+            const finish = function (value) { if (!settled) { settled = true; resolve(value); } };
+            const frame = document.createElement('iframe');
+            frame.className = 'shop-print-pdf-frame';
+            frame.title = 'آماده‌سازی چاپ PDF';
+            frame.tabIndex = -1;
+            frame.setAttribute('aria-hidden', 'true');
+            frame.addEventListener('load', function () {
+                session.pdfFrameLoaded = true;
+                finish(frame);
+            });
+            // A browser that never renders the blob must not block printing forever.
+            setTimeout(function () { finish(session.pdfFrameLoaded ? frame : null); }, 20000);
+            session.pdfFrame = frame;
+            frame.src = session.objectUrl;
+            document.body.appendChild(frame);
+        });
+        return session.printFramePromise;
+    }
+
+    function prewarmPrintFrame(session) {
+        if (current !== session || session.printFramePromise) return;
+        const start = function () { if (current === session) ensurePrintFrame(session); };
+        if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(start, { timeout: 4000 });
+        else setTimeout(start, 1200);
+    }
+
     function assertPdfBytes(payload) {
         if (!window.filePreview || !window.filePreview.openPdf) throw new Error('PDF viewer unavailable');
         const bytes = pdfBytes(payload);
@@ -582,18 +624,6 @@
         session.download.hidden = false;
         session.download.href = session.objectUrl;
         session.download.download = fileName || 'report.pdf';
-        session.pdfFrame = document.createElement('iframe');
-        session.pdfFrame.className = 'shop-print-pdf-frame';
-        session.pdfFrame.title = 'آماده‌سازی چاپ PDF';
-        session.pdfFrame.tabIndex = -1;
-        session.pdfFrame.setAttribute('aria-hidden', 'true');
-        session.pdfFrame.addEventListener('load', function () {
-            if (current !== session) return;
-            session.pdfFrameLoaded = true;
-            updatePdfControls(session);
-        });
-        session.pdfFrame.src = session.objectUrl;
-        document.body.appendChild(session.pdfFrame);
         updatePdfControls(session);
         Promise.resolve(window.filePreview.openPdf(session.pdfHost, session.objectUrl, null, session.pdfKey))
             .then(function (result) {
@@ -605,6 +635,8 @@
                 session.pdfPageValid = true;
                 updatePdfControls(session);
                 if (session.ready) setStatus(session, 'پیش‌نمایش آماده است. برای ادامه «چاپ» را بزنید.');
+                // Only now, with the page already on screen, spend idle time on the print frame.
+                prewarmPrintFrame(session);
             }).catch(function (error) {
                 if (current !== session) { destroyPreviewPdf(session); return; }
                 console.error('[shop-print-preview] PDF:', error);
@@ -637,6 +669,11 @@
         if (!session) return null;
         session.token = 'deferred-' + (++sequence);
         deferredSessions[session.token] = session;
+        // The document is still being produced server-side. Use that wait to fetch PDF.js
+        // (1 MB + a 2.3 MB worker) instead of starting that download once the bytes land.
+        if (typeof window.filePreview.warm === 'function') {
+            try { window.filePreview.warm(); } catch (error) { console.error('[shop-print-preview] warm:', error); }
+        }
         // Placeholder instead of the empty HTML frame, so the shell does not look broken.
         session.frameWrap.hidden = true;
         session.pdfHost.hidden = false;

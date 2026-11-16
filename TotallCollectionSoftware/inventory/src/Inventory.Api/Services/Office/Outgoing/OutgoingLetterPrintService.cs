@@ -117,6 +117,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // آستانهٔ هشدار: رندری که بیشتر از این طول بکشد با یک خط SLOW در لاگ خلاصه می‌شود.
     private const long SlowPrintWarningMs = 20_000;
 
+    // حداکثر اندازهٔ رستر امضا پیش از برداری‌سازی. جای امضا ۱۰۴×۵۲ پوینت است، پس ۶۰۰×۲۴۰
+    // معادل ~۴۱۵ DPI می‌شود — بالاتر از کیفیت چاپ ۳۰۰ DPI و نصفِ سقف قبلی (۱۲۰۰×۴۸۰ ≈ ۸۳۱ DPI).
+    private const int SignatureMaxWidth = 600;
+    private const int SignatureMaxHeight = 240;
+
     /// <summary>
     /// رندرِ مشترکِ درخواست‌های هم‌زمان. عمداً به‌جای <c>Lazy&lt;Task&lt;T&gt;&gt;</c> نوشته شده است:
     /// خواندن <c>Lazy&lt;Task&lt;T&gt;&gt;.Value</c> قاعدهٔ تحلیل‌گر VSTHRD011 را می‌شکند (خطر deadlock
@@ -1641,11 +1646,17 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var crop = new SixLabors.ImageSharp.Rectangle(left, top, right - left + 1, bottom - top + 1);
             image.Mutate(ctx => ctx.Crop(crop).Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
             // Resize only after trimming; otherwise a large transparent canvas would reduce ink resolution.
-            if (image.Width > 1200 || image.Height > 480)
+            //
+            // این سقف مستقیماً روی سنگینی خروجی اثر می‌گذارد: هر پیکسلِ جوهر در ادامه به
+            // مستطیل‌های برداری SVG تبدیل می‌شود، پس تعداد مسیرها با مساحت تصویر رشد می‌کند.
+            // جای امضا در چیدمان ۱۰۴×۵۲ پوینت (۱٫۴۴ اینچ) است؛ سقف قبلی ۱۲۰۰×۴۸۰ یعنی ۸۳۱ DPI،
+            // نزدیک سه برابر کیفیت چاپ ۳۰۰ DPI. سقف ۶۰۰×۲۴۰ هنوز ۴۱۵ DPI می‌دهد (بالاتر از
+            // نیاز چاپ) ولی تعداد مسیرها و حجم محتوای PDF را نصف می‌کند.
+            if (image.Width > SignatureMaxWidth || image.Height > SignatureMaxHeight)
                 image.Mutate(x => x.Resize(new ResizeOptions
                 {
                     Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,
-                    Size = new SixLabors.ImageSharp.Size(1200, 480),
+                    Size = new SixLabors.ImageSharp.Size(SignatureMaxWidth, SignatureMaxHeight),
                     Sampler = KnownResamplers.Lanczos3
                 }));
 

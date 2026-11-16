@@ -58,7 +58,20 @@ function staticGuards() {
 
   const loader = shop.slice(shop.indexOf('function loadPdfIntoSession'), shop.indexOf('function openPdf'));
   assert.ok(!/\.print\(\)/.test(loader), 'REGRESSION: loading the PDF must not print');
-  console.log('  ✓ static guards');
+  assert.ok(!/createElement\('iframe'\)/.test(loader),
+    'PERF REGRESSION: loadPdfIntoSession must not build the second-decode print iframe');
+
+  // Signature ink is turned into one vector rect per pixel-run, so the raster cap drives the
+  // size of every letter PDF. The slot is 104x52pt, i.e. 300 DPI needs only ~433px.
+  const SERVICE = path.resolve(SRC_DIR, '../../Inventory.Api/Services/Office/Outgoing/OutgoingLetterPrintService.cs');
+  const cs = fs.readFileSync(SERVICE, 'utf8');
+  const capW = Number(/SignatureMaxWidth = (\d+)/.exec(cs)[1]);
+  const capH = Number(/SignatureMaxHeight = (\d+)/.exec(cs)[1]);
+  const dpi = capW / (104 / 72);
+  assert.ok(dpi >= 300, `signature cap ${capW}px = ${Math.round(dpi)} DPI, below print quality`);
+  assert.ok(dpi <= 500, `signature cap ${capW}px = ${Math.round(dpi)} DPI, oversampled — it bloats every PDF`);
+  assert.ok(capH >= 180 && capH <= 300, 'signature height cap out of range: ' + capH);
+  console.log(`  ✓ static guards (signature cap ${capW}x${capH} = ${Math.round(dpi)} DPI)`);
 }
 
 // ===========================================================================================
@@ -68,11 +81,16 @@ async function sharedPreview() {
   const window = baseWindow();
   const printed = [];
 
+  const calls = { warm: 0, openPdf: 0 };
   window.filePreview = {
-    openPdf: async () => ({ success: true, pages: 3 }),
+    warm: async () => { calls.warm++; return true; },
+    openPdf: async () => { calls.openPdf++; return { success: true, pages: 3 }; },
     renderPdf: async () => ({ success: true }),
     destroyPdf: async () => { }
   };
+  // requestIdleCallback drives the print-frame pre-warm; make it observable and manual.
+  let idleJob = null;
+  window.requestIdleCallback = (cb) => { idleJob = cb; return 1; };
   window.eval(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
   window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
 
@@ -97,6 +115,9 @@ async function sharedPreview() {
   assert.equal(retryBtn.hidden, true, 'no retry button before a failure');
   assert.equal(download.hidden, true, 'no download link before the PDF exists');
   assert.match(status.textContent, /در حال ساخت/, 'status explains the wait: ' + status.textContent);
+  // PDF.js (1 MB + a 2.3 MB worker) must start downloading during the server wait, not after.
+  assert.equal(calls.warm, 1, 'PDF.js pre-warmed while the server renders');
+  assert.equal(calls.openPdf, 0, 'nothing parsed yet — no bytes');
 
   // --- slow-render status updates reach the same strip ---
   assert.equal(await window.ltxPrintStatus(id, 'هنوز در حال ساخت…'), true);
@@ -115,13 +136,20 @@ async function sharedPreview() {
   assert.match(status.textContent, /پیش‌نمایش آماده است/, status.textContent);
   assert.equal(status.classList.contains('is-error'), false);
 
-  // --- only an explicit click prints ---
+  // --- the heavy native-viewer iframe must not compete with the visible render ---
+  assert.equal(doc.querySelector('.shop-print-pdf-frame'), null,
+    'PERF REGRESSION: the print iframe decodes the PDF a second time; it must not be built eagerly');
+  assert.equal(typeof idleJob, 'function', 'print frame is scheduled for idle time instead');
+
+  // --- idle pre-warm builds it, so the later click stays instant ---
+  idleJob();
   const hidden = doc.querySelector('.shop-print-pdf-frame');
-  assert.ok(hidden, 'hidden print frame created');
+  assert.ok(hidden, 'idle pre-warm created the print frame');
   hidden.dispatchEvent(new window.Event('load'));
   Object.defineProperty(hidden.contentWindow, 'print', { configurable: true, value: () => printed.push('pdf') });
   hidden.contentWindow.focus = () => { };
 
+  // --- only an explicit click prints ---
   printBtn.click();
   await new Promise(r => setTimeout(r, 0));
   assert.deepEqual(printed, ['pdf'], 'the click opened the print dialog exactly once');
@@ -137,7 +165,8 @@ async function sharedPreview() {
 
 async function sharedPreviewFailure() {
   const window = baseWindow();
-  window.filePreview = { openPdf: async () => ({ success: true, pages: 1 }), renderPdf: async () => ({ success: true }), destroyPdf: async () => { } };
+  window.filePreview = { warm: async () => true, openPdf: async () => ({ success: true, pages: 1 }), renderPdf: async () => ({ success: true }), destroyPdf: async () => { } };
+  window.requestIdleCallback = (cb) => { setTimeout(cb, 0); return 1; };
   window.eval(fs.readFileSync(SHOP_PREVIEW, 'utf8'));
   window.eval(printSection(fs.readFileSync(APP_SHELL, 'utf8')));
 
