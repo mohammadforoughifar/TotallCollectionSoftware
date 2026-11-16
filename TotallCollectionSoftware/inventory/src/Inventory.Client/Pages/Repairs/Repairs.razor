@@ -839,6 +839,7 @@
                     @foreach (var sms in viewing.SmsNotifications)
                     {
                         var returnedCode = SmsDetailCode(sms);
+                        var returnedReason = SmsFailureReason(sms);
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 py-1 fs-8">
                             <span>@SmsEventName(sms.EventType)</span>
                             <span class="fw-700 @(SmsDetailSuccess(sms.Status) ? "text-success" : SmsDetailFailure(sms.Status) ? "text-danger" : "text-muted")">
@@ -855,6 +856,10 @@
                                     }
                                 }
                             </span>
+                            @if (returnedReason is not null)
+                            {
+                                <div class="w-100 text-muted fs-9 lh-sm">@returnedReason</div>
+                            }
                         </div>
                     }
                 }
@@ -1673,6 +1678,16 @@ else
         if (sms.ProviderCode is int code && code != 200) return code;
         return sms.Status == RepairSmsStatus.Failed && sms.ProviderMessageStatus is int messageStatus && messageStatus != 200
             ? messageStatus : null;
+    }
+
+    // The returned provider number alone means nothing to the user, so the detail view
+    // also spells it out in Persian. A returned code explains the outcome better than the
+    // generic status, so it wins when present.
+    private static string? SmsFailureReason(RepairSmsNotificationDto sms)
+    {
+        if (SmsDetailSuccess(sms.Status) || sms.Status is RepairSmsStatus.Pending or RepairSmsStatus.Sending)
+            return null;
+        return SmsDetailCode(sms) is int code ? KavenegarCodeText.Describe(code) : SmsStatusText(sms.Status);
     }
 
     private static string SmsStatusText(RepairSmsStatus status) => status switch

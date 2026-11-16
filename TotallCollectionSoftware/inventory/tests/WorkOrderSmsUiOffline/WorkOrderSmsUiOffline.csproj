@@ -8,6 +8,7 @@
   <!-- The real UI mapping and DTO are linked; no server, Razor renderer or provider is used. -->
   <ItemGroup>
     <Compile Include="../../src/Inventory.Shared/Dtos/WorkOrderSmsDtos.cs" Link="WorkOrderSmsDtos.cs" />
+    <Compile Include="../../src/Inventory.Shared/KavenegarCodeText.cs" Link="KavenegarCodeText.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/ItAssets/WorkOrderSmsAppearance.cs" Link="WorkOrderSmsAppearance.cs" />
     <Compile Include="../../src/Inventory.Client/Pages/ItAssets/WorkOrderSmsStatusPoller.cs" Link="WorkOrderSmsStatusPoller.cs" />
   </ItemGroup>
