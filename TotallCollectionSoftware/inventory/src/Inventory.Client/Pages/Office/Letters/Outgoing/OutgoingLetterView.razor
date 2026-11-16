@@ -35,7 +35,7 @@
                 <span class="t"><i class="bi bi-envelope-paper" style="color:var(--p2)"></i> @letter.Title</span>
                 <button class="icb" title="بازگشت به کارتابل" @onclick="GoCartable"><i class="bi bi-arrow-right-circle"></i></button>
                 <span class="print-wr">
-                    <button type="button" class="lbtn ghost" title="چاپ نامٔ صادره روی سربرگ" aria-haspopup="true" aria-expanded="@printMenuOpen" disabled="@printing" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i> چاپ</button>
+                    <button type="button" class="lbtn ghost" title="پیش‌نمایش نامهٔ صادره روی سربرگ — چاپ از داخل پیش‌نمایش" aria-haspopup="true" aria-expanded="@printMenuOpen" disabled="@printing" @onclick="TogglePrintSelected"><i class="bi bi-printer"></i> چاپ</button>
                     @if (printMenuOpen)
                     {
                         <div class="ltmenu" @onclick:stopPropagation="true">
@@ -330,9 +330,10 @@
         {
             var number = letter.SadereNumber ?? letter.LetterNumber ?? letter.LetterId.ToString();
             var name = $"letter-{number.Replace('/', '-')}-{size}.pdf";
+            var title = $"نامهٔ صادره {number} — {size} {(withMargin ? "با هامش" : "بدون هامش")}";
             await PrintWorkflow.PrintPdfAsync(
                 ct => OutgoingSvc.GetPrintPdfAsync(letter.LetterId, size, withCopy: true,
-                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name);
+                    withMargin: withMargin, withLetterhead: printWithLetterhead, cancellationToken: ct), name, title);
         }
         finally { printing = false; }
     }

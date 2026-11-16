@@ -6,6 +6,15 @@ namespace Inventory.Client.Services;
 /// <summary>
 /// Shared popup, loading, PDF fallback, and error flow for internal and outgoing letters.
 ///
+/// ⚠️ جریان کار: «اول پیش‌نمایش، چاپ فقط با درخواست کاربر».
+/// این سرویس PDF نامه را می‌گیرد و در پنجرهٔ پیش‌نمایش نشان می‌دهد و **همین‌جا متوقف می‌شود**.
+/// پنجرهٔ چاپ مرورگر تنها وقتی باز می‌شود که کاربر در همان پنجره روی دکمهٔ «چاپ» کلیک کند
+/// (سمت JS: <c>ltxTriggerPrint</c>). پیش‌تر <c>ltxPrintReady</c> بلافاصله پس از بارگذاری PDF
+/// خودش <c>print()</c> را صدا می‌زد؛ نتیجه این بود که کاربر فرصت دیدن پیش‌نمایش را نداشت و
+/// باید منتظر رندر سنگین پنجرهٔ چاپ مرورگر می‌ماند — حتی وقتی فقط می‌خواست نامه را ببیند.
+/// نکتهٔ جانبی: <c>print()</c> در مرورگر تا بسته‌شدن پنجرهٔ چاپ بلوکه می‌کند، پس آن فراخوانی
+/// بودجهٔ ۳۰ ثانیه‌ایِ تحویل را هم می‌سوزاند و برای کاربرِ آهسته خطای بی‌مورد می‌ساخت.
+///
 /// بودجهٔ زمانی چاپ: قبلاً کل آماده‌سازی (دریافت PDF + تحویل به مرورگر) سقف ثابت ۱۵ ثانیه داشت.
 /// ساخت PDF نامه روی سربرگ (QuestPDF + PDFsharp روی تصویر ۲۴۸۱×۳۵۰۸) در سرور کند/بار اول
 /// می‌تواند بیشتر طول بکشد؛ نتیجه این بود که صفحهٔ چاپ در حالت «در حال آماده‌سازی» می‌ماند و
@@ -44,7 +53,12 @@ public sealed class LetterPrintWorkflow
     public Task PrintPdfAsync(Func<Task<byte[]>> loadPdf, string fileName) =>
         PrintPdfAsync(_ => loadPdf(), fileName);
 
-    public async Task PrintPdfAsync(Func<CancellationToken, Task<byte[]>> loadPdf, string fileName)
+    /// <param name="title">
+    /// عنوانی که در هدر پیش‌نمایش زیر «پیش‌نمایش چاپ» نشان داده می‌شود (مثل «نامهٔ صادره ۱۲۷ — A4
+    /// با هامش»). اگر داده نشود، نام فایل استفاده می‌شود.
+    /// </param>
+    public async Task PrintPdfAsync(
+        Func<CancellationToken, Task<byte[]>> loadPdf, string fileName, string? title = null)
     {
         var total = Stopwatch.StartNew();
         long lastStageMs = 0;
@@ -60,21 +74,22 @@ public sealed class LetterPrintWorkflow
         string? printId;
         try
         {
-            printId = await _js.InvokeAsync<string?>("ltxPrintBegin");
+            printId = await _js.InvokeAsync<string?>(
+                "ltxPrintBegin", string.IsNullOrWhiteSpace(title) ? fileName : title);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not create the browser print surface.");
-            _toast.Error("پنجرهٔ چاپ باز نشد. پنجره‌های بازشو را برای این سایت مجاز کنید و دوباره تلاش کنید.");
+            _toast.Error("پنجرهٔ پیش‌نمایش نامه باز نشد. پنجره‌های بازشو را برای این سایت مجاز کنید و دوباره تلاش کنید.");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(printId))
         {
-            _toast.Error("صفحهٔ چاپ ساخته نشد. پنجره‌های بازشو را مجاز کنید و دوباره تلاش کنید.");
+            _toast.Error("صفحهٔ پیش‌نمایش نامه ساخته نشد. پنجره‌های بازشو را مجاز کنید و دوباره تلاش کنید.");
             return;
         }
-        MarkStage("print-surface-ready");
+        MarkStage("preview-surface-ready");
 
         var attemptNumber = 0;
         while (true)
@@ -111,25 +126,42 @@ public sealed class LetterPrintWorkflow
                 _logger.LogInformation(
                     "LetterPrintClientTiming Stage=pdf-binary-ready Bytes={Bytes}", pdfBytes.Length);
 
-                bool ready;
+                // از اینجا به بعد فقط «نمایش» است: PDF در پنجرهٔ پیش‌نمایش بارگذاری می‌شود و
+                // دکمهٔ «چاپ» فعال می‌گردد. هیچ پنجرهٔ چاپی بدون کلیک کاربر باز نمی‌شود.
+                bool previewShown;
                 using (var handoffTimeout = new CancellationTokenSource(HandoffTimeout))
                 {
-                    ready = await _js.InvokeAsync<bool>(
+                    previewShown = await _js.InvokeAsync<bool>(
                         "ltxPrintReady", handoffTimeout.Token, printId, pdfBytes, fileName,
                         (int)HandoffTimeout.TotalMilliseconds);
                 }
-                MarkStage("browser-print-handoff");
+                MarkStage("preview-shown");
 
-                if (ready)
+                if (previewShown)
                 {
                     MarkStage("complete");
                     return;
                 }
 
-                throw new InvalidOperationException("مرورگر نتوانست فایل PDF را برای چاپ آماده کند.");
+                // کاربر پیش‌نمایش را عمداً بسته است؛ این خطا نیست و نباید پیام قرمز بگیرد.
+                if (await WasClosedByUserAsync(printId))
+                {
+                    MarkStage("preview-closed-by-user");
+                    return;
+                }
+
+                throw new InvalidOperationException("مرورگر نتوانست پیش‌نمایش نامه را نشان دهد.");
             }
             catch (Exception ex)
             {
+                if (await WasClosedByUserAsync(printId))
+                {
+                    _logger.LogInformation(
+                        "LetterPrintClientTiming Stage=preview-closed-by-user Attempt={Attempt} TotalMs={TotalMs}",
+                        attemptNumber, total.ElapsedMilliseconds);
+                    return;
+                }
+
                 var cancelledByBudget = ex is OperationCanceledException && attempt.Elapsed >= loadBudget - TimeSpan.FromMilliseconds(500);
 
                 // تلاش خودکار: تایم‌اوت اول به کاربر نشان داده نمی‌شود. سرور رندر را ادامه
@@ -143,7 +175,7 @@ public sealed class LetterPrintWorkflow
                     try
                     {
                         await _js.InvokeVoidAsync("ltxPrintStatus", printId,
-                            "ساخت PDF کمی طول کشید؛ خودکار دوباره تلاش می‌شود و سرور همان نسخه را کامل می‌کند…");
+                            "ساخت پیش‌نمایش کمی طول کشید؛ خودکار دوباره تلاش می‌شود و سرور همان نسخه را کامل می‌کند…");
                     }
                     catch (Exception jsEx)
                     {
@@ -154,11 +186,11 @@ public sealed class LetterPrintWorkflow
                 }
 
                 var message = cancelledByBudget
-                    ? $"ساخت نسخهٔ چاپ بیش از {(int)loadBudget.TotalSeconds} ثانیه طول کشید. " +
+                    ? $"ساخت پیش‌نمایش نامه بیش از {(int)loadBudget.TotalSeconds} ثانیه طول کشید. " +
                       "اگر بار اول است، ساخت PDF روی سربرگ کمی کند است؛ «تلاش مجدد» معمولاً خیلی سریع‌تر آماده می‌شود. " +
                       "در صورت تکرار، لاگ چاپ سرور (LetterPrintTiming و OutgoingLetterPrintTiming) را ببینید."
                     : ex is OperationCanceledException
-                        ? "آماده‌سازی چاپ لغو شد."
+                        ? "آماده‌سازی پیش‌نمایش لغو شد."
                         : ex.Message;
 
                 _logger.LogWarning(ex,
@@ -195,7 +227,7 @@ public sealed class LetterPrintWorkflow
                 }
 
                 try { await _js.InvokeVoidAsync("ltxPrintCancel", printId); } catch { }
-                MarkStage("print-cancelled");
+                MarkStage("preview-cancelled");
                 return;
             }
             finally
@@ -207,7 +239,22 @@ public sealed class LetterPrintWorkflow
     }
 
     /// <summary>
-    /// بعد از چند ثانیه متن وضعیت پنجرهٔ چاپ را به‌روز می‌کند تا کاربر فکر نکند صفحه قفل شده است.
+    /// آیا کاربر خودش پنجرهٔ پیش‌نمایش را بسته است؟ در آن صورت نه Toast خطا لازم است و نه
+    /// «تلاش مجدد»؛ بستن عمدی پنجره یک انتخاب است، نه شکست.
+    /// </summary>
+    private async Task<bool> WasClosedByUserAsync(string? printId)
+    {
+        if (string.IsNullOrWhiteSpace(printId)) return false;
+        try { return await _js.InvokeAsync<bool>("ltxPrintWasCancelled", printId); }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not check whether the preview window was closed by the user.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// بعد از چند ثانیه متن وضعیت پنجرهٔ پیش‌نمایش را به‌روز می‌کند تا کاربر فکر نکند صفحه قفل شده است.
     /// اگر آماده‌سازی سریع تمام شود، توکن لغو می‌شود و هیچ متنی نوشته نمی‌شود.
     /// </summary>
     private async Task ShowSlowPreparationHintAsync(string printId, CancellationToken cancellationToken)
@@ -216,7 +263,7 @@ public sealed class LetterPrintWorkflow
         {
             await Task.Delay(SlowPreparationHintAfter, cancellationToken);
             await _js.InvokeVoidAsync("ltxPrintStatus", cancellationToken, printId,
-                "در حال ساخت PDF روی سربرگ شرکت… (بار اول ممکن است تا دو دقیقه طول بکشد)");
+                "در حال ساخت پیش‌نمایش نامه روی سربرگ شرکت… (بار اول ممکن است تا دو دقیقه طول بکشد)");
         }
         catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException or TaskCanceledException)
         {

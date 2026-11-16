@@ -225,9 +225,22 @@ window.ltxPrintReserveByClick = function () {
         return false;
     }
 };
+// بستن پنجره‌های رزروشده: وقتی پیش‌نمایش مشترک (همین تب) کار را به دست می‌گیرد، پنجرهٔ
+// رزروشده هیچ‌وقت مصرف نمی‌شود و به‌صورت یک تب about:blank خالی روی دست کاربر می‌ماند.
+window.ltxPrintReleaseReservedWindows = function () {
+    var pending = window.ltxPrintPendingWindows || [];
+    while (pending.length) {
+        var popup = pending.shift();
+        try { if (popup && !popup.closed) popup.close(); } catch (error) { console.error('[letter-print] reserved popup close failed', error); }
+    }
+};
 document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target.closest('[data-ltx-print-option]') : null;
-    if (target) window.ltxPrintReserveByClick();
+    if (!target) return;
+    // پیش‌نمایش مشترک داخل همین تب باز می‌شود، پس popup blocker موضوعیت ندارد و رزرو پنجره
+    // فقط یک تب سفید اضافه می‌ساخت. رزرو تنها برای پوستهٔ قدیمی (که واقعاً پنجره باز می‌کند) لازم است.
+    if (ltxShopPreview()) return;
+    window.ltxPrintReserveByClick();
 }, true);
 
 function ltxEnsurePrintFallbackStyles() {
@@ -244,11 +257,11 @@ function ltxEnsurePrintFallbackStyles() {
     document.head.appendChild(style);
 }
 function ltxPrintShellMarkup() {
-    return '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>چاپ نامه</title>' +
-        '<style>html,body{margin:0;width:100%;height:100%;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b;background:#f1f5f9}*{box-sizing:border-box}.bar{height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.status{margin-left:auto;font-size:14px}.actions{display:flex;gap:8px}button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}button.primary{background:#0f766e;color:#fff}button[hidden]{display:none}iframe{display:block;width:100%;height:calc(100% - 58px);border:0;background:white}.error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.error[hidden]{display:none}</style></head><body>' +
-        '<div class="bar"><div id="ltx-print-status" class="status">در حال آماده‌سازی نسخهٔ چاپ…</div><div class="actions">' +
-        '<button id="ltx-print-now" class="primary" hidden>چاپ PDF</button><button id="ltx-print-retry" hidden>تلاش مجدد</button><button id="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button id="ltx-print-close">بستن</button></div></div>' +
-        '<div id="ltx-print-error" class="error" hidden></div><iframe id="ltx-print-frame" title="پیش‌نمایش PDF"></iframe></body></html>';
+    return '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>پیش‌نمایش نامه</title>' +
+        '<style>html,body{margin:0;width:100%;height:100%;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b;background:#f1f5f9}*{box-sizing:border-box}.bar{height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.status{margin-left:auto;font-size:14px}.actions{display:flex;gap:8px}button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}button:disabled{opacity:.6;cursor:default}button.primary{background:#0f766e;color:#fff}button[hidden]{display:none}iframe{display:block;width:100%;height:calc(100% - 58px);border:0;background:white}.error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.error[hidden]{display:none}</style></head><body>' +
+        '<div class="bar"><div id="ltx-print-status" class="status">در حال آماده‌سازی پیش‌نمایش نامه…</div><div class="actions">' +
+        '<button id="ltx-print-now" class="primary" hidden>چاپ</button><button id="ltx-print-download" hidden>دانلود PDF</button><button id="ltx-print-retry" hidden>تلاش مجدد</button><button id="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button id="ltx-print-close">بستن</button></div></div>' +
+        '<div id="ltx-print-error" class="error" hidden></div><iframe id="ltx-print-frame" title="پیش‌نمایش نامه"></iframe></body></html>';
 }
 function ltxCreateOverlay(session) {
     ltxEnsurePrintFallbackStyles();
@@ -256,64 +269,127 @@ function ltxCreateOverlay(session) {
     overlay.className = 'ltx-print-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-label', 'چاپ نامه');
-    overlay.innerHTML = '<style>.ltx-print-overlay{position:fixed;z-index:2147483000;inset:0;background:#f1f5f9;display:flex;flex-direction:column;direction:rtl;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b}.ltx-print-overlay .ltx-bar{min-height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.ltx-print-overlay .ltx-status{margin-left:auto;font-size:14px}.ltx-print-overlay .ltx-actions{display:flex;gap:8px}.ltx-print-overlay button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}.ltx-print-overlay button.primary{background:#0f766e;color:#fff}.ltx-print-overlay button[hidden]{display:none}.ltx-print-overlay .ltx-error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.ltx-print-overlay .ltx-error[hidden]{display:none}.ltx-print-overlay iframe{display:block;flex:1;width:100%;min-height:0;border:0;background:white}@media print{.ltx-print-overlay .ltx-bar,.ltx-print-overlay .ltx-error{display:none!important}.ltx-print-overlay iframe{height:100vh}}</style>' +
-        '<div class="ltx-bar"><div class="ltx-status">در حال آماده‌سازی نسخهٔ چاپ…</div><div class="ltx-actions"><button class="ltx-print-now primary" hidden>چاپ PDF</button><button class="ltx-print-retry" hidden>تلاش مجدد</button><button class="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button class="ltx-print-close">بستن</button></div></div>' +
-        '<div class="ltx-error" hidden></div><iframe class="ltx-print-frame" title="پیش‌نمایش PDF"></iframe>';
+    overlay.setAttribute('aria-label', 'پیش‌نمایش نامه');
+    overlay.innerHTML = '<style>.ltx-print-overlay{position:fixed;z-index:2147483000;inset:0;background:#f1f5f9;display:flex;flex-direction:column;direction:rtl;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#1e293b}.ltx-print-overlay .ltx-bar{min-height:58px;display:flex;align-items:center;gap:8px;padding:8px 14px;background:#fff;border-bottom:1px solid #cbd5e1}.ltx-print-overlay .ltx-status{margin-left:auto;font-size:14px}.ltx-print-overlay .ltx-actions{display:flex;gap:8px}.ltx-print-overlay button{border:0;border-radius:6px;padding:8px 12px;background:#e2e8f0;color:#0f172a;font:inherit;cursor:pointer}.ltx-print-overlay button:disabled{opacity:.6;cursor:default}.ltx-print-overlay button.primary{background:#0f766e;color:#fff}.ltx-print-overlay button[hidden]{display:none}.ltx-print-overlay .ltx-error{padding:10px 14px;color:#b91c1c;background:#fef2f2;line-height:1.8}.ltx-print-overlay .ltx-error[hidden]{display:none}.ltx-print-overlay iframe{display:block;flex:1;width:100%;min-height:0;border:0;background:white}@media print{.ltx-print-overlay .ltx-bar,.ltx-print-overlay .ltx-error{display:none!important}.ltx-print-overlay iframe{height:100vh}}</style>' +
+        '<div class="ltx-bar"><div class="ltx-status">در حال آماده‌سازی پیش‌نمایش نامه…</div><div class="ltx-actions"><button class="ltx-print-now primary" hidden>چاپ</button><button class="ltx-print-download" hidden>دانلود PDF</button><button class="ltx-print-retry" hidden>تلاش مجدد</button><button class="ltx-print-direct" hidden>چاپ مستقیم صفحه</button><button class="ltx-print-close">بستن</button></div></div>' +
+        '<div class="ltx-error" hidden></div><iframe class="ltx-print-frame" title="پیش‌نمایش نامه"></iframe>';
     document.body.appendChild(overlay);
     session.overlay = overlay;
     session.frame = overlay.querySelector('.ltx-print-frame');
     session.status = overlay.querySelector('.ltx-status');
     session.error = overlay.querySelector('.ltx-error');
     overlay.querySelector('.ltx-print-now').addEventListener('click', function () { ltxTriggerPrint(session); });
+    overlay.querySelector('.ltx-print-download').addEventListener('click', function () { ltxPrintDownload(session); });
     overlay.querySelector('.ltx-print-retry').addEventListener('click', function () { ltxResolvePrintAction(session, 'retry'); });
     overlay.querySelector('.ltx-print-direct').addEventListener('click', function () { ltxResolvePrintAction(session, 'direct'); });
-    overlay.querySelector('.ltx-print-close').addEventListener('click', function () { ltxResolvePrintAction(session, 'close'); });
-    if (session.popupBlocked) ltxSetPrintStatus(session, 'پنجرهٔ بازشو مسدود شد؛ چاپ در همین صفحه ادامه می‌یابد. برای تجربهٔ بهتر، popup این سایت را مجاز کنید.');
+    overlay.querySelector('.ltx-print-close').addEventListener('click', function () { ltxRequestPrintClose(session); });
+    if (session.popupBlocked) ltxSetPrintStatus(session, 'پنجرهٔ بازشو مسدود شد؛ پیش‌نمایش در همین صفحه نشان داده می‌شود. برای تجربهٔ بهتر، popup این سایت را مجاز کنید.');
+}
+/// دکمه‌های نوار پیش‌نمایش در هر دو حالت (پنجرهٔ جدا / لایهٔ داخل صفحه) با یک نام شناخته می‌شوند.
+function ltxPrintControl(session, name) {
+    try {
+        if (!session) return null;
+        if (session.overlay) return session.overlay.querySelector('.ltx-print-' + name);
+        if (session.win && !session.win.closed) return session.win.document.getElementById('ltx-print-' + name);
+    } catch (error) { console.error('[letter-print] control lookup failed', error); }
+    return null;
+}
+function ltxShowPrintControl(session, name, visible) {
+    var control = ltxPrintControl(session, name);
+    if (control) control.hidden = !visible;
 }
 function ltxSetPrintStatus(session, text) {
     if (session.status) session.status.textContent = text;
 }
 function ltxSetPrintError(session, message) {
-    var actions = session.overlay ? session.overlay : session.win && !session.win.closed ? session.win.document : null;
-    if (!actions) return;
-    var status = session.status || actions.getElementById('ltx-print-status');
-    var error = session.error || actions.getElementById('ltx-print-error');
-    if (status) status.textContent = 'چاپ آماده نشد';
-    if (error) { error.textContent = String(message || 'خطا در آماده‌سازی چاپ'); error.hidden = false; }
-    var retry = session.overlay ? actions.querySelector('.ltx-print-retry') : actions.getElementById('ltx-print-retry');
-    var direct = session.overlay ? actions.querySelector('.ltx-print-direct') : actions.getElementById('ltx-print-direct');
-    if (retry) retry.hidden = false;
-    if (direct) direct.hidden = false;
+    if (session.status) session.status.textContent = 'چاپ آماده نشد';
+    if (session.error) { session.error.textContent = String(message || 'خطا در آماده‌سازی چاپ'); session.error.hidden = false; }
+    ltxShowPrintControl(session, 'now', false);
+    ltxShowPrintControl(session, 'download', false);
+    ltxShowPrintControl(session, 'retry', true);
+    ltxShowPrintControl(session, 'direct', true);
 }
-function ltxResolvePrintAction(session, action) {
-    if (session.overlay) {
-        if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve(action); }
-        else session.queuedAction = action;
-        return;
-    }
+/// دانلود همان PDFی که در پیش‌نمایش نشان داده شده — راه فرار وقتی پنجرهٔ چاپ مرورگر کند است.
+function ltxPrintDownload(session) {
+    if (!session || !session.objectUrl) return false;
     try {
-        if (session.win && !session.win.closed && session.win.opener)
-            session.win.opener.postMessage({ type: 'ltx-print-action', id: session.id, action: action }, window.location.origin);
-    } catch (error) { console.error('[letter-print] could not notify opener', error); }
+        var doc = session.win && !session.win.closed ? session.win.document : document;
+        var link = doc.createElement('a');
+        link.href = session.objectUrl;
+        link.download = session.fileName || 'letter.pdf';
+        doc.body.appendChild(link);
+        link.click();
+        link.remove();
+        return true;
+    } catch (error) {
+        console.error('[letter-print] download failed', error);
+        return false;
+    }
 }
+/// تصمیم کاربر (چاپ/تلاش مجدد/چاپ مستقیم/بستن) را به جریانِ منتظرِ #C می‌رساند.
+/// نکته: دکمه‌های پنجرهٔ پیش‌نمایش هم به همین تابع وصل‌اند. قبلاً برای پنجرهٔ جدا از
+/// postMessage استفاده می‌شد، ولی خودِ شنونده روی `event.source !== session.win` فیلتر می‌کرد و
+/// چون این توابع در realm پنجرهٔ اصلی اجرا می‌شوند، مرورگر پنجرهٔ اصلی را به‌عنوان source
+/// می‌فرستد؛ یعنی پیام همیشه دور ریخته می‌شد و «تلاش مجدد»/«چاپ مستقیم» بی‌اثر بودند.
+/// حالا تصمیم مستقیم و در همان realm حل می‌شود — هم ساده‌تر و هم بدون آن دام.
+function ltxResolvePrintAction(session, action) {
+    if (!session) return;
+    if (action === 'print') { ltxTriggerPrint(session); return; }
+    if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve(action); return; }
+    session.queuedAction = action;
+}
+// سازگاری: اگر صفحه‌ای از بیرون پیام چاپ بفرستد (مثلاً نسخهٔ کش‌شدهٔ قدیمی پوستهٔ چاپ).
 window.addEventListener('message', function (event) {
     if (event.origin !== window.location.origin || !event.data || event.data.type !== 'ltx-print-action') return;
     var session = window.ltxPrintSessions[event.data.id];
-    if (!session || event.source !== session.win) return;
-    if (event.data.action === 'print') { ltxTriggerPrint(session); return; }
-    if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve(event.data.action); }
-    else session.queuedAction = event.data.action;
+    if (session) ltxResolvePrintAction(session, event.data.action);
 });
 function ltxAttachPopupControls(session) {
     var doc = session.win.document;
     session.frame = doc.getElementById('ltx-print-frame');
     session.status = doc.getElementById('ltx-print-status');
     session.error = doc.getElementById('ltx-print-error');
-    doc.getElementById('ltx-print-now').addEventListener('click', function () { ltxResolvePrintAction(session, 'print'); });
+    // «چاپ» مستقیم در همان پنجرهٔ پیش‌نمایش اجرا می‌شود (بدون رفت‌وبرگشت postMessage) تا
+    // کلیک کاربر به‌عنوان user gesture حفظ شود و مرورگر پنجرهٔ چاپ را مسدود نکند.
+    doc.getElementById('ltx-print-now').addEventListener('click', function () { ltxTriggerPrint(session); });
+    doc.getElementById('ltx-print-download').addEventListener('click', function () { ltxPrintDownload(session); });
     doc.getElementById('ltx-print-retry').addEventListener('click', function () { ltxResolvePrintAction(session, 'retry'); });
     doc.getElementById('ltx-print-direct').addEventListener('click', function () { ltxResolvePrintAction(session, 'direct'); });
-    doc.getElementById('ltx-print-close').addEventListener('click', function () { session.win.close(); });
+    doc.getElementById('ltx-print-close').addEventListener('click', function () { ltxRequestPrintClose(session); });
+}
+/// بستن پیش‌نمایش با دکمهٔ «بستن». اگر سمت #C منتظر تصمیم کاربر باشد، همان انتظار پاسخ می‌گیرد.
+function ltxRequestPrintClose(session) {
+    if (!session) return;
+    if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve('close'); return; }
+    if (session.failed) { session.queuedAction = 'close'; return; }
+    ltxPrintMarkCancelled(session);
+    ltxPrintCleanup(session, true);
+}
+/// وقتی کاربر پنجرهٔ پیش‌نمایش را ببندد، شناسهٔ آن یادداشت می‌شود تا سمت #C پیام خطای
+/// بی‌مورد («آماده نشد») نشان ندهد؛ بستن عمدی خطا نیست.
+window.ltxPrintCancelledIds = Object.create(null);
+function ltxPrintMarkCancelled(session) {
+    if (!session) return;
+    var id = session.id;
+    window.ltxPrintCancelledIds[id] = true;
+    setTimeout(function () { delete window.ltxPrintCancelledIds[id]; }, 120000);
+}
+window.ltxPrintWasCancelled = function (id) {
+    return !!window.ltxPrintCancelledIds[id];
+};
+/// پس از آماده‌شدن پیش‌نمایش، بسته‌شدن پنجره توسط کاربر پیگیری می‌شود تا منابع آزاد شوند.
+function ltxWatchPrintWindow(session) {
+    if (!session || !session.win || session.aliveTimer) return;
+    session.aliveTimer = setInterval(function () {
+        if (!session.win || session.win.closed) ltxPrintWindowGone(session);
+    }, 700);
+}
+function ltxPrintWindowGone(session) {
+    if (session.aliveTimer) { clearInterval(session.aliveTimer); session.aliveTimer = null; }
+    if (session.resolveAction) { var resolve = session.resolveAction; session.resolveAction = null; resolve('close'); return; }
+    if (session.failed) { session.queuedAction = 'close'; return; }
+    ltxPrintMarkCancelled(session);
+    ltxPrintCleanup(session, false);
 }
 function ltxEnsurePrintSurface(session) {
     if (session.win && !session.win.closed) return true;
@@ -327,7 +403,14 @@ function ltxPrintAttemptCurrent(session, attemptId) {
 function ltxPrintCleanup(session, closePopup) {
     if (!session || session.cleaned) return;
     session.cleaned = true;
-    if (session.closePoll) clearInterval(session.closePoll);
+    if (session.closePoll) { clearInterval(session.closePoll); session.closePoll = null; }
+    if (session.aliveTimer) { clearInterval(session.aliveTimer); session.aliveTimer = null; }
+    if (session.afterPrintHandler) {
+        try { window.removeEventListener('afterprint', session.afterPrintHandler); } catch (error) { /* ignore */ }
+        try { if (session.win && !session.win.closed) session.win.removeEventListener('afterprint', session.afterPrintHandler); }
+        catch (error) { /* پنجره ممکن است قبلاً بسته شده باشد */ }
+        session.afterPrintHandler = null;
+    }
     if (session.objectUrl) { URL.revokeObjectURL(session.objectUrl); session.objectUrl = null; }
     document.body.classList.remove('ltx-print-direct-page');
     if (session.overlay && session.overlay.parentNode) session.overlay.parentNode.removeChild(session.overlay);
@@ -337,9 +420,19 @@ function ltxPrintCleanup(session, closePopup) {
     }
     delete window.ltxPrintSessions[session.id];
 }
+/// پس از بسته‌شدن پنجرهٔ چاپ مرورگر.
+/// • «چاپ مستقیم صفحه»: حالت چاپ صفحه باید برداشته و منابع آزاد شود.
+/// • چاپ از روی پیش‌نمایش: پیش‌نمایش **باز می‌ماند**. مرورگر برای «چاپ» و «لغو» یک رویداد
+///   یکسان می‌فرستد؛ اگر اینجا پنجره بسته می‌شد، کاربری که چاپ را لغو کرده پیش‌نمایشش را هم
+///   از دست می‌داد. بستن پیش‌نمایش فقط با دکمهٔ «بستن» انجام می‌شود.
 function ltxPrintAfterPrint(session) {
-    if (!session || (!session.printRequested && !session.directFallback)) return;
-    ltxPrintCleanup(session, true);
+    if (!session || session.cleaned) return;
+    if (session.directFallback) { ltxPrintCleanup(session, true); return; }
+    if (!session.printRequested) return;
+    session.printRequested = false;
+    var button = ltxPrintControl(session, 'now');
+    if (button) button.disabled = false;
+    ltxSetPrintStatus(session, 'پیش‌نمایش نامه آماده است. در صورت نیاز دوباره «چاپ» را بزنید یا پنجره را ببندید.');
 }
 function ltxWithPrintTimeout(promise, timeoutMs, message) {
     var timer;
@@ -368,23 +461,34 @@ function ltxWaitForPrintAssets(doc, timeoutMs) {
     } catch (error) { return Promise.reject(error); }
     return ltxWithPrintTimeout(Promise.all(tasks), timeoutMs, 'بارگذاری فونت‌ها و تصاویر چاپ بیش از ۱۵ ثانیه طول کشید.');
 }
+/// پنجرهٔ چاپ مرورگر **فقط** از اینجا باز می‌شود و تنها با کلیک کاربر روی دکمهٔ «چاپ»
+/// صدا زده می‌شود؛ آماده‌شدن پیش‌نمایش به‌تنهایی هرگز چاپ را شروع نمی‌کند.
 function ltxTriggerPrint(session) {
     if (!session || !(session.ready || session.pdfLoaded) || !session.frame) return false;
+    if (session.printRequested) return false;
+    var button = ltxPrintControl(session, 'now');
     try {
         var target = session.frame.contentWindow;
         if (!target) throw new Error('صفحهٔ PDF در مرورگر آماده نیست.');
-        target.focus();
         session.printRequested = true;
+        if (button) button.disabled = true;
+        // رندر پنجرهٔ چاپ برای نامهٔ روی سربرگ می‌تواند چند ثانیه طول بکشد؛ کاربر باید بداند
+        // که کلیکش ثبت شده. خواندن offsetHeight، مرورگر را وادار به چیدمان مجدد می‌کند تا این
+        // متن پیش از فراخوانی مسدودکنندهٔ print() دیده شود.
+        ltxSetPrintStatus(session, 'در حال باز کردن پنجرهٔ چاپ مرورگر…');
+        if (session.status) void session.status.offsetHeight;
+        target.focus();
         target.print();
         return true;
     } catch (error) {
         session.printRequested = false;
+        if (button) button.disabled = false;
         console.error('[letter-print] native print request failed', error);
         ltxSetPrintError(session, 'PDF آماده است، اما مرورگر اجازهٔ بازکردن پنجرهٔ چاپ را نداد. از دکمهٔ چاپ داخل نمایشگر PDF استفاده کنید یا دوباره تلاش کنید.');
         return false;
     }
 }
-window.ltxPrintBegin = function () {
+function ltxLegacyPrintBegin() {
     var id = 'pw' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     var popup = null;
     try { popup = window.ltxPrintPendingWindows.shift(); } catch (error) { console.error('[letter-print] reserved popup retrieval failed', error); }
@@ -402,13 +506,15 @@ window.ltxPrintBegin = function () {
         console.error('[letter-print] popup setup failed; using in-page print surface', error);
         session.win = null; session.popupBlocked = true; ltxCreateOverlay(session);
     }
-    window.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true });
+    // بدون { once: true }: پیش‌نمایش پس از چاپ باز می‌ماند، پس باید چاپ‌های بعدی هم شنیده شوند.
+    session.afterPrintHandler = function () { ltxPrintAfterPrint(session); };
+    window.addEventListener('afterprint', session.afterPrintHandler);
     if (session.win) {
-        try { session.win.addEventListener('afterprint', function () { ltxPrintAfterPrint(session); }, { once: true }); } catch (error) { console.error('[letter-print] afterprint listener failed', error); }
+        try { session.win.addEventListener('afterprint', session.afterPrintHandler); } catch (error) { console.error('[letter-print] afterprint listener failed', error); }
     }
     return id;
 };
-window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
+async function ltxLegacyPrintReady(id, payload, fileName, timeoutMs) {
     var session = window.ltxPrintSessions[id];
     if (!session || session.cleaned || !ltxEnsurePrintSurface(session)) return false;
     var timeout = Math.max(1, Number(timeoutMs) || 15000);
@@ -446,19 +552,28 @@ window.ltxPrintReady = async function (id, payload, fileName, timeoutMs) {
         var renderWindow = session.win || window;
         await new Promise(function (resolve) { renderWindow.requestAnimationFrame(function () { renderWindow.requestAnimationFrame(resolve); }); });
         if (!ltxPrintAttemptCurrent(session, attemptId)) return false;
-        if (session.win) session.win.document.title = String(fileName || 'چاپ نامه');
+        if (session.win) session.win.document.title = String(fileName || 'پیش‌نمایش نامه');
+        session.fileName = String(fileName || 'letter.pdf');
         session.ready = true;
-        ltxSetPrintStatus(session, 'PDF آماده است؛ پنجرهٔ چاپ باز می‌شود…');
-        var printButton = session.overlay ? session.overlay.querySelector('.ltx-print-now') : session.win.document.getElementById('ltx-print-now');
-        if (printButton) printButton.hidden = false;
-        if (!ltxTriggerPrint(session)) throw new Error('مرورگر نتوانست پنجرهٔ چاپ را باز کند.');
+        // اینجا کار تمام است: نامه فقط **نمایش** داده می‌شود. پنجرهٔ چاپ مرورگر باز نمی‌شود
+        // مگر اینکه کاربر خودش روی «چاپ» کلیک کند (ltxTriggerPrint).
+        ltxSetPrintStatus(session, 'پیش‌نمایش نامه آماده است؛ برای چاپ، دکمهٔ «چاپ» را بزنید.');
+        ltxShowPrintControl(session, 'now', true);
+        ltxShowPrintControl(session, 'download', true);
+        var printButton = ltxPrintControl(session, 'now');
+        if (printButton) printButton.disabled = false;
+        if (session.win && !session.win.closed) {
+            try { session.win.focus(); } catch (error) { /* فوکوس اختیاری است */ }
+            try { printButton && printButton.focus({ preventScroll: true }); } catch (error) { /* ignore */ }
+        }
+        ltxWatchPrintWindow(session);
         return true;
     } catch (error) {
         console.error('[letter-print] preparation failed', error);
         throw error;
     }
 };
-window.ltxPrintFail = function (id, message) {
+function ltxLegacyPrintFail(id, message) {
     var session = window.ltxPrintSessions[id];
     if (!session) return false;
     if (!ltxEnsurePrintSurface(session)) return false;
@@ -471,14 +586,14 @@ window.ltxPrintFail = function (id, message) {
     return true;
 };
 // متن وضعیت را در حین آماده‌سازی به‌روز می‌کند (رندر طولانی PDF سمت سرور).
-window.ltxPrintStatus = function (id, text) {
+function ltxLegacyPrintStatus(id, text) {
     var session = window.ltxPrintSessions[id];
     if (!session || session.failed) return false;
     if (!ltxEnsurePrintSurface(session)) return false;
     ltxSetPrintStatus(session, String(text || 'در حال آماده‌سازی نسخهٔ چاپ…'));
     return true;
 };
-window.ltxPrintWaitForAction = function (id) {
+function ltxLegacyPrintWaitForAction(id) {
     var session = window.ltxPrintSessions[id];
     if (!session) return Promise.resolve('close');
     if (session.queuedAction) { var queued = session.queuedAction; session.queuedAction = null; return Promise.resolve(queued); }
@@ -492,7 +607,7 @@ window.ltxPrintWaitForAction = function (id) {
         }, 300);
     });
 };
-window.ltxPrintDirectPage = function (id) {
+function ltxLegacyPrintDirectPage(id) {
     var session = window.ltxPrintSessions[id];
     if (session && session.pdfLoaded && session.frame) {
         if (ltxTriggerPrint(session)) return true;
@@ -510,9 +625,79 @@ window.ltxPrintDirectPage = function (id) {
     }
     return true;
 };
-window.ltxPrintCancel = function (id) {
+function ltxLegacyPrintCancel(id) {
     var session = window.ltxPrintSessions[id];
     if (session) ltxPrintCleanup(session, true);
+};
+
+// ================== مسیر پیش‌نمایش چاپ نامه ==================
+// نامه‌های اتوماسیون اداری از همان پیش‌نمایشی استفاده می‌کنند که فاکتور فروشگاهی و
+// گزارش‌ها استفاده می‌کنند (shop-print-preview): هدر با عنوان سند، نوار وضعیت،
+// بزرگ‌نمایی، جابه‌جایی بین صفحه‌ها، «دریافت PDF»، «چاپ (F4)» و «بستن (Esc)».
+// آن کامپوننت دکمهٔ چاپ را تا کامل‌شدن رندر PDF غیرفعال نگه می‌دارد و چاپ را فقط با
+// کلیک/کلید کاربر اجرا می‌کند — دقیقاً همان قراری که این ماژول لازم دارد.
+//
+// اگر کامپوننت یا نمایشگر PDF در دسترس نباشد (نسخهٔ قدیمی کش‌شده، filePreview خراب)،
+// به پوستهٔ قدیمیِ همین فایل برمی‌گردیم تا چاپ نامه هیچ‌وقت بی‌جواب نماند.
+var LTX_SHOP_PREFIX = 'shop:';
+function ltxShopPreview() {
+    var api = window.shopPrintPreview;
+    return api && typeof api.beginPdf === 'function' ? api : null;
+}
+function ltxShopToken(id) {
+    return typeof id === 'string' && id.indexOf(LTX_SHOP_PREFIX) === 0 ? id.slice(LTX_SHOP_PREFIX.length) : null;
+}
+
+window.ltxPrintBegin = function (title) {
+    var api = ltxShopPreview();
+    if (api) {
+        try {
+            var token = api.beginPdf(title || 'نامه', 'در حال ساخت نسخهٔ چاپ نامه…');
+            // اگر پیش از در دسترس آمدن پیش‌نمایش مشترک پنجره‌ای رزرو شده بود، همین‌جا بسته
+            // می‌شود تا تب سفید باقی نماند.
+            if (token) { window.ltxPrintReleaseReservedWindows(); return LTX_SHOP_PREFIX + token; }
+        } catch (error) { console.error('[letter-print] shared preview unavailable; using the legacy surface', error); }
+    }
+    return ltxLegacyPrintBegin();
+};
+window.ltxPrintReady = function (id, payload, fileName, timeoutMs) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintReady(id, payload, fileName, timeoutMs);
+    return Promise.resolve(window.shopPrintPreview.resolvePdf(token, payload, fileName));
+};
+window.ltxPrintStatus = function (id, text) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintStatus(id, text);
+    return window.shopPrintPreview.statusPdf(token, String(text || 'در حال آماده‌سازی پیش‌نمایش…'), false);
+};
+window.ltxPrintFail = function (id, message) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintFail(id, message);
+    return window.shopPrintPreview.failPdf(token, message);
+};
+window.ltxPrintWaitForAction = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintWaitForAction(id);
+    return window.shopPrintPreview.waitForAction(token);
+};
+window.ltxPrintDirectPage = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintDirectPage(id);
+    // پیش‌نمایش مشترک «چاپ مستقیم صفحه» ندارد و لازم هم ندارد: «دریافت PDF» جایگزین بهتری است.
+    window.shopPrintPreview.cancelPdf(token);
+    return false;
+};
+window.ltxPrintCancel = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyPrintCancel(id);
+    window.shopPrintPreview.cancelPdf(token);
+};
+// «کاربر خودش بست» — تا سمت #C پیام خطای بی‌مورد ندهد.
+var ltxLegacyWasCancelled = window.ltxPrintWasCancelled;
+window.ltxPrintWasCancelled = function (id) {
+    var token = ltxShopToken(id);
+    if (token === null) return ltxLegacyWasCancelled(id);
+    return !window.shopPrintPreview.isOpen(token);
 };
 
 // ================== آدرس سرور API (مهم برای ورود موفق) ==================

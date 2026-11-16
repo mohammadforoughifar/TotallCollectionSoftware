@@ -117,6 +117,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // آستانهٔ هشدار: رندری که بیشتر از این طول بکشد با یک خط SLOW در لاگ خلاصه می‌شود.
     private const long SlowPrintWarningMs = 20_000;
 
+    // حداکثر اندازهٔ رستر امضا پیش از برداری‌سازی. جای امضا ۱۰۴×۵۲ پوینت است، پس ۶۰۰×۲۴۰
+    // معادل ~۴۱۵ DPI می‌شود — بالاتر از کیفیت چاپ ۳۰۰ DPI و نصفِ سقف قبلی (۱۲۰۰×۴۸۰ ≈ ۸۳۱ DPI).
+    private const int SignatureMaxWidth = 600;
+    private const int SignatureMaxHeight = 240;
+
     /// <summary>
     /// رندرِ مشترکِ درخواست‌های هم‌زمان. عمداً به‌جای <c>Lazy&lt;Task&lt;T&gt;&gt;</c> نوشته شده است:
     /// خواندن <c>Lazy&lt;Task&lt;T&gt;&gt;.Value</c> قاعدهٔ تحلیل‌گر VSTHRD011 را می‌شکند (خطر deadlock
@@ -273,6 +278,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             : string.IsNullOrWhiteSpace(metaColor) ? LetterPrintTemplate.MetaValueColor : metaColor;
         _companyTemplateMap = ReadCompanyTemplateMap();
         QuestPDF.Settings.License = LicenseType.Community;
+        // متن نامه از ویرایشگر می‌آید و ممکن است نویسه‌ای داشته باشد که وزیرمتن ندارد
+        // (ایموجی، نویسهٔ چسبانده‌شده از Word، حروف غیرفارسی). با مقدار پیش‌فرضِ true،
+        // QuestPDF کل چاپ را با استثنا متوقف می‌کرد؛ همان قاعدهٔ صورتجلسه اینجا هم اعمال
+        // می‌شود تا یک نویسهٔ ناشناس نامه را غیرقابل‌چاپ نکند.
+        QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
     }
 
     /// <summary>
@@ -1641,11 +1651,17 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var crop = new SixLabors.ImageSharp.Rectangle(left, top, right - left + 1, bottom - top + 1);
             image.Mutate(ctx => ctx.Crop(crop).Pad(crop.Width + 8, crop.Height + 8, new Rgba32(0, 0, 0, 0)));
             // Resize only after trimming; otherwise a large transparent canvas would reduce ink resolution.
-            if (image.Width > 1200 || image.Height > 480)
+            //
+            // این سقف مستقیماً روی سنگینی خروجی اثر می‌گذارد: هر پیکسلِ جوهر در ادامه به
+            // مستطیل‌های برداری SVG تبدیل می‌شود، پس تعداد مسیرها با مساحت تصویر رشد می‌کند.
+            // جای امضا در چیدمان ۱۰۴×۵۲ پوینت (۱٫۴۴ اینچ) است؛ سقف قبلی ۱۲۰۰×۴۸۰ یعنی ۸۳۱ DPI،
+            // نزدیک سه برابر کیفیت چاپ ۳۰۰ DPI. سقف ۶۰۰×۲۴۰ هنوز ۴۱۵ DPI می‌دهد (بالاتر از
+            // نیاز چاپ) ولی تعداد مسیرها و حجم محتوای PDF را نصف می‌کند.
+            if (image.Width > SignatureMaxWidth || image.Height > SignatureMaxHeight)
                 image.Mutate(x => x.Resize(new ResizeOptions
                 {
                     Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,
-                    Size = new SixLabors.ImageSharp.Size(1200, 480),
+                    Size = new SixLabors.ImageSharp.Size(SignatureMaxWidth, SignatureMaxHeight),
                     Sampler = KnownResamplers.Lanczos3
                 }));
 
@@ -2612,6 +2628,78 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return string.IsNullOrWhiteSpace(value) ? user.Username : value;
     }
 
+    /// <summary>
+    /// باز کردن (و کش کردنِ) سربرگ به‌صورت XImage/XPdfForm. رمزگشایی JPEG بزرگ سربرگ
+    /// گران است و نتیجه بین همهٔ چاپ‌ها به اشتراک گذاشته می‌شود. گرم‌کردن اولیه هم از
+    /// همین مسیر استفاده می‌کند تا اولین چاپِ کاربر این هزینه را نپردازد.
+    /// </summary>
+    private static CachedLetterheadAsset OpenLetterheadAsset(string letterheadPath)
+    {
+        var fullPath = Path.GetFullPath(letterheadPath);
+        var info = new FileInfo(fullPath);
+        var cacheKey = $"{fullPath}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
+        return LetterheadAssets.GetOrAdd(cacheKey, _ => new Lazy<CachedLetterheadAsset>(() =>
+        {
+            var isPdf = fullPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            return isPdf
+                ? new CachedLetterheadAsset(true, XPdfForm.FromFile(fullPath), null)
+                : new CachedLetterheadAsset(false, null, XImage.FromFile(fullPath));
+        }, LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    /// <summary>
+    /// گرم‌کردن مسیر چاپ نامه پیش از اولین کلیک کاربر.
+    ///
+    /// چرا لازم است؟ همهٔ کش‌های این سرویس «تنبل» هستند و تا اولین چاپ پر نمی‌شوند؛ پس
+    /// اولین کاربرِ هر بار بالا آمدن برنامه هزینهٔ یک‌بارهٔ کامل را می‌پرداخت: JIT شدن
+    /// QuestPDF/SkiaSharp/PDFsharp، ثبت فونت وزیرمتن، استخراج سربرگ از فایل MRT
+    /// (پارس XML + دیکد Base64 + نوشتن JPEG) و رمزگشایی همان JPEG چندمگاپیکسلی.
+    /// همین است که پیام «بار اول ممکن است تا دو دقیقه طول بکشد» در رابط کاربری آمده.
+    ///
+    /// این متد همان کارها را در پس‌زمینه و پیش از درخواست کاربر انجام می‌دهد. هر خطایی
+    /// بی‌صدا نادیده گرفته می‌شود: گرم‌کردن نباید بالا آمدن برنامه را خراب کند.
+    /// </summary>
+    public async Task WarmupAsync(CancellationToken ct = default)
+    {
+        var timer = Stopwatch.StartNew();
+        EnsureFonts();
+
+        // یک سند کوچک: QuestPDF + SkiaSharp + HarfBuzz + شکل‌دهی فارسی را JIT می‌کند.
+        var probe = Document.Create(container => container.Page(page =>
+        {
+            page.Size(PageSizes.A4);
+            page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(10));
+            page.Content().Text(LetterPrintTemplate.RtlParagraph("آزمایش گرم‌کردن چاپ ۱۴۰۵"))
+                .AlignRight().DirectionFromRightToLeft();
+        })).GeneratePdf();
+
+        var companyIds = await _db.SystemCompanies.AsNoTracking()
+            .Select(c => c.Id).Distinct().ToListAsync(ct);
+
+        var warmed = 0;
+        foreach (var companyId in companyIds)
+        {
+            if (ct.IsCancellationRequested) break;
+            try
+            {
+                var letterhead = ExtractTemplateLetterhead(companyId, isA5: false);
+                if (letterhead == null) continue;
+                // همان مسیر واقعی چاپ: رمزگشایی سربرگ + یک overlay کامل با PDFsharp.
+                OpenLetterheadAsset(letterhead);
+                OverlayOnLetterhead(probe, letterhead, letterId: 0);
+                warmed++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "گرم‌کردن سربرگ شرکت {CompanyId} ناموفق بود (چاپ همچنان کار می‌کند).", companyId);
+            }
+        }
+
+        _logger.LogInformation(
+            "OutgoingLetterPrintTiming Stage=warmup Companies={Companies} Warmed={Warmed} StageMs={StageMs}",
+            companyIds.Count, warmed, timer.ElapsedMilliseconds);
+    }
+
     /// <summary>قرار دادن صفحات نامه روی سربرگ یا لوگوی شرکت (PDF یا تصویر)</summary>
     private byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath, int letterId)
     {
@@ -2619,17 +2707,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         using var contentDoc = PdfReader.Open(contentStream, PdfDocumentOpenMode.Import);
         using var output = new PdfDocument();
 
-        var fullPath = Path.GetFullPath(letterheadPath);
-        var info = new FileInfo(fullPath);
-        var cacheKey = $"{fullPath}:{info.Length}:{info.LastWriteTimeUtc.Ticks}";
         var assetTimer = Stopwatch.StartNew();
-        var asset = LetterheadAssets.GetOrAdd(cacheKey, _ => new Lazy<CachedLetterheadAsset>(() =>
-        {
-            var isPdf = fullPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-            return isPdf
-                ? new CachedLetterheadAsset(true, XPdfForm.FromFile(fullPath), null)
-                : new CachedLetterheadAsset(false, null, XImage.FromFile(fullPath));
-        }, LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        var asset = OpenLetterheadAsset(letterheadPath);
         _logger.LogInformation(
             "OutgoingLetterPrintTiming LetterId={LetterId} Stage=letterhead-image-pdf-cache-open StageMs={StageMs} AssetType={AssetType}",
             letterId, assetTimer.ElapsedMilliseconds, asset.IsPdf ? "PDF" : "Image");

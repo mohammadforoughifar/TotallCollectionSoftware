@@ -4,6 +4,8 @@
 
     let current = null;
     let sequence = 0;
+    // Sessions opened before their PDF exists (server still rendering), keyed by token.
+    const deferredSessions = Object.create(null);
     const assetRoot = document.currentScript && document.currentScript.src
         ? new URL('../', document.currentScript.src) : new URL('./', document.baseURI);
     const mmToPx = 96 / 25.4;
@@ -24,6 +26,9 @@
     function close(session) {
         if (!session || current !== session) return;
         current = null;
+        // A caller waiting on waitForAction must never hang when the user closes the preview.
+        if (session.token) delete deferredSessions[session.token];
+        if (session.resolveAction) { const resolve = session.resolveAction; session.resolveAction = null; resolve('close'); }
         window.removeEventListener('keydown', session.keyHandler, true);
         window.removeEventListener('resize', session.resizeHandler);
         if (session.resizeTimer) clearTimeout(session.resizeTimer);
@@ -52,9 +57,14 @@
             let frame = session.frame;
             if (session.kind === 'pdf') {
                 // Prefer printing the original, vector PDF in browsers with a PDF viewer.
+                // Usually the idle pre-warm already finished and this resolves immediately.
+                if (!session.pdfFrameLoaded && navigator.pdfViewerEnabled !== false) {
+                    setStatus(session, 'در حال آماده‌سازی چاپ…');
+                }
+                frame = await ensurePrintFrame(session);
+                if (current !== session) return;
                 // Without a working viewer, prepare an isolated printable copy using PDF.js.
-                frame = session.pdfFrameLoaded && navigator.pdfViewerEnabled !== false
-                    ? session.pdfFrame : await preparePdfFallback(session);
+                if (!frame) frame = await preparePdfFallback(session);
             }
             if (current !== session) return;
             const target = frame && frame.contentWindow;
@@ -142,6 +152,7 @@
             '<span class="shop-print-page-label" aria-live="polite"></span>' +
             '<button type="button" data-action="next" aria-label="صفحهٔ بعد">بعدی</button></div>' +
             '<div class="shop-print-actions"><a class="shop-print-download" hidden>دریافت PDF</a>' +
+            '<button type="button" class="shop-print-retry" data-action="retry" hidden>تلاش مجدد</button>' +
             '<button type="button" class="shop-print-primary" data-action="print" data-hotkey="f4" disabled><i class="bi bi-printer" aria-hidden="true"></i> چاپ (F4)</button>' +
             '<button type="button" data-action="close" data-hotkey="esc">بستن (Esc)</button></div></header>' +
             '<div class="shop-print-status" role="status" aria-live="polite">در حال آماده‌سازی پیش‌نمایش…</div>' +
@@ -153,6 +164,7 @@
             status: overlay.querySelector('.shop-print-status'),
             printButton: overlay.querySelector('[data-action="print"]'),
             closeButton: overlay.querySelector('[data-action="close"]'),
+            retryButton: overlay.querySelector('[data-action="retry"]'),
             zoomOut: overlay.querySelector('[data-action="zoom-out"]'),
             zoomIn: overlay.querySelector('[data-action="zoom-in"]'),
             zoomLabel: overlay.querySelector('.shop-print-zoom-label'),
@@ -183,6 +195,7 @@
         window.addEventListener('resize', session.resizeHandler);
         session.closeButton.addEventListener('click', function () { close(session); });
         session.printButton.addEventListener('click', function () { printNow(session); });
+        session.retryButton.addEventListener('click', function () { resolveAction(session, 'retry'); });
         session.zoomOut.addEventListener('click', function () { zoom(session, -.2); });
         session.zoomIn.addEventListener('click', function () { zoom(session, .2); });
         session.prevButton.addEventListener('click', function () {
@@ -554,58 +567,173 @@
         }
     }
 
-    function openPdf(payload, fileName) {
+    // The hidden iframe hands the ORIGINAL PDF to the browser's own print engine, which is what
+    // keeps printing vector-sharp. It used to be created the instant the bytes arrived, so every
+    // preview decoded the whole document TWICE in parallel — once in this iframe and once in
+    // PDF.js — and both decodes land exactly in the window the user is waiting on. On a letter
+    // whose every page carries a 300-DPI letterhead scan that doubles the time to first paint.
+    // Build it on demand instead, and pre-warm it in idle time once the page is already visible.
+    function ensurePrintFrame(session) {
+        if (session.printFramePromise) return session.printFramePromise;
+        if (!session.objectUrl || navigator.pdfViewerEnabled === false) return Promise.resolve(null);
+        session.printFramePromise = new Promise(function (resolve) {
+            let settled = false;
+            const finish = function (value) { if (!settled) { settled = true; resolve(value); } };
+            const frame = document.createElement('iframe');
+            frame.className = 'shop-print-pdf-frame';
+            frame.title = 'آماده‌سازی چاپ PDF';
+            frame.tabIndex = -1;
+            frame.setAttribute('aria-hidden', 'true');
+            frame.addEventListener('load', function () {
+                session.pdfFrameLoaded = true;
+                finish(frame);
+            });
+            // A browser that never renders the blob must not block printing forever.
+            setTimeout(function () { finish(session.pdfFrameLoaded ? frame : null); }, 20000);
+            session.pdfFrame = frame;
+            frame.src = session.objectUrl;
+            document.body.appendChild(frame);
+        });
+        return session.printFramePromise;
+    }
+
+    function prewarmPrintFrame(session) {
+        if (current !== session || session.printFramePromise) return;
+        const start = function () { if (current === session) ensurePrintFrame(session); };
+        if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(start, { timeout: 4000 });
+        else setTimeout(start, 1200);
+    }
+
+    function assertPdfBytes(payload) {
+        if (!window.filePreview || !window.filePreview.openPdf) throw new Error('PDF viewer unavailable');
+        const bytes = pdfBytes(payload);
+        const prefix = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(1024, bytes.length)));
+        if (!bytes.length || !prefix.includes('%PDF-')) throw new Error('invalid PDF');
+        return bytes;
+    }
+
+    // Loads bytes into an already-created preview. Split out of openPdf so a session can be
+    // shown first (empty, with a status line) and filled in once the server finishes rendering.
+    function loadPdfIntoSession(session, bytes, fileName) {
+        session.pdfKey = 'shop-print-' + (++sequence);
+        session.objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+        session.frameWrap.hidden = true;
+        session.pdfHost.hidden = false;
+        session.pdfHost.textContent = '';
+        session.pages.hidden = false;
+        session.download.hidden = false;
+        session.download.href = session.objectUrl;
+        session.download.download = fileName || 'report.pdf';
+        updatePdfControls(session);
+        Promise.resolve(window.filePreview.openPdf(session.pdfHost, session.objectUrl, null, session.pdfKey))
+            .then(function (result) {
+                // openPdf may create its viewer after close() has already run.
+                if (current !== session) { destroyPreviewPdf(session); return; }
+                if (!result.success || !result.pages) { setStatus(session, result.message || 'نمایش PDF ممکن نشد.', true); return; }
+                session.pageCount = result.pages;
+                session.pdfLoaded = true;
+                session.pdfPageValid = true;
+                updatePdfControls(session);
+                if (session.ready) setStatus(session, 'پیش‌نمایش آماده است. برای ادامه «چاپ» را بزنید.');
+                // Only now, with the page already on screen, spend idle time on the print frame.
+                prewarmPrintFrame(session);
+            }).catch(function (error) {
+                if (current !== session) { destroyPreviewPdf(session); return; }
+                console.error('[shop-print-preview] PDF:', error);
+                setStatus(session, 'نمایش PDF ممکن نشد؛ می‌توانید فایل را دریافت کنید.', true);
+            });
+        return true;
+    }
+
+    function openPdf(payload, fileName, title) {
         let session;
         try {
-            if (!window.filePreview || !window.filePreview.openPdf) throw new Error('PDF viewer unavailable');
-            const bytes = pdfBytes(payload);
-            const prefix = new TextDecoder('latin1').decode(bytes.subarray(0, Math.min(1024, bytes.length)));
-            if (!bytes.length || !prefix.includes('%PDF-')) throw new Error('invalid PDF');
-            session = create('pdf', 'فهرست کالا');
+            const bytes = assertPdfBytes(payload);
+            session = create('pdf', title || 'فهرست کالا');
             if (!session) return false;
-            session.pdfKey = 'shop-print-' + (++sequence);
-            session.objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-            session.frameWrap.hidden = true;
-            session.pdfHost.hidden = false;
-            session.pages.hidden = false;
-            session.download.hidden = false;
-            session.download.href = session.objectUrl;
-            session.download.download = fileName || 'report.pdf';
-            session.pdfFrame = document.createElement('iframe');
-            session.pdfFrame.className = 'shop-print-pdf-frame';
-            session.pdfFrame.title = 'آماده‌سازی چاپ PDF';
-            session.pdfFrame.tabIndex = -1;
-            session.pdfFrame.setAttribute('aria-hidden', 'true');
-            session.pdfFrame.addEventListener('load', function () {
-                if (current !== session) return;
-                session.pdfFrameLoaded = true;
-                updatePdfControls(session);
-            });
-            session.pdfFrame.src = session.objectUrl;
-            document.body.appendChild(session.pdfFrame);
-            updatePdfControls(session);
-            Promise.resolve(window.filePreview.openPdf(session.pdfHost, session.objectUrl, null, session.pdfKey))
-                .then(function (result) {
-                    // openPdf may create its viewer after close() has already run.
-                    if (current !== session) { destroyPreviewPdf(session); return; }
-                    if (!result.success || !result.pages) { setStatus(session, result.message || 'نمایش PDF ممکن نشد.', true); return; }
-                    session.pageCount = result.pages;
-                    session.pdfLoaded = true;
-                    session.pdfPageValid = true;
-                    updatePdfControls(session);
-                    if (session.ready) setStatus(session, 'پیش‌نمایش آماده است. برای ادامه «چاپ» را بزنید.');
-                }).catch(function (error) {
-                    if (current !== session) { destroyPreviewPdf(session); return; }
-                    console.error('[shop-print-preview] PDF:', error);
-                    setStatus(session, 'نمایش PDF ممکن نشد؛ می‌توانید فایل را دریافت کنید.', true);
-                });
-            return true;
+            return loadPdfIntoSession(session, bytes, fileName);
         } catch (error) {
             console.error('[shop-print-preview] open PDF:', error);
             close(session);
             return false;
         }
     }
+
+    // ===== deferred PDF preview =====
+    // For documents the server renders on demand (office letters): show the preview shell
+    // immediately with a status line, then hand over the bytes. The print button stays
+    // disabled until the PDF is actually rendered, so nothing ever prints on its own.
+    function beginPdf(title, message) {
+        if (!window.filePreview || !window.filePreview.openPdf) return null;
+        const session = create('pdf', title);
+        if (!session) return null;
+        session.token = 'deferred-' + (++sequence);
+        deferredSessions[session.token] = session;
+        // The document is still being produced server-side. Use that wait to fetch PDF.js
+        // (1 MB + a 2.3 MB worker) instead of starting that download once the bytes land.
+        if (typeof window.filePreview.warm === 'function') {
+            try { window.filePreview.warm(); } catch (error) { console.error('[shop-print-preview] warm:', error); }
+        }
+        // Placeholder instead of the empty HTML frame, so the shell does not look broken.
+        session.frameWrap.hidden = true;
+        session.pdfHost.hidden = false;
+        session.pdfHost.innerHTML = '<div class="shop-print-waiting"><span class="shop-print-spinner" aria-hidden="true"></span>' +
+            '<span>در حال دریافت سند از سرور…</span></div>';
+        updatePdfControls(session);
+        setStatus(session, message || 'در حال آماده‌سازی پیش‌نمایش…');
+        return session.token;
+    }
+
+    function liveSession(token) {
+        const session = deferredSessions[token];
+        return session && current === session ? session : null;
+    }
+
+    function statusPdf(token, message, isError) {
+        const session = liveSession(token);
+        if (!session) return false;
+        setStatus(session, message, isError);
+        return true;
+    }
+
+    function resolvePdf(token, payload, fileName) {
+        const session = liveSession(token);
+        if (!session) return false;
+        try {
+            session.retryButton.hidden = true;
+            return loadPdfIntoSession(session, assertPdfBytes(payload), fileName);
+        } catch (error) {
+            console.error('[shop-print-preview] deferred PDF:', error);
+            setStatus(session, 'فایل دریافت‌شده یک PDF معتبر نبود.', true);
+            return false;
+        }
+    }
+
+    // Shows the failure inside the preview and offers «تلاش مجدد» instead of a bare toast.
+    function failPdf(token, message) {
+        const session = liveSession(token);
+        if (!session) return false;
+        setStatus(session, message || 'آماده‌سازی پیش‌نمایش انجام نشد.', true);
+        session.retryButton.hidden = false;
+        session.retryButton.focus({ preventScroll: true });
+        return true;
+    }
+
+    function resolveAction(session, action) {
+        if (session.resolveAction) { const resolve = session.resolveAction; session.resolveAction = null; resolve(action); }
+        else session.queuedAction = action;
+        if (action === 'retry') session.retryButton.hidden = true;
+    }
+
+    function waitForAction(token) {
+        const session = liveSession(token);
+        if (!session) return Promise.resolve('close');
+        if (session.queuedAction) { const queued = session.queuedAction; session.queuedAction = null; return Promise.resolve(queued); }
+        return new Promise(function (resolve) { session.resolveAction = resolve; });
+    }
+
+    function isOpen(token) { return !!liveSession(token); }
+    function cancelPdf(token) { close(liveSession(token)); }
 
     // Delegated only to shop print-setting bank fields; no other form is affected.
     function insertBankDigits(event, text) {
@@ -651,5 +779,9 @@
         return paperChoice;
     }
 
-    window.shopPrintPreview = { choosePaper: choosePaper, openHtml: openHtml, openElement: openElement, openPdf: openPdf };
+    window.shopPrintPreview = {
+        choosePaper: choosePaper, openHtml: openHtml, openElement: openElement, openPdf: openPdf,
+        beginPdf: beginPdf, statusPdf: statusPdf, resolvePdf: resolvePdf, failPdf: failPdf,
+        waitForAction: waitForAction, isOpen: isOpen, cancelPdf: cancelPdf
+    };
 })();

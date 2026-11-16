@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>چاپ نامه — پیش‌نمایش اول، چاپ با درخواست کاربر</title>
+<link rel="stylesheet" href="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/css/shop-print-preview.css">
+<link rel="stylesheet" href="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/icons/bootstrap-icons.css">
+<style>
+  :root { --p1:#0f766e; --p2:#0ea5e9; --ink:#0f172a; --muted:#64748b; --line:#cbd5e1; }
+  * { box-sizing:border-box }
+  body { margin:0; background:#f1f5f9; color:var(--ink); font-family:Vazirmatn,Tahoma,Arial,sans-serif; line-height:1.9 }
+  .wrap { max-width:960px; margin:0 auto; padding:24px 18px 64px }
+  h1 { font-size:21px; margin:0 0 4px }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 20px }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px }
+  .card h2 { font-size:15px; margin:0 0 10px; display:flex; align-items:center; gap:8px }
+  .tag { font-size:12px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; border-radius:999px; padding:1px 9px }
+  .tag.old { background:#fef2f2; color:#b91c1c; border-color:#fecaca }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px; border:1px solid #e2e8f0; border-radius:10px; background:#f8fafc }
+  .row .num { font-weight:700; font-size:13px }
+  .row .title { flex:1; min-width:180px; font-size:14px; color:#334155 }
+  button { border:0; border-radius:8px; padding:9px 14px; background:#e2e8f0; color:var(--ink); font:inherit; cursor:pointer }
+  button:hover:not(:disabled) { filter:brightness(.96) }
+  button:disabled { opacity:.6; cursor:default }
+  button.pri { background:var(--p1); color:#fff }
+  .menu { position:relative; display:inline-block }
+  .menu .pop { position:absolute; inset-inline-end:0; top:calc(100% + 6px); background:#fff; border:1px solid var(--line); border-radius:10px; padding:6px; min-width:210px; box-shadow:0 12px 30px rgba(15,23,42,.14); z-index:50 }
+  .menu .pop[hidden] { display:none }
+  .menu .pop button { display:block; width:100%; text-align:start; background:transparent; padding:8px 10px; font-size:14px; border-radius:7px }
+  .menu .pop button:hover { background:#f1f5f9 }
+  .menu .pop .sep { height:1px; background:#e2e8f0; margin:5px 2px }
+  label.opt { display:inline-flex; align-items:center; gap:7px; font-size:13px; color:#475569 }
+  .log { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; direction:ltr; text-align:left; background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px; max-height:230px; overflow:auto; white-space:pre-wrap }
+  .log b { color:#5eead4 }
+  .log .warn { color:#fca5a5 }
+  ol, ul { margin:6px 0; padding-inline-start:22px }
+  li { font-size:14px }
+  .note { font-size:13px; color:var(--muted) }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px }
+  .grid > div { border:1px solid #e2e8f0; border-radius:10px; padding:12px }
+  code { background:#f1f5f9; border-radius:5px; padding:1px 5px; font-size:12.5px }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>چاپ نامه در اتوماسیون اداری</h1>
+  <p class="sub">این صفحه همان توابع واقعی <code>app-shell.js</code> را اجرا می‌کند (نه یک کپی) تا رفتار جدید قابل آزمایش باشد.</p>
+
+  <div class="card">
+    <h2>مقایسهٔ رفتار</h2>
+    <div class="grid">
+      <div>
+        <span class="tag old">قبل</span>
+        <ul>
+          <li>یک پنجرهٔ بازشوِ ساده و مخصوص نامه‌ها باز می‌شد</li>
+          <li>بلافاصله و خودکار <code>print()</code> صدا زده می‌شد</li>
+          <li>ظاهرش با بقیهٔ برنامه فرق داشت: بدون بزرگ‌نمایی، بدون جابه‌جایی بین صفحه‌ها</li>
+        </ul>
+      </div>
+      <div>
+        <span class="tag">بعد</span>
+        <ul>
+          <li>همان پیش‌نمایشی که <b>فاکتور فروشگاهی</b> و گزارش‌ها از آن استفاده می‌کنند</li>
+          <li>بزرگ‌نمایی، «قبلی/بعدی» بین صفحه‌ها، «دریافت PDF»، «چاپ (F4)» و «بستن (Esc)»</li>
+          <li>پنجرهٔ چاپ مرورگر <b>تا کلیک روی «چاپ»</b> باز نمی‌شود</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>آزمایش — کارتابل نامهٔ صادره (شبیه‌سازی‌شده)</h2>
+    <div class="row">
+      <span class="num">۱۴۰۵/۸/۲۵–۱۲۷</span>
+      <span class="title">نامهٔ صادره به ادارهٔ کل — پیگیری قرارداد پشتیبانی</span>
+      <label class="opt"><input type="checkbox" id="slow"> رندر کند سرور (۱۰ ثانیه)</label>
+      <label class="opt"><input type="checkbox" id="boom"> خطای سرور</label>
+      <div class="menu">
+        <button class="pri" id="print-btn" aria-haspopup="true">🖨 چاپ</button>
+        <div class="pop" id="print-menu" hidden>
+          <button data-ltx-print-option data-size="A4" data-margin="1">A4 — با هامش</button>
+          <button data-ltx-print-option data-size="A4" data-margin="0">A4 — بدون هامش</button>
+          <div class="sep"></div>
+          <button data-ltx-print-option data-size="A5" data-margin="1">A5 — با هامش</button>
+          <button data-ltx-print-option data-size="A5" data-margin="0">A5 — بدون هامش</button>
+        </div>
+      </div>
+    </div>
+    <p class="note" style="margin:12px 2px 0">
+      انتظار: پیش‌نمایش بلافاصله و <b>خالی</b> باز می‌شود (با پیام «در حال دریافت سند از سرور…»)،
+      بعد نامه داخل همان قاب رندر می‌شود و تازه آن‌وقت دکمهٔ «چاپ (F4)» فعال می‌شود. هیچ پنجرهٔ
+      چاپی تا وقتی خودتان آن دکمه را نزنید باز نمی‌شود. گزینهٔ «خطای سرور» هم نشان می‌دهد خطا
+      داخل خود پیش‌نمایش با دکمهٔ «تلاش مجدد» ظاهر می‌شود.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>گزارش رویدادها</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<!-- همان فایل‌های تولیدی برنامه؛ بدون هیچ تغییری برای این صفحه (همان ترتیب index.html) -->
+<script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/app-shell.js"></script>
+<script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/file-preview.js"></script>
+<script src="../../../TotallCollectionSoftware/inventory/src/Inventory.Client/wwwroot/js/shop-print-preview.js"></script>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(text, warn) {
+    var line = document.createElement('div');
+    if (warn) line.className = 'warn';
+    line.textContent = new Date().toLocaleTimeString('en-GB') + '  ' + text;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // ردگیری هر فراخوانی print() مرورگر تا ثابت شود چاپ خودکار اتفاق نمی‌افتد.
+  var nativePrint = window.print.bind(window);
+  window.print = function () { log('⚠ window.print() صدا زده شد', true); return nativePrint(); };
+
+  var menu = document.getElementById('print-menu');
+  var printBtn = document.getElementById('print-btn');
+  printBtn.addEventListener('click', function (e) { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  document.addEventListener('click', function () { menu.hidden = true; });
+
+  // «سرور»: فایل سربرگ واقعی مخزن به‌جای PDF نامه برگردانده می‌شود.
+  async function loadPdf(signal) {
+    if (document.getElementById('slow').checked) await new Promise(r => setTimeout(r, 10000));
+    if (document.getElementById('boom').checked) throw new Error('سرور در ساخت نامه خطا داد (۵۰۰).');
+    var res = await fetch('../../../TotallCollectionSoftware/aria_company1005_letterhead.pdf', { signal: signal });
+    if (!res.ok) throw new Error('دریافت PDF از سرور ناموفق بود (' + res.status + ').');
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  // معادل LetterPrintWorkflow.PrintPdfAsync در سمت #C.
+  async function runPrintWorkflow(size, withMargin) {
+    var fileName = 'letter-127-' + size + (withMargin ? '-با-هامش' : '-بدون-هامش') + '.pdf';
+    var title = 'نامهٔ صادره ۱۴۰۵/۸/۲۵–۱۲۷ — ' + size + (withMargin ? ' با هامش' : ' بدون هامش');
+    var id = window.ltxPrintBegin(title);
+    log('ltxPrintBegin → ' + id + '  (پیش‌نمایش مشترک باز شد)');
+    if (!id) { log('پنجرهٔ پیش‌نمایش ساخته نشد', true); return; }
+
+    var hint = setTimeout(function () {
+      window.ltxPrintStatus(id, 'در حال ساخت پیش‌نمایش نامه روی سربرگ شرکت…');
+      log('ltxPrintStatus → «در حال ساخت پیش‌نمایش…»');
+    }, 1200);
+
+    try {
+      var bytes = await loadPdf();
+      clearTimeout(hint);
+      log('PDF دریافت شد: ' + bytes.length.toLocaleString('en-US') + ' بایت');
+      var shown = await window.ltxPrintReady(id, bytes, fileName, 30000);
+      log('ltxPrintReady → ' + shown + '  ✅ نامه داخل پیش‌نمایش رندر شد، چاپ شروع نشد');
+      log('— حالا منتظر تصمیم کاربر: «چاپ» یا «دانلود PDF» یا «بستن»');
+    } catch (err) {
+      clearTimeout(hint);
+      if (window.ltxPrintWasCancelled(id)) { log('کاربر پیش‌نمایش را بست (خطا نیست)'); return; }
+      log('خطا: ' + err.message, true);
+      window.ltxPrintFail(id, err.message);
+      var action = await window.ltxPrintWaitForAction(id);
+      log('تصمیم کاربر: ' + action);
+      if (action === 'retry') return runPrintWorkflow(size, withMargin);
+      if (action === 'direct') { window.ltxPrintDirectPage(id); return; }
+      window.ltxPrintCancel(id);
+    }
+  }
+
+  menu.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-ltx-print-option]');
+    if (!btn) return;
+    menu.hidden = true;
+    runPrintWorkflow(btn.dataset.size, btn.dataset.margin === '1');
+  });
+
+  log('آماده. یک گزینهٔ چاپ را انتخاب کنید.');
+  log('پیش‌نمایش مشترک: ' + (window.shopPrintPreview && window.shopPrintPreview.beginPdf
+      ? 'در دسترس ✅ (همان کامپوننت فاکتور فروشگاهی)'
+      : 'در دسترس نیست — پوستهٔ قدیمی استفاده می‌شود'));
+})();
+</script>
+</body>
+</html>
