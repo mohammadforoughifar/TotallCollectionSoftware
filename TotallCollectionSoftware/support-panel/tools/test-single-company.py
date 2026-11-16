@@ -20,13 +20,16 @@ import json
 import os
 import re
 import sys
+import uuid
 
 import requests
 
 BASE = os.environ.get("BASE", "http://127.0.0.1:5399").rstrip("/")
 USER = os.environ.get("USER", "admin")
 PASS = os.environ.get("PASS", "")
-INSTALLATION = os.environ.get("INSTALLATION", "single-company-guard-01")
+# شناسهٔ نصب پیش‌فرض باید هر اجرا یکتا باشد؛ وگرنه ثبت دوم با همان شناسه «تکراری»
+# تشخیص داده می‌شود و آزمون ذخیرهٔ پیش‌نویس بی‌دلیل رد می‌شود.
+INSTALLATION = os.environ.get("INSTALLATION", f"single-company-guard-{uuid.uuid4().hex[:8]}")
 
 PASSED = FAILED = 0
 
