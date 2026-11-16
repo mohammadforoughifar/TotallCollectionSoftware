@@ -35,6 +35,18 @@ class CompanySmsSchemaTests(unittest.TestCase):
         self.db.execute('DELETE FROM SystemCompanies WHERE Id=1')
         self.assertEqual(self.db.execute('SELECT COUNT(*) FROM CompanySmsSettings').fetchone()[0], 1)
 
+    def test_work_order_opt_in_is_independent_per_company_and_from_repairs(self):
+        self.add(1, 'Shop.Repairs', 1)
+        self.add(2, 'Shop.Repairs', 1)
+        self.add(1, 'WorkOrders')  # Default off even if repair SMS is on.
+        self.assertEqual(self.db.execute("SELECT Enabled FROM CompanySmsSettings WHERE CompanyId=1 AND ModuleKey='WorkOrders'").fetchone()[0], 0)
+        self.db.execute("UPDATE CompanySmsSettings SET Enabled=1 WHERE CompanyId=1 AND ModuleKey='WorkOrders'")
+        self.assertIsNone(self.db.execute("SELECT Enabled FROM CompanySmsSettings WHERE CompanyId=2 AND ModuleKey='WorkOrders'").fetchone())
+        self.add(2, 'WorkOrders', 1)
+        self.db.execute("UPDATE CompanySmsSettings SET Enabled=0 WHERE CompanyId=2 AND ModuleKey='WorkOrders'")
+        self.assertEqual(self.db.execute("SELECT CompanyId,ModuleKey,Enabled FROM CompanySmsSettings ORDER BY CompanyId,ModuleKey").fetchall(),
+                         [(1,'Shop.Repairs',1),(1,'WorkOrders',1),(2,'Shop.Repairs',1),(2,'WorkOrders',0)])
+
     def test_old_outbox_revision_column_is_additive_and_null(self):
         self.db.execute("INSERT INTO RepairSmsNotifications VALUES (1,1,1,'09',NULL)")
         migration = read('src/Inventory.Api/Data/RepairSmsPermissionRevisionSchemaV1.cs')
@@ -80,6 +92,34 @@ class CompanySmsSourceContracts(unittest.TestCase):
         self.assertIn('job.CompanyId, SmsModuleCatalog.ShopRepairs', queue)
         self.assertIn('gateway.SendLookupAsync(', queue)
         self.assertNotIn('gateway.SendAsync(', queue)
+
+    def test_work_orders_are_offered_in_settings_and_wired_to_the_same_permission(self):
+        catalog = read('src/Inventory.Shared/SmsModuleCatalog.cs')
+        self.assertIn('public const string WorkOrders = "WorkOrders"', catalog)
+        self.assertEqual(catalog.count('new Entry(WorkOrders, "دستور کار", "دستور کار")'), 1)
+        controller = read('src/Inventory.Api/Controllers/System/CompanySmsSettingsController.cs')
+        self.assertIn('Modules = SmsModuleCatalog.All.Select', controller)
+        self.assertIn('enabled.Contains(m.Key, StringComparer.Ordinal)', controller)
+        self.assertIn('dto.CompanyId != companyId.Value', controller)
+        ui = read('src/Inventory.Client/Pages/Settings/SmsService.razor')
+        self.assertIn('model.Modules.GroupBy(m => m.Group)', ui)
+        self.assertIn('<strong>@module.Title</strong>', ui)
+        self.assertIn('module.Key == SmsModuleCatalog.WorkOrders', ui)
+        self.assertIn('پیامک خودکار ثبت، ارجاع و پاسخ دستور کار', ui)
+        self.assertIn('@bind="module.Enabled"', ui)
+        self.assertIn('CompanyId = model.CompanyId', ui)
+        self.assertIn('Key = m.Key, Enabled = m.Enabled', ui)
+        queue = read('src/Inventory.Api/Services/ItAssets/WorkOrderSmsQueue.cs')
+        self.assertIn('order.CompanyId, SmsModuleCatalog.WorkOrders', queue)
+        self.assertIn('job.CompanyId, SmsModuleCatalog.WorkOrders', queue)
+        self.assertGreaterEqual(queue.count('CompanySmsServicePolicy.IsEnabledForRevisionAsync('), 2)
+        handler = read('src/Inventory.Api/Services/ItAssets/WorkOrderSmsRevocationHandler.cs')
+        self.assertIn('ModuleKey => SmsModuleCatalog.WorkOrders', handler)
+        self.assertIn('n.CompanyId == companyId && n.Status == WorkOrderSmsStatus.Pending', handler)
+        self.assertIn('WorkOrderSmsStatus.ModuleDisabled', handler)
+        program = read('src/Inventory.Api/Program.cs')
+        self.assertIn('ICompanySmsRevocationHandler, Inventory.Api.Services.ItAssets.WorkOrderSmsRevocationHandler', program)
+        self.assertIn('ICompanySmsRevocationHandler, Inventory.Api.Services.Repairs.RepairSmsRevocationHandler', program)
 
     def test_schema_migration_filter_and_revocation_hook(self):
         ctx = read('src/Inventory.Api/Data/AppDbContext.cs')

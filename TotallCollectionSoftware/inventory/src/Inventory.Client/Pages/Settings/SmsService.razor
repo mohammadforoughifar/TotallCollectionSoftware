@@ -45,7 +45,7 @@ else
                         @foreach (var module in group)
                         {
                             <label class="sms-module" @key="module.Key">
-                                <span class="sms-module-detail"><strong>@module.Title</strong><small>اجازه ارسال پیامک برای این بخش از شرکت فعال</small></span>
+                                <span class="sms-module-detail"><strong>@module.Title</strong><small>@(module.Key == SmsModuleCatalog.WorkOrders ? "پیامک خودکار ثبت، ارجاع و پاسخ دستور کار" : "اجازه ارسال پیامک برای این بخش از شرکت فعال")</small></span>
                                 <span class="sms-module-control"><span class="sms-choice @(module.Enabled ? "on" : "")">@(module.Enabled ? "مجاز" : "غیرفعال")</span><input class="form-check-input" type="checkbox" @bind="module.Enabled" disabled="@(!CanManage || busy)" aria-label="@($"اجازه ارسال پیامک {module.Group} - {module.Title}")" /></span>
                             </label>
                         }

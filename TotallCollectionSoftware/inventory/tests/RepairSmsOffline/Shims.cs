@@ -47,6 +47,7 @@ namespace Inventory.Api.Data {
    public Microsoft.EntityFrameworkCore.DbSet<SystemCompany> SystemCompanies {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<CompanySmsSetting> CompanySmsSettings {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<RepairSmsNotification> RepairSmsNotifications {get;}=new();
+   public Microsoft.EntityFrameworkCore.DbSet<WorkOrderSmsNotification> WorkOrderSmsNotifications {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<RepairOrder> RepairOrders {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<Party> Parties {get;}=new();
    public Microsoft.EntityFrameworkCore.DbSet<ShopWarrantyItem> ShopWarrantyItems {get;}=new();

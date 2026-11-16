@@ -229,7 +229,91 @@ class Test {
       "inactive company fails closed even with its module enabled");
    company2.IsActive=true;
    await DeliveryChecks();
+   await WorkOrderSettingsChecks();
    Console.WriteLine($"{count} checks passed");
+ }
+
+ // The real controller, catalog, company policy and both revocation handlers run against
+ // in-memory shims, not ASP.NET hosting, a real EF query filter or a database transaction.
+ static async Task WorkOrderSettingsChecks() {
+   var db=new AppDbContext {ActiveCompanyId=1,CurrentUserName="settings-test"};
+   db.SystemCompanies.Add(new SystemCompany {Id=1,Name="شرکت اول"});
+   db.SystemCompanies.Add(new SystemCompany {Id=2,Name="شرکت دوم"});
+   var repair1=new CompanySmsSetting {CompanyId=1,ModuleKey=SmsModuleCatalog.ShopRepairs,Enabled=true};
+   var repair2=new CompanySmsSetting {CompanyId=2,ModuleKey=SmsModuleCatalog.ShopRepairs,Enabled=true};
+   db.CompanySmsSettings.Add(repair1); db.CompanySmsSettings.Add(repair2);
+   var context=new ControllerContext {HttpContext=new DefaultHttpContext {
+     User=new ClaimsPrincipal(new ClaimsIdentity(new[]{new Claim(ClaimTypes.NameIdentifier,"10")},"test"))}};
+   var controller=new CompanySmsSettingsController(db,new TestPermissions("SmsSettings.Update"),
+     new ICompanySmsRevocationHandler[]{new RepairSmsRevocationHandler(db),new WorkOrderSmsRevocationHandler(db)}) {
+       ControllerContext=context};
+   async Task<CompanySmsSettingsDto> Read() =>
+     (await controller.Get(CancellationToken.None) as OkObjectResult)?.Value as CompanySmsSettingsDto
+       ?? throw new Exception("settings read must return the active company");
+   SaveCompanySmsSettingsDto Choice(CompanySmsSettingsDto model,bool enabled) => new() {
+     CompanyId=model.CompanyId,
+     Modules=model.Modules.Select(m=>new SaveCompanySmsModuleDto {
+       Key=m.Key,Enabled=m.Key==SmsModuleCatalog.WorkOrders ? enabled : m.Enabled}).ToList()};
+   async Task<CompanySmsSettingsDto> Save(CompanySmsSettingsDto model,bool enabled) =>
+     (await controller.Save(Choice(model,enabled),CancellationToken.None) as OkObjectResult)?.Value as CompanySmsSettingsDto
+       ?? throw new Exception("settings save must accept the UI's complete module list");
+
+   var first=await Read();
+   var workEntry=first.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders);
+   C(first.CompanyId==1 && first.CompanyName=="شرکت اول" && workEntry.Group=="دستور کار" &&
+     workEntry.Title=="دستور کار" && !workEntry.Enabled &&
+     first.Modules.Single(m=>m.Key==SmsModuleCatalog.ShopRepairs).Enabled,
+     "work-order checkbox appears exactly once and defaults off independently of repair SMS");
+   var missingHook=new CompanySmsSettingsController(db,new TestPermissions("SmsSettings.Update"),
+     new ICompanySmsRevocationHandler[]{new RepairSmsRevocationHandler(db)}) {ControllerContext=context};
+   C(await missingHook.Save(Choice(first,true),CancellationToken.None) is ObjectResult {StatusCode:500} &&
+     !db.CompanySmsSettings.Any(s=>s.CompanyId==1 && s.ModuleKey==SmsModuleCatalog.WorkOrders),
+     "a missing work-order revocation hook cannot silently enable the checkbox");
+   var enabled1=await Save(first,true);
+   var permission1=db.CompanySmsSettings.Single(s=>s.CompanyId==1 && s.ModuleKey==SmsModuleCatalog.WorkOrders);
+   C(enabled1.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders).Enabled && permission1.Enabled &&
+     await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,1,SmsModuleCatalog.WorkOrders)==permission1.Revision &&
+     repair1.Enabled && repair2.Enabled &&
+     await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,SmsModuleCatalog.WorkOrders) is null,
+     "saving the UI list enables only company one's work-order permission");
+
+   db.ActiveCompanyId=2;
+   C(await controller.Save(Choice(enabled1,false),CancellationToken.None) is ConflictObjectResult && permission1.Enabled,
+     "a page opened for company one cannot save after the active company changes");
+   var second=await Read();
+   C(second.CompanyId==2 && !second.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders).Enabled &&
+     second.Modules.Single(m=>m.Key==SmsModuleCatalog.ShopRepairs).Enabled,
+     "company two has its own default-off work-order checkbox");
+   var enabled2=await Save(second,true);
+   var permission2=db.CompanySmsSettings.Single(s=>s.CompanyId==2 && s.ModuleKey==SmsModuleCatalog.WorkOrders);
+   C(enabled2.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders).Enabled && permission1.Enabled && permission2.Enabled &&
+     await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,SmsModuleCatalog.WorkOrders)==permission2.Revision,
+     "company two can independently save and enable its own work-order permission");
+
+   var company1Pending=new WorkOrderSmsNotification {CompanyId=1,Status=WorkOrderSmsStatus.Pending,Recipient="test-1",PermissionRevision=permission1.Revision};
+   var company2Pending=new WorkOrderSmsNotification {CompanyId=2,Status=WorkOrderSmsStatus.Pending,Recipient="test-2",PermissionRevision=permission2.Revision};
+   var company2Sending=new WorkOrderSmsNotification {CompanyId=2,Status=WorkOrderSmsStatus.Sending,Recipient="test-in-flight",PermissionRevision=permission2.Revision};
+   var repairPending=new RepairSmsNotification {CompanyId=2,Status=RepairSmsStatus.Pending,Recipient="test-repair"};
+   db.WorkOrderSmsNotifications.Add(company1Pending); db.WorkOrderSmsNotifications.Add(company2Pending);
+   db.WorkOrderSmsNotifications.Add(company2Sending); db.RepairSmsNotifications.Add(repairPending);
+   var oldRevision=permission2.Revision;
+   var disabled2=await Save(enabled2,false);
+   C(!disabled2.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders).Enabled && !permission2.Enabled &&
+     company2Pending.Status==WorkOrderSmsStatus.ModuleDisabled && company2Pending.Recipient is null && company2Pending.CompletedAtUtc is not null &&
+     company1Pending.Status==WorkOrderSmsStatus.Pending && company2Sending.Status==WorkOrderSmsStatus.Sending &&
+     repairPending.Status==RepairSmsStatus.Pending && repair2.Enabled,
+     "disabling company two cancels only its pending work-order SMS, not repairs or in-flight sends");
+   var disabledRevision=permission2.Revision;
+   var reenabled2=await Save(disabled2,true);
+   C(reenabled2.Modules.Single(m=>m.Key==SmsModuleCatalog.WorkOrders).Enabled &&
+     permission2.Revision>disabledRevision && permission2.Revision>oldRevision &&
+     !await CompanySmsServicePolicy.IsEnabledForRevisionAsync(db,2,SmsModuleCatalog.WorkOrders,oldRevision) &&
+     company2Pending.Status==WorkOrderSmsStatus.ModuleDisabled && company2Pending.Recipient is null,
+     "re-enabling does not revive the previously cancelled work-order event");
+   var revision=permission2.Revision;
+   await Save(reenabled2,true);
+   C(permission2.Revision==revision && permission1.Enabled && repair1.Enabled && repair2.Enabled,
+     "saving unchanged work-order settings preserves revisions and repair permissions");
  }
 
  // Runs the production outbox/policy with in-memory query shims; this is not an EF transaction test.

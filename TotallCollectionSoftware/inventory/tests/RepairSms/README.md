@@ -4,7 +4,7 @@
 
 `python3 -m unittest discover -s tests/RepairSms -p 'test_*.py' -v` runs source/schema contracts and SQLite tests with Python. These are not a substitute for the .NET, EF, Razor, real SQL Server migration, or actual NuGet package tests.
 
-`dotnet run --project tests/RepairSmsOffline/RepairSmsOffline.csproj` compiles the production queue, policy, and product-kind guard against small in-memory EF/hosting/gateway shims, so it needs no SMS service or external package. It exercises queue decisions but **does not** validate real EF translation, transactions, database concurrency, migrations or Razor.
+`dotnet run --project tests/RepairSmsOffline/RepairSmsOffline.csproj` compiles the production queue, policy, and product-kind guard against small in-memory EF/hosting/gateway shims, so it needs no SMS service or external package. It also checks the real company-settings controller with both repair and work-order revocation handlers: default-off entries, UI-shaped saves, independent companies, disabling and re-enabling. It **does not** validate real EF translation, transactions, database concurrency, migrations, ASP.NET hosting or Razor.
 
 `python3 tests/RepairSms/run_invoice_contracts.py` copies the production `InvoiceAsync` into a temporary .NET 8 console harness. Its inventory, database, transaction and queue are fake; it checks delivery control flow, event order, and rollback paths, **not** real financial/stock accounting or EF. Pass `--emit /tmp/invoice-contract.cs` to use another C# runner.
 
