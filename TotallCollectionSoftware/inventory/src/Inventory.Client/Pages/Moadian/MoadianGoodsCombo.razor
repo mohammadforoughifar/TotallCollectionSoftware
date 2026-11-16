@@ -1,0 +1,235 @@
+@namespace Inventory.Client.Pages.Moadian
+@using Inventory.Shared.Dtos.Moadian
+
+@*
+    کمبوی «جست‌وجوپذیر» کالا/خدمت برای ردیف‌های صورتحساب مودیان.
+
+    چرا کامپوننت جدا؟
+      • ورودی متنی با فیلترِ زنده ⇒ کاربر نام یا کد کالا را تایپ می‌کند و پیدا می‌کند
+        (قبلاً یک <select> بود که با تایپ جست‌وجو نمی‌شد).
+      • FocusAsync نیاز به ElementReference دارد و در حلقهٔ ردیف‌ها فقط داخل یک
+        کامپوننت مستقل تمیز درمی‌آید (به‌جای هندل‌کردن ref در والد).
+      • رفتار کلیدها یک‌جا متمرکز است: ↑/↓ حرکت، Enter انتخاب، Enter دوم «ردیف بعدی».
+
+    جریان تایپ: فوکوس ⇒ کادر خالی می‌شود ⇒ تایپ ⇒ Enter (انتخاب کالا) ⇒ Enter (ردیف تازه).
+*@
+
+<div class="mi-combo">
+    <div class="mi-combo-box">
+        <i class="bi bi-search mi-combo-ico"></i>
+        <input class="form-control form-control-sm mi-combo-input"
+               @ref="inputRef"
+               value="@Text"
+               placeholder="@(Goods.Count == 0 ? "نام کالا" : "کالا را تایپ کنید…")"
+               autocomplete="off"
+               @onfocus="OnFocus"
+               @oninput="OnInput"
+               @onkeydown="OnKeyDown"
+               @onblur="OnBlur" />
+        @if (HasSel)
+        {
+            <button type="button" class="mi-combo-clear" title="پاک کردن انتخاب"
+                    @onmousedown:preventDefault @onclick="Clear">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
+    </div>
+
+    @if (HasSel && _typing)
+    {
+        <div class="mi-combo-selected"><i class="bi bi-check2-circle"></i> انتخاب‌شده: @Name</div>
+    }
+
+    @if (_open)
+    {
+        <div class="mi-combo-list">
+            @if (matches.Count == 0)
+            {
+                <div class="mi-combo-empty">کالایی با این عنوان پیدا نشد</div>
+            }
+            else
+            {
+                @for (var i = 0; i < matches.Count; i++)
+                {
+                    var index = i;
+                    var g = matches[i];
+                    <button type="button" class="mi-combo-item @(index == _index ? "on" : "")"
+                            @onmousedown:preventDefault
+                            @onmouseenter="() => _index = index"
+                            @onclick="() => Pick(g)">
+                        <span class="mi-combo-name">@g.Name</span>
+                        <span class="mi-combo-sub mono">@g.UniqueIdentifier</span>
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>فهرست کالا/خدمت‌های تعریف‌شدهٔ همین شرکت مودیان.</summary>
+    [Parameter, EditorRequired] public List<VMGoodsOrServicesList> Goods { get; set; } = new();
+
+    /// <summary>کالای انتخاب‌شدهٔ همین ردیف (null یا ۰ = هنوز انتخاب نشده).</summary>
+    [Parameter] public int? SelectedId { get; set; }
+
+    /// <summary>نام کالای انتخاب‌شده (برای نمایش در کادر).</summary>
+    [Parameter] public string? Name { get; set; }
+
+    /// <summary>وقتی ردیف تازه ساخته می‌شود، والد این را true می‌کند تا فوکوس بگیرد.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>انتخاب کالا از فهرست.</summary>
+    [Parameter] public EventCallback<VMGoodsOrServicesList> OnPick { get; set; }
+
+    /// <summary>پاک‌کردن انتخابِ همین ردیف.</summary>
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    /// <summary>Enter روی ردیفی که انتخابش کامل است ⇒ ساخت ردیف بعدی.</summary>
+    [Parameter] public EventCallback OnEnterNextRow { get; set; }
+
+    /// <summary>سقف گزینه‌های نمایش‌داده‌شده (عملکرد در فهرست‌های چند هزارتایی).</summary>
+    private const int MaxMatches = 60;
+
+    private ElementReference inputRef;
+    private string _query = "";
+    private bool _typing;      // کادر برای تایپِ تازه خالی شده است
+    private bool _open;        // فهرست باز است
+    private int _index;        // گزینهٔ هایلایت
+    private bool _focused;     // فوکوس خودکار فقط یک‌بار
+
+    /// <summary>آیا ردیف کالای انتخاب‌شده دارد؟ (شناسه در DTO تهی‌پذیر است.)</summary>
+    private bool HasSel => SelectedId is > 0;
+
+    private string Text => _typing ? _query : (HasSel ? Name ?? "" : "");
+
+    private List<VMGoodsOrServicesList> matches = new();
+
+    protected override void OnParametersSet() => Recalc();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!AutoFocus || _focused) return;
+        _focused = true;
+        try { await inputRef.FocusAsync(); } catch { /* مرورگر فوکوس را نداد — مشکلی نیست */ }
+    }
+
+    private void Recalc()
+    {
+        var needle = Norm(_query);
+        IEnumerable<VMGoodsOrServicesList> src = Goods;
+        if (needle.Length > 0)
+            src = Goods.Where(g => Norm(g.Name).Contains(needle) || Norm(g.UniqueIdentifier).Contains(needle));
+
+        var list = src.Take(MaxMatches).ToList();
+        if (!list.SequenceEqual(matches)) matches = list;
+        if (_index >= matches.Count) _index = Math.Max(0, matches.Count - 1);
+    }
+
+    private void OnFocus()
+    {
+        if (Goods.Count == 0) return;      // حالتِ بدون کالای ثبت‌شده: کادر متن آزاد است
+        _typing = true;                    // کادر خالی می‌شود تا تایپ، متن قبلی را به هم نچسباند
+        _query = "";
+        _open = true;
+        _index = 0;
+        Recalc();
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _typing = true;
+        _query = e.Value?.ToString() ?? "";
+        _open = true;
+        _index = 0;
+        Recalc();
+    }
+
+    private void OnBlur()
+    {
+        _open = false;
+        // متنی که انتخاب نشد دور ریخته می‌شود تا کادر با مقدار واقعی ردیف یکی بماند
+        if (HasSel) { _typing = false; _query = ""; }
+        else { _query = ""; }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (!_open) { _open = true; _index = 0; }
+                else if (_index < matches.Count - 1) _index++;
+                break;
+
+            case "ArrowUp":
+                if (_open && _index > 0) _index--;
+                break;
+
+            case "Enter":
+                if (_open && matches.Count > 0)
+                {
+                    await Pick(matches[Math.Clamp(_index, 0, matches.Count - 1)]);
+                }
+                else
+                {
+                    // انتخاب انجام شده (یا فهرستی نیست) ⇒ Enter = ردیف بعدی
+                    _open = false;
+                    await OnEnterNextRow.InvokeAsync();
+                }
+                break;
+
+            case "Escape":
+                _open = false;
+                if (HasSel) { _typing = false; _query = ""; }
+                break;
+        }
+    }
+
+    private async Task Pick(VMGoodsOrServicesList g)
+    {
+        _open = false;
+        _typing = false;
+        _query = "";
+        await OnPick.InvokeAsync(g);
+    }
+
+    private async Task Clear()
+    {
+        _open = false;
+        _typing = false;
+        _query = "";
+        await OnClear.InvokeAsync();
+    }
+
+    /// <summary>
+    /// نرمال‌سازی متن فارسی برای جست‌وجو: ی/ي، ک/ك، حذف نیم‌فاصله و اعراب،
+    /// یکسان‌سازی ارقام فارسی/عربی با لاتین.
+    /// </summary>
+    private static string Norm(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var raw in s.Trim())
+        {
+            var ch = raw switch
+            {
+                'ي' => 'ی',
+                'ك' => 'ک',
+                'ﻻ' => 'ل',
+                'ة' or 'ۀ' => 'ه',
+                'أ' or 'إ' or 'آ' => 'ا',
+                'ؤ' => 'و',
+                'ئ' => 'ی',
+                '\u200c' or '\u200e' or '\u200f' => ' ',
+                >= '\u06F0' and <= '\u06F9' => (char)('0' + (raw - '\u06F0')),
+                >= '\u0660' and <= '\u0669' => (char)('0' + (raw - '\u0660')),
+                _ => raw
+            };
+            sb.Append(ch);
+        }
+        // فشرده‌کردن فاصله‌های تکراری
+        var text = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "\\s+", " ");
+        return text.ToLowerInvariant();
+    }
+}

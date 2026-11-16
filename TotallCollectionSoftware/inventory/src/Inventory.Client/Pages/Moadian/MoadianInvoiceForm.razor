@@ -178,6 +178,9 @@ else
     <div class="card mi-blocked mb-3">
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-list-ol"></i> ردیف‌های کالا/خدمت</span>
+            <span class="small text-muted ms-2 d-none d-md-inline">
+                <i class="bi bi-lightning-charge"></i> نام کالا را تایپ کنید؛ با <kbd>Enter</kbd> انتخاب و با <kbd>Enter</kbd> بعدی ردیف تازه ساخته می‌شود.
+            </span>
             <button class="btn btn-sm btn-outline-success ms-auto" @onclick="AddRow">
                 <i class="bi bi-plus-lg"></i> افزودن ردیف
             </button>
@@ -214,41 +217,48 @@ else
                             @foreach (var item in vm.InvoiceItems)
                             {
                                 var row = item;
-                                <tr>
+                                <tr @key="row">
                                     <td>
                                         @if (Goods.Count == 0)
                                         {
-                                            <input class="form-control form-control-sm" value="@row.Name" @oninput="e => row.Name = e.Value?.ToString()" placeholder="نام کالا" />
+                                            <input class="form-control form-control-sm" value="@row.Name"
+                                                   placeholder="نام کالا"
+                                                   @oninput="e => row.Name = e.Value?.ToString()"
+                                                   @onkeydown="e => OnRowKeyDown(e, row)" />
                                         }
                                         else
                                         {
-                                            <select class="form-select form-select-sm" value="@row.GoodsOrServicesId" @onchange="e => OnGoods(row, e)">
-                                                <option value="">— انتخاب کالا —</option>
-                                                @foreach (var g in Goods)
-                                                {
-                                                    <option value="@g.GoodsOrServicesId">@g.Name</option>
-                                                }
-                                            </select>
+                                            <MoadianGoodsCombo Goods="Goods"
+                                                                SelectedId="row.GoodsOrServicesId"
+                                                                Name="row.Name"
+                                                                AutoFocus="@(_autoFocusRow == row)"
+                                                                OnPick="g => PickGoods(row, g)"
+                                                                OnClear="() => ClearGoods(row)"
+                                                                OnEnterNextRow="() => AddRowAfter(row)" />
                                         }
                                     </td>
                                     <td class="small">@(string.IsNullOrWhiteSpace(row.UnitOfMeasurement) ? "—" : row.UnitOfMeasurement)</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.Count" @onchange="e => { row.Count = Dec(e); Calc(row); }" />
+                                               value="@row.Count" @onchange="e => { row.Count = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnRowKeyDown(e, row)" />
                                     </td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.PriceUnit" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }" />
+                                               value="@row.PriceUnit" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnRowKeyDown(e, row)" />
                                     </td>
                                     <td class="num text-end">@MoadianUi.Money(RowGross(row))</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.Discount" @onchange="e => { row.Discount = Dec(e); Calc(row); }" />
+                                               value="@row.Discount" @onchange="e => { row.Discount = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnRowKeyDown(e, row)" />
                                     </td>
                                     <td class="num text-end">@MoadianUi.Money(RowNet(row))</td>
                                     <td>
                                         <input type="number" min="0" max="100" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }" />
+                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnRowKeyDown(e, row)" />
                                     </td>
                                     <td class="num text-end text-info">@MoadianUi.Money(RowVat(row))</td>
                                     <td class="num fw-semibold text-end">@MoadianUi.Money(RowTotal(row))</td>
@@ -329,6 +339,9 @@ else
     private List<VMCustomerList> Customers = new();
     private List<VMFiscalYear> FiscalYears = new();
     private bool loading = true, saving, forbidden;
+
+    /// <summary>ردیفی که کادر جست‌وجوی کالایش باید بعد از رندر بعدی فوکوس بگیرد.</summary>
+    private VmInvoiceItems? _autoFocusRow;
     private int? nextInvoiceNo; // پیش‌نمایش شمارهٔ صورتحساب جدید
 
     /// <summary>
@@ -444,6 +457,12 @@ else
                 Toast.Warning("شرکت مودیان تغییر کرد؛ ردیف‌های فرم پاک شد چون کالاها به شرکت قبلی تعلق داشتند.");
             StateHasChanged();
         });
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // پرچم فقط برای یک رندر معنا دارد؛ کامپوننت کمبو خودش یک‌بار فوکوس می‌گیرد.
+        if (_autoFocusRow is not null) _autoFocusRow = null;
     }
 
     public void Dispose()
@@ -597,8 +616,32 @@ else
 
     private void AddRow()
     {
-        vm.InvoiceItems.Add(new VmInvoiceItems { Count = 1, PriceUnit = 0, ValueAddedPercentage = 0, Discount = 0 });
+        var row = NewRow();
+        vm.InvoiceItems.Add(row);
+        _autoFocusRow = row;   // کادر جست‌وجوی کالای ردیف تازه فوکوس می‌گیرد
         StateHasChanged();
+    }
+
+    /// <summary>ردیف تازه <b>بعد از</b> ردیف جاری — همان چیزی که Enter می‌سازد.</summary>
+    private void AddRowAfter(VmInvoiceItems current)
+    {
+        var index = vm.InvoiceItems.IndexOf(current);
+        var row = NewRow();
+        if (index < 0 || index == vm.InvoiceItems.Count - 1) vm.InvoiceItems.Add(row);
+        else vm.InvoiceItems.Insert(index + 1, row);
+
+        _autoFocusRow = row;
+        StateHasChanged();
+    }
+
+    private static VmInvoiceItems NewRow() =>
+        new() { Count = 1, PriceUnit = 0, ValueAddedPercentage = 0, Discount = 0 };
+
+    /// <summary>Enter روی فیلدهای عددی ردیف ⇒ ردیف بعدی (بدون نیاز به موس).</summary>
+    private void OnRowKeyDown(KeyboardEventArgs e, VmInvoiceItems row)
+    {
+        if (e.Key != "Enter") return;
+        AddRowAfter(row);
     }
 
     private void RemoveRow(VmInvoiceItems row)
@@ -607,11 +650,9 @@ else
         StateHasChanged();
     }
 
-    private void OnGoods(VmInvoiceItems row, ChangeEventArgs e)
+    /// <summary>انتخاب کالا از کمبوی جست‌وجوپذیر: نام، کد یکتا، نرخ، ارزش افزوده و واحد پر می‌شود.</summary>
+    private void PickGoods(VmInvoiceItems row, VMGoodsOrServicesList g)
     {
-        if (!int.TryParse(e.Value?.ToString(), out var id)) return;
-        var g = Goods.FirstOrDefault(x => x.GoodsOrServicesId == id);
-        if (g is null) return;
         row.GoodsOrServicesId = g.GoodsOrServicesId;
         row.Name = g.Name;
         row.UniqueIdentifier = g.UniqueIdentifier;
@@ -619,6 +660,16 @@ else
         row.ValueAddedPercentage = g.ValueAddedPercentage;
         row.UnitOfMeasurement = g.UnitOfMeasurement ?? "";
         Calc(row);
+        StateHasChanged();
+    }
+
+    /// <summary>پاک‌کردن انتخاب کالای یک ردیف (تا کاربر دوباره جست‌وجو کند).</summary>
+    private void ClearGoods(VmInvoiceItems row)
+    {
+        row.GoodsOrServicesId = 0;
+        row.Name = null;
+        row.UniqueIdentifier = null;
+        row.UnitOfMeasurement = "";
         StateHasChanged();
     }
 
@@ -671,3 +722,40 @@ else
         finally { saving = false; StateHasChanged(); }
     }
 }
+
+<style>
+    /* ── کمبوی جست‌وجوپذیر کالا (ردیف‌های صورتحساب) ──
+       فهرست پیشنهادها عمداً «در جریان صفحه» باز می‌شود نه شناور؛ چون جدول داخل
+       .table-responsive با overflow اسکرول می‌شود و هر لایهٔ absolute بریده می‌شد. */
+    .mi-combo { min-width: 220px; }
+    .mi-combo-box { position: relative; display: flex; align-items: center; }
+    .mi-combo-ico {
+        position: absolute; inset-inline-start: .5rem; font-size: .78rem;
+        color: var(--text-muted, #8a94a6); pointer-events: none;
+    }
+    .mi-combo-input { padding-inline-start: 1.7rem; padding-inline-end: 1.6rem; }
+    .mi-combo-clear {
+        position: absolute; inset-inline-end: .2rem; border: 0; background: transparent;
+        color: #98a2b3; line-height: 1; padding: .15rem .35rem; border-radius: 6px;
+    }
+    .mi-combo-clear:hover { background: #f1f5f9; color: #b42318; }
+    .mi-combo-selected { font-size: .72rem; color: #1b7f4b; margin-top: .2rem; }
+    .mi-combo-list {
+        margin-top: .25rem; max-height: 190px; overflow-y: auto; background: #fff;
+        border: 1px solid #d0d7e2; border-radius: 8px; padding: .2rem;
+        box-shadow: inset 0 1px 2px rgba(16, 24, 40, .04);
+    }
+    .mi-combo-item {
+        display: flex; align-items: center; justify-content: space-between; gap: .5rem;
+        width: 100%; border: 0; background: transparent; padding: .3rem .45rem;
+        border-radius: 6px; text-align: start; font-size: .82rem; color: inherit;
+    }
+    .mi-combo-item:hover, .mi-combo-item.on { background: #eef4ff; }
+    .mi-combo-name { flex: 1 1 auto; }
+    .mi-combo-sub { font-size: .68rem; color: #7b8794; }
+    .mi-combo-empty { padding: .45rem; font-size: .78rem; color: #7b8794; text-align: center; }
+    .mi-table kbd {
+        background: #f1f5f9; border: 1px solid #d7dee8; border-radius: 4px;
+        padding: 0 .3rem; font-size: .72rem; font-family: inherit;
+    }
+</style>
