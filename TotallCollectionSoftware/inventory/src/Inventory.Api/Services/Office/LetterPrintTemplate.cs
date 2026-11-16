@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using QuestPDF.Elements;
 using QuestPDF.Fluent;
 using QuestPDF.Infrastructure;
@@ -83,6 +84,49 @@ internal static class LetterPrintTemplate
         return hadColon || ensureTrailingColon
             ? Rlm + value + ":" + Rlm
             : Rlm + value + Rlm;
+    }
+
+    // واژهٔ لاتین داخل متن فارسی (مثل «Workflow») باید جدا شود، وگرنه نقطه/ویرگول و
+    // پرانتزِ کنارش با آن جابه‌جا می‌شوند؛ LRI/PDI همان کار <bdi> در HTML را می‌کند.
+    private static readonly Regex LatinRun = new(
+        @"[A-Za-z][A-Za-z0-9_@.\-]*[A-Za-z0-9]|[A-Za-z]",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// هر دنبالهٔ لاتین را میان LRI (U+2066) و PDI (U+2069) محصور می‌کند تا یک «جزیرهٔ»
+    /// مستقل چپ‌به‌راست بسازد و علائم نگارشیِ کنارش را با خود نبرد.
+    /// </summary>
+    internal static string IsolateLatinRuns(string text) => LatinRun.IsMatch(text)
+        ? LatinRun.Replace(text, match => "\u2066" + match.Value + "\u2069")
+        : text;
+
+    /// <summary>
+    /// یک «خط» متن را میان دو RLM محصور می‌کند و دنباله‌های لاتینش را جدا می‌کند.
+    ///
+    /// چرا هر دو طرف؟ RLM ابتدای خط، جهت پایهٔ پاراگراف را قطعی می‌کند و RLM انتها،
+    /// علائم نگارشیِ «خنثی» (نقطه، ویرگول، دونقطه) را میان دو کاراکتر قویِ راست‌به‌چپ
+    /// نگه می‌دارد؛ نتیجه اینکه نقطهٔ پایان جمله به ابتدای خط پرت نمی‌شود و شمارهٔ
+    /// ابتدای بند («۱ —») به انتهای خط نمی‌رود. RLM و LRI/PDI عرض ندارند، پس چیدمان
+    /// و شکستن خط تغییری نمی‌کند.
+    /// </summary>
+    internal static string RtlParagraph(string? line)
+    {
+        var value = (line ?? string.Empty).Trim();
+        return value.Length == 0 ? string.Empty : Rlm + IsolateLatinRuns(value) + Rlm;
+    }
+
+    /// <summary>
+    /// همان <see cref="RtlParagraph"/>، اما برای متنِ چندخطی: هر خط در QuestPDF یک
+    /// پاراگراف مستقل است و جهت پایهٔ خودش را جداگانه حساب می‌کند، پس محصور کردنِ
+    /// کلِ رشته کافی نیست و باید خط‌به‌خط انجام شود. خط‌های خالی دست‌نخورده می‌مانند
+    /// تا فاصلهٔ میان بندها حفظ شود.
+    /// </summary>
+    internal static string RtlPlainText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        for (var i = 0; i < lines.Length; i++) lines[i] = RtlParagraph(lines[i]);
+        return string.Join("\n", lines);
     }
 
     /// <summary>

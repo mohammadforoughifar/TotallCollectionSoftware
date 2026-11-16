@@ -72,6 +72,31 @@ function staticGuards() {
   assert.ok(dpi <= 500, `signature cap ${capW}px = ${Math.round(dpi)} DPI, oversampled — it bloats every PDF`);
   assert.ok(capH >= 180 && capH <= 300, 'signature height cap out of range: ' + capH);
   console.log(`  ✓ static guards (signature cap ${capW}x${capH} = ${Math.round(dpi)} DPI)`);
+
+  // --- inner-letter bidi: AlignRight() sets alignment, NOT the bidi base direction ---
+  // Without an explicit direction the paragraph base came from the page's
+  // ContentFromLeftToRight(), so a Persian line rendered LTR: the full stop jumped to the
+  // right edge and the list number to the left edge. Body text needs both the explicit
+  // direction and the RLM wrapping.
+  const OFFICE = path.resolve(SRC_DIR, '../../Inventory.Api/Services/Office');
+  const inner = fs.readFileSync(path.join(OFFICE, 'InnerLetterPdfRenderer.cs'), 'utf8');
+  const tmpl = fs.readFileSync(path.join(OFFICE, 'LetterPrintTemplate.cs'), 'utf8');
+
+  assert.ok(/RtlPlainText\(PlainText\(data\.Body\)\)/.test(inner),
+    'BIDI REGRESSION: inner-letter body must be wrapped line-by-line with RtlPlainText');
+  for (const m of inner.matchAll(/\.Text\((?:body|LetterPrintTemplate\.Rtl[A-Za-z]*\()[^;]*;/g)) {
+    assert.ok(/DirectionFromRightToLeft\(\)/.test(m[0]),
+      'BIDI REGRESSION: body/label text without DirectionFromRightToLeft(): ' + m[0].slice(0, 90));
+  }
+  const align = (inner.match(/\.AlignRight\(\)/g) || []).length;
+  const rtl = (inner.match(/DirectionFromRightToLeft\(\)/g) || []).length;
+  assert.ok(rtl >= align, `BIDI REGRESSION: ${align} AlignRight() vs only ${rtl} DirectionFromRightToLeft()`);
+
+  // RLM/LRI/PDI are zero-width, so the wrapper must not alter the visible text.
+  assert.ok(tmpl.includes('\\u200F') && /IsolateLatinRuns/.test(tmpl),
+    'LetterPrintTemplate must own the RLM + Latin-isolation helpers');
+  assert.ok(/\u2066/.test(tmpl) || tmpl.includes('\\u2066'), 'Latin runs must be isolated with LRI');
+  console.log(`  ✓ inner-letter bidi (${rtl} explicit RTL directions, ${align} AlignRight)`);
 }
 
 // ===========================================================================================

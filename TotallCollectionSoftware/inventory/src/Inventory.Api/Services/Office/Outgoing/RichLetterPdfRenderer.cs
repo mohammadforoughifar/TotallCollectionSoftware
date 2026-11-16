@@ -25,12 +25,6 @@ internal static class RichLetterPdfRenderer
     private static readonly HashSet<string> BlockTags = new(StringComparer.OrdinalIgnoreCase)
         { "p", "div", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "ul", "ol", "table", "hr" };
 
-    // واژهٔ لاتین داخل متن فارسی (مثل «Workflow») باید جدا شود، وگرنه نقطه/ویرگول و
-    // پرانتزِ کنارش با آن جابه‌جا می‌شوند؛ LRI/PDI همان کار <bdi> در HTML را می‌کند.
-    private static readonly Regex LatinRun = new(
-        @"[A-Za-z][A-Za-z0-9_@.\-]*[A-Za-z0-9]|[A-Za-z]",
-        RegexOptions.Compiled);
-
     internal static bool AddTo(ColumnDescriptor column, string? html, float defaultFontSize, float lineHeight,
         Action<ColumnDescriptor>? keepWithTrailingText = null, bool forceRtlParagraph = false,
         float paragraphSpacing = 0f)
@@ -108,9 +102,9 @@ internal static class RichLetterPdfRenderer
     /// HTML. بدون این جداسازی، «Workflow» و علائم کنارش در پاراگراف راست‌به‌چپ جابه‌جا
     /// می‌شوند (آیتم‌های فهرست با واژهٔ لاتین بدترین نمونه بودند).
     /// </summary>
-    private static string IsolateLatinRuns(string text) => LatinRun.IsMatch(text)
-        ? LatinRun.Replace(text, match => "\u2066" + match.Value + "\u2069")
-        : text;
+    // همان قاعدهٔ «جزیرهٔ لاتین» که نامهٔ داخلی هم استفاده می‌کند؛ یک‌جا نگه داشته شده
+    // تا دو مسیر چاپ از هم جدا نیفتند.
+    private static string IsolateLatinRuns(string text) => LetterPrintTemplate.IsolateLatinRuns(text);
 
     private static int TextLength(Node node) => node.Tag == "#text"
         ? node.Text.Length

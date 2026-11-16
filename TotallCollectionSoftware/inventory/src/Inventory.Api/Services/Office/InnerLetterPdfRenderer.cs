@@ -37,7 +37,10 @@ internal static class InnerLetterPdfRenderer
         var pc = new PersianCalendar();
         var date = LetterPrintTemplate.PersianDigits($"{pc.GetYear(data.Date):0000}/{pc.GetMonth(data.Date):00}/{pc.GetDayOfMonth(data.Date):00}");
         var number = LetterPrintTemplate.PersianDigits(data.Number);
-        var body = PlainText(data.Body);
+        // متن نامه خط‌به‌خط میان RLM محصور می‌شود. بدون این کار، جهت پایهٔ هر خط را
+        // QuestPDF از چیدمانِ چپ‌به‌راستِ صفحه می‌گرفت و نتیجه همان ایراد گزارش‌شده بود:
+        // نقطهٔ پایان جمله به ابتدای (سمت راستِ) خط و شمارهٔ بند به انتهای (سمت چپِ) خط.
+        var body = LetterPrintTemplate.RtlPlainText(PlainText(data.Body));
         var attachmentText = attachment ? "دارد" : "ندارد";
 
         // مقادیر سربرگ: از قالب داخلی (اگر کادرها را داشته باشد) یا مختصات کالیبرهٔ ۱۰۰۳.
@@ -151,7 +154,8 @@ internal static class InnerLetterPdfRenderer
         // خط جداکنندهٔ خاکستری، مثل نامهٔ صادرهٔ ۱۰۰۳، برداشته شده؛ فقط همان فاصله می‌ماند.
         LetterPrintTemplate.Spacer(c, a5 ? 10f : 12f);
         // Never ShowEntire/Height/ClampLines the body: it must flow to subsequent pages.
-        c.Item().Text(body).LineHeight(LetterPrintTemplate.BodyLineHeight).AlignRight();
+        c.Item().Text(body).LineHeight(LetterPrintTemplate.BodyLineHeight)
+            .AlignRight().DirectionFromRightToLeft();
         AddHamesh(c, data, withHamesh);
     }
 
@@ -160,11 +164,16 @@ internal static class InnerLetterPdfRenderer
         bool withHamesh, bool a5)
     {
         c.Spacing(a5 ? 5 : 7);
-        c.Item().Text($"عنوان: {data.Title}").Bold().AlignRight();
-        c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}").AlignRight();
-        c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}").AlignRight();
+        c.Item().Text(LetterPrintTemplate.RtlParagraph($"عنوان: {data.Title}"))
+            .Bold().AlignRight().DirectionFromRightToLeft();
+        c.Item().Text(LetterPrintTemplate.RtlParagraph(
+                $"گیرندگان: {(string.IsNullOrWhiteSpace(data.Receivers) ? "—" : data.Receivers)}"))
+            .AlignRight().DirectionFromRightToLeft();
+        c.Item().Text(LetterPrintTemplate.RtlParagraph(
+                $"ایجادکننده: {(string.IsNullOrWhiteSpace(data.Creator) ? "—" : data.Creator)}"))
+            .AlignRight().DirectionFromRightToLeft();
         LetterPrintTemplate.Separator(c);
-        c.Item().Text(body).AlignRight();
+        c.Item().Text(body).AlignRight().DirectionFromRightToLeft();
         AddHamesh(c, data, withHamesh);
     }
 
@@ -172,13 +181,17 @@ internal static class InnerLetterPdfRenderer
     private static void AddHamesh(ColumnDescriptor c, InnerLetterPrintData data, bool withHamesh)
     {
         if (!withHamesh || data.Hamesh.Count == 0) return;
-        c.Item().PaddingTop(8).Text(LetterPrintTemplate.RtlLabel("هامش")).Bold().AlignRight();
+        c.Item().PaddingTop(8).Text(LetterPrintTemplate.RtlLabel("هامش"))
+            .Bold().AlignRight().DirectionFromRightToLeft();
         foreach (var row in data.Hamesh)
         {
             var details = new[] { PlainText(row.Action), PlainText(row.Instruction) }
                 .Where(x => !string.IsNullOrWhiteSpace(x));
             var detail = string.Join(" — ", details);
-            c.Item().Text($"• {row.Receiver}{(detail.Length > 0 ? " — " + detail : "")}").AlignRight();
+            // ردیف هامش هم یک خط است: محصور در RLM تا «•» و نقطهٔ پایانی جابه‌جا نشوند.
+            c.Item().Text(LetterPrintTemplate.RtlParagraph(
+                    $"• {row.Receiver}{(detail.Length > 0 ? " — " + detail : "")}"))
+                .AlignRight().DirectionFromRightToLeft();
         }
     }
 
