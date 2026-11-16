@@ -1607,7 +1607,9 @@ else
         var p = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
         var q = p.IndexOf('?');
         if (q >= 0) p = p[..q];
-        if (p == "") return true; // صفحه‌ی اصلی خودش دسترسی داشبورد مالی را کنترل می‌کند
+        // ریشهٔ سایت (/‎) = «کارتابل من»؛ خودِ صفحهٔ ریشه مجوز MyCartable.View را
+        // بررسی می‌کند و در نبود آن داشبورد را نشان می‌دهد (RootLanding.razor).
+        if (p == "") return true;
 
         if (p.StartsWith("operations/reports/orders"))
         {
