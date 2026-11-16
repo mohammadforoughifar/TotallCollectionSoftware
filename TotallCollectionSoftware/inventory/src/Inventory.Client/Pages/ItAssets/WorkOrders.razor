@@ -2,6 +2,7 @@
 @page "/work-orders"
 @using System.Net.Http.Headers
 @using System.Globalization
+@using System.Threading
 @using Inventory.Shared.Dtos
 @inject HttpClient Http
 @inject IAuthState Auth
@@ -1383,6 +1384,50 @@ else
                                 </div>
                             }
                         </div>
+                    @if (isOwner)
+                    {
+                        <details class="wo-block mb-3 no-print" open>
+                            <summary class="wo-block-title" style="background:#fff"><i class="bi bi-chat-dots"></i> وضعیت پیامک‌های این دستور</summary>
+                            <div class="wo-block-body">
+                                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+                                    <span class="small text-muted">پذیرش درگاه به معنی تحویل نهایی نیست.</span>
+                                    <button type="button" class="btn btn-sm btn-light border" disabled="@smsEventsLoading" @onclick="RefreshSmsEvents"><i class="bi bi-arrow-clockwise"></i> تازه‌سازی</button>
+                                </div>
+                                @if (smsEventsLoading && smsEvents.Count == 0)
+                                { <div class="small text-muted">در حال دریافت وضعیت…</div> }
+                                else if (smsEventsFailed)
+                                { <div class="small text-danger">دریافت وضعیت پیامک ممکن نشد.</div> }
+                                else if (smsEvents.Count == 0)
+                                { <div class="small text-muted">رویداد پیامکی برای این دستور ثبت نشده است.</div> }
+                                else
+                                {
+                                    @foreach (var item in smsEvents)
+                                    {
+                                        var returnedCode = WorkOrderSmsAppearance.ErrorCode(item);
+                                        <div class="d-flex flex-wrap gap-2 align-items-center small py-1 border-bottom">
+                                            <span class="text-muted num">@item.CreatedAtUtc.ToLocalTime().ToFaDateTime()</span>
+                                            <span>@SmsEventLabel(item.EventType) — @item.RecipientName</span>
+                                            <span class="ms-auto fw-700 @(WorkOrderSmsAppearance.IsSuccess(item.Status) ? "text-success" : WorkOrderSmsAppearance.IsFailure(item.Status) ? "text-danger" : "text-muted")"
+                                                  title="@WorkOrderSmsAppearance.Text(item.Status)">
+                                                @if (WorkOrderSmsAppearance.IsSuccess(item.Status))
+                                                {
+                                                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">@WorkOrderSmsAppearance.Text(item.Status)</span>
+                                                }
+                                                else
+                                                {
+                                                    @WorkOrderSmsAppearance.Text(item.Status)
+                                                    @if (returnedCode.HasValue)
+                                                    {
+                                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>
+                                                    }
+                                                }
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </details>
+                    }
                     @if (_mindFlowLinks.Count > 0)
                     {
                         <div class="wo-block mb-3">
@@ -2666,50 +2711,6 @@ else
                             </div>
                         </div>
                     }
-                    @if (isOwnerG)
-                    {
-                        <details class="wo-block mt-3" open>
-                            <summary class="wo-block-title" style="background:#fff"><i class="bi bi-chat-dots"></i> وضعیت پیامک‌های این دستور</summary>
-                            <div class="wo-block-body">
-                                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
-                                    <span class="small text-muted">پذیرش درگاه به معنی تحویل نهایی نیست.</span>
-                                    <button type="button" class="btn btn-sm btn-light border" disabled="@smsEventsLoading" @onclick="RefreshSmsEvents"><i class="bi bi-arrow-clockwise"></i> تازه‌سازی</button>
-                                </div>
-                                @if (smsEventsLoading)
-                                { <div class="small text-muted">در حال دریافت وضعیت…</div> }
-                                else if (smsEventsFailed)
-                                { <div class="small text-danger">دریافت وضعیت پیامک ممکن نشد.</div> }
-                                else if (smsEvents.Count == 0)
-                                { <div class="small text-muted">رویداد پیامکی برای این دستور ثبت نشده است.</div> }
-                                else
-                                {
-                                    @foreach (var item in smsEvents)
-                                    {
-                                        var returnedCode = WorkOrderSmsAppearance.ErrorCode(item);
-                                        <div class="d-flex flex-wrap gap-2 align-items-center small py-1 border-bottom">
-                                            <span class="text-muted num">@item.CreatedAtUtc.ToLocalTime().ToFaDateTime()</span>
-                                            <span>@SmsEventLabel(item.EventType) — @item.RecipientName</span>
-                                            <span class="ms-auto fw-700 @(WorkOrderSmsAppearance.IsSuccess(item.Status) ? "text-success" : WorkOrderSmsAppearance.IsFailure(item.Status) ? "text-danger" : "text-muted")"
-                                                  title="@WorkOrderSmsAppearance.Text(item.Status)">
-                                                @if (WorkOrderSmsAppearance.IsSuccess(item.Status))
-                                                {
-                                                    <i class="bi bi-check-circle-fill" aria-hidden="true"></i><span class="visually-hidden">@WorkOrderSmsAppearance.Text(item.Status)</span>
-                                                }
-                                                else
-                                                {
-                                                    @WorkOrderSmsAppearance.Text(item.Status)
-                                                    @if (returnedCode.HasValue)
-                                                    {
-                                                        <span aria-hidden="true"> · </span><bdi class="num" dir="ltr">@(returnedCode.Value)</bdi>
-                                                    }
-                                                }
-                                            </span>
-                                        </div>
-                                    }
-                                }
-                            </div>
-                        </details>
-                    }
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" @onclick="() => gardeshOpen = false">بستن</button>
@@ -3133,7 +3134,7 @@ else
     {
         if (detail == null) return;
         var parent = detail;
-        detail = null;
+        CloseDetail();
         chainParent = parent;
         keepChainParent = true;
         await ShowNewFormAsync("", "");
@@ -3284,9 +3285,20 @@ else
     private List<LogItem> logs = new();
     private List<WorkOrderSmsEventDto> smsEvents = new();
     private bool smsEventsLoading, smsEventsFailed;
-    // Both a new detail session and a newer refresh invalidate an older response, even
-    // when the same order is closed and reopened while its first request is in flight.
-    private long smsEventsVersion;
+    // A detail session and each read have separate versions. Responses and background
+    // refreshes from a closed/reopened or different order must never update this view.
+    private long smsDetailSession, smsEventsVersion;
+    private CancellationTokenSource? smsDetailReads;
+    private readonly WorkOrderSmsStatusPoller smsStatusPoller = new();
+
+    private void CancelSmsDetailReads()
+    {
+        var source = smsDetailReads;
+        smsDetailReads = null;
+        if (source is null) return;
+        source.Cancel();
+        source.Dispose();
+    }
 
     private static string SmsEventLabel(WorkOrderSmsEventType type) => type switch
     {
@@ -3296,23 +3308,81 @@ else
         _ => "رویداد نامشخص"
     };
 
-    private Task RefreshSmsEvents() => detail is null ? Task.CompletedTask : LoadSmsEvents(detail.Id, smsEventsVersion);
+    private bool IsCurrentSmsDetail(int id, long session) =>
+        detail?.Id == id && detail.OwnerUserId == access.UserId && smsDetailSession == session;
 
-    private async Task LoadSmsEvents(int id, long expectedVersion)
+    private Task BeginSmsStatusSession(WoItem w)
     {
-        // OpenDetail awaits other requests first. It must not start an old order's SMS
-        // request, or leave the current order's loading indicator stuck, after a switch.
+        var session = ++smsDetailSession;
+        var version = ++smsEventsVersion;
+        smsStatusPoller.Stop();
+        CancelSmsDetailReads();
+        smsDetailReads = new CancellationTokenSource();
+        var ct = smsDetailReads.Token;
+        detail = w;
+        smsEvents = new(); smsEventsLoading = false; smsEventsFailed = false;
+        return w.OwnerUserId == access.UserId
+            ? LoadInitialSmsEvents(w.Id, version, session, ct) : Task.CompletedTask;
+    }
+
+    private async Task RefreshSmsEvents()
+    {
+        if (detail is null || detail.OwnerUserId != access.UserId) return;
+        var id = detail.Id;
+        var session = smsDetailSession;
+        var ct = smsDetailReads?.Token ?? CancellationToken.None;
+        smsStatusPoller.Stop();
+        await LoadSmsEvents(id, smsEventsVersion, ct);
+        if (IsCurrentSmsDetail(id, session)) WatchPendingSmsEvents(id, session);
+    }
+
+    private async Task LoadInitialSmsEvents(int id, long expectedVersion, long session, CancellationToken ct)
+    {
+        await LoadSmsEvents(id, expectedVersion, ct);
+        if (IsCurrentSmsDetail(id, session)) WatchPendingSmsEvents(id, session);
+    }
+
+    private void WatchPendingSmsEvents(int id, long session)
+    {
+        smsStatusPoller.Stop();
+        if (!IsCurrentSmsDetail(id, session) || smsEventsFailed || !WorkOrderSmsStatusPoller.NeedsRefresh(smsEvents)) return;
+        // Only the status GET is repeated while the outbox is pending/sending. The
+        // SMS itself is never retried, and the timer stops on close, failure or completion.
+        _ = smsStatusPoller.StartAsync(async ct =>
+        {
+            var keepPolling = false;
+            await InvokeAsync(async () =>
+            {
+                if (ct.IsCancellationRequested || !IsCurrentSmsDetail(id, session)) return;
+                if (!smsEventsLoading) await LoadSmsEvents(id, smsEventsVersion, ct);
+                if (ct.IsCancellationRequested || !IsCurrentSmsDetail(id, session)) return;
+                keepPolling = !smsEventsFailed && WorkOrderSmsStatusPoller.NeedsRefresh(smsEvents);
+            });
+            return keepPolling;
+        });
+    }
+
+    private async Task LoadSmsEvents(int id, long expectedVersion, CancellationToken ct = default)
+    {
         if (detail?.Id != id || smsEventsVersion != expectedVersion) return;
         var requestVersion = ++smsEventsVersion;
         smsEventsLoading = true; smsEventsFailed = false;
         StateHasChanged();
         try
         {
-            var rows = await Http.GetFromJsonAsync<List<WorkOrderSmsEventDto>>($"/api/workorders/{id}/sms-events") ?? new();
+            var rows = await Http.GetFromJsonAsync<List<WorkOrderSmsEventDto>>($"/api/workorders/{id}/sms-events", ct) ?? new();
             if (detail?.Id == id && smsEventsVersion == requestVersion) smsEvents = rows;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch { if (detail?.Id == id && smsEventsVersion == requestVersion) smsEventsFailed = true; }
-        finally { if (detail?.Id == id && smsEventsVersion == requestVersion) smsEventsLoading = false; }
+        finally
+        {
+            if (detail?.Id == id && smsEventsVersion == requestVersion)
+            {
+                smsEventsLoading = false;
+                StateHasChanged();
+            }
+        }
     }
 
     // گردش کار (مشابه گردش نامه داخلی)
@@ -3455,6 +3525,9 @@ else
 
     public void Dispose()
     {
+        ++smsDetailSession; ++smsEventsVersion;
+        smsStatusPoller.Dispose();
+        CancelSmsDetailReads();
         Rt.DataChanged -= OnRtChanged;
         Nav.LocationChanged -= OnLocChanged;
     }
@@ -4211,7 +4284,13 @@ else
     </div>;
 
     private string detailTab = "overview";
-    private void CloseDetail() { detail = null; gardeshOpen = false; chatMenuOpen = false; }
+    private void CloseDetail()
+    {
+        ++smsDetailSession; ++smsEventsVersion;
+        smsStatusPoller.Stop();
+        CancelSmsDetailReads();
+        detail = null; gardeshOpen = false; chatMenuOpen = false;
+    }
     private async Task PrintDetail() => await JS.InvokeVoidAsync("printWorkOrderDetail");
 
     private bool editingSeries;
@@ -4228,7 +4307,7 @@ else
                 await ShowApiError(response, "حذف دستور کار انجام نشد.");
                 return;
             }
-            if (detail?.Id == order.Id) detail = null;
+            if (detail?.Id == order.Id) CloseDetail();
             expanded.Remove(order.Id);
             Toast.Success("دستور کار حذف شد.");
             await LoadAll();
@@ -4308,11 +4387,10 @@ else
 
     private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId && !w.Assignees.Any(a => a.SeenAt != null || a.RepliedAt != null);
 
-    private async Task OpenEditFromList(WoItem w)
+    private Task OpenEditFromList(WoItem w)
     {
-        detail = w;
         _ = LoadMindFlowLinks(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
-        await OpenEditFromDetail();
+        return OpenEdit(w);
     }
 
     /// <summary>
@@ -4332,32 +4410,37 @@ else
         catch { /* نمایشِ پیش‌نمایش بهتر از خطا است */ }
     }
 
-    private async Task OpenEditFromDetail()
+    private Task OpenEditFromDetail() => detail is { } w ? OpenEdit(w) : Task.CompletedTask;
+
+    private async Task OpenEdit(WoItem w)
     {
-        if (detail == null) return;
+        // A list item is not assigned to the detail modal while its description is
+        // loading, so the previous order's SMS rows cannot briefly appear under it.
+        var session = smsDetailSession;
         // ویرایش باید روی متن کامل انجام شود، وگرنه ذخیرهٔ فرم تصاویر نامه را پاک می‌کند.
-        if (detail.HasFullDescription) await LoadFullDescription(detail);
-        editingId = detail.Id;
-        _sourceModule = detail.SourceModule;
-        _sourceId = detail.SourceId;
-        _sourceRefId = detail.SourceRefId;
+        if (w.HasFullDescription) await LoadFullDescription(w);
+        if (session != smsDetailSession) return;
+        CloseDetail();
+        editingId = w.Id;
+        _sourceModule = w.SourceModule;
+        _sourceId = w.SourceId;
+        _sourceRefId = w.SourceRefId;
         _sourceLabel = "";
         _sourceDocTitle = "";
-        var desc = detail.Description ?? "";
-        var title = detail.Title;
-        var due = detail.DueAt;
-        var pr = detail.Priority;
-        var rec = detail.Recurrence;
-        var hasSeries = detail.RecurrenceSeriesId != null;
-        var detailId = detail.Id;
-        var prjId = detail.ProjectId ?? 0;
-        var prjWeight = detail.Weight;
-        var prjCode = detail.ProjectCode ?? "";
-        var prjName = detail.ProjectName ?? "";
-        var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
-        var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
-        var tags = detail.Tags.ToList();
-        detail = null;
+        var desc = w.Description ?? "";
+        var title = w.Title;
+        var due = w.DueAt;
+        var pr = w.Priority;
+        var rec = w.Recurrence;
+        var hasSeries = w.RecurrenceSeriesId != null;
+        var detailId = w.Id;
+        var prjId = w.ProjectId ?? 0;
+        var prjWeight = w.Weight;
+        var prjCode = w.ProjectCode ?? "";
+        var prjName = w.ProjectName ?? "";
+        var ids = w.Assignees.Select(a => a.UserId).ToHashSet();
+        var extra = w.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
+        var tags = w.Tags.ToList();
         await ShowNewFormAsync(title, desc);
         newPriority = pr;
         newRecurrence = rec;
@@ -4806,8 +4889,8 @@ else
     // ================== جزئیات ==================
     private async Task OpenDetail(WoItem w)
     {
-        var smsDetailVersion = ++smsEventsVersion;
-        detail = w;
+        // Start the SMS status read immediately, without waiting for seen/log requests.
+        var smsLoad = BeginSmsStatusSession(w);
         // شرح بلند (تصاویر نامه) در فهرست نمی‌آید تا فهرست سبک بماند؛ همین‌جا کامل خوانده می‌شود.
         _ = LoadFullDescription(w).ContinueWith(_ => InvokeAsync(StateHasChanged));
         detailTab = "overview";
@@ -4818,7 +4901,7 @@ else
         replyRequestId = Guid.NewGuid().ToString("N");
         decideNotes = w.Assignees.ToDictionary(a => a.Id, a => "");
         extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
-        attachments = new(); logs = new(); smsEvents = new(); smsEventsLoading = false; smsEventsFailed = false;
+        attachments = new(); logs = new();
         // شمارندهٔ اولیه از لیست (سبک) و سپس تازه‌سازی از فهرست واقعی پیوست‌ها
         detailAttCount = w.AttachmentCount;
         _ = LoadAttachmentCount(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
@@ -4841,7 +4924,7 @@ else
             if (detail?.Id == w.Id) logs = rows;
         }
         catch { }
-        if (w.OwnerUserId == access.UserId) await LoadSmsEvents(w.Id, smsDetailVersion);
+        await smsLoad;
 
         // شماره/عنوان مدرک آرشیوِ متصل را برای نمایش در بخش «منبع» می‌آوریم (بی‌صدا؛ فقط نمایشی).
         if (w.SourceModule == "Document" && w.SourceId is int docId && docId > 0 && !_docRefs.ContainsKey(w.Id))
@@ -4877,7 +4960,7 @@ else
                 else Toast.Success("پاسخ شما ثبت شد.");
                 ShowSmsStageWarning(result?.SmsStageFailed == true);
                 ShowNotificationWarning(result?.NotificationsFailed == true);
-                if (detail?.Id == id && replyRequestId == requestId) detail = null;
+                if (detail?.Id == id && replyRequestId == requestId) CloseDetail();
                 await LoadAll();
             }
             else Toast.Error(await resp.Content.ReadAsStringAsync());
@@ -4898,7 +4981,7 @@ else
             {
                 Toast.Success(approved ? "پاسخ تایید شد." : "پاسخ رد شد و به گیرنده برگشت.");
                 var id = detail.Id;
-                detail = null;
+                CloseDetail();
                 await LoadAll();
                 await OpenById(id);
             }
@@ -4916,7 +4999,7 @@ else
         {
             var due = extDate.Value.Date.Add(extTime.ToTimeSpan());
             var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/extend", new { newDueAt = due, note = "" });
-            if (resp.IsSuccessStatusCode) { Toast.Success("مهلت تمدید شد."); var id = detail.Id; detail = null; await LoadAll(); await OpenById(id); }
+            if (resp.IsSuccessStatusCode) { Toast.Success("مهلت تمدید شد."); var id = detail.Id; CloseDetail(); await LoadAll(); await OpenById(id); }
             else Toast.Error(await resp.Content.ReadAsStringAsync());
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -4939,7 +5022,7 @@ else
                 Toast.Success("دستور کار بازگشایی شد و به گردش برگشت. 🔓");
                 var id = detail.Id;
                 reopenNote = ""; reopenDate = null; reopenReset = true;
-                detail = null; await LoadAll(); await OpenById(id);
+                CloseDetail(); await LoadAll(); await OpenById(id);
             }
             else Toast.Error(await resp.Content.ReadAsStringAsync());
         }
@@ -4954,7 +5037,7 @@ else
         try
         {
             var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/close", new { note = closeNote });
-            if (resp.IsSuccessStatusCode) { Toast.Success("دستور کار نهایی و بسته شد. 🔒"); detail = null; await LoadAll(); }
+            if (resp.IsSuccessStatusCode) { Toast.Success("دستور کار نهایی و بسته شد. 🔒"); CloseDetail(); await LoadAll(); }
             else Toast.Error(await resp.Content.ReadAsStringAsync());
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

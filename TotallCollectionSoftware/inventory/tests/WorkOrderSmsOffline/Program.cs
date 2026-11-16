@@ -290,6 +290,11 @@ static class Program
         Check(rejected.Status==WorkOrderSmsStatus.Failed && rejected.ProviderCode==431 && rejected.Recipient is null &&
               gateway.Calls==before+1 && !await dispatcher.ProcessOneAsync(),
             "a simulated 431 rejection retains its actual code and is not retried automatically");
+        var permissionError=await Stage(33,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Failed, ProviderCode:427);
+        before=gateway.Calls; await dispatcher.ProcessOneAsync();
+        Check(permissionError.Status==WorkOrderSmsStatus.Failed && permissionError.ProviderCode==427 && permissionError.Recipient is null &&
+              gateway.Calls==before+1 && !await dispatcher.ProcessOneAsync(),
+            "a simulated 427 rejection is persisted with its actual code and is never retried");
         var uncertain=await Stage(6,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Unknown);
         before=gateway.Calls; await dispatcher.ProcessOneAsync();
         Check(uncertain.Status==WorkOrderSmsStatus.Unknown && uncertain.Recipient is null && gateway.Calls==before+1 &&

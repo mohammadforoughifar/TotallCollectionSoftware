@@ -1,5 +1,7 @@
 global using System;
 global using System.Collections.Generic;
+global using System.Threading;
+global using System.Threading.Tasks;
 using Inventory.Client.Pages;
 using Inventory.Shared.Dtos;
 
@@ -62,4 +64,76 @@ foreach (var status in new[] { WorkOrderSmsStatus.Accepted, WorkOrderSmsStatus.D
     sms.Status = status;
     Check(WorkOrderSmsAppearance.ErrorCode(sms) is null, $"{status}: no failure code is displayed");
 }
-Console.WriteLine($"Work-order SMS appearance: {checks} offline checks passed.");
+// Status refresh only reads the outbox; it must stop for terminal/unknown results.
+foreach (var status in Enum.GetValues<WorkOrderSmsStatus>())
+{
+    var rows = new[] { new WorkOrderSmsEventDto { Status = status } };
+    Check(WorkOrderSmsStatusPoller.NeedsRefresh(rows) ==
+          (status is WorkOrderSmsStatus.Pending or WorkOrderSmsStatus.Sending),
+        $"{status}: background refresh is used only while an event is pending or sending");
+}
+Check(!WorkOrderSmsStatusPoller.NeedsRefresh(Array.Empty<WorkOrderSmsEventDto>()) &&
+      WorkOrderSmsStatusPoller.NeedsRefresh(new[] {
+          new WorkOrderSmsEventDto { Status = WorkOrderSmsStatus.Failed },
+          new WorkOrderSmsEventDto { Status = WorkOrderSmsStatus.Pending } }),
+    "empty history does not poll, but a mixed history with a pending event does");
+
+var reads = 0;
+var delays = 0;
+using (var poller = new WorkOrderSmsStatusPoller(TimeSpan.FromSeconds(5), 10, (interval, ct) => {
+    Check(interval == TimeSpan.FromSeconds(5) && !ct.IsCancellationRequested, "status reads are delayed");
+    delays++;
+    return Task.CompletedTask;
+}))
+{
+    await poller.StartAsync(ct => Task.FromResult(++reads < 3));
+    Check(reads == 3 && delays == 3, "polling stops when the status read reports a terminal result");
+}
+reads = 0;
+using (var bounded = new WorkOrderSmsStatusPoller(TimeSpan.Zero, 3, (_, _) => Task.CompletedTask))
+{
+    await bounded.StartAsync(ct => { reads++; return Task.FromResult(true); });
+    Check(reads == 3, "pending status polling is bounded and leaves manual refresh available");
+    await bounded.StartAsync(ct => Task.FromException<bool>(new InvalidOperationException("fake read failure")));
+    await bounded.StartAsync(ct => { reads++; return Task.FromResult(false); });
+    Check(reads == 4, "a read error stops polling but does not disable a later manual refresh");
+}
+
+reads = 0;
+var delayStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+using (var cancel = new WorkOrderSmsStatusPoller(TimeSpan.Zero, 3, (_, ct) => {
+    delayStarted.TrySetResult(true);
+    return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+}))
+{
+    var first = cancel.StartAsync(ct => { reads++; return Task.FromResult(true); });
+    await delayStarted.Task;
+    var replacement = cancel.StartAsync(ct => { reads++; return Task.FromResult(true); });
+    await first;
+    Check(first.IsCompleted && !replacement.IsCompleted && reads == 0,
+        "opening another detail cancels the old watch without issuing a status read");
+    cancel.Stop();
+    await replacement;
+    Check(reads == 0, "closing the detail cancels its pending timer");
+    cancel.Dispose();
+    await cancel.StartAsync(ct => { reads++; return Task.FromResult(true); });
+    Check(reads == 0, "disposing the page prevents a background watch from restarting");
+}
+
+var readStarted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+var completedRead = false;
+using (var inFlight = new WorkOrderSmsStatusPoller(TimeSpan.Zero, 3, (_, _) => Task.CompletedTask))
+{
+    var running = inFlight.StartAsync(async ct => {
+        readStarted.TrySetResult(true);
+        await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        completedRead = true;
+        return true;
+    });
+    await readStarted.Task;
+    inFlight.Stop();
+    await running;
+    Check(!completedRead, "closing the detail cancels an in-flight status read");
+}
+
+Console.WriteLine($"Work-order SMS appearance and refresh: {checks} offline checks passed.");

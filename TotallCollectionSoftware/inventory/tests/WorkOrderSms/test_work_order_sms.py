@@ -334,8 +334,14 @@ class WorkOrderSmsSourceContracts(unittest.TestCase):
 
     def test_sms_results_are_compact_visible_and_consistent_with_repairs(self):
         ui=read('src/Inventory.Client/Pages/ItAssets/WorkOrders.razor')
-        area=ui.split('<details class="wo-block mt-3" open>',1)[1].split('</details>',1)[0]
+        detail=ui.split('@* ================== مودال جزئیات ================== *@',1)[1].split('@* ================== گردش کار دستور',1)[0]
+        overview=detail.split('<section hidden="@(detailTab != "overview")"',1)[1].split('</section>',1)[0]
+        prefix,area=overview.split('<details class="wo-block mb-3 no-print" open>',1)
+        area=area.split('</details>',1)[0]
+        self.assertRegex(prefix,r'@if \(isOwner\)\s*\{\s*$')
         self.assertIn('وضعیت پیامک‌های این دستور',area)
+        self.assertIn('smsEventsLoading && smsEvents.Count == 0',area)
+        self.assertNotIn('Toast.',area)
         self.assertIn('SmsEventLabel(item.EventType) — @item.RecipientName',area)
         self.assertIn('WorkOrderSmsAppearance.ErrorCode(item)',area)
         self.assertIn('text-success',area)
@@ -371,10 +377,32 @@ class WorkOrderSmsSourceContracts(unittest.TestCase):
         self.assertIn('WorkOrderSmsEventType.Registration => "ثبت دستور"',ui)
         self.assertIn('WorkOrderSmsEventType.Referral => "ارجاع"',ui)
         self.assertIn('sms-events',ui)
-        self.assertIn('var smsDetailVersion = ++smsEventsVersion;',ui)
-        self.assertIn('LoadSmsEvents(w.Id, smsDetailVersion)',ui)
+        self.assertIn('var version = ++smsEventsVersion;',ui)
+        self.assertIn('var session = ++smsDetailSession;',ui)
+        self.assertIn('LoadInitialSmsEvents(w.Id, version, session, ct)',ui)
+        self.assertIn('var smsLoad = BeginSmsStatusSession(w);',ui)
         self.assertIn('detail?.Id != id || smsEventsVersion != expectedVersion',ui)
         self.assertGreaterEqual(ui.count('detail?.Id == id && smsEventsVersion == requestVersion'),3)
+        self.assertIn('detail.OwnerUserId == access.UserId && smsDetailSession == session',ui)
+        self.assertNotIn('ShowSmsSummary',ui)
+        watch=ui.split('private void WatchPendingSmsEvents(',1)[1].split('private async Task LoadSmsEvents(',1)[0]
+        self.assertIn('WorkOrderSmsStatusPoller.NeedsRefresh(smsEvents)',watch)
+        self.assertIn('ct.IsCancellationRequested || !IsCurrentSmsDetail(id, session)',watch)
+        self.assertIn('LoadSmsEvents(id, smsEventsVersion, ct)',watch)
+        self.assertNotIn('PostAsync',watch)
+        self.assertNotIn('SendWorkOrder',watch)
+        self.assertIn('smsStatusPoller.Dispose()',ui)
+        self.assertIn('smsStatusPoller.Stop()',ui)
+        self.assertGreaterEqual(ui.count('CancelSmsDetailReads();'),3)  # Switch, close, dispose.
+        self.assertIn('GetFromJsonAsync<List<WorkOrderSmsEventDto>>($"/api/workorders/{id}/sms-events", ct)',ui)
+        self.assertEqual(ui.count('detail = null;'),1)  # All closing paths cancel status reads.
+        self.assertEqual(ui.count('detail = w;'),1)     # No transient old rows in edit-from-list.
+        edit_from_list=ui.split('private Task OpenEditFromList(',1)[1].split('private async Task LoadFullDescription(',1)[0]
+        self.assertIn('return OpenEdit(w);',edit_from_list)
+        self.assertNotIn('detail = ',edit_from_list)
+        edit=ui.split('private async Task OpenEdit(WoItem w)',1)[1].split('private async Task OpenFromSourceAsync(',1)[0]
+        self.assertIn('if (session != smsDetailSession) return;',edit)
+        self.assertIn('CloseDetail();',edit)
 
 if __name__ == '__main__':
     unittest.main()

@@ -282,6 +282,16 @@ lookupBefore = fake.Count;
 result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
 Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 431 && fake.Count == lookupBefore + 1,
     "The simulated 431 is also preserved when the SDK receives an HTTP error.");
+// The reported 427 is simulated here; this says nothing about a live account or line.
+foreach (var httpStatus in new[] { HttpStatusCode.OK, HttpStatusCode.BadRequest })
+{
+    fake.StatusCode = httpStatus;
+    fake.Body = Response(providerStatus: 427, messageStatus: null);
+    lookupBefore = fake.Count;
+    result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+    Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 427 && fake.Count == lookupBefore + 1,
+        "A simulated work-order 427 retains the provider code and makes exactly one request.");
+}
 fake.StatusCode = HttpStatusCode.OK;
 lookupBefore = fake.Count;
 result = await gateway.SendLookupAsync("09120000000", "19:00", "فروشگاه", "RepairAccept");
