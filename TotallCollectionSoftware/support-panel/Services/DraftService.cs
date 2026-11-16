@@ -281,7 +281,10 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
             {
                 ["id"] = "MANUAL",
                 ["scope"] = explicitScope,
-                ["features"] = explicitFeatures.Count == 0 ? null : explicitFeatures,
+                // فهرست خالی نوشته می‌شود، نه null: مقدار صریح null در JSON جای مقدار
+                // اولیهٔ مدل ابزار را می‌گیرد و ابزار را با NullReferenceException
+                // («ابزار ورودی را نپذیرفت (کد ۲)») متوقف می‌کرد.
+                ["features"] = explicitFeatures,
                 ["term"] = term,
                 ["users"] = users
             });
@@ -307,7 +310,9 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
             ["deployment"] = draft.Deployment,
             ["usePresets"] = fallbackPresets,
             ["items"] = items,
-            ["companies"] = companies.Count == 0 ? null : companies,
+            // همان ملاحظهٔ features: فهرست خالی، نه null — وگرنه ابزار امضا هنگام
+            // پیمایش شرکت‌ها خطا می‌دهد.
+            ["companies"] = companies,
             ["note"] = draft.Note
         };
 

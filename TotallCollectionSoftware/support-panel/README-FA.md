@@ -261,9 +261,23 @@ dotnet SupportPanel.dll
 | «presets.json کنار فایل اجرایی LicenseTool نیست…» | `prepare.sh` را اجرا کنید (یا فایل را کنار `LicenseTool.dll` کپی کنید) |
 | «کلید عمومی پیدا نشد. --public-key یا --manifest بدهید» | ابزار برای بازبینی/ادغام لایسنس قبلی به کلید عمومی نیاز دارد؛ `Signer:PublicKeyPath` را ست کنید (پنل از نسخهٔ فعلی خودکار `--public-key` می‌دهد) |
 | «The EncryptedPrivateKeyInfo … password may be incorrect» | رمز کلید خصوصی نمی‌خواند: رمز فرم را با رمزِ ساخت کلید هم‌تراز کنید یا در تنظیمات دکمهٔ «بررسی رمز کلید فعال» را بزنید (پنل پیش از امضا هم رمز را بررسی می‌کند) |
+| «ابزار ورودی را نپذیرفت (کد ۲)» + `NullReferenceException` | پروفایل پیش‌نویس فیلد تکی `null` داشت (`features`/`companies`). از نسخهٔ فعلی، پیش‌نویس فهرست خالی می‌نویسد و ابزار هم مقدار تهی را پیش از صدور به فهرست خالی تبدیل می‌کند؛ فقط پیش‌نویس را دوباره ذخیره کنید |
 | «ابزار ورودی را نپذیرفت (کد ۲)» | متن ابزار در همان پیام است؛ معمولاً presets یا مقدار غیرمجاز (مثلاً `OnPremise` به‌جای `OnPrem`) |
+| «در فایل درخواست این مشتری شناسهٔ شرکت نیامده است» | فایل درخواست از نسخهٔ قدیمی نرم‌افزار است. نسخهٔ فعلی `companyId`/`companyName`/`company{}` را همراه فایل می‌فرستد؛ از مشتری فایل درخواست تازه بگیرید (شناسه = `Code` شرکت، و اگر خالی بود `C-{Id}`) |
 | «SMTP تنظیم نشده است» | `تنظیمات → SMTP` + `LICENSESIGNER_SMTP_PASSWORD` |
 | ورود از آدرس دیگر ۴۰۰ | `AllowedHosts` عمدی است؛ فقط `127.0.0.1`/`localhost` |
 | قفل حساب | ۵ تلاش ناموفق ⇒ `تنظیمات → کاربران → رفع قفل` |
+
+### عیب‌یابی ابزار امضا با متن کامل خطا
+
+اگر ابزار با خطا برگشت و متن پیام کوتاه بود، همان فرمان را با متغیر محیطی
+`LICENSETOOL_DEBUG=1` اجرا کنید تا نوع خطا + stack trace هم چاپ شود:
+
+```bash
+LICENSETOOL_DEBUG=1 dotnet tools/LicenseTool.dll issue --profile p.json --request r.json \
+  --private-key keys/key.xml --out out.lic
+```
+
+(بدون این متغیر، خروجی مثل قبل فقط پیام یک‌خطی است.)
 
 مرجع کامل: `inventory/docs/support/OPERATIONS-FA.md` و طراحی در `inventory/docs/support/DESIGN-FA.md`.

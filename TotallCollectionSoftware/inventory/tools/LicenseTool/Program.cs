@@ -77,6 +77,7 @@ public static class Program
         catch (Exception ex)
         {
             Console.Error.WriteLine($"❌ {ex.GetType().Name}: {ex.Message}");
+            if (Environment.GetEnvironmentVariable("LICENSETOOL_DEBUG") == "1") Console.Error.WriteLine(ex.ToString());
             return 2;
         }
     }
@@ -733,6 +734,8 @@ public static class Program
         var profile = JsonSerializer.Deserialize<IssueProfile>(File.ReadAllText(path), ProfileReadOptions)
                       ?? throw new InvalidOperationException("پروفایل خوانده نشد.");
 
+        Normalize(profile);
+
         if (profile.UsePresets.Count > 0)
         {
             var presetsPath = Path.Combine(AppContext.BaseDirectory, "presets.json");
@@ -749,6 +752,7 @@ public static class Program
                 if (explicitIds.Contains(name)) continue;   // آیتم صریح، preset را جایگزین می‌کند
                 var item = JsonSerializer.Deserialize<ItemProfile>(preset.GetRawText(), ProfileReadOptions)!;
                 item.Id = name;
+                Normalize(item);
                 profile.Items.Add(item);
             }
         }
@@ -757,6 +761,43 @@ public static class Program
             throw new InvalidOperationException("پروفایل هیچ آیتمی ندارد.");
 
         return profile;
+    }
+
+    /// <summary>
+    /// پاک‌سازی مقادیر تهی در پروفایل.
+    ///
+    /// <para>
+    /// چرا لازم است؟ در JSON، مقدار صریح <c>null</c> جای مقدار اولیهٔ کلاس را می‌گیرد؛
+    /// پس پروفایلی که <c>"features": null</c> یا <c>"companies": null</c> دارد باعث
+    /// <c>NullReferenceException</c> در حلقه‌های صدور می‌شد — و کاربر فقط پیام
+    /// «ابزار ورودی را نپذیرفت (کد ۲)» را می‌دید. این‌جا هر فهرست تهی به فهرست خالی
+    /// تبدیل می‌شود تا پروفایلِ دست‌ساز یا قدیمی هم بی‌دردسر خوانده شود.
+    /// </para>
+    /// </summary>
+    private static void Normalize(IssueProfile profile)
+    {
+        profile.UsePresets ??= new List<string>();
+        profile.Items ??= new List<ItemProfile>();
+        profile.Quotas ??= new List<LicenseQuota>();
+        profile.Companies ??= new List<CompanyProfile>();
+        profile.Customer ??= new CustomerProfile();
+        foreach (var item in profile.Items) Normalize(item);
+        foreach (var company in profile.Companies)
+        {
+            company.CompanyId ??= "";
+            company.Modules ??= new List<string>();
+        }
+    }
+
+    private static void Normalize(ItemProfile? item)
+    {
+        if (item is null) return;
+        item.Scope ??= new List<string>();
+        item.Features ??= new List<string>();
+        item.Quotas ??= new List<LicenseQuota>();
+        item.Term ??= new TermProfile();
+        item.Users ??= new UsersProfile();
+        item.Users.ExemptUsers ??= new List<string>();
     }
 
     private static string? ResolveInstallationId(string[] args)

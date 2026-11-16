@@ -327,11 +327,14 @@ public class LicenseController : ControllerBase
 
         var installationId = await _identity.GetInstallationIdAsync(cancellationToken);
         var customerName = await _identity.GetCustomerNameAsync(cancellationToken);
+        var (companyId, companyName) = await ResolveRequestCompanyAsync(cancellationToken);
 
         return Ok(new
         {
             installationId,
             customerName,
+            companyId,
+            companyName,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             productVersion = _options.ProductVersion ?? typeof(LicenseController).Assembly.GetName().Version?.ToString(),
             machineName = Environment.MachineName,
@@ -357,6 +360,12 @@ public class LicenseController : ControllerBase
         var installationId = await _identity.GetInstallationIdAsync(cancellationToken);
         var customerName = await _identity.GetCustomerNameAsync(cancellationToken);
 
+        // ---- شرکتِ همین نصب ----
+        // قاعدهٔ محصول: هر لایسنس فقط برای یک شرکت. پس فایل درخواست باید شناسه و نام
+        // همان شرکت را همراه داشته باشد؛ وگرنه پشتیبان مجبور می‌شد شناسه را دستی وارد
+        // کند (و پنل پیام «در فایل درخواست این مشتری شناسهٔ شرکت نیامده است» می‌داد).
+        var (companyId, companyName) = await ResolveRequestCompanyAsync(cancellationToken);
+
         var request = new
         {
             requestVersion = 2,
@@ -364,6 +373,11 @@ public class LicenseController : ControllerBase
             installationId,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             customerName,
+
+            // ---- هویت شرکت: هم به‌صورت تخت و هم شیء، تا هر دو قالب خوانده شود ----
+            companyId,
+            companyName,
+            company = (object?)(companyId is null ? null : new { id = companyId, name = companyName }),
 
             // ---- موتور و بیلد (برای اینکه هنگام صدور بدانیم مشتری چه نسخه‌ای دارد) ----
             engineVersion = Inventory.Licensing.LicenseEngineInfo.FullVersion,
@@ -391,6 +405,45 @@ public class LicenseController : ControllerBase
             new { installationId }, userId: CurrentUserIdOrNull());
 
         return File(bytes, "application/json", fileName);
+    }
+
+    /// <summary>
+    /// شناسه و نام شرکتی که فایل درخواست برایش تولید می‌شود.
+    ///
+    /// <para>
+    /// چرا این‌جاست؟ قاعدهٔ محصول «هر لایسنس برای یک شرکت» است و پنل پشتیبانی شرکتِ سند را
+    /// از داخل فایل درخواست می‌خواند (نه از ورود دستی). شناسهٔ پایدار شرکت = کد آن
+    /// (<c>SystemCompanies.Code</c>) و اگر کد خالی باشد <c>C-{Id}</c> — همان قاعده‌ای که
+    /// همهٔ سندهای لایسنس با آن ساخته می‌شوند، تا بعداً سنجش «شرکت مجاز» با همین شناسه بخواند.
+    /// </para>
+    ///
+    /// <para>
+    /// اگر هیچ شرکت فعالی تعریف نشده باشد (نصب تازه، پیش از ساخت شرکت) فایل درخواست
+    /// بدون شرکت تولید می‌شود و پنل به رفتار قبلی برمی‌گردد؛ چیزی جعل نمی‌شود.
+    /// </para>
+    /// </summary>
+    private async Task<(string? Id, string? Name)> ResolveRequestCompanyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var company = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => c.IsActive)
+                .OrderBy(c => c.Id)
+                .Select(c => new { c.Id, c.Name, c.Code })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (company is null) return (null, null);
+
+            var id = string.IsNullOrWhiteSpace(company.Code) ? $"C-{company.Id}" : company.Code!.Trim();
+            return (id, string.IsNullOrWhiteSpace(company.Name) ? null : company.Name.Trim());
+        }
+        catch (Exception ex)
+        {
+            // در نصب اولیه ممکن است جدول شرکت‌ها هنوز ساخته نشده باشد؛ فایل درخواست
+            // نباید به همین دلیل شکست بخورد.
+            _log.LogDebug(ex, "خواندن شرکت پیش‌فرض برای فایل درخواست ممکن نشد.");
+            return (null, null);
+        }
     }
 
     // ==================== ۳) فعال‌سازی ====================
