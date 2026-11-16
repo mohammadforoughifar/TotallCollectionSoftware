@@ -158,7 +158,7 @@ POST   api/acc/inv-rules/post-doc/{invDocId}
 اجرا:
 
 ```bash
-dotnet ef database update -p src/Inventory.Api -s src/Inventory.Api
+dotnet ef database update -p inventory/src/Inventory.Api -s inventory/src/Inventory.Api
 # یا صرفاً API را ری‌استارت کنید؛ DbInitializer خودش Migrate() را صدا می‌زند.
 ```
 
