@@ -303,7 +303,7 @@
                             <button class="lbtn ghost" title="نمایش گردش نامه" @onclick="() => OpenGardesh(ll)">
                                 <i class="bi bi-diagram-3"></i> گردش
                             </button>
-                            <button class="lbtn ghost" title="چاپ نامه" @onclick="() => OpenPrint(ll)">
+                            <button class="lbtn ghost" title="پیش‌نمایش نامه — چاپ از داخل پیش‌نمایش" @onclick="() => OpenPrint(ll)">
                                 <i class="bi bi-printer"></i> چاپ
                             </button>
 
@@ -587,7 +587,7 @@
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
                     <button class="lbtn ghost" @onclick="() => printOpen = false">انصراف</button>
                     <button class="lbtn pri" data-ltx-print-option disabled="@printing" @onclick="DoPrint">
-                        <i class="bi bi-printer"></i> @(printing ? "در حال آماده‌سازی…" : "چاپ PDF")
+                        <i class="bi bi-printer"></i> @(printing ? "در حال آماده‌سازی پیش‌نمایش…" : "نمایش پیش‌نمایش")
                     </button>
                 </div>
             </div>

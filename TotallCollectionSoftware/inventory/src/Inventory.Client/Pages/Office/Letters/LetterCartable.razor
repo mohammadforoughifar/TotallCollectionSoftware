@@ -281,7 +281,7 @@
                     }
                     <button class="icb" title="@(folder == "archive" ? "خروج از بایگانی (Ctrl+Shift+B)" : "بایگانی (Ctrl+Shift+B)")" data-hotkey="ctrl+shift+b" @onclick="ArchiveCurrent"><i class="bi bi-archive"></i></button>
                     <span class="print-wr">
-                        <button class="lbtn ghost" title="چاپ نامٔ داخلی روی سربرگ" disabled="@printingPdf" @onclick="TogglePrintSelected" @onclick:stopPropagation="true"><i class="bi bi-printer"></i> چاپ</button>
+                        <button class="lbtn ghost" title="پیش‌نمایش نامهٔ داخلی روی سربرگ — چاپ از داخل پیش‌نمایش" disabled="@printingPdf" @onclick="TogglePrintSelected" @onclick:stopPropagation="true"><i class="bi bi-printer"></i> چاپ</button>
                         @if (printMenuOpen)
                         {
                             <div class="ltmenu" @onclick:stopPropagation="true">
