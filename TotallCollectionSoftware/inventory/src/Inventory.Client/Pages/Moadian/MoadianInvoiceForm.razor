@@ -222,7 +222,10 @@ else
                                         @if (Goods.Count == 0)
                                         {
                                             <input class="form-control form-control-sm" value="@row.Name"
-                                                   placeholder="نام کالا"
+                                                   placeholder="@(ProviderId > 0 ? "کالایی ثبت نشده — از «کالا و خدمات» بیفزایید" : "ابتدا شرکت را انتخاب کنید")"
+                                                   title="@(ProviderId > 0
+                                                              ? "برای جست‌وجو و انتخاب کالا، ابتدا در «کالا و خدمات» مودیان کالا/خدمت تعریف کنید."
+                                                              : "شرکت مودیان در نوار بالای صفحه انتخاب نشده است؛ کالاها به همان شرکت تعلق دارند.")"
                                                    @oninput="e => row.Name = e.Value?.ToString()"
                                                    @onkeydown="e => OnRowKeyDown(e, row)" />
                                         }
@@ -750,6 +753,7 @@ else
         width: 100%; border: 0; background: transparent; padding: .3rem .45rem;
         border-radius: 6px; text-align: start; font-size: .82rem; color: inherit;
     }
+    .mi-combo-item { cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
     .mi-combo-item:hover, .mi-combo-item.on { background: #eef4ff; }
     .mi-combo-name { flex: 1 1 auto; }
     .mi-combo-sub { font-size: .68rem; color: #7b8794; }

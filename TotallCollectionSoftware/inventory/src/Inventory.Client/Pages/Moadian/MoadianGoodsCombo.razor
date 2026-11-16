@@ -12,6 +12,14 @@
       • رفتار کلیدها یک‌جا متمرکز است: ↑/↓ حرکت، Enter انتخاب، Enter دوم «ردیف بعدی».
 
     جریان تایپ: فوکوس ⇒ کادر خالی می‌شود ⇒ تایپ ⇒ Enter (انتخاب کالا) ⇒ Enter (ردیف تازه).
+
+    ⚠️ نکتهٔ مهم (رفع اشکال «با کلیک انتخاب نمی‌شد»):
+    در Blazor WebAssembly، کلیک ماوس روی گزینه، «مousedown ⇒ blur ورودی ⇒ حذف فهرست
+    از DOM ⇒ click روی عنصری که دیگر نیست» می‌شود؛ پس انتخاب با mousedown انجام می‌شود
+    (پیش از blur) و click فقط پشتیبان است. علاوه بر آن:
+      • @onmousedown:preventDefault با یک هندلر واقعی جفت شده (بدون هندلر بی‌اثر است).
+      • بستن فهرست در blur چند میلی‌ثانیه تأخیر دارد و اگر در این فاصله انتخاب انجام شود
+        لغو می‌شود (belt & braces برای مرورگرهای لمسی).
 *@
 
 <div class="mi-combo">
@@ -20,8 +28,10 @@
         <input class="form-control form-control-sm mi-combo-input"
                @ref="inputRef"
                value="@Text"
-               placeholder="@(Goods.Count == 0 ? "نام کالا" : "کالا را تایپ کنید…")"
+               placeholder="@Placeholder"
                autocomplete="off"
+               role="combobox"
+               aria-expanded="@(_open ? "true" : "false")"
                @onfocus="OnFocus"
                @oninput="OnInput"
                @onkeydown="OnKeyDown"
@@ -29,7 +39,7 @@
         @if (HasSel)
         {
             <button type="button" class="mi-combo-clear" title="پاک کردن انتخاب"
-                    @onmousedown:preventDefault @onclick="Clear">
+                    @onmousedown:preventDefault @onmousedown="Clear" @onclick="Clear">
                 <i class="bi bi-x-lg"></i>
             </button>
         }
@@ -42,10 +52,10 @@
 
     @if (_open)
     {
-        <div class="mi-combo-list">
+        <div class="mi-combo-list" role="listbox">
             @if (matches.Count == 0)
             {
-                <div class="mi-combo-empty">کالایی با این عنوان پیدا نشد</div>
+                <div class="mi-combo-empty">@(Goods.Count == 0 ? "کالایی برای این شرکت ثبت نشده است" : "کالایی با این عنوان پیدا نشد")</div>
             }
             else
             {
@@ -53,13 +63,16 @@
                 {
                     var index = i;
                     var g = matches[i];
-                    <button type="button" class="mi-combo-item @(index == _index ? "on" : "")"
-                            @onmousedown:preventDefault
-                            @onmouseenter="() => _index = index"
-                            @onclick="() => Pick(g)">
+                    <div class="mi-combo-item @(index == _index ? "on" : "")"
+                         role="option"
+                         aria-selected="@(index == _index)"
+                         @onmousedown:preventDefault
+                         @onmousedown="() => Pick(g)"
+                         @onclick="() => Pick(g)"
+                         @onmouseenter="() => _index = index">
                         <span class="mi-combo-name">@g.Name</span>
                         <span class="mi-combo-sub mono">@g.UniqueIdentifier</span>
-                    </button>
+                    </div>
                 }
             }
         </div>
@@ -91,12 +104,16 @@
     /// <summary>سقف گزینه‌های نمایش‌داده‌شده (عملکرد در فهرست‌های چند هزارتایی).</summary>
     private const int MaxMatches = 60;
 
+    /// <summary>متن راهنمای کادر — حالتِ بدون کالای ثبت‌شده پیام روشن‌تری می‌دهد.</summary>
+    private string Placeholder => Goods.Count == 0 ? "نام کالا" : "کالا را تایپ کنید…";
+
     private ElementReference inputRef;
     private string _query = "";
     private bool _typing;      // کادر برای تایپِ تازه خالی شده است
     private bool _open;        // فهرست باز است
     private int _index;        // گزینهٔ هایلایت
     private bool _focused;     // فوکوس خودکار فقط یک‌بار
+    private int _blurToken;    // لغو بستنِ معلق فهرست پس از blur
 
     /// <summary>آیا ردیف کالای انتخاب‌شده دارد؟ (شناسه در DTO تهی‌پذیر است.)</summary>
     private bool HasSel => SelectedId is > 0;
@@ -128,6 +145,7 @@
 
     private void OnFocus()
     {
+        _blurToken++;                      // بستنِ معلقِ قبلی باطل شود
         if (Goods.Count == 0) return;      // حالتِ بدون کالای ثبت‌شده: کادر متن آزاد است
         _typing = true;                    // کادر خالی می‌شود تا تایپ، متن قبلی را به هم نچسباند
         _query = "";
@@ -145,12 +163,20 @@
         Recalc();
     }
 
-    private void OnBlur()
+    /// <summary>
+    /// بستن فهرست با کمی تأخیر: در WebAssembly ترتیب رویدادها «mousedown ⇒ blur ⇒ click»
+    /// است؛ اگر فهرست همان لحظه بسته شود، کلیک روی گزینه هرگز نمی‌رسد.
+    /// </summary>
+    private async Task OnBlur()
     {
+        var token = ++_blurToken;
+        await Task.Delay(150);
+        if (token != _blurToken) return;   // در این فاصله انتخاب شد یا فوکوس برگشت
+
         _open = false;
-        // متنی که انتخاب نشد دور ریخته می‌شود تا کادر با مقدار واقعی ردیف یکی بماند
-        if (HasSel) { _typing = false; _query = ""; }
-        else { _query = ""; }
+        _query = "";
+        if (HasSel) _typing = false;
+        StateHasChanged();
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)
@@ -181,13 +207,16 @@
 
             case "Escape":
                 _open = false;
+                _blurToken++;
                 if (HasSel) { _typing = false; _query = ""; }
                 break;
         }
     }
 
+    /// <summary>انتخاب گزینه — از mousedown (اصلی، پیش از blur) و click (پشتیبان).</summary>
     private async Task Pick(VMGoodsOrServicesList g)
     {
+        _blurToken++;                      // بستنِ معلقِ blur لغو شود
         _open = false;
         _typing = false;
         _query = "";
@@ -196,6 +225,7 @@
 
     private async Task Clear()
     {
+        _blurToken++;
         _open = false;
         _typing = false;
         _query = "";
