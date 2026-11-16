@@ -290,7 +290,7 @@ class WorkOrderSmsSourceContracts(unittest.TestCase):
         self.assertIn('Uri.EscapeDataString(deadline)',self.gateway)
         self.assertIn('Uri.EscapeDataString(title)',self.gateway)
         self.assertIn('KavenegarSmsValidation.Token20(title)',self.gateway)
-        self.assertIn('KavenegarSmsValidation.PlainToken(deadline)',self.gateway)
+        self.assertIn('KavenegarSmsValidation.WorkOrderDeadlineToken(deadline)',self.gateway)
         policy=read('src/Inventory.Api/Services/ItAssets/WorkOrderSmsPolicy.cs')
         self.assertIn('Token20Characters(title)',policy)
         self.assertIn('StringInfo.GetTextElementEnumerator(title)',policy)

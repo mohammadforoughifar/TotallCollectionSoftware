@@ -45,9 +45,26 @@ public static class KavenegarSmsValidation
     public static bool NumericToken(string? value) => !string.IsNullOrEmpty(value) && value.Length <= 100 &&
         value.All(c => c is >= '0' and <= '9');
 
-    // token3 deadline is made of Persian letters and digits only, without separators or spaces.
-    public static bool PlainToken(string? value) => !string.IsNullOrEmpty(value) && value.Length <= 100 &&
-        value.All(char.IsLetterOrDigit);
+    // The work-order deadline uses one no-space token with a single ':' between the
+    // two-digit hour and minute. Other punctuation, whitespace and controls remain
+    // invalid in this deadline; the repair/numeric token rules are unchanged. Provider
+    // acceptance of the colon must be checked with the real account.
+    public static bool WorkOrderDeadlineToken(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 100 ||
+            value.Any(c => c != ':' && !char.IsLetterOrDigit(c))) return false;
+
+        var colon = value.IndexOf(':');
+        if (colon < 2 || colon + 2 >= value.Length || value.LastIndexOf(':') != colon ||
+            !char.IsDigit(value[colon - 2]) || !char.IsDigit(value[colon - 1]) ||
+            !char.IsDigit(value[colon + 1]) || !char.IsDigit(value[colon + 2]) ||
+            (colon > 2 && char.IsDigit(value[colon - 3])) ||
+            (colon + 3 < value.Length && char.IsDigit(value[colon + 3]))) return false;
+
+        var hour = char.GetNumericValue(value[colon - 2]) * 10 + char.GetNumericValue(value[colon - 1]);
+        var minute = char.GetNumericValue(value[colon + 1]) * 10 + char.GetNumericValue(value[colon + 2]);
+        return hour < 24 && minute < 60;
+    }
 
     // token10 supports up to five spaces, but never newlines, other whitespace or underline.
     // Do not truncate, transliterate or silently remove characters from the company name.

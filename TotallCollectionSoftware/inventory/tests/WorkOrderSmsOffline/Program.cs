@@ -56,17 +56,39 @@ static class Program
               !WorkOrderRequestIdentity.ReplyIsUnchanged(due, true, "انجام شد", false, "انجام شد") &&
               !WorkOrderRequestIdentity.ReplyIsUnchanged(due, true, "انجام شد", true, "متن تازه"),
             "only an active, identical reply is a no-op; a rejection or changed response can be resubmitted");
-        Check(WorkOrderSmsPolicy.DeadlineToken(due)=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰", "exact Persian no-space deadline token");
-        Check(WorkOrderSmsPolicy.DeadlineToken(due.AddSeconds(1))=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰و۰۱ثانیه" &&
-              WorkOrderSmsPolicy.DeadlineToken(due.AddTicks(1))=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰و۰۰ممیز۰۰۰۰۰۰۱ثانیه" &&
-              WorkOrderSmsPolicy.DeadlineToken(due.AddTicks(1234000))=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰و۰۰ممیز۱۲۳۴ثانیه",
+        Check(WorkOrderSmsPolicy.DeadlineToken(due)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰", "exact Persian no-space deadline token");
+        var requestedTime = new PersianCalendar().ToDateTime(1405,8,28,19,0,0,0);
+        var requestedToken = WorkOrderSmsPolicy.DeadlineToken(requestedTime);
+        Check(requestedToken=="۲۸آبان۱۴۰۵ساعت۱۹:۰۰" && requestedToken.Count(c=>c==':')==1 && !requestedToken.Any(char.IsWhiteSpace),
+            "the requested 19:00 uses a single colon in the same no-space date/time token");
+        Check(WorkOrderSmsPolicy.DeadlineToken(requestedTime.Date)=="۲۸آبان۱۴۰۵ساعت۰۰:۰۰" &&
+              WorkOrderSmsPolicy.DeadlineToken(requestedTime.Date.AddHours(9).AddMinutes(5))=="۲۸آبان۱۴۰۵ساعت۰۹:۰۵" &&
+              WorkOrderSmsPolicy.DeadlineToken(requestedTime.Date.AddHours(23).AddMinutes(59))=="۲۸آبان۱۴۰۵ساعت۲۳:۵۹",
+            "midnight, leading zeroes and the last minute use exact 24-hour HH:mm");
+        Check(WorkOrderSmsPolicy.DeadlineToken(DateTime.SpecifyKind(requestedTime, DateTimeKind.Utc))==requestedToken &&
+              WorkOrderSmsPolicy.DeadlineToken(DateTime.SpecifyKind(requestedTime, DateTimeKind.Local))==requestedToken,
+            "formatting uses the stored components without an implicit timezone conversion");
+        var allMinutesFit = true;
+        for (var hour=0; hour<24; hour++)
+            for (var minute=0; minute<60; minute++)
+            {
+                var token = WorkOrderSmsPolicy.DeadlineToken(requestedTime.Date.AddHours(hour).AddMinutes(minute));
+                if (token is null || !KavenegarSmsValidation.WorkOrderDeadlineToken(token) || token.Count(c=>c==':')!=1)
+                    allMinutesFit = false;
+            }
+        Check(allMinutesFit, "all 1,440 valid HH:mm values pass the exact no-space deadline validator");
+        Check(WorkOrderSmsPolicy.DeadlineToken(due.AddSeconds(1))=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۱ثانیه" &&
+              WorkOrderSmsPolicy.DeadlineToken(due.AddTicks(1))=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۰ممیز۰۰۰۰۰۰۱ثانیه" &&
+              WorkOrderSmsPolicy.DeadlineToken(due.AddTicks(1234000))=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۰ممیز۱۲۳۴ثانیه" &&
+              WorkOrderSmsPolicy.DeadlineToken(due.AddSeconds(59).AddTicks(9999999))=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۵۹ممیز۹۹۹۹۹۹۹ثانیه",
             "seconds and fractional seconds are transmitted exactly, never silently truncated");
         Check(WorkOrderSmsPolicy.DeadlineToken(DateTime.MinValue) is null, "dates outside the Persian calendar are rejected");
-        Check(WorkOrderSmsPolicy.DeadlineToken(due, 1, 3)=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰تکرارروزانه۳نوبت" &&
-              WorkOrderSmsPolicy.DeadlineToken(due, 2, 12)=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰تکرارهفتگی۱۲نوبت" &&
-              WorkOrderSmsPolicy.DeadlineToken(due, 3, 2)=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰تکرارماهانه۲نوبت" &&
-              WorkOrderSmsPolicy.DeadlineToken(due, 1, 1)=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰",
-            "the first deadline and daily/weekly/monthly series summary fit in the single no-space token");
+        Check(WorkOrderSmsPolicy.DeadlineToken(due, 1, 3)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰تکرارروزانه۳نوبت" &&
+              WorkOrderSmsPolicy.DeadlineToken(due, 2, 12)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰تکرارهفتگی۱۲نوبت" &&
+              WorkOrderSmsPolicy.DeadlineToken(due, 3, 2)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰تکرارماهانه۲نوبت" &&
+              WorkOrderSmsPolicy.DeadlineToken(due, 1, 1)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰" &&
+              WorkOrderSmsPolicy.DeadlineToken(due.AddTicks(1), 2, 3)=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۰ممیز۰۰۰۰۰۰۱ثانیهتکرارهفتگی۳نوبت",
+            "the exact first deadline and daily/weekly/monthly series summary fit in the single no-space token");
         Check(WorkOrderSmsPolicy.TitleToken("سرویس دستگاه") == "سرویس دستگاه" &&
               WorkOrderSmsPolicy.TitleToken(new string('ا',100)) == new string('ا',100),
             "compatible titles including the length boundary are kept exactly");
@@ -184,7 +206,7 @@ static class Program
             "stage queues one per phone without network calls");
         await dispatcher.ProcessOneAsync();
         Check(gateway.Calls==1 && gateway.Recipient=="09123456789" && gateway.Year=="1405" && gateway.Serial=="0002" &&
-              gateway.Title=="سرویس دستگاه" && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰" && gateway.Company=="شرکت الف" && gateway.Template=="WorkOrderRegistration",
+              gateway.Title=="سرویس دستگاه" && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰" && gateway.Company=="شرکت الف" && gateway.Template=="WorkOrderRegistration",
             "creation uses creator's exact order, current deadline and company");
         Check(pending[0].Status==WorkOrderSmsStatus.Accepted && pending[0].Recipient is null,
             "provider acceptance is not delivery and stored phone is cleared");
@@ -205,7 +227,7 @@ static class Program
         await WorkOrderSmsQueue.StageAsync(db,gateway,options,sub,subCreated,new[]{3},WorkOrderSmsEventType.Registration); Ids(db);
         await dispatcher.ProcessOneAsync();
         Check(gateway.Template=="WorkOrderRegistration" && gateway.Title=="سرویس دستگاه" &&
-              gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰" &&
+              gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰" &&
               db.WorkOrderSmsNotifications.Count(n=>n.EventLogId==subCreated.Id)==1,
             "a new sub-order receives one registration with title and deadline");
 
@@ -224,7 +246,7 @@ static class Program
         var editedJobs=db.WorkOrderSmsNotifications.Where(n=>n.EventLogId==edited.Id).ToList();
         await dispatcher.ProcessOneAsync();
         Check(editedJobs.Count==1 && editedJobs[0].RecipientUserId==3 && gateway.Template=="WorkOrderReferral" &&
-              gateway.Title=="سرویس دستگاه" && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰",
+              gateway.Title=="سرویس دستگاه" && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰",
             "an edit referral sends its own template only to an actually assigned new recipient");
         var workflow=Log(db,second,"AssigneesAdded");
         await WorkOrderSmsQueue.StageAsync(db,gateway,options,second,workflow,new[]{1,2},WorkOrderSmsEventType.Referral); Ids(db);
@@ -263,8 +285,13 @@ static class Program
             await WorkOrderSmsQueue.StageAsync(db,gateway,options,o,l,new[]{target},kind); Ids(db);
             return db.WorkOrderSmsNotifications.Single(n=>n.EventLogId==l.Id);
         }
-        var uncertain=await Stage(6,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Unknown);
+        var rejected=await Stage(32,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Failed, ProviderCode:431);
         var before=gateway.Calls; await dispatcher.ProcessOneAsync();
+        Check(rejected.Status==WorkOrderSmsStatus.Failed && rejected.ProviderCode==431 && rejected.Recipient is null &&
+              gateway.Calls==before+1 && !await dispatcher.ProcessOneAsync(),
+            "a simulated 431 rejection retains its actual code and is not retried automatically");
+        var uncertain=await Stage(6,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Unknown);
+        before=gateway.Calls; await dispatcher.ProcessOneAsync();
         Check(uncertain.Status==WorkOrderSmsStatus.Unknown && uncertain.Recipient is null && gateway.Calls==before+1 &&
               !await dispatcher.ProcessOneAsync(),"ambiguous provider response never retried");
         var abandoned=await Stage(7,1,1,"Created",3);abandoned.Status=WorkOrderSmsStatus.Sending;abandoned.AttemptStartedAtUtc=DateTime.UtcNow.AddMinutes(-11);
@@ -282,7 +309,7 @@ static class Program
         var precise=await Stage(23,1,1,"Created",3);db.WorkOrders.Single(w=>w.Id==23).DueAt=due.AddTicks(1);
         gateway.Result=new(KavenegarSmsSendState.Accepted,43,1,200);
         await dispatcher.ProcessOneAsync();
-        Check(precise.Status==WorkOrderSmsStatus.Accepted && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰و۰۰ممیز۰۰۰۰۰۰۱ثانیه",
+        Check(precise.Status==WorkOrderSmsStatus.Accepted && gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰و۰۰ممیز۰۰۰۰۰۰۱ثانیه",
             "a changed sub-minute deadline is sent exactly");
         before=gateway.Calls;
         var foreign=await Stage(11,1,1,"Created",3);foreign.CompanyId=2;await dispatcher.ProcessOneAsync();
@@ -341,13 +368,13 @@ static class Program
         await WorkOrderSmsQueue.StageAsync(db,gateway,options,series,seriesLog,new[]{3},WorkOrderSmsEventType.Registration); Ids(db);
         before=gateway.Calls; await dispatcher.ProcessOneAsync();
         Check(gateway.Calls==before+1 && !await dispatcher.ProcessOneAsync() &&
-              gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰تکرارهفتگی۳نوبت" &&
+              gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰تکرارهفتگی۳نوبت" &&
               db.WorkOrderSmsNotifications.Count(n=>n.WorkOrderId==24 || n.WorkOrderId==25 || n.WorkOrderId==26)==1,
             "a recurring series sends one message summarizing its first deadline, cadence and count, not future events");
         var later=Log(db,series,"AssigneesAdded");
         await WorkOrderSmsQueue.StageAsync(db,gateway,options,series,later,new[]{3},WorkOrderSmsEventType.Referral); Ids(db);
         await dispatcher.ProcessOneAsync();
-        Check(gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴و۳۰" && gateway.Template=="WorkOrderReferral",
+        Check(gateway.Deadline=="۲۷آبان۱۴۰۵ساعت۱۴:۳۰" && gateway.Template=="WorkOrderReferral",
             "later referral uses its own template and does not falsely summarize future occurrences");
 
         var transactional=Order(db,18,1,1,due,3);var transLog=Log(db,transactional,"Created");var tx=new FakeTransaction(db);

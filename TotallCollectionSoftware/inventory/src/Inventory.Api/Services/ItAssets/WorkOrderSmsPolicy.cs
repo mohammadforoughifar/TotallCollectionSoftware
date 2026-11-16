@@ -31,8 +31,8 @@ public static class WorkOrderSmsPolicy
         {
             var pc = new PersianCalendar();
             // token20 is reserved for the title and token10 for the company. token3
-            // cannot contain spaces, so spell out the date/time with letters and digits.
-            var text = string.Format(CultureInfo.InvariantCulture, "{0}{1}{2}ساعت{3:00}و{4:00}",
+            // carries the no-space date and HH:mm together; the gateway escapes the colon.
+            var text = string.Format(CultureInfo.InvariantCulture, "{0}{1}{2}ساعت{3:00}:{4:00}",
                 pc.GetDayOfMonth(dueAt), Months[pc.GetMonth(dueAt) - 1], pc.GetYear(dueAt), dueAt.Hour, dueAt.Minute);
             var fractionalTicks = dueAt.Ticks % TimeSpan.TicksPerSecond;
             if (dueAt.Second != 0 || fractionalTicks != 0)
@@ -47,7 +47,7 @@ public static class WorkOrderSmsPolicy
                 text += "تکرار" + cadence + seriesCount.ToString(CultureInfo.InvariantCulture) + "نوبت";
             var chars = text.Select(c => c is >= '0' and <= '9' ? (char)('۰' + c - '0') : c).ToArray();
             var token = new string(chars);
-            return KavenegarSmsValidation.PlainToken(token) ? token : null;
+            return KavenegarSmsValidation.WorkOrderDeadlineToken(token) ? token : null;
         }
         catch (ArgumentOutOfRangeException) { return null; }
     }

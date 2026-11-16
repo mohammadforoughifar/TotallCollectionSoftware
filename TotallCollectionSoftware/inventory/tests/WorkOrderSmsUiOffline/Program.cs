@@ -47,6 +47,8 @@ Check(!WorkOrderSmsAppearance.IsSuccess((WorkOrderSmsStatus)999) &&
 
 var sms = new WorkOrderSmsEventDto { Status = WorkOrderSmsStatus.Failed, FailureCode = 427 };
 Check(WorkOrderSmsAppearance.ErrorCode(sms) == 427, "the actual provider failure code is retained");
+sms.FailureCode = 431;
+Check(WorkOrderSmsAppearance.ErrorCode(sms) == 431, "a simulated token rejection code is shown without changing it");
 sms.FailureCode = 6;
 Check(WorkOrderSmsAppearance.ErrorCode(sms) == 6, "a returned failed message status is retained");
 sms.FailureCode = 200;

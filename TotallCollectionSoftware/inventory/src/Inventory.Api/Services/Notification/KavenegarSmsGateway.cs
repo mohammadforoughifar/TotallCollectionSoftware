@@ -96,7 +96,7 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
         if (!KavenegarSmsValidation.Recipient(recipient) || !KavenegarSmsValidation.NumericToken(year) ||
             !KavenegarSmsValidation.NumericToken(serial) || !KavenegarSmsValidation.CompanyToken(companyName) ||
             !KavenegarSmsValidation.Token20(title) || !KavenegarSmsValidation.TemplateName(template) ||
-            (deadline is not null && !KavenegarSmsValidation.PlainToken(deadline)))
+            (deadline is not null && !KavenegarSmsValidation.WorkOrderDeadlineToken(deadline)))
             return Task.FromResult(new KavenegarSmsSendResult(KavenegarSmsSendState.InvalidRequest));
 
         // The template supplies fixed WO/ and slash; number components stay numeric.
