@@ -147,6 +147,33 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
             companies = parsed;
         }
 
+        // ---- قاعدهٔ تک‌شرکتی: هر لایسنس برای یک شرکت ----
+        // هویت شرکت (شناسه + نام) از «فایل درخواست» می‌آید؛ اینجا فقط تحمیل و تکمیل می‌شود.
+        if (companies.Count > 1)
+            return (false, "هر لایسنس فقط برای یک شرکت صادر می‌شود؛ این پیش‌نویس " + companies.Count +
+                           " شرکت دارد. برای شرکت‌های دیگر، درخواست/لایسنس جداگانه بسازید.");
+
+        var requestCompany = await RequestCompanyAsync(requestId, ct);
+        if (requestCompany is { } required)
+        {
+            if (companies.Count == 0)
+            {
+                // شرکت در فرم نیامده ⇒ همان شرکتِ فایل درخواست، بدون پرسش.
+                companies.Add(new CompanyLine(required.CompanyId, required.Name, null, new List<string>()));
+            }
+            else
+            {
+                var only = companies[0];
+                if (!string.Equals(only.CompanyId.Trim(), required.CompanyId.Trim(), StringComparison.OrdinalIgnoreCase))
+                    return (false, $"شناسهٔ شرکت پیش‌نویس («{only.CompanyId}») با شناسهٔ شرکت در فایل درخواست " +
+                                   $" («{required.CompanyId}») یکی نیست. هر لایسنس فقط برای همان شرکتِ درخواست صادر می‌شود.");
+
+                // نام و شناسه، مرجع‌شان فایل درخواست است؛ نام خالی/متفاوت با نام درخواست جایگزین می‌شود.
+                if (string.IsNullOrWhiteSpace(only.Name) && !string.IsNullOrWhiteSpace(required.Name))
+                    companies[0] = only with { Name = required.Name };
+            }
+        }
+
         // سقف کل کاربران این پیش‌نویس — جمع سقف شرکت‌ها نباید از آن بیشتر شود.
         var seatCap = target.UserMode == "None" ? 0 : Math.Clamp(draft.UserMax, 0, 100_000);
         var allocated = companies.Where(c => c.MaxUsers is > 0).Sum(c => c.MaxUsers!.Value);
@@ -486,12 +513,35 @@ public sealed class DraftService(SupportDbContext db, SignerOptions options, ILo
     public async Task<(List<CompanyLine> Companies, string Source)> SuggestCompaniesAsync(
         int requestId, CancellationToken ct = default)
     {
-        var request = await db.Requests.AsNoTracking().FirstOrDefaultAsync(r => r.Id == requestId, ct);
-        if (request is null || string.IsNullOrWhiteSpace(request.InterestedCompaniesJson))
-            return (new List<CompanyLine>(), "");
+        var company = await RequestCompanyAsync(requestId, ct);
+        if (company is null) return (new List<CompanyLine>(), "");
 
-        var list = FromCompaniesJson(request.InterestedCompaniesJson);
-        return (list, list.Count > 0 ? "request" : "");
+        // قاعدهٔ محصول: هر لایسنس برای «یک» شرکت ⇒ فقط همان شرکتِ داخل فایل درخواست.
+        var line = new CompanyLine(company.Value.CompanyId, company.Value.Name, null, new List<string>());
+        return (new List<CompanyLine> { line }, "request");
+    }
+
+    /// <summary>
+    /// شرکتِ مرجعِ همین درخواست: اول ستون‌های <see cref="LicenseRequest.CompanyId"/>/<c>CompanyName</c>
+    /// (که هنگام ثبت از خود فایل درخواست پر می‌شوند)، بعد اولین شرکتِ
+    /// <see cref="LicenseRequest.InterestedCompaniesJson"/> برای درخواست‌های قدیمی.
+    /// </summary>
+    public async Task<(string CompanyId, string? Name)?> RequestCompanyAsync(int requestId, CancellationToken ct = default)
+    {
+        var request = await db.Requests.AsNoTracking()
+            .Where(r => r.Id == requestId)
+            .Select(r => new { r.CompanyId, r.CompanyName, r.InterestedCompaniesJson })
+            .FirstOrDefaultAsync(ct);
+
+        if (request is null) return null;
+
+        if (!string.IsNullOrWhiteSpace(request.CompanyId))
+            return (request.CompanyId!.Trim(), string.IsNullOrWhiteSpace(request.CompanyName) ? null : request.CompanyName!.Trim());
+
+        if (string.IsNullOrWhiteSpace(request.InterestedCompaniesJson)) return null;
+
+        var first = FromCompaniesJson(request.InterestedCompaniesJson).FirstOrDefault();
+        return first is null ? null : (first.CompanyId, first.Name);
     }
 
     public static IEnumerable<string> SplitCsv(string? csv) =>

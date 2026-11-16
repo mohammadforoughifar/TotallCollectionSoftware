@@ -23,6 +23,13 @@ public sealed class ParsedRequest
     /// اعتبار نهایی از سند امضاشده می‌آید.
     /// </summary>
     public List<(string CompanyId, string? Name)> InterestedCompanies { get; } = new();
+
+    /// <summary>
+    /// شرکتی که این درخواست برایش فرستاده شده (شناسه + نام) — از خود فایل درخواست.
+    /// قاعدهٔ محصول: <b>هر لایسنس برای یک شرکت</b>؛ پس اولین/تنها شرکت اعلام‌شده مرجع است.
+    /// </summary>
+    public (string CompanyId, string? Name)? PrimaryCompany =>
+        InterestedCompanies.Count == 0 ? null : InterestedCompanies[0];
     public List<string> HintIssues { get; } = new();
     public List<string> Warnings { get; } = new();
     public string? Deployment { get; set; }
@@ -157,6 +164,26 @@ public static class RequestParser
                 }
             }
 
+            // ---- شرکت تک‌نفره در ریشهٔ درخواست (قالب تازهٔ فایل درخواست) ----
+            // { "companyId": "C-1001", "companyName": "شرکت الف" } یا { "company": { "id": …, "name": … } }
+            if (result.InterestedCompanies.Count == 0)
+            {
+                string? rootId = null;
+                string? rootName = null;
+
+                if (root.TryGetProperty("company", out var companyObj) && companyObj.ValueKind == JsonValueKind.Object)
+                {
+                    rootId = Clean(GetString(companyObj, "companyId") ?? GetString(companyObj, "id"), 60);
+                    rootName = Clean(GetString(companyObj, "name") ?? GetString(companyObj, "title"), 200);
+                }
+
+                rootId ??= Clean(GetString(root, "companyId") ?? GetString(root, "companyCode"), 60);
+                rootName ??= Clean(GetString(root, "companyName") ?? GetString(root, "companyTitle"), 200);
+
+                if (!string.IsNullOrWhiteSpace(rootId))
+                    result.InterestedCompanies.Add((rootId!.Trim(), string.IsNullOrWhiteSpace(rootName) ? null : rootName));
+            }
+
             // ---- شرکت‌های اعلام‌شده توسط مشتری (پیشنهاد، نه سند) ----
             // قالب پذیرفته‌شده: ["C-1001", ...] یا [{ "companyId": "C-1001", "name": "شرکت الف" }, ...]
             if (root.TryGetProperty("companies", out var companies) && companies.ValueKind == JsonValueKind.Array)
@@ -188,6 +215,10 @@ public static class RequestParser
                     }
                 }
             }
+
+            if (result.InterestedCompanies.Count > 1)
+                result.Warnings.Add($"درخواست {result.InterestedCompanies.Count} شرکت اعلام کرده است؛ هر لایسنس فقط برای «" +
+                                    $"{result.InterestedCompanies[0].CompanyId}» صادر می‌شود و برای بقیه باید درخواست/لایسنس جداگانه باشد.");
 
             if (root.TryGetProperty("hintIssues", out var hints) && hints.ValueKind == JsonValueKind.Array)
             {

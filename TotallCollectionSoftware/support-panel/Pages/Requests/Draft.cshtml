@@ -32,6 +32,41 @@
     /// <summary>منبع پیشنهاد شرکت‌ها: request | خالی</summary>
     public string CompaniesFrom { get; set; } = "";
 
+    /// <summary>شناسهٔ شرکتِ داخل فایل درخواست — هر لایسنس برای همین یک شرکت صادر می‌شود.</summary>
+    public string RequestCompanyId { get; set; } = "";
+
+    /// <summary>نام همان شرکت (از فایل درخواست).</summary>
+    public string RequestCompanyName { get; set; } = "";
+
+    /// <summary>سقف کاربر اختیاری همین یک شرکت (خالی = تابع سقف پیش‌نویس).</summary>
+    public string CompanySeats { get; set; } = "";
+
+    /// <summary>شرکت مرجع را از درخواست می‌خواند (شناسه + نام) — پیش از خواندن فرم.</summary>
+    private async Task LoadRequestCompanyAsync()
+    {
+        var company = await Drafts.RequestCompanyAsync(RequestId);
+        if (company is not { } req) return;
+        RequestCompanyId = req.CompanyId;
+        RequestCompanyName = req.Name ?? "";
+    }
+
+    /// <summary>
+    /// متن «شرکت‌های مجاز» را می‌سازد. اگر درخواست شرکت داشته باشد، هویت همان شرکت است و
+    /// فقط سقف کاربر اختیاری از فرم خوانده می‌شود (یک شرکت — یک لایسنس).
+    /// </summary>
+    private string ComposeCompaniesText()
+    {
+        if (string.IsNullOrWhiteSpace(RequestCompanyId))
+            return Request.Form["companies"].ToString();
+
+        var line = RequestCompanyId.Trim();
+        if (!string.IsNullOrWhiteSpace(RequestCompanyName)) line += " | " + RequestCompanyName.Trim();
+
+        var seatsText = Request.Form["companySeats"].ToString();
+        if (int.TryParse(seatsText, out var seats) && seats > 0) line += " | " + seats;
+        return line;
+    }
+
     /// <summary>خطاهای تجزیهٔ خط شرکت‌ها (نمایش مستقیم به کاربر)</summary>
     public List<string> CompanyErrors { get; set; } = new();
 
@@ -40,6 +75,7 @@
 
     private async Task LoadAsync()
     {
+        await LoadRequestCompanyAsync();
         var existing = await Drafts.CurrentAsync(RequestId);
         if (existing is null)
         {
@@ -49,7 +85,7 @@
             if (suggestedPresets.Count > 0) PresetsSelected = suggestedPresets;
             SuggestedFrom = source;
 
-            // شرکت‌ها: اگر مشتری در فایل درخواست فرستاده باشد، همان‌ها پیشنهاد می‌شوند.
+            // شرکت: همیشه همان شرکتِ داخل فایل درخواست (یک شرکت — یک لایسنس).
             var (suggestedCompanies, companiesSource) = await Drafts.SuggestCompaniesAsync(RequestId);
             if (suggestedCompanies.Count > 0)
             {
@@ -72,6 +108,17 @@
         FeaturesSelected = DraftService.SplitCsv(existing.FeaturesCsv).ToList();
         Note = existing.Note ?? "";
         CompaniesText = DraftService.ToCompanyText(DraftService.FromCompaniesJson(existing.CompaniesJson));
+
+        // اگر درخواست شرکتِ مشخص دارد، نمایش «شرکت این لایسنس» از فایل درخواست می‌آید.
+        if (!string.IsNullOrWhiteSpace(RequestCompanyId))
+        {
+            var line = RequestCompanyId.Trim()
+                       + (string.IsNullOrWhiteSpace(RequestCompanyName) ? "" : " | " + RequestCompanyName.Trim());
+            CompaniesText = line;
+            CompaniesFrom = "request";
+            var existingCompany = DraftService.FromCompaniesJson(existing.CompaniesJson).FirstOrDefault();
+            if (existingCompany?.MaxUsers is > 0) CompanySeats = existingCompany.MaxUsers!.Value.ToString();
+        }
     }
 
     private void ReadForm()
@@ -86,7 +133,8 @@
         AppliesTo = Request.Form["appliesTo"].ToString() is { Length: > 0 } scope ? scope : "Global";
         DeploymentValue = Request.Form["deployment"].ToString() is { Length: > 0 } deploy ? deploy : "OnPrem";
         Note = Request.Form["note"].ToString();
-        CompaniesText = Request.Form["companies"].ToString();
+        CompanySeats = Request.Form["companySeats"].ToString();
+        CompaniesText = ComposeCompaniesText();
         PresetsSelected = Request.Form["presets"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
         ModulesSelected = Request.Form["modules"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
         FeaturesSelected = Request.Form["features"].Where(v => !string.IsNullOrWhiteSpace(v)).ToList()!;
@@ -126,6 +174,7 @@
     public async Task<IActionResult> OnPostSaveAsync()
     {
         RequestId = ResolveId();
+        await LoadRequestCompanyAsync();
         ReadForm();
         var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
         var (ok, error) = await Drafts.SaveAsync(RequestId, BuildFromForm(), actor, HttpContext.RequestServices.GetRequiredService<RequestService>());
@@ -146,6 +195,7 @@
     public async Task<IActionResult> OnPostCopyLastAsync()
     {
         RequestId = ResolveId();
+        await LoadRequestCompanyAsync();
         ReadForm();
         var (modules, presets, _) = await Drafts.SuggestModulesAsync(RequestId);
         ModulesSelected = modules;
@@ -207,6 +257,7 @@
     public async Task<IActionResult> OnPostPreviewAsync()
     {
         RequestId = ResolveId();
+        await LoadRequestCompanyAsync();
         ReadForm();
         var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
         var requests = HttpContext.RequestServices.GetRequiredService<RequestService>();
@@ -387,21 +438,41 @@ else
                         نصب/لایسنس مستقل دارد.
                     </p></div>
             </div>
-            <div class="field"><label for="companies">شرکت‌های مجاز (از شرکت‌های تعریف‌شده در نرم‌افزار مشتری)</label>
-                <textarea id="companies" name="companies" class="mono" rows="4" spellcheck="false"
-                          placeholder="C-1001 | شرکت الف | 5 | sales,hr_fa&#10;C-1002 | شرکت ب | 3">@CompaniesText</textarea>
-                <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
-                    هر خط یک شرکت: <span class="mono">شناسه | نام | سقف‌کاربر | ماژول‌ها</span> — فقط شناسه اجباری است.
-                    خالی گذاشتن سطر = بدون محدودیت شرکت (رفتار قدیمی).<br />
-                    شرکت‌ها <b>داخل سند امضاشده</b> می‌روند: افزودن شرکت تازه بعداً یعنی صدور لایسنس جدید،
-                    و با ویرایش دیتابیس مشتری قابل دور زدن نیست.<br />
-                    ماژول‌های هر شرکت باید از میان ماژول‌های انتخاب‌شدهٔ همین پیش‌نویس باشد؛
-                    جمع سقف کاربران شرکت‌ها از «سقف کاربر» بالا بیشتر نشود.
-                    @if (CompaniesFrom == "request")
-                    {
-                        <br /><text>فهرست از <b>فایل درخواست همین مشتری</b> پیشنهاد شد؛ تأیید یا ویرایش کنید.</text>
-                    }
-                </p>
+            <div class="field">
+                <label>شرکت مجاز این لایسنس (از فایل درخواست)</label>
+                @if (!string.IsNullOrWhiteSpace(RequestCompanyId))
+                {
+                    <div class="company-single">
+                        <span class="tag">یک شرکت — یک لایسنس</span>
+                        <div style="margin:.35rem 0 .5rem">
+                            <b>@(string.IsNullOrWhiteSpace(RequestCompanyName) ? "(بدون نام)" : RequestCompanyName)</b>
+                            <span class="mono" style="margin-inline-start:.5rem">@RequestCompanyId</span>
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label for="companySeats">سقف کاربر این شرکت (اختیاری)</label>
+                            <input id="companySeats" name="companySeats" type="number" min="0" max="100000"
+                                   value="@CompanySeats" placeholder="خالی = تابع سقف کاربر پیش‌نویس" />
+                        </div>
+                    </div>
+                    <p class="hint" style="margin:.5rem 0 0;line-height:1.9">
+                        شناسه و نام شرکت از <b>فایل درخواست همین مشتری</b> خوانده می‌شود و در بخش «شرکت‌های مجاز»
+                        سند امضاشده می‌نشیند؛ قابل ویرایش دستی نیست تا لایسنس به شرکت اشتباه داده نشود.<br />
+                        برای شرکت دیگر، <b>درخواست و لایسنس جداگانه</b> صادر کنید (هر فعال‌سازی = یک شرکت).
+                        ماژول‌های این شرکت همان ماژول‌های تیک‌خوردهٔ همین پیش‌نویس است و جمع سقف کاربران از
+                        «سقف کاربر» بالا بیشتر نمی‌شود.
+                    </p>
+                }
+                else
+                {
+                    <textarea id="companies" name="companies" class="mono" rows="2" spellcheck="false"
+                              placeholder="C-1001 | شرکت الف | 5">@CompaniesText</textarea>
+                    <p class="hint" style="margin:.35rem 0 0;line-height:1.9">
+                        در فایل درخواست این مشتری شناسهٔ شرکت نیامده است. یک خط بنویسید:
+                        <span class="mono">شناسه | نام | سقف‌کاربر | ماژول‌ها</span> — فقط شناسه اجباری است.<br />
+                        <b>هر لایسنس فقط برای یک شرکت</b> است؛ بیش از یک خط، هنگام ذخیره رد می‌شود.
+                        خالی گذاشتن = بدون محدودیت شرکت (رفتار قدیمی).
+                    </p>
+                }
                 @if (CompanyErrors.Count > 0)
                 {
                     <ul class="hint" style="margin:.35rem 0 0;color:#b42318">

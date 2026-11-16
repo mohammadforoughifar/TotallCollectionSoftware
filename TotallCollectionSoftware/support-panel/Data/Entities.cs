@@ -78,6 +78,16 @@ public class LicenseRequest
     /// پشتیبان در پیش‌نویس تأیید می‌کند و در سند امضا می‌شود.
     /// </summary>
     public string? InterestedCompaniesJson { get; set; }
+
+    /// <summary>
+    /// شناسهٔ شرکتی که این درخواست برایش فرستاده شده — <b>همان چیزی که داخل فایل درخواست است</b>.
+    /// هر لایسنس برای یک شرکت صادر می‌شود؛ این مقدار مرجع «شرکت مجاز» در پیش‌نویس است.
+    /// </summary>
+    public string? CompanyId { get; set; }
+
+    /// <summary>نام همان شرکت (از فایل درخواست) — برای نمایش در پیش‌نویس و سند.</summary>
+    public string? CompanyName { get; set; }
+
     public string? Deployment { get; set; }
     public string? MachineName { get; set; }
     public string? EngineVersion { get; set; }

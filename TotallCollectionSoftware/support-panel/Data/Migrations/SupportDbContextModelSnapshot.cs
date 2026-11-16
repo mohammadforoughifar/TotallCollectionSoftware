@@ -459,6 +459,12 @@ namespace LicenseSigner.Data.Migrations
                     b.Property<int>("Channel")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("CompanyId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompanyName")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ContactEmail")
                         .HasMaxLength(150)
                         .HasColumnType("TEXT");

@@ -204,19 +204,30 @@ else
                 <dt>تماس</dt><dd>@(string.IsNullOrWhiteSpace(request.ContactName) ? "—" : request.ContactName)
                     · <span class="mono">@(request.ContactPhone ?? "—")</span></dd>
                 <dt>ماژول‌های موردنظر</dt><dd class="mono">@(request.InterestedModulesCsv ?? "—")</dd>
-                <dt>شرکت‌های اعلام‌شده</dt>
+                <dt>شرکت این درخواست</dt>
                 <dd>
                     @{
                         var requestedCompanies = DraftService.FromCompaniesJson(request.InterestedCompaniesJson);
+                        var requestCompanyId = request.CompanyId ?? requestedCompanies.FirstOrDefault()?.CompanyId;
+                        var requestCompanyName = request.CompanyName ?? requestedCompanies.FirstOrDefault()?.Name;
                     }
-                    @if (requestedCompanies.Count == 0)
+                    @if (string.IsNullOrWhiteSpace(requestCompanyId))
                     {
                         <span class="mono">—</span>
+                        <span class="hint"> (در فایل درخواست شناسهٔ شرکت نیامده؛ پیش‌نویس دستی تعیین می‌شود.)</span>
                     }
                     else
                     {
-                        <span class="mono">@string.Join("، ", requestedCompanies.Select(c => $"{c.CompanyId}{(string.IsNullOrWhiteSpace(c.Name) ? "" : $" ({c.Name})")}"))</span>
-                        <span class="hint"> (فقط پیشنهاد؛ فهرست معتبر همان است که در پیش‌نویس تأیید و امضا شود.)</span>
+                        <b>@(string.IsNullOrWhiteSpace(requestCompanyName) ? "(بدون نام)" : requestCompanyName)</b>
+                        <span class="mono" style="margin-inline-start:.4rem">@requestCompanyId</span>
+                        <span class="hint"> (از داخل فایل درخواست — لایسنس فقط برای همین شرکت صادر می‌شود.)</span>
+                        @if (requestedCompanies.Count > 1)
+                        {
+                            <div class="hint" style="color:#b42318">
+                                در فایل درخواست @requestedCompanies.Count شرکت آمده بود؛ هر لایسنس فقط برای یک شرکت است،
+                                برای بقیه درخواست/لایسنس جداگانه لازم است.
+                            </div>
+                        }
                     }
                 </dd>
                 <dt>هش محتوا</dt><dd class="mono">@Ui.Clip(request.PayloadSha256, 16)</dd>

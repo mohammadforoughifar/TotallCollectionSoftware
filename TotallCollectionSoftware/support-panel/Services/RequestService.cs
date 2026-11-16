@@ -69,6 +69,8 @@ public sealed class RequestService(SupportDbContext db, AuditChainService audit,
             ContactEmail = parsed.ContactEmail,
             CustomerNote = parsed.CustomerNote,
             InterestedModulesCsv = parsed.InterestedModules.Count == 0 ? null : string.Join(",", parsed.InterestedModules),
+            CompanyId = parsed.PrimaryCompany?.CompanyId,
+            CompanyName = parsed.PrimaryCompany?.Name,
             InterestedCompaniesJson = parsed.InterestedCompanies.Count == 0 ? null
                 : JsonSerializer.Serialize(parsed.InterestedCompanies
                     .Select(c => new { companyId = c.CompanyId, name = c.Name })),
