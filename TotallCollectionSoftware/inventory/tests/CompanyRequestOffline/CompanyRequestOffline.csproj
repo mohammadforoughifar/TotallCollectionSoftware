@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings></PropertyGroup>
+  <!-- Exercises the real transport with a fake JS runtime and an in-memory HTTP handler. -->
+  <ItemGroup>
+    <Compile Include="../../src/Inventory.Client/Services/IApiClient.cs" Link="IApiClient.cs" />
+    <Compile Include="../../src/Inventory.Client/Services/ApiClient.cs" Link="ApiClient.cs" />
+  </ItemGroup>
+</Project>

@@ -268,6 +268,8 @@ sealed class FakeSmsGateway : IKavenegarSmsGateway
         RecordAsync(recipient, token, companyName, template, null);
     public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template) =>
         RecordAsync(recipient, token, companyName, template, customerName);
+    public Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template) =>
+        throw new InvalidOperationException("Repair tests must not send work-order SMS.");
     private async Task<KavenegarSmsSendResult> RecordAsync(string recipient, string token, string companyName, string template, string? customerName)
     {
         Sent.Add((recipient, token, companyName, template, customerName));

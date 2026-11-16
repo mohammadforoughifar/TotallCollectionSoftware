@@ -22,39 +22,44 @@ public class WorkOrdersController : ControllerBase
     private readonly INotifyService _notify;
     private readonly FileStore _store;
     private readonly IWorkOrderSmsService _sms;
-    public WorkOrdersController(AppDbContext db, INotifyService notify, FileStore store, IWorkOrderSmsService sms)
-    { _db = db; _notify = notify; _store = store; _sms = sms; }
+    private readonly ILogger<WorkOrdersController> _logger;
+    public WorkOrdersController(AppDbContext db, INotifyService notify, FileStore store, IWorkOrderSmsService sms,
+        ILogger<WorkOrdersController> logger)
+    { _db = db; _notify = notify; _store = store; _sms = sms; _logger = logger; }
 
-    /// <summary>
-    /// حافظهٔ کوتاه‌مدتِ «ثبت‌های تازه» برای جلوگیری از دستور کار تکراری.
-    /// کلید = شناسهٔ درخواست (ClientRequestId) یا اثرانگشت محتوا؛ مقدار = شناسهٔ دستور کار و زمان.
-    /// فقط چند ثانیه معتبر است تا ثبت عمدیِ دومین دستور کارِ مشابه بلاک نشود.
-    /// </summary>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (int OrderId, string Number, DateTime At)> RecentCreates = new();
-
-    /// <summary>پنجرهٔ زمانی یکسان‌سازی ثبت — دو کلیک پشت‌سرهم قطعاً داخل این بازه‌اند.</summary>
+    // Explicit client IDs are durable across retries, servers and restarts. Legacy clients
+    // without an ID retain the existing 12-second content-based create duplicate window.
     private static readonly TimeSpan DuplicateWindow = TimeSpan.FromSeconds(12);
 
-    /// <summary>اثرانگشت محتواییِ درخواست — برای مواردی که کلاینت ClientRequestId نفرستد.</summary>
-    private static string CreateFingerprint(int userId, CreateDto dto, int companyId)
+    private static string RequestKey(string operation, int companyId, int userId, int orderId, string clientId) =>
+        WorkOrderRequestIdentity.Key(operation, companyId, userId, orderId, clientId);
+
+    private static string Fingerprint<T>(string operation, T value) => WorkOrderRequestIdentity.Fingerprint(operation, value);
+
+    private static string OrderFingerprint(string operation, int userId, CreateDto dto, int companyId, int orderId = 0)
     {
-        var assignees = string.Join(",", dto.AssigneeUserIds.Distinct().OrderBy(x => x));
-        var raw = string.Join("|", userId, companyId, dto.Title.Trim(), (dto.Description ?? "").Trim(),
-            dto.DueAt.ToString("O"), dto.Priority, dto.Recurrence, assignees,
-            dto.SourceModule ?? "", dto.SourceId?.ToString() ?? "", dto.ParentOrderId?.ToString() ?? "",
-            dto.ProjectId?.ToString() ?? "", dto.Weight);
-        using var sha = System.Security.Cryptography.SHA256.Create();
-        return Convert.ToHexString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(raw)));
+        var value = new
+        {
+            userId, companyId, orderId, title = dto.Title?.Trim(), description = dto.Description?.Trim(), dto.DueAt,
+            dto.Priority, dto.Recurrence, assignees = (dto.AssigneeUserIds ?? new()).Distinct().OrderBy(x => x).ToArray(),
+            dto.SourceModule, dto.SourceId, dto.SourceRefId, dto.ParentOrderId, dto.ProjectId, dto.Weight,
+            checklist = dto.ChecklistItems ?? new(), tags = dto.Tags ?? new()
+        };
+        return Fingerprint(operation, value);
     }
 
-    private void RememberCreate(string key, int orderId, string number)
+    private async Task<(int OrderId, string? Fingerprint)?> FindRequestAsync(string? key)
     {
-        // پاک‌سازی ورودی‌های منقضی — بدون تایمر و بدون نشتی حافظه
-        var now = DateTime.UtcNow;
-        foreach (var kv in RecentCreates)
-            if (now - kv.Value.At > DuplicateWindow) RecentCreates.TryRemove(kv.Key, out _);
-        RecentCreates[key] = (orderId, number, now);
+        if (key is null) return null;
+        var row = await _db.WorkOrderLogs.AsNoTracking().Where(l => l.RequestKey == key)
+            .Select(l => new { l.OrderId, l.PayloadFingerprint }).SingleOrDefaultAsync();
+        return row is null ? null : (row.OrderId, row.PayloadFingerprint);
     }
+
+    private IActionResult ChangedRequestConflict() => Conflict(new
+    {
+        message = "این شناسه قبلاً برای درخواست دیگری ثبت شده است؛ برای ثبت تغییرات فرم را دوباره باز کنید."
+    });
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -101,8 +106,40 @@ public class WorkOrdersController : ControllerBase
             .AnyAsync(p => p.Module == "WorkOrders" && p.Action == action);
     }
 
-    private void Log(int orderId, string action, string? text) =>
-        _db.WorkOrderLogs.Add(new WorkOrderLog { OrderId = orderId, ActorName = MyUsername, Action = action, Text = text });
+    private WorkOrderLog Log(int orderId, string action, string? text)
+    {
+        var row = new WorkOrderLog { OrderId = orderId, ActorName = MyUsername, Action = action, Text = text };
+        _db.WorkOrderLogs.Add(row);
+        return row;
+    }
+
+    private async Task<bool> TryStageSmsAsync(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction tx,
+        WorkOrder order, WorkOrderLog log, IReadOnlyCollection<int> recipients, WorkOrderSmsEventType kind)
+    {
+        // A failure resolving company context happens before any SMS writes, so it is safe
+        // to skip staging. The service itself handles recoverable staging failures via a
+        // savepoint; an unrecoverable rollback failure must abort the business transaction.
+        int? companyId;
+        try { companyId = await ActiveCompanyIdAsync(); }
+        catch { return false; }
+        return await _sms.TryStageAsync(tx, order, log, recipients, kind, companyId);
+    }
+
+    private async Task<bool> TryAfterCommitAsync(Func<Task> action)
+    {
+        try { await action(); return true; }
+        catch (Exception ex)
+        {
+            // The business transaction has already committed. NotifyService can leave a
+            // failed notification or push row tracked as Added; detach it before attempting
+            // other, independent notices so a later SaveChanges cannot retry it implicitly.
+            try { _db.ChangeTracker.Clear(); } catch { /* best effort after a committed operation */ }
+            _logger.LogWarning("Work-order post-commit notification failed ({ErrorType}).", ex.GetType().Name);
+            return false;
+        }
+    }
+
+    private sealed record DeferredLetterNotice(int SourceId, List<int> UserIds, string OrderTitle, string OrderNumber, int SenderUserId);
 
     /// <summary>
     /// هستهٔ «افزودن افراد به گردش واقعی نامه» — بدون بررسی مجوز؛ بررسی مجوز وظیفهٔ فراخوان است.
@@ -111,7 +148,7 @@ public class WorkOrdersController : ControllerBase
     /// خروجی: تعداد افرادی که واقعاً به گردش اضافه شدند.
     /// </summary>
     private async Task<int> EnsureLetterFlowForUsersAsync(int sourceId, IEnumerable<int> userIds,
-        int senderUserId, string orderTitle, string orderNumber)
+        int senderUserId, string orderTitle, string orderNumber, List<DeferredLetterNotice>? deferred = null)
     {
         if (sourceId <= 0) return 0;
         var targets = (userIds ?? Enumerable.Empty<int>()).Where(x => x > 0).Distinct().ToList();
@@ -165,9 +202,12 @@ public class WorkOrdersController : ControllerBase
             });
         }
 
-        // اعلان «نامهٔ جدید در کارتابل شما» — عمداً فقط برای افرادی که در این لحظه به گردش
-        // نامه اضافه شدند (newTargets)؛ کسانی که از قبل در گردش بودند اعلان تکراری نمی‌گیرند.
-        await NotifyNewLetterAccessAsync(sourceId, newTargets, orderTitle, orderNumber, senderUserId);
+        // اعلان فقط برای گیرندگان تازه است. در تراکنش‌های دستور کار، آن را به بعد از
+        // commit موکول می‌کنیم تا خروجی بلادرنگ یا پیام‌رسان به رکورد لغوشده اشاره نکند.
+        if (deferred is null)
+            await NotifyNewLetterAccessAsync(sourceId, newTargets, orderTitle, orderNumber, senderUserId);
+        else
+            deferred.Add(new DeferredLetterNotice(sourceId, newTargets, orderTitle, orderNumber, senderUserId));
 
         return newTargets.Count;
     }
@@ -176,10 +216,10 @@ public class WorkOrdersController : ControllerBase
     /// اعلان «نامهٔ جدید در کارتابل شما» برای افرادی که تازه به گردش نامه اضافه شده‌اند.
     /// لینک اعلان همان مسیر کارتابلِ درستِ همان نوع نامه است تا با یک کلیک باز شود.
     /// </summary>
-    private async Task NotifyNewLetterAccessAsync(int sourceId, List<int> userIds,
-        string orderTitle, string orderNumber, int senderUserId)
+    private async Task<bool> NotifyNewLetterAccessAsync(int sourceId, List<int> userIds,
+        string orderTitle, string orderNumber, int senderUserId, bool independentAfterCommit = false)
     {
-        if (userIds.Count == 0) return;
+        if (userIds.Count == 0) return true;
 
         var letter = await _db.LetterSources.AsNoTracking()
             .Where(x => x.Id == sourceId && !x.IsDelete)
@@ -194,7 +234,7 @@ public class WorkOrdersController : ControllerBase
                 IncNumber = x.IncomingLetter != null ? x.IncomingLetter.LetterNumber : null
             })
             .FirstOrDefaultAsync();
-        if (letter == null) return;
+        if (letter == null) return true;
 
         var (formName, route, number, title) = letter.SourceType switch
         {
@@ -214,20 +254,46 @@ public class WorkOrdersController : ControllerBase
         var titleTag = string.IsNullOrWhiteSpace(title) ? "" : $"«{title}»";
         var body = $"{numberTag}{titleTag} — دسترسی از طریق دستورکار «{orderTitle}» ({orderNumber})";
 
+        var ok = true;
         foreach (var uid in userIds.Where(id => id > 0 && id != senderUserId).Distinct())
-            await _notify.SendAsync(uid, "نامهٔ جدید در کارتابل شما 📨", body, senderName, formName,
+        {
+            Task Send() => _notify.SendAsync(uid, "نامهٔ جدید در کارتابل شما 📨", body, senderName, formName,
                 $"{route}?open={sourceId}");
+            if (independentAfterCommit)
+            {
+                if (!await TryAfterCommitAsync(Send)) ok = false;
+            }
+            else await Send();
+        }
+        return ok;
+    }
+
+    private async Task<bool> NotifyDeferredLetterAccessAsync(IEnumerable<DeferredLetterNotice> notices)
+    {
+        var ok = true;
+        foreach (var notice in notices)
+        {
+            var noticeOk = true;
+            var queryOk = await TryAfterCommitAsync(async () =>
+            {
+                noticeOk = await NotifyNewLetterAccessAsync(notice.SourceId, notice.UserIds, notice.OrderTitle,
+                    notice.OrderNumber, notice.SenderUserId, independentAfterCommit: true);
+            });
+            if (!queryOk || !noticeOk) ok = false;
+        }
+        return ok;
     }
 
     /// <summary>
     /// گیرندگانِ یک دستورکارِ متصل به نامه را به گردش همان نامه اضافه می‌کند.
     /// برای مسیرهای «ویرایش دستور کار» و «افزودن نفر به گردش» که مبدأ از خودِ رکورد خوانده می‌شود.
     /// </summary>
-    private Task<int> SyncOrderAssigneesToLetterFlowAsync(WorkOrder order, IEnumerable<int> userIds)
+    private Task<int> SyncOrderAssigneesToLetterFlowAsync(WorkOrder order, IEnumerable<int> userIds,
+        List<DeferredLetterNotice>? deferred = null)
     {
         if (order.SourceId is not > 0) return Task.FromResult(0);
         if (!IsLetterModuleOrUnknown(order.SourceModule)) return Task.FromResult(0);
-        return EnsureLetterFlowForUsersAsync(order.SourceId.Value, userIds, MyUserId, order.Title, order.Number);
+        return EnsureLetterFlowForUsersAsync(order.SourceId.Value, userIds, MyUserId, order.Title, order.Number, deferred);
     }
 
     /// <summary>
@@ -238,7 +304,8 @@ public class WorkOrdersController : ControllerBase
     /// true = سازندهٔ دستورکار باید ایجادکننده یا گیرندهٔ نامه باشد (مسیر «ساخت از نامه»).
     /// false = مبدأ از دستور والد به ارث رسیده و پیوند از قبل برقرار است (زیر-دستور).
     /// </param>
-    private async Task<int> AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order, bool requireRequestorInFlow = true)
+    private async Task<int> AddNewLetterWorkOrderAssigneesToFlowAsync(CreateDto dto, WorkOrder order,
+        bool requireRequestorInFlow = true, List<DeferredLetterNotice>? deferred = null)
     {
         if (dto.SourceId is not > 0) return 0;
 
@@ -281,7 +348,7 @@ public class WorkOrdersController : ControllerBase
         order.SourceModule = LetterModuleName(sourceType) ?? order.SourceModule;
 
         return await EnsureLetterFlowForUsersAsync(source.Id, dto.AssigneeUserIds.Where(x => x != MyUserId),
-            MyUserId, order.Title, order.Number);
+            MyUserId, order.Title, order.Number, deferred);
     }
 
     // ================== دسترسی‌ها و لیست افراد مجاز ==================
@@ -292,8 +359,7 @@ public class WorkOrdersController : ControllerBase
         canView = await HasAsync("View"),
         canCreate = await HasAsync("Create"),
         canAssignOthers = await HasAsync("AssignOthers"),
-        canDelete = await HasAsync("Delete"),
-        smsConfigured = _sms.IsConfigured
+        canDelete = await HasAsync("Delete")
     });
 
     /// <summary>افرادی که کاربر جاری می‌تواند به آن‌ها دستور کار بدهد (بند ۶).</summary>
@@ -344,7 +410,7 @@ public class WorkOrdersController : ControllerBase
         public string Description { get; set; } = "";
         public DateTime DueAt { get; set; }
         public List<int> AssigneeUserIds { get; set; } = new();
-        /// <summary>ارسال پیامک اطلاع‌رسانی به شماره موبایل گیرندگان پس از ثبت موفق دستور کار.</summary>
+        /// <summary>فقط سازگاری با کلاینت قدیمی؛ ارسال پیامک خودکار و تابع تنظیمات شرکت است.</summary>
         public bool SendSms { get; set; }
 
         /// <summary>اولویت: 0=کم | 1=عادی | 2=بالا | 3=فوری (پیش‌فرض: عادی).</summary>
@@ -414,10 +480,42 @@ public class WorkOrdersController : ControllerBase
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        if (dto.ClientRequestId?.Length > 200)
+            return BadRequest(new { message = "شناسهٔ درخواست معتبر نیست." });
+        var requestKey = string.IsNullOrWhiteSpace(dto.ClientRequestId) ? null
+            : RequestKey("create", companyId.Value, MyUserId, 0, dto.ClientRequestId);
+        var fingerprint = OrderFingerprint("create", MyUserId, dto, companyId.Value);
+        var previousRequest = await FindRequestAsync(requestKey);
+        int? previousId = null;
+        if (previousRequest is { } hit)
+        {
+            if (!WorkOrderRequestIdentity.SamePayload(hit.Fingerprint, fingerprint)) return ChangedRequestConflict();
+            previousId = hit.OrderId;
+        }
+        else if (requestKey is null)
+        {
+            var since = DateTime.Now - DuplicateWindow;
+            previousId = await _db.WorkOrderLogs.AsNoTracking()
+                .Where(l => l.Action == "Created" && l.RequestKey == null &&
+                    l.PayloadFingerprint == fingerprint && l.CreatedAt >= since)
+                .OrderByDescending(l => l.Id).Select(l => (int?)l.OrderId).FirstOrDefaultAsync();
+        }
+        if (previousId is > 0)
+        {
+            var previous = await _db.WorkOrders.IgnoreQueryFilters().AsNoTracking()
+                .Where(w => w.Id == previousId && w.CompanyId == companyId.Value && w.OwnerUserId == MyUserId)
+                .Select(w => new { w.Id, w.Number }).SingleOrDefaultAsync();
+            if (previous is null) return Conflict(new { message = "درخواست قبلاً ثبت شده است؛ ثبت دوباره ممکن نیست." });
+            return Ok(new { id = previous.Id, number = previous.Number, occurrenceCount = 0,
+                sms = (WorkOrderSmsResult?)null, smsStageFailed = false, letterFlowAdded = 0, duplicate = true });
+        }
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
-        if (dto.AssigneeUserIds.Count == 0)
+        if (dto.Title.Trim().Length > 200)
+            return BadRequest(new { message = "عنوان دستور کار نباید بیشتر از ۲۰۰ نویسه باشد؛ عنوان ذخیره‌شده کوتاه نمی‌شود." });
+        if (dto.AssigneeUserIds is null || dto.AssigneeUserIds.Count == 0)
             return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
+        dto.ChecklistItems ??= new();
         // بند ۱: تاریخ و ساعت مقرر نباید قبل از زمان ثبت باشد
         if (dto.DueAt <= DateTime.Now)
             return BadRequest(new { message = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان ثبت باشد." });
@@ -447,8 +545,8 @@ public class WorkOrdersController : ControllerBase
         if (dto.ParentOrderId is > 0)
         {
             parent = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == dto.ParentOrderId);
-            if (parent == null)
-                return BadRequest(new { message = "دستور والد یافت نشد." });
+            if (parent == null || parent.CompanyId != companyId.Value)
+                return BadRequest(new { message = "دستور والد متعلق به شرکت فعال نیست یا شرکت آن مشخص نشده است." });
             if (parent.Status != "Open")
                 return BadRequest(new { message = "دستور والد بسته شده — ارجاع زنجیره‌ای ممکن نیست." });
             var amAssignee = await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == parent.Id && a.UserId == MyUserId);
@@ -516,39 +614,6 @@ public class WorkOrdersController : ControllerBase
         if (parent != null && WorkOrderSchedule.Dates(dto.DueAt, dto.Recurrence).Last() > parent.DueAt)
             return BadRequest(new { message = "پایان سری تکرار از مهلت دستور والد عبور می‌کند؛ دستور مستقل بسازید یا مهلت والد را اصلاح کنید." });
 
-        // ⛔ ضدِ ثبت تکراری — دو کلیک پشت‌سرهم روی «ثبت دستور کار» نباید دو دستور کار بسازد.
-        // کلید: ClientRequestId (اگر کلاینت فرستاده باشد) وگرنه اثرانگشت محتوای درخواست.
-        // جای‌نگهدارِ خالی پیش از ساخت ثبت می‌شود؛ درخواست هم‌زمانِ دوم آن را می‌بیند،
-        // منتظر می‌ماند تا شناسهٔ دستور کارِ در حال ساخت پر شود و همان را برمی‌گرداند.
-        var idemKey = string.IsNullOrWhiteSpace(dto.ClientRequestId)
-            ? $"fp:{MyUserId}:{CreateFingerprint(MyUserId, dto, companyId.Value)}"
-            : $"cid:{MyUserId}:{dto.ClientRequestId!.Trim()}";
-
-        if (!RecentCreates.TryAdd(idemKey, (0, "", DateTime.UtcNow)))
-        {
-            for (var i = 0; i < 25; i++)
-            {
-                if (RecentCreates.TryGetValue(idemKey, out var hit))
-                {
-                    if (hit.OrderId > 0 && DateTime.UtcNow - hit.At <= DuplicateWindow)
-                        return Ok(new
-                        {
-                            id = hit.OrderId, number = hit.Number, occurrenceCount = 0,
-                            sms = (WorkOrderSmsResult?)null, letterFlowAdded = 0, duplicate = true
-                        });
-                    if (DateTime.UtcNow - hit.At > DuplicateWindow) break;
-                    // جای‌نگهدار بیش از ۶ ثانیه خالی مانده یعنی ثبتِ اول شکست خورده
-                    // است؛ بیشتر از این منتظر نمان و اجازهٔ ثبت تازه بده.
-                    if (hit.OrderId == 0 && DateTime.UtcNow - hit.At > TimeSpan.FromSeconds(6)) break;
-                }
-                else break;
-                await Task.Delay(200);
-            }
-            // جای‌نگهدارِ معلق/منقضی — اجازهٔ عبور بده تا کاربر در بن‌بست نماند.
-            RecentCreates.TryRemove(idemKey, out _);
-            RecentCreates.TryAdd(idemKey, (0, "", DateTime.UtcNow));
-        }
-
         var wo = new WorkOrder
         {
             // شرحِ بلند (مثلاً دستور کارِ ساخته‌شده از نامهٔ دارای تصویر) در جدول جانبی
@@ -572,7 +637,9 @@ public class WorkOrdersController : ControllerBase
         foreach (var item in dto.ChecklistItems.Where(t => !string.IsNullOrWhiteSpace(t)).Take(50))
             _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem
             { OrderId = wo.Id, Text = item.Trim(), SortOrder = clOrder++ });
-        Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
+        var createdLog = Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
+        createdLog.RequestKey = requestKey;
+        createdLog.PayloadFingerprint = fingerprint;
         if (parent != null)
         {
             Log(wo.Id, "Chained", $"زیر-دستورِ {parent.Number} «{parent.Title}»");
@@ -581,43 +648,42 @@ public class WorkOrdersController : ControllerBase
         if (project != null)
             _db.WorkProjectLogs.Add(new WorkProjectLog { ProjectId = project.Id, ActorName = MyUsername, Action = "OrderAdded", Text = $"دستور {wo.Number} «{wo.Title}» به پروژه وصل شد." });
         // اگر دستورکار از روی نامه ساخته شده باشد، افراد جدید باید در گردش واقعی
-        // همان نامه نیز قرار بگیرند؛ صرفاً لینک‌کردن دستورکار به نامه کافی نیست.
-        var letterFlowAdded = await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo, requireRequestorInFlow: !inheritedSource);
+        // همان نامه نیز قرار بگیرند؛ اعلان بیرونی فقط پس از commit فرستاده می‌شود.
+        var letterNotices = new List<DeferredLetterNotice>();
+        var letterFlowAdded = await AddNewLetterWorkOrderAssigneesToFlowAsync(dto, wo,
+            requireRequestorInFlow: !inheritedSource, deferred: letterNotices);
         await _db.SaveChangesAsync();
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
+        // Only the first order in a recurring series stages a notice, including the creator
+        // when selected. Future materialized occurrences do not create SMS events.
+        var smsStaged = await TryStageSmsAsync(tx, wo, createdLog, users.Select(u => u.Id).ToArray(), WorkOrderSmsEventType.Registration);
         await tx.CommitAsync();
-        // ثبتِ موفق در حافظهٔ کوتاه‌مدت ذخیره می‌شود تا ارسال دوبارهٔ همان درخواست
-        // (کلیک دوم، تلاش مجدد مرورگر) دستور کار تکراری نسازد.
-        RememberCreate(idemKey, wo.Id, wo.Number);
 
+        var notificationsOk = await NotifyDeferredLetterAccessAsync(letterNotices);
+        async Task Attempt(Func<Task> action) { if (!await TryAfterCommitAsync(action)) notificationsOk = false; }
         // One summary per recipient, not dozens of future-occurrence notifications.
         if (parent != null && parent.OwnerUserId != MyUserId)
-            await _notify.SendAsync(parent.OwnerUserId, "ارجاع زنجیره‌ای 🔗",
+            await Attempt(() => _notify.SendAsync(parent.OwnerUserId, "ارجاع زنجیره‌ای 🔗",
                 $"{wo.OwnerName} بخشی از {parent.Number} را به‌صورت زیر-دستور {wo.Number} ارجاع داد.",
-                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}"));
         var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
         var scheduleTag = added > 0 ? $" — {added + 1} نوبت در تقویم شما ثبت شد" : "";
         foreach (var uid in users.Select(u => u.Id).Where(id => id != MyUserId))
-            await _notify.SendAsync(uid, wo.Priority == WorkOrderPriority.Urgent ? "دستور کار فوری 🔴" : "دستور کار جدید 📋",
+            await Attempt(() => _notify.SendAsync(uid, wo.Priority == WorkOrderPriority.Urgent ? "دستور کار فوری 🔴" : "دستور کار جدید 📋",
                 $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}{scheduleTag}",
-                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}"));
 
-        // The order is committed before calling the external gateway. SMS failures are returned as
-        // a per-recipient result and must not make the client retry work-order creation.
-        WorkOrderSmsResult? smsResult = dto.SendSms
-            ? await _sms.SendNewWorkOrderAsync(wo, users)
-            : null;
-
-        await _notify.BroadcastChangedAsync("workorders");
-        // ردیف‌های ارجاعِ تازه، کارتابل و شمارندهٔ نخواندهٔ نامه‌ها را تغییر می‌دهند
+        await Attempt(() => _notify.BroadcastChangedAsync("workorders"));
         if (letterFlowAdded > 0)
         {
-            await _notify.BroadcastChangedAsync("letters");
-            await _notify.BroadcastChangedAsync("incoming-letters");
-            await _notify.BroadcastChangedAsync("outgoing-letters");
+            await Attempt(() => _notify.BroadcastChangedAsync("letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("incoming-letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("outgoing-letters"));
         }
-        if (project != null) await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult, letterFlowAdded, duplicate = false });
+        if (project != null) await Attempt(() => _notify.BroadcastChangedAsync("workprojects"));
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1,
+            sms = (WorkOrderSmsResult?)null, smsStageFailed = !smsStaged,
+            notificationsFailed = !notificationsOk, letterFlowAdded, duplicate = false });
     }
 
     /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
@@ -625,10 +691,19 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] CreateDto dto)
     {
         if (!await HasAsync("Create")) return Forbid();
+        if (dto.ClientRequestId?.Length > 200) return BadRequest(new { message = "شناسهٔ درخواست معتبر نیست." });
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
+        var requestKey = string.IsNullOrWhiteSpace(dto.ClientRequestId) ? null
+            : RequestKey("edit", wo.CompanyId ?? 0, MyUserId, id, dto.ClientRequestId);
+        var fingerprint = requestKey is null ? null : OrderFingerprint("edit", MyUserId, dto, wo.CompanyId ?? 0, id);
+        if (await FindRequestAsync(requestKey) is { } hit)
+        {
+            if (!WorkOrderRequestIdentity.SamePayload(hit.Fingerprint, fingerprint)) return ChangedRequestConflict();
+            return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = 0, duplicate = true, smsStageFailed = false, letterFlowAdded = 0 });
+        }
         if (wo.Status == "Closed")
             return BadRequest(new { message = "دستور کار بسته شده و قابل ویرایش نیست." });
         // بعد از اولین پاسخ، محتوای دستور برای دستوردهنده نیز قفل می‌شود.
@@ -636,8 +711,11 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(new { message = "یکی از گیرندگان دستور کار را رویت یا پاسخ داده است؛ این دستور کار دیگر قابل ویرایش نیست." });
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
-        if (dto.AssigneeUserIds.Count == 0)
+        if (dto.Title.Trim().Length > 200)
+            return BadRequest(new { message = "عنوان دستور کار نباید بیشتر از ۲۰۰ نویسه باشد؛ عنوان ذخیره‌شده کوتاه نمی‌شود." });
+        if (dto.AssigneeUserIds is null || dto.AssigneeUserIds.Count == 0)
             return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
+        dto.ChecklistItems ??= new();
         if (dto.DueAt <= DateTime.Now)
             return BadRequest(new { message = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان فعلی باشد." });
         if (!WorkOrderPriority.IsValid(dto.Priority))
@@ -719,9 +797,10 @@ public class WorkOrdersController : ControllerBase
 
         // گیرندگان تازهٔ دستورکارِ متصل به نامه باید در گردش واقعی همان نامه هم قرار بگیرند؛
         // وگرنه از فهرست دستور کار روی لینک نامه ۴۰۳ می‌گیرند. (ویرایش فقط پیش از رویت ممکن است)
+        var letterNotices = new List<DeferredLetterNotice>();
         var letterFlowAdded = 0;
         if (addedUserIds.Count > 0)
-            letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, addedUserIds);
+            letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, addedUserIds, letterNotices);
 
         var oldProjectId = wo.ProjectId;
         wo.ProjectId = newProject?.Id;
@@ -751,23 +830,29 @@ public class WorkOrdersController : ControllerBase
             }
             else projectNote = " — جدا شدن از پروژه";
         }
-        Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}{projectNote}");
+        var editedLog = Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}{projectNote}");
+        editedLog.RequestKey = requestKey;
+        editedLog.PayloadFingerprint = fingerprint;
         await _db.SaveChangesAsync();
-        foreach (var uid in addedUserIds)
-            await _notify.SendAsync(uid, "به دستور کار اضافه شدید", $"شما به دستور کار «{wo.Title}» ({wo.Number}) اضافه شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
-        foreach (var uid in removedUserIds)
-            await _notify.SendAsync(uid, "از دستور کار حذف شدید", $"شما از دستور کار «{wo.Title}» ({wo.Number}) حذف شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
+        var smsStaged = await TryStageSmsAsync(tx, wo, editedLog, addedUserIds, WorkOrderSmsEventType.Referral);
         await tx.CommitAsync();
-        await _notify.BroadcastChangedAsync("workorders");
+        var notificationsOk = await NotifyDeferredLetterAccessAsync(letterNotices);
+        async Task Attempt(Func<Task> action) { if (!await TryAfterCommitAsync(action)) notificationsOk = false; }
+        foreach (var uid in addedUserIds)
+            await Attempt(() => _notify.SendAsync(uid, "به دستور کار اضافه شدید", $"شما به دستور کار «{wo.Title}» ({wo.Number}) اضافه شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}"));
+        foreach (var uid in removedUserIds)
+            await Attempt(() => _notify.SendAsync(uid, "از دستور کار حذف شدید", $"شما از دستور کار «{wo.Title}» ({wo.Number}) حذف شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}"));
+        await Attempt(() => _notify.BroadcastChangedAsync("workorders"));
         if (letterFlowAdded > 0)
         {
-            await _notify.BroadcastChangedAsync("letters");
-            await _notify.BroadcastChangedAsync("incoming-letters");
-            await _notify.BroadcastChangedAsync("outgoing-letters");
+            await Attempt(() => _notify.BroadcastChangedAsync("letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("incoming-letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("outgoing-letters"));
         }
-        if (oldProjectId != wo.ProjectId) await _notify.BroadcastChangedAsync("workprojects");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, letterFlowAdded });
+        if (oldProjectId != wo.ProjectId) await Attempt(() => _notify.BroadcastChangedAsync("workprojects"));
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, duplicate = false,
+            smsStageFailed = !smsStaged, notificationsFailed = !notificationsOk, letterFlowAdded });
     }
 
     private static string ToFa(DateTime d)
@@ -1293,6 +1378,31 @@ public class WorkOrdersController : ControllerBase
         return list.Count == 0 ? NotFound() : Ok(list[0]);
     }
 
+    /// <summary>وضعیت پیامک‌های همین دستور، فقط برای دستوردهنده و شرکت فعال؛ بدون شماره موبایل.</summary>
+    [HttpGet("{id:int}/sms-events")]
+    public async Task<IActionResult> SmsEvents(int id)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var order = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.Id == id && w.CompanyId == companyId.Value)
+            .Select(w => new { w.OwnerUserId }).SingleOrDefaultAsync();
+        if (order is null) return NotFound();
+        if (order.OwnerUserId != MyUserId) return Forbid();
+        var rows = await _db.WorkOrderSmsNotifications.AsNoTracking()
+            .Where(n => n.CompanyId == companyId.Value && n.WorkOrderId == id)
+            .OrderByDescending(n => n.Id).Take(200).ToListAsync();
+        var ids = rows.Select(n => n.RecipientUserId).Distinct().ToArray();
+        var users = await _db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync();
+        return Ok(rows.Select(n => new WorkOrderSmsEventDto
+        {
+            Id = n.Id, EventType = n.EventType, Status = n.Status, CreatedAtUtc = n.CreatedAtUtc,
+            RecipientName = users.FirstOrDefault(u => u.Id == n.RecipientUserId) is { } u ? UserDisplay.Name(u) : $"کاربر {n.RecipientUserId}",
+            FailureCode = n.Status != WorkOrderSmsStatus.Failed ? null :
+                n.ProviderCode is not null and not 200 ? n.ProviderCode : n.ProviderMessageStatus
+        }).ToList());
+    }
+
     /// <summary>
     /// متن کامل شرح دستور کار — برای شرح‌های بلند (دستور کارِ ساخته‌شده از نامهٔ دارای تصویر)
     /// که ستون اصلی فقط پیش‌نمایش کوتاه دارد. فهرست‌ها این را نمی‌خوانند؛ فقط جزئیات.
@@ -1368,18 +1478,43 @@ public class WorkOrdersController : ControllerBase
     }
 
     // ================== پاسخ گیرنده ==================
-    public class ReplyDto { public bool Done { get; set; } = true; public string? Text { get; set; } }
+    public class ReplyDto { public bool Done { get; set; } = true; public string? Text { get; set; } public string? ClientRequestId { get; set; } }
 
     [HttpPost("{id:int}/reply")]
     public async Task<IActionResult> Reply(int id, [FromBody] ReplyDto dto)
     {
+        if (dto.ClientRequestId?.Length > 200) return BadRequest(new { message = "شناسهٔ درخواست معتبر نیست." });
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
-        if (wo.Status == "Closed")
-            return BadRequest(new { message = "این دستور کار بسته شده و قابل تغییر نیست." }); // بند ۱۰
-
         var asg = await _db.WorkOrderAssignees.FirstOrDefaultAsync(a => a.OrderId == id && a.UserId == MyUserId);
         if (asg == null) return NotFound(new { message = "این دستور کار به شما محول نشده است." });
+
+        var key = string.IsNullOrWhiteSpace(dto.ClientRequestId) ? null
+            : RequestKey("reply", wo.CompanyId ?? 0, MyUserId, id, dto.ClientRequestId);
+        var fingerprint = key is null ? null : Fingerprint("reply", new { dto.Done, text = dto.Text?.Trim() ?? "" });
+        if (await FindRequestAsync(key) is { } hit)
+        {
+            if (!WorkOrderRequestIdentity.SamePayload(hit.Fingerprint, fingerprint)) return ChangedRequestConflict();
+            return Ok(new { duplicate = true, smsStageFailed = false });
+        }
+        if (wo.Status == "Closed")
+            return BadRequest(new { message = "این دستور کار بسته شده و قابل تغییر نیست." });
+        // Even a fresh request ID is a no-op when the current active reply is unchanged.
+        // Bind that ID to the no-op so a delayed retry cannot resend after a later reset.
+        // Rejection clears RepliedAt, allowing a genuinely resubmitted reply (even identical).
+        if (WorkOrderRequestIdentity.ReplyIsUnchanged(asg.RepliedAt, asg.Done, asg.ReplyText, dto.Done, dto.Text))
+        {
+            if (key is not null)
+            {
+                var unchangedLog = Log(id, "ReplyUnchanged", $"{MyUsername}: پاسخ تغییری نداشت.");
+                unchangedLog.RequestKey = key;
+                unchangedLog.PayloadFingerprint = fingerprint;
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            return Ok(new { duplicate = true, smsStageFailed = false });
+        }
 
         asg.Done = dto.Done;
         asg.ReplyText = dto.Text?.Trim();
@@ -1387,12 +1522,27 @@ public class WorkOrdersController : ControllerBase
         asg.OwnerDecision = null; // پاسخ جدید = تصمیم قبلی باطل
         if (asg.SeenAt == null) asg.SeenAt = DateTime.Now;
 
-        Log(id, "Reply", $"{MyUsername}: {(dto.Done ? "✅ انجام شد" : "❌ انجام نشد")}{(string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text)}");
+        var replyLog = Log(id, "Reply", $"{MyUsername}: {(dto.Done ? "✅ انجام شد" : "❌ انجام نشد")}{(string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text)}");
+        replyLog.RequestKey = key;
+        replyLog.PayloadFingerprint = fingerprint;
+        // Ancestor workflow history is business data, not an external notification. Keep
+        // it in the same transaction as the reply even if later notifications fail.
+        var ancestors = await LoadAncestorsAsync(wo);
+        var ancestorResult = dto.Done ? "انجام شد ✅" : "انجام نشد ❌";
+        var ancestorNote = string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text.Trim();
+        foreach (var ancestor in ancestors)
+            Log(ancestor.Id, "SubReply", $"پاسخ زیر-دستور {wo.Number} «{wo.Title}» — {MyUsername}: {ancestorResult}{ancestorNote}");
         await _db.SaveChangesAsync();
+        // SMS goes only to this order's owner, including when they themselves are the
+        // respondent. Ancestor owners retain their existing in-app notifications only.
+        var smsStaged = await TryStageSmsAsync(tx, wo, replyLog, new[] { wo.OwnerUserId }, WorkOrderSmsEventType.Reply);
+        await tx.CommitAsync();
 
-        await NotifyReplyOwnersAsync(wo, dto);
-        await _notify.BroadcastChangedAsync("workorders");
-        return Ok();
+        var notificationsOk = true;
+        if (!await TryAfterCommitAsync(async () =>
+            { if (!await NotifyReplyOwnersAsync(wo, dto, ancestors)) notificationsOk = false; })) notificationsOk = false;
+        if (!await TryAfterCommitAsync(() => _notify.BroadcastChangedAsync("workorders"))) notificationsOk = false;
+        return Ok(new { duplicate = false, smsStageFailed = !smsStaged, notificationsFailed = !notificationsOk });
     }
 
     /// <summary>
@@ -1419,36 +1569,36 @@ public class WorkOrdersController : ControllerBase
     /// <summary>
     /// اطلاع‌رسانی پاسخ ثبت‌شده: مالکِ همین دستور کار (مثلاً B) + مالکان همهٔ والدهای
     /// زنجیره (مثلاً A که دستور کار اصلی را داده است) تا ۵ سطح.
-    /// هر کاربر فقط یک‌بار و هرگز خودِ پاسخ‌دهنده اعلان نمی‌گیرد. پاسخِ زیر-دستور در
-    /// تاریخچهٔ همهٔ دستورهای بالاسری هم ثبت می‌شود تا در «گردش کار» والد دیده شود.
+    /// هر کاربر فقط یک‌بار و هرگز خودِ پاسخ‌دهنده اعلان داخلی نمی‌گیرد. تاریخچهٔ
+    /// والدها پیش از commit ثبت شده است؛ پیامک جداگانه فقط به مالک همین دستور می‌رود.
     /// </summary>
-    private async Task NotifyReplyOwnersAsync(WorkOrder wo, ReplyDto dto)
+    private async Task<bool> NotifyReplyOwnersAsync(WorkOrder wo, ReplyDto dto, IReadOnlyList<WorkOrder> ancestors)
     {
         var result = dto.Done ? "انجام شد ✅" : "انجام نشد ❌";
         var note = string.IsNullOrWhiteSpace(dto.Text) ? "" : " — " + dto.Text.Trim();
         var selfLink = $"/work-orders?open={wo.Id}";
 
-        var ancestors = await LoadAncestorsAsync(wo);
         var parent = ancestors.FirstOrDefault(); // نزدیک‌ترین والد
         var chainTag = parent is null ? "" : $" (زیر-دستورِ {parent.Number})";
         var title = parent is null ? "پاسخ دستور کار" : "پاسخ زیر-دستور کار 📋";
 
-        // کاربرانی که مجوز «View» دستور کار را دارند می‌توانند خودِ زیر-دستور را باز کنند؛
-        // بقیه (مثلاً دستوردهندهٔ بالاسری بدون این مجوز) به دستور خودشان هدایت می‌شوند تا
-        // لینک اعلان برایشان ۴۰۳ نشود و ردّ پاسخ را در «گردش کار» همان دستور ببینند.
-        var viewers = await UsersWithWorkOrderViewAsync();
-        var subAssigneesFa = await AssigneesFaAsync(wo.Id);
-
+        var ok = true;
         var notified = new HashSet<int>();
 
         // ۱) مالکِ همین دستور کار — پاسخ‌دهنده به او خبر می‌دهد.
         if (wo.OwnerUserId > 0 && wo.OwnerUserId != MyUserId)
         {
-            await _notify.SendAsync(wo.OwnerUserId, title,
+            if (!await TryAfterCommitAsync(() => _notify.SendAsync(wo.OwnerUserId, title,
                 $"{wo.Number}{chainTag} — {MyUsername}: {result}{note}",
-                MyUsername, "دستور کار", selfLink);
+                MyUsername, "دستور کار", selfLink))) ok = false;
             notified.Add(wo.OwnerUserId);
         }
+        if (ancestors.Count == 0) return ok;
+
+        // کاربرانی که مجوز «View» دارند زیر-دستور را باز می‌کنند؛ دیگر مالکان
+        // بالاسری به گردش دستور خودشان هدایت می‌شوند تا لینک اعلان ۴۰۳ نشود.
+        var viewers = await UsersWithWorkOrderViewAsync();
+        var subAssigneesFa = await AssigneesFaAsync(wo.Id);
 
         // ۲) مالکان بالادست — پاسخِ زیر-دستور باید به اطلاع کسی هم برسد که دستور کار
         //    بالاسری را صادر کرده است (A). برای هر والد یک اعلان، با لینک قابل‌بازکردن.
@@ -1463,17 +1613,10 @@ public class WorkOrdersController : ControllerBase
                 ? $"{wo.Number} «{wo.Title}» — زیر-دستورِ {anc.Number} («{anc.Title}») که {wo.OwnerName} به {subAssigneesFa} سپرده بود — {MyUsername}: {result}{note}"
                 : $"{wo.Number} «{wo.Title}» — در زنجیرهٔ {anc.Number} («{anc.Title}») — {MyUsername}: {result}{note}";
 
-            await _notify.SendAsync(anc.OwnerUserId, "پاسخ زیر-دستور کار 📋", body,
-                MyUsername, "دستور کار", link);
+            if (!await TryAfterCommitAsync(() => _notify.SendAsync(anc.OwnerUserId, "پاسخ زیر-دستور کار 📋", body,
+                MyUsername, "دستور کار", link))) ok = false;
         }
-
-        // ۳) ثبت در تاریخچهٔ دستورهای بالاسری — تا در «گردش کار» والد هم ردّ پاسخ بماند.
-        if (ancestors.Count > 0)
-        {
-            foreach (var anc in ancestors)
-                Log(anc.Id, "SubReply", $"پاسخ زیر-دستور {wo.Number} «{wo.Title}» — {MyUsername}: {result}{note}");
-            await _db.SaveChangesAsync();
-        }
+        return ok;
     }
 
     /// <summary>
@@ -1621,7 +1764,13 @@ public class WorkOrdersController : ControllerBase
     /// (برخلاف ویرایش که پس از اولین رویت قفل می‌شود). فقط اضافه می‌کند؛ گیرندگان فعلی دست نمی‌خورند.
     /// قواعد انتخاب افراد همان ثبت دستور کار است: «به دیگران» + لیست مجاز.
     /// </summary>
-    public class AddAssigneesDto { public List<int> UserIds { get; set; } = new(); public string? Note { get; set; } public bool SendSms { get; set; } }
+    public class AddAssigneesDto
+    {
+        public List<int> UserIds { get; set; } = new();
+        public string? Note { get; set; }
+        public bool SendSms { get; set; } // Legacy field; automatic SMS follows company settings.
+        public string? ClientRequestId { get; set; }
+    }
 
     [HttpPost("{id:int}/assignees")]
     public async Task<IActionResult> AddAssignees(int id, [FromBody] AddAssigneesDto dto)
@@ -1629,17 +1778,42 @@ public class WorkOrdersController : ControllerBase
         var ids = (dto?.UserIds ?? new()).Where(x => x > 0).Distinct().ToList();
         if (ids.Count == 0) return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
         if (ids.Count > 50) return BadRequest(new { message = "در هر مرحله حداکثر ۵۰ نفر قابل افزودن است." });
+        if (dto!.ClientRequestId?.Length > 200) return BadRequest(new { message = "شناسهٔ درخواست معتبر نیست." });
 
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
+        var requestKey = string.IsNullOrWhiteSpace(dto.ClientRequestId) ? null
+            : RequestKey("assign", wo.CompanyId ?? 0, MyUserId, id, dto.ClientRequestId);
+        var fingerprint = requestKey is null ? null : Fingerprint("assign", new
+        {
+            users = ids.OrderBy(x => x).ToArray(), note = dto.Note?.Trim() ?? ""
+        });
+        if (await FindRequestAsync(requestKey) is { } hit)
+        {
+            if (!WorkOrderRequestIdentity.SamePayload(hit.Fingerprint, fingerprint)) return ChangedRequestConflict();
+            return Ok(new { added = 0, skipped = 0, duplicate = true, smsStageFailed = false, letterFlowAdded = 0 });
+        }
         if (wo.Status != "Open")
             return BadRequest(new { message = "دستور کار بسته است؛ برای افزودن نفر ابتدا آن را بازگشایی کنید." });
 
         var existingIds = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).Select(a => a.UserId).ToListAsync();
         var dup = ids.Where(existingIds.Contains).ToList();
-        if (dup.Count == ids.Count) return BadRequest(new { message = "افراد انتخابی از قبل در گردش این دستور کار هستند." });
+        if (dup.Count == ids.Count)
+        {
+            // Bind even a no-op identified request, so a late retry cannot re-add a person
+            // who was removed in the meantime. No SMS is staged for this log.
+            if (requestKey is not null)
+            {
+                var unchangedLog = Log(wo.Id, "AssigneesUnchanged", "افزودن نفر تغییری نداشت؛ افراد انتخاب‌شده قبلاً در گردش بودند.");
+                unchangedLog.RequestKey = requestKey;
+                unchangedLog.PayloadFingerprint = fingerprint;
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+            }
+            return Ok(new { added = 0, skipped = dup.Count, duplicate = true, smsStageFailed = false, letterFlowAdded = 0 });
+        }
         ids = ids.Except(dup).ToList();
 
         var others = ids.Where(x => x != MyUserId).ToList();
@@ -1670,32 +1844,36 @@ public class WorkOrdersController : ControllerBase
         var note = dto!.Note?.Trim();
         var names = string.Join("، ", users.Select(UserDisplay.Name));
         var text = $"افزودن به گردش: {names}" + (string.IsNullOrWhiteSpace(note) ? "" : " — " + note);
-        Log(wo.Id, "AssigneesAdded", text.Length > 4000 ? text[..4000] : text);
+        var addedLog = Log(wo.Id, "AssigneesAdded", text.Length > 4000 ? text[..4000] : text);
+        addedLog.RequestKey = requestKey;
+        addedLog.PayloadFingerprint = fingerprint;
 
         // دستور کارِ متصل به نامه: افراد جدید در گردش واقعی همان نامه هم قرار می‌گیرند تا از
         // فهرست دستور کار بتوانند نامه را باز کنند (مبدأ از خود رکورد خوانده می‌شود، نه از کلاینت).
-        var letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, users.Select(u => u.Id));
+        var letterNotices = new List<DeferredLetterNotice>();
+        var letterFlowAdded = await SyncOrderAssigneesToLetterFlowAsync(wo, users.Select(u => u.Id), letterNotices);
         await _db.SaveChangesAsync();
+        var smsStaged = await TryStageSmsAsync(tx, wo, addedLog, users.Select(u => u.Id).ToArray(), WorkOrderSmsEventType.Referral);
         await tx.CommitAsync();
 
+        var notificationsOk = await NotifyDeferredLetterAccessAsync(letterNotices);
+        async Task Attempt(Func<Task> action) { if (!await TryAfterCommitAsync(action)) notificationsOk = false; }
         var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
         foreach (var u in users.Where(u => u.Id != MyUserId))
-            await _notify.SendAsync(u.Id, "به دستور کار اضافه شدید 📋",
+            await Attempt(() => _notify.SendAsync(u.Id, "به دستور کار اضافه شدید 📋",
                 $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}{(string.IsNullOrWhiteSpace(note) ? "" : " — " + note)}",
-                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}"));
 
-        WorkOrderSmsResult? smsResult = dto.SendSms
-            ? await _sms.SendNewWorkOrderAsync(wo, users.Where(u => u.Id != MyUserId).ToList())
-            : null;
-
-        await _notify.BroadcastChangedAsync("workorders");
+        await Attempt(() => _notify.BroadcastChangedAsync("workorders"));
         if (letterFlowAdded > 0)
         {
-            await _notify.BroadcastChangedAsync("letters");
-            await _notify.BroadcastChangedAsync("incoming-letters");
-            await _notify.BroadcastChangedAsync("outgoing-letters");
+            await Attempt(() => _notify.BroadcastChangedAsync("letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("incoming-letters"));
+            await Attempt(() => _notify.BroadcastChangedAsync("outgoing-letters"));
         }
-        return Ok(new { added = users.Count, skipped = dup.Count, sms = smsResult, letterFlowAdded });
+        return Ok(new { added = users.Count, skipped = dup.Count, duplicate = false,
+            sms = (WorkOrderSmsResult?)null, smsStageFailed = !smsStaged,
+            notificationsFailed = !notificationsOk, letterFlowAdded });
     }
 
     // ================== همگام‌سازی دسترسی به نامه برای گیرندگان ==================

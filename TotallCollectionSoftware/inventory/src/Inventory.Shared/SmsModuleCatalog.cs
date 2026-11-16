@@ -8,12 +8,14 @@ namespace Inventory.Shared;
 public static class SmsModuleCatalog
 {
     public const string ShopRepairs = "Shop.Repairs";
+    public const string WorkOrders = "WorkOrders";
 
     public sealed record Entry(string Key, string Group, string Title);
 
     public static readonly IReadOnlyList<Entry> All = new[]
     {
-        new Entry(ShopRepairs, "سامانه فروشگاهی", "تعمیرات")
+        new Entry(ShopRepairs, "سامانه فروشگاهی", "تعمیرات"),
+        new Entry(WorkOrders, "دستور کار", "دستور کار")
     };
 
     public static bool Contains(string? key) => key is not null &&

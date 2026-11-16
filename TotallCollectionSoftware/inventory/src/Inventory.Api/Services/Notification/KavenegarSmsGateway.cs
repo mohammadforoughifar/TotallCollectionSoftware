@@ -32,7 +32,7 @@ public sealed record KavenegarSmsSendResult(
     int? MessageStatus = null,
     int? ProviderCode = null);
 
-/// <summary>Server-side SDK gateway; repair notifications use it through a durable queue.</summary>
+/// <summary>Server-side SDK gateway; integrated modules use it through durable queues.</summary>
 public interface IKavenegarSmsGateway
 {
     bool IsEnabled { get; }
@@ -41,6 +41,8 @@ public interface IKavenegarSmsGateway
     Task<KavenegarSmsSendResult> SendAsync(string recipient, string message);
     Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template);
     Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string token20, string template);
+    Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial,
+        string companyName, string title, string? deadline, string template);
 }
 
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
@@ -85,6 +87,26 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
 
     public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string token20, string template) =>
         SendLookupCoreAsync(recipient, token, companyName, template, token20, requireToken20: true);
+
+    public Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial,
+        string companyName, string title, string? deadline, string template)
+    {
+        if (!IsEnabled) return Task.FromResult(new KavenegarSmsSendResult(KavenegarSmsSendState.Disabled));
+        if (!IsLookupConfigured) return Task.FromResult(new KavenegarSmsSendResult(KavenegarSmsSendState.NotConfigured));
+        if (!KavenegarSmsValidation.Recipient(recipient) || !KavenegarSmsValidation.NumericToken(year) ||
+            !KavenegarSmsValidation.NumericToken(serial) || !KavenegarSmsValidation.CompanyToken(companyName) ||
+            !KavenegarSmsValidation.Token20(title) || !KavenegarSmsValidation.TemplateName(template) ||
+            (deadline is not null && !KavenegarSmsValidation.PlainToken(deadline)))
+            return Task.FromResult(new KavenegarSmsSendResult(KavenegarSmsSendState.InvalidRequest));
+
+        // The template supplies fixed WO/ and slash; number components stay numeric.
+        // token3 carries the no-space deadline, token10 the company, token20 the title.
+        // Each value is escaped exactly once, as in the repair lookup path.
+        return SendCoreAsync(api => api.VerifyLookupAsync(
+            Uri.EscapeDataString(recipient), Uri.EscapeDataString(year), Uri.EscapeDataString(serial),
+            deadline is null ? null! : Uri.EscapeDataString(deadline), Uri.EscapeDataString(companyName),
+            Uri.EscapeDataString(title), Uri.EscapeDataString(template), VerifyLookupType.Sms));
+    }
 
     private async Task<KavenegarSmsSendResult> SendLookupCoreAsync(string recipient, string token, string companyName,
         string template, string? token20, bool requireToken20)

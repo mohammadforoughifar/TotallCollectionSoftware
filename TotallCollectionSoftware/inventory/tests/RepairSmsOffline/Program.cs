@@ -174,8 +174,9 @@ class Test {
       new ICompanySmsRevocationHandler[] {new RepairSmsRevocationHandler(db)}) {ControllerContext=context};
    var get=await controller.Get(CancellationToken.None) as OkObjectResult;
    var dto=get?.Value as CompanySmsSettingsDto;
-   C(dto?.CompanyId==1 && dto.CompanyName=="فروشگاه اول" && dto.Modules.Single().Key==SmsModuleCatalog.ShopRepairs,
-      "settings read shows active company and integrated module");
+   C(dto?.CompanyId==1 && dto.CompanyName=="فروشگاه اول" && dto.Modules.Any(m=>m.Key==SmsModuleCatalog.ShopRepairs) &&
+     dto.Modules.Any(m=>m.Key==SmsModuleCatalog.WorkOrders && !m.Enabled),
+      "settings read shows active company and independently disabled work orders");
    SaveCompanySmsSettingsDto Choice(int id,bool enabled)=>new() {CompanyId=id,Modules=new() {new() {Key=SmsModuleCatalog.ShopRepairs,Enabled=enabled}}};
    C(await controller.Save(Choice(2,false),CancellationToken.None) is ConflictObjectResult && permission2.Enabled,
       "payload cannot change another company");
@@ -366,6 +367,8 @@ class Fake : IKavenegarSmsGateway {
    RecordAsync(r,token,name,null,template);
  public Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string r,string token,string companyName,string customerName,string template) =>
    RecordAsync(r,token,companyName,customerName,template);
+ public Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string r,string year,string serial,string name,string title,string? deadline,string template) =>
+   throw new Exception("repair fixture must not send work-order SMS");
  private async Task<KavenegarSmsSendResult> RecordAsync(string r,string token,string companyName,string? customerName,string template) {
    Calls++;Recipient=r;Token=token;CompanyName=companyName;CustomerName=customerName;Template=template;if(Throw) throw new Exception("fake failure");
    Entered?.TrySetResult(true);if(Hold is not null) await Hold.Task;return Result;

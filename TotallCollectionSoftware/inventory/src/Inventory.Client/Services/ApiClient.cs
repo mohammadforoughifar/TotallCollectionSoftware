@@ -187,6 +187,11 @@ public class ApiClient : IApiClient
     public async Task<T> GetLongAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path, null, LongCallTimeout);
 
     public async Task<T> PostAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body);
+    public async Task<T> PostForCompanyAsync<T>(string path, int companyId, object? body = null)
+    {
+        if (companyId <= 0) throw new ArgumentOutOfRangeException(nameof(companyId));
+        return await SendAsync<T>(HttpMethod.Post, path, body, companyId: companyId);
+    }
     public async Task<T> PostLongAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body, LongCallTimeout);
 
     public async Task<T> PutAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Put, path, body);
@@ -196,10 +201,14 @@ public class ApiClient : IApiClient
     public async Task<T> DeleteAsync<T>(string path) => await SendAsync<T>(HttpMethod.Delete, path);
 
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, int? companyId = null)
     {
         var req = new HttpRequestMessage(method, Url(path));
         AddAuth(req);
+        // A form with its own company selector can scope only this request; the server
+        // must still resolve and authorize the requested company through its middleware.
+        if (companyId is > 0)
+            req.Headers.TryAddWithoutValidation("X-Company-Id", companyId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
         await AddActiveCompanyHeaderAsync(req);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: JsonOpts);

@@ -34,9 +34,9 @@ var updateDatabaseOnly = args.Any(a => a.Equals("--update-database", StringCompa
 args = args.Where(a => !a.Equals("--update-database", StringComparison.OrdinalIgnoreCase)).ToArray();
 var builder = WebApplication.CreateBuilder(args);
 
-// تنظیمات محلی/عملیاتی خارج از گیت (اختیاری). چرا؟ چون appsettings.json ردیابی
-// می‌شود و هر کلیدی که در آن بماند وارد تاریخچهٔ گیت می‌شود. متغیر محیطی همچنان
-// اولویت بالاتری دارد، پس روی سرور می‌توان فقط با env کار کرد.
+// تنظیمات محلی/عملیاتی خارج از گیت (اختیاری). این فایل بعد از منابع پیش‌فرض
+// افزوده می‌شود؛ پس کلیدهای موجود در آن بر متغیر محیطی هم‌نام اولویت دارند.
+// با نبود آن کلید در فایل محلی، مقدار متغیر محیطی برای سرور قابل استفاده است.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false);
 
 // ---------- پوشه‌های ProgramData: fail-fast، نه فال‌بک بی‌صدا (گام ۳-ب) ----------
@@ -245,6 +245,9 @@ builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.RepairSmsDispatcher>();
 builder.Services.AddScoped<ICompanySmsRevocationHandler, Inventory.Api.Services.Repairs.RepairSmsRevocationHandler>();
 builder.Services.AddHostedService<Inventory.Api.Services.Repairs.RepairSmsWorker>();
+builder.Services.AddScoped<Inventory.Api.Services.ItAssets.WorkOrderSmsDispatcher>();
+builder.Services.AddScoped<ICompanySmsRevocationHandler, Inventory.Api.Services.ItAssets.WorkOrderSmsRevocationHandler>();
+builder.Services.AddHostedService<Inventory.Api.Services.ItAssets.WorkOrderSmsWorker>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopTradeInService>();
 builder.Services.AddScoped<Inventory.Api.Services.Repairs.ShopWarrantyService>();
@@ -287,7 +290,7 @@ builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory.Api.Services.FaCom.FaComService>(); // FaCom — ارتباطات داخلی
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
 builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(builder.Configuration.GetSection("KavenegarSms"));
-// SDK برای صف تعمیرات استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
+// SDK برای صف تعمیرات و دستور کار استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
 builder.Services.AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>();
 builder.Services.Configure<Inventory.Api.Services.Core.UserProfileOtpOptions>(builder.Configuration.GetSection("ProfileOtp"));
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery>();
@@ -706,10 +709,12 @@ var app = builder.Build();
         app.Logger.LogWarning(
             "[SMS] کلید KavenegarSms:ApiKey تنظیم نشده است — ارسال پیامک غیرفعال است (خطا نیست). " +
             "برای فعال‌سازی: متغیر محیطی KavenegarSms__ApiKey یا appsettings.Local.json (خارج از گیت).");
-    else if (string.IsNullOrWhiteSpace(smsOptions.Sender))
-        app.Logger.LogWarning("[SMS] کلید پیامک تنظیم شده ولی KavenegarSms:Sender خالی است — ارسال پیامک غیرفعال است.");
     else
-        app.Logger.LogInformation("[SMS] درگاه پیامک پیکربندی شده است (SdkSendEnabled={Enabled}).", smsOptions.SdkSendEnabled);
+    {
+        app.Logger.LogInformation("[SMS] کلید سرور تنظیم شده است؛ سوئیچ SDK={Enabled}. ارسال Lookup به الگوی تأییدشده و مجوز شرکت و ماژول نیز نیاز دارد.", smsOptions.SdkSendEnabled);
+        if (string.IsNullOrWhiteSpace(smsOptions.Sender))
+            app.Logger.LogWarning("[SMS] KavenegarSms:Sender خالی است؛ ارسال متنی معمولی تنظیم نشده است. Lookup به این خط وابسته نیست.");
+    }
 }
 
 if (updateDatabaseOnly)

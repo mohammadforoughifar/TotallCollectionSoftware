@@ -5,6 +5,7 @@ using Inventory.Api.Hubs;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.ItAssets;
+using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Licensing.Infrastructure;
@@ -31,9 +32,12 @@ public sealed class ServersController : ControllerBase
     private readonly HpeRedfishClient _redfish;
     private readonly ServerAlertNotificationService _alertNotifications;
     private readonly INotifyService _notify;
+    private readonly IWorkOrderSmsService _workOrderSms;
+    private readonly ILogger<ServersController> _logger;
 
     public ServersController(AppDbContext db, IEffectivePermissions perms, CredentialVaultCrypto crypto,
-        HpeRedfishClient redfish, ServerAlertNotificationService alertNotifications, INotifyService notify)
+        HpeRedfishClient redfish, ServerAlertNotificationService alertNotifications, INotifyService notify,
+        IWorkOrderSmsService workOrderSms, ILogger<ServersController> logger)
     {
         _db = db;
         _perms = perms;
@@ -41,6 +45,8 @@ public sealed class ServersController : ControllerBase
         _redfish = redfish;
         _alertNotifications = alertNotifications;
         _notify = notify;
+        _workOrderSms = workOrderSms;
+        _logger = logger;
     }
 
     private int UserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : 0;
@@ -330,6 +336,9 @@ public sealed class ServersController : ControllerBase
     public async Task<IActionResult> CreateWorkOrderFromAlert(long id)
     {
         if (!await HasAsync("Update") || !await HasWorkOrderAsync("Create")) return Forbid();
+        // Read the alert, its server and company authorization under the same serializable
+        // transaction as the link. A pre-transaction tracked entity could be stale on retry.
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         var (alert, server) = await FindAllowedAlertAsync(id);
         if (alert is null || server is null) return NotFound(new { message = "هشدار پیدا نشد." });
         if (alert.Status == "Resolved") return BadRequest(new { message = "برای هشدار رفع‌شده دستور کار جدید ایجاد نمی‌شود." });
@@ -349,10 +358,14 @@ public sealed class ServersController : ControllerBase
         var category = string.Equals(alert.Category, "Connection", StringComparison.OrdinalIgnoreCase) ? "ارتباط iLO" : "سلامت سخت‌افزار";
         var ownerName = await MyNameAsync();
         var title = $"رسیدگی به هشدار {category}: {server.Name}";
+        // Do not silently shorten the saved work-order title. Normal server names fit;
+        // reject oversized legacy data explicitly before creating any work order.
+        if (title.Length > 200)
+            return BadRequest(new { message = "عنوان دستور کار از ۲۰۰ نویسه بیشتر است؛ ابتدا نام سرور را اصلاح کنید." });
         var wo = new WorkOrder
         {
             CompanyId = server.CompanyId,
-            Title = title.Length <= 200 ? title : title[..200],
+            Title = title,
             Description = $"هشدار سرور: {server.Name}\nنوع: {category}\nشدت: {alert.Severity}\n\n{alert.Message}",
             OwnerUserId = UserId,
             OwnerName = ownerName,
@@ -364,31 +377,46 @@ public sealed class ServersController : ControllerBase
             Tags = ",سرور,هشدار,"
         };
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
-        // در Transaction دوباره بررسی می‌شود تا از دستورکار تکراری در درخواست‌های همزمان جلوگیری شود.
-        var lockedAlert = await _db.ServerAlerts.FirstOrDefaultAsync(a => a.Id == alert.Id);
-        if (lockedAlert is null) return NotFound(new { message = "هشدار پیدا نشد." });
-        if (lockedAlert.WorkOrderId is > 0) return Ok(new { id = lockedAlert.WorkOrderId, existing = true });
-
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
         wo.Number = $"WO/{new PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
         _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = assignee.Id, Name = UserDisplay.Name(assignee) });
-        _db.WorkOrderLogs.Add(new WorkOrderLog
+        var createdLog = new WorkOrderLog
         {
             OrderId = wo.Id, ActorName = ownerName, Action = "Created",
             Text = $"دستور کار از هشدار سرور «{server.Name}» ایجاد شد. هشدار #{alert.Id}"
-        });
-        lockedAlert.WorkOrderId = wo.Id;
+        };
+        _db.WorkOrderLogs.Add(createdLog);
+        alert.WorkOrderId = wo.Id;
         await WriteLogAsync(server, "AlertWorkOrder", "Success", $"دستور کار {wo.Number} برای هشدار #{alert.Id} ایجاد شد.");
         await _db.SaveChangesAsync();
+        // The selected server company was authorized above; SMS additionally requires
+        // that the middleware resolved that same company as active for this request.
+        var smsStaged = await _workOrderSms.TryStageAsync(transaction, wo, createdLog, new[] { assignee.Id },
+            WorkOrderSmsEventType.Registration, _db.ActiveCompanyId);
         await transaction.CommitAsync();
 
-        if (assignee.Id != UserId)
-            await _notify.SendAsync(assignee.Id, urgent ? "دستور کار فوری سرور 🔴" : "دستور کار جدید سرور 📋",
-                $"{wo.Number} — «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm}", ownerName, "دستور کار", $"/work-orders?open={wo.Id}");
-        await _notify.BroadcastChangedAsync("workorders");
-        return Ok(new { id = wo.Id, number = wo.Number, dueAt = wo.DueAt });
+        var notificationsOk = true;
+        try
+        {
+            if (assignee.Id != UserId)
+                await _notify.SendAsync(assignee.Id, urgent ? "دستور کار فوری سرور 🔴" : "دستور کار جدید سرور 📋",
+                    $"{wo.Number} — «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm}", ownerName, "دستور کار", $"/work-orders?open={wo.Id}");
+        }
+        catch (Exception ex)
+        {
+            notificationsOk = false;
+            try { _db.ChangeTracker.Clear(); } catch { }
+            _logger.LogWarning("Server work-order post-commit notification failed ({ErrorType}).", ex.GetType().Name);
+        }
+        try { await _notify.BroadcastChangedAsync("workorders"); }
+        catch (Exception ex)
+        {
+            notificationsOk = false;
+            _logger.LogWarning("Server work-order post-commit broadcast failed ({ErrorType}).", ex.GetType().Name);
+        }
+        return Ok(new { id = wo.Id, number = wo.Number, dueAt = wo.DueAt,
+            smsStageFailed = !smsStaged, notificationsFailed = !notificationsOk });
     }
 
     public sealed class SaveDto

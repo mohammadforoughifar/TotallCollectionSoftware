@@ -15,6 +15,13 @@ public sealed class KavenegarSmsOptions
     public string RepairReadyTemplate { get; set; } = "RepairReady";
     public string RepairDeliveredTemplate { get; set; } = "RepairDelivered";
 
-    // Independent of the existing work-order and profile SMS services; default is off.
+    // The user reported approval of the three templates. These are the proposed names;
+    // the server can override them if the account uses different names. SDK and
+    // company/module permission remain independent, default-off controls.
+    public string WorkOrderRegistrationTemplate { get; set; } = "WorkOrderRegistration";
+    public string WorkOrderReferralTemplate { get; set; } = "WorkOrderReferral";
+    public string WorkOrderReplyTemplate { get; set; } = "WorkOrderReply";
+
+    // Shared switch for integrated SDK senders. The independent profile OTP is unchanged.
     public bool SdkSendEnabled { get; set; }
 }

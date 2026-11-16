@@ -13,6 +13,8 @@ public interface IApiClient
     /// <summary>GET با سقف انتظار طولانی (۱۰ دقیقه) برای فراخوانی‌های AI.</summary>
     Task<T> GetLongAsync<T>(string path);
     Task<T> PostAsync<T>(string path, object? body = null);
+    /// <summary>POST برای شرکت انتخاب‌شده در همان فرم؛ دسترسی به شرکت همچنان در سرور بررسی می‌شود.</summary>
+    Task<T> PostForCompanyAsync<T>(string path, int companyId, object? body = null);
     /// <summary>POST با سقف انتظار طولانی (۱۰ دقیقه) برای فراخوانی‌های AI.</summary>
     Task<T> PostLongAsync<T>(string path, object? body = null);
     Task<T> PutAsync<T>(string path, object? body = null);

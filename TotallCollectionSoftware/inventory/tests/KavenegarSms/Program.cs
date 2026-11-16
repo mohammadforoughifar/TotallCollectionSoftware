@@ -195,6 +195,48 @@ foreach (var (recipient, token, name, template) in new[] {
     Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
         "Invalid lookup input must not reach the provider.");
 }
+// Work-order number uses two numeric tokens and literal slashes in the proposed template.
+// token3 carries the compact deadline, token20 the title; reply has no deadline or response body.
+fake.Body = Response();
+lookupBefore = fake.Count;
+var workDeadline = "۲۷آبان۱۴۰۵ساعت۱۴و۳۰";
+var workTitle = "سرویس دستگاه & بررسی";
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "000123", companyName, workTitle, workDeadline, "WorkOrderRegistration");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fake.Count == lookupBefore + 1 &&
+    fields["token"] == "1405" && fields["token2"] == "000123" && fields["token3"] == workDeadline &&
+    fields["token10"] == companyName && fields["token20"] == workTitle &&
+    fields["template"] == "WorkOrderRegistration" && !fields.ContainsKey("message"),
+    "Work-order registration lookup round-trips the number, title, deadline and company without form injection.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", companyName, workTitle, workDeadline, "WorkOrderReferral");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(result.State == KavenegarSmsSendState.Accepted && fields["template"] == "WorkOrderReferral" &&
+    fields["token3"] == workDeadline && fields["token10"] == companyName && fields["token20"] == workTitle,
+    "Work-order referral uses its distinct template with the same exact title, company and deadline.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", companyName, workTitle, null, "WorkOrderReply");
+fields = (fake.RequestBody ?? "").Split('&', StringSplitOptions.RemoveEmptyEntries)
+    .Select(part => part.Split('=', 2)).ToDictionary(pair => pair[0],
+        pair => Uri.UnescapeDataString((pair.Length > 1 ? pair[1] : "").Replace("+", " ")));
+Check(fields["token3"] == "" && fields["token20"] == workTitle && fields["token2"] == "123" && !fields.ContainsKey("message"),
+    "Work-order reply includes title but no deadline or response text.");
+lookupBefore = fake.Count;
+foreach (var (year, serial, title, deadline, template) in new[] {
+    ("WO/1405", "123", workTitle, workDeadline, "WorkOrderRegistration"),
+    ("1405", "12/3", workTitle, workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", workTitle, "تاریخ\nناقص", "WorkOrderRegistration"),
+    ("1405", "123", "عنوان_ناسازگار", workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", new string('ا',101), workDeadline, "WorkOrderRegistration"),
+    ("1405", "123", workTitle, workDeadline, "") })
+{
+    result = await gateway.SendWorkOrderLookupAsync("09120000000", year, serial, "شرکت", title, deadline, template);
+    Check(result.State == KavenegarSmsSendState.InvalidRequest && fake.Count == lookupBefore,
+        "Invalid work-order tokens and unconfigured template never reach the provider.");
+}
+
 fake.Body = Response(providerStatus: 427);
 result = await gateway.SendLookupAsync("09120000000", "0001", "فروشگاه", "RepairReady");
 Check(result.State == KavenegarSmsSendState.Failed && result.ProviderCode == 427,
@@ -214,6 +256,9 @@ Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefo
 result = await gateway.SendLookupWithToken20Async("09120000000", "0007", "فروشگاه", "علی رضایی", "RepairDelivered");
 Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
     "Default-off gateway also prevents the delivery lookup.");
+result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
+Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
+    "Default-off gateway also prevents the work-order lookup.");
 
 Console.WriteLine($"Kavenegar SDK gateway: {assertions} offline assertions passed.");
 

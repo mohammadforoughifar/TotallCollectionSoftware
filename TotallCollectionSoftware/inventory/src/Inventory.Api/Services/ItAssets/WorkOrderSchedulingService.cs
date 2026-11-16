@@ -26,7 +26,7 @@ public sealed class WorkOrderSchedulingService(AppDbContext db)
         var checklist = await db.WorkOrderChecklistItems.AsNoTracking().Where(c => c.OrderId == first.Id).ToListAsync();
         var orders = dates.Select(d => new WorkOrder
         {
-            Title = first.Title, Description = first.Description, OwnerUserId = first.OwnerUserId,
+            Title = first.Title, Description = first.Description, CompanyId = first.CompanyId, OwnerUserId = first.OwnerUserId,
             OwnerName = first.OwnerName, DueAt = d, Priority = first.Priority, Recurrence = first.Recurrence,
             RecurrenceSeriesId = first.RecurrenceSeriesId, RecurrenceScheduledAt = d,
             RecurrenceParentId = first.Id, SourceModule = first.SourceModule, SourceId = first.SourceId,

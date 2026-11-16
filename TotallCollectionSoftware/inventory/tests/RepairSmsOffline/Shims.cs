@@ -27,7 +27,7 @@ namespace Inventory.Shared.Entities {}
 namespace Inventory.Api.Services {
  public enum KavenegarSmsSendState { Disabled, NotConfigured, InvalidRequest, Accepted, Delivered, Failed, Unknown }
  public sealed record KavenegarSmsSendResult(KavenegarSmsSendState State, long? MessageId=null, int? MessageStatus=null, int? ProviderCode=null);
- public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string name, string template); Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template); }
+ public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string name, string template); Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template); Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template); }
 }
 namespace Inventory.Api.Data {
  public class SystemCompany { public int Id {get;set;} public string Name {get;set;}=""; public bool IsActive {get;set;}=true; }
@@ -119,6 +119,7 @@ namespace Microsoft.EntityFrameworkCore {
  }
  public static class Extensions {
    public static IQueryable<T> AsNoTracking<T>(this IQueryable<T> q)=>q;
+   public static IQueryable<T> IgnoreQueryFilters<T>(this IQueryable<T> q)=>q;
    public static Task<bool> AnyAsync<T>(this IQueryable<T> q, Expression<Func<T,bool>> predicate, CancellationToken ct=default)=>Task.FromResult(q.Any(predicate));
    public static Task<List<T>> ToListAsync<T>(this IQueryable<T> q, CancellationToken ct=default)=>Task.FromResult(q.ToList());
    public static Task<T?> FirstOrDefaultAsync<T>(this IQueryable<T> q, CancellationToken ct=default)=>Task.FromResult(q.FirstOrDefault());
