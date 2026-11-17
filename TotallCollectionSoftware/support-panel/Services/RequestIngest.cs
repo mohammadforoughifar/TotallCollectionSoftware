@@ -173,15 +173,20 @@ public static class RequestParser
 
                 if (root.TryGetProperty("company", out var companyObj) && companyObj.ValueKind == JsonValueKind.Object)
                 {
-                    rootId = Clean(GetString(companyObj, "companyId") ?? GetString(companyObj, "id"), 60);
+                    rootId = Clean(GetIdString(companyObj, "companyId") ?? GetIdString(companyObj, "id"), 60);
                     rootName = Clean(GetString(companyObj, "name") ?? GetString(companyObj, "title"), 200);
                 }
 
-                rootId ??= Clean(GetString(root, "companyId") ?? GetString(root, "companyCode"), 60);
+                rootId ??= Clean(GetIdString(root, "companyId") ?? GetIdString(root, "companyCode"), 60);
                 rootName ??= Clean(GetString(root, "companyName") ?? GetString(root, "companyTitle"), 200);
 
                 if (!string.IsNullOrWhiteSpace(rootId))
                     result.InterestedCompanies.Add((rootId!.Trim(), string.IsNullOrWhiteSpace(rootName) ? null : rootName));
+                else if (!string.IsNullOrWhiteSpace(rootName))
+                    // شناسه نیامده ولی نام هست ⇒ فایل از نسخه‌ای است که شناسهٔ شرکت را همراه نکرده.
+                    // پیام عمداً «نسخه» را نام می‌برد تا پشتیبان بداند راه‌حل، گرفتن فایل تازه است.
+                    result.Warnings.Add($"در فایل درخواست شناسهٔ شرکت نیامده — نام شرکت «{rootName}» خوانده شد. " +
+                                        "فایل درخواست را از نسخهٔ تازهٔ نرم‌افزار مشتری بگیرید تا شناسهٔ شرکت هم داخل فایل باشد.");
             }
 
             // ---- شرکت‌های اعلام‌شده توسط مشتری (پیشنهاد، نه سند) ----
@@ -199,7 +204,7 @@ public static class RequestParser
                     }
                     else if (company.ValueKind == JsonValueKind.Object)
                     {
-                        id = Clean(GetString(company, "companyId") ?? GetString(company, "id"), 60);
+                        id = Clean(GetIdString(company, "companyId") ?? GetIdString(company, "id"), 60);
                         name = Clean(GetString(company, "name") ?? GetString(company, "title"), 200);
                     }
 
@@ -332,6 +337,33 @@ public static class RequestParser
 
     private static string? GetString(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+    /// <summary>
+    /// خواندن «شناسه» که در نسخه‌های مختلف نرم‌افزار مشتری گاهی رشته و گاهی عدد بوده است.
+    ///
+    /// <para>
+    /// نمونهٔ واقعی: نسخه‌ای از مشتری شناسهٔ شرکت را به‌صورت عدد <c>0</c> می‌فرستد
+    /// (<c>"companyId": 0</c>, <c>"company": {"id": 0}</c>) در حالی که نام شرکت درست است.
+    /// با <see cref="GetString"/> این مقدار نادیده گرفته می‌شد و درخواست «بی‌شرکت» ثبت می‌شد؛
+    /// حالا عددِ غیرصفر به رشته تبدیل می‌شود و صفر/تهی به‌معنای «شناسه نیامده» است.
+    /// </para>
+    /// </summary>
+    private static string? GetIdString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value)) return null;
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.String:
+                // رشتهٔ "0" عمداً معتبر شمرده می‌شود: اگر محصول شناسه را به‌صورت رشته فرستاده،
+                // یعنی شناسهٔ واقعی است؛ فقط «عددِ صفر» نشانهٔ «نیامده» است.
+                var text = value.GetString();
+                return string.IsNullOrWhiteSpace(text) ? null : text;
+            case JsonValueKind.Number when value.TryGetInt64(out var number):
+                return number <= 0 ? null : number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            default:
+                return null;
+        }
+    }
 
     private static int? GetInt(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
