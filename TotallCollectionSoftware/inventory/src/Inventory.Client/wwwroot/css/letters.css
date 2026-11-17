@@ -975,3 +975,15 @@
     font-size:11.5px; color:#1e3a8a; line-height:1.7; }
 .ltx .self-erja-hint > i { color:#2563eb; margin-top:2px; }
 .ltx .self-erja-hint b { color:#1d4ed8; }
+
+/* ── عکس کاربر به‌جای آیکن «شخص» ──
+   در نودهای گردش نامه، فهرست گیرندگان، «افراد در گردش» و کمبوی انتخاب گیرنده
+   (فرم ارجاع/هامش)، عکس واقعی کاربر نمایش داده می‌شود؛ اگر عکسی نداشته باشد،
+   API همان عکس پیش‌فرض کاربر را برمی‌گرداند.
+   اندازه و گردی از پدر (span.mini) می‌آید تا چیدمان قبلی نشکند. */
+.ltx .mini { overflow: hidden; }
+.ltx .mini .user-avatar {
+    width: 100%; height: 100%;
+    border: 0; box-shadow: none; border-radius: 99px;
+    background: #e0e7ff; object-fit: cover; display: block;
+}

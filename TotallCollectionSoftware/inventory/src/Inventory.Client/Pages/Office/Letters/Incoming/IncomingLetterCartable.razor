@@ -512,7 +512,7 @@
                                     @foreach (var e in activeDetail.Erjas.GroupBy(x => x.ReciverUserId).Select(g => g.First()))
                                     {
                                         <span class="pp">
-                                            <span class="mini"><i class="bi bi-person"></i></span>
+                                            <span class="mini"><UserAvatar SystemUserId="@e.ReciverUserId" Size="18" /></span>
                                             @e.ReciverName (@e.Type)
                                         </span>
                                     }

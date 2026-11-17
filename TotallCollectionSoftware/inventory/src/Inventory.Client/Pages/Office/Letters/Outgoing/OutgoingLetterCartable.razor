@@ -533,9 +533,9 @@
                         <div class="scard">
                             <h3><i class="bi bi-people-fill"></i> گیرندگان داخلی</h3>
                             <div class="ppl">
-                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (گیرنده)</span> }
-                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (ارجاع)</span> }
-                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (هامش)</span> }
+                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (گیرنده)</span> }
+                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (ارجاع)</span> }
+                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (هامش)</span> }
                                 @if (selected.ReciversGirande.Count == 0 && selected.ReciversErja.Count == 0 && selected.ReciversHamesh.Count == 0)
                                 {
                                     <span class="pp" style="opacity:.6">بدون گردش داخلی — مستقیم صادر شده</span>

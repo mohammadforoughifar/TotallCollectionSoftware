@@ -574,9 +574,9 @@
                         <div class="scard">
                             <h3><i class="bi bi-people-fill"></i> گیرندگان</h3>
                             <div class="ppl">
-                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (گیرنده)</span> }
-                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (ارجاع)</span> }
-                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><i class="bi bi-person"></i></span> @u.FullName (هامش)</span> }
+                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (گیرنده)</span> }
+                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (ارجاع)</span> }
+                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (هامش)</span> }
                             </div>
                         </div>
                     </aside>
@@ -1266,13 +1266,13 @@
     {
         openMenuId = 0;
         _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber,
-            string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date);
+            string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date, l.SenderUserId);
     }
 
     private void MenuGardeshCur()
     {
         if (selected == null) return;
-        _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt);
+        _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt, selected.SenderUserId);
     }
 
     private bool printingPdf, printMenuOpen;

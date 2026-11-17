@@ -123,7 +123,7 @@
                                                     var s3 = sg;
                                                     <li>
                                                         <div class="tnode">
-                                                            <span class="mini"><i class="bi bi-person"></i></span>
+                                                            <span class="mini"><UserAvatar SystemUserId="@s3.UserId" Size="26" /></span>
                                                             <div><b>@s3.DisplayName</b><small> — امضا کننده @(s3.Order)@(string.IsNullOrWhiteSpace(s3.SignNote) ? "" : " · " + s3.SignNote)</small></div>
                                                             <span class="tst @(s3.IsSigned ? "g" : "w")">@(s3.IsSigned ? "امضا شد" : "در انتظار")</span>
                                                         </div>
@@ -164,7 +164,7 @@
                                                         var s4 = sg;
                                                         <li>
                                                             <div class="fnode @(s4.IsSigned ? "ok" : "wt")">
-                                                                <span class="mini"><i class="bi bi-person"></i></span>
+                                                                <span class="mini"><UserAvatar SystemUserId="@s4.UserId" Size="26" /></span>
                                                                 <div><b>@s4.DisplayName</b><small>امضا کننده @(s4.Order)</small></div>
                                                                 <span class="fdot @(s4.IsSigned ? "g" : "w")"></span>
                                                             </div>
@@ -254,7 +254,7 @@
     }
     private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
         <div class="tnode gnode-click @(selectedNode == n ? "sel" : "")" @onclick="() => SelectNode(n)">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small> — @NodeSub(n)</small></div>
             <span class="tst @(IsDone(n) ? "g" : "w")">@StLabel(n)</span>
         </div>
@@ -262,7 +262,7 @@
     </li>;
     private RenderFragment FlowNode(ErjaTreeNodeDto n) => @<li>
         <div class="fnode @(IsDone(n) ? "ok" : "wt") gnode-click" @onclick="() => SelectNode(n)">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small>@NodeSub(n)</small></div>
             <span class="fdot @(IsDone(n) ? "g" : "w")"></span>
         </div>

@@ -62,7 +62,7 @@
                         <ul>
                             <li>
                                 <div class="tnode">
-                                    <span class="mini"><i class="bi bi-person"></i></span>
+                                    <span class="mini"><UserAvatar SystemUserId="@senderUserId" Size="26" /></span>
                                     <div><b>@senderName</b><small> — فرستنده · @letterDate.ToFaDateTime()</small></div>
                                     <span class="tst p">شروع گردش</span>
                                 </div>
@@ -80,7 +80,7 @@
                             <ul>
                                 <li>
                                     <div class="fnode root">
-                                        <span class="mini"><i class="bi bi-person"></i></span>
+                                        <span class="mini"><UserAvatar SystemUserId="@senderUserId" Size="26" /></span>
                                         <div><b>@senderName</b><small>فرستنده</small></div>
                                         <span class="fdot p"></span>
                                     </div>
@@ -175,15 +175,19 @@
     private int view;
 
     private string title = "", letterNumber = "", senderName = "";
+
+    /// <summary>شناسهٔ فرستندهٔ نامه — برای نمایش عکس او به‌جای آیکن عمومی «شخص».</summary>
+    private int senderUserId;
     private DateTime letterDate;
     private List<ErjaTreeNodeDto> roots = new();
 
     /// <summary>ایستگاه انتخاب‌شده برای نمایش جزئیات</summary>
     private ErjaTreeNodeDto? selectedNode;
 
-    public async Task Open(int letterId, string letterTitle, string number, string sender, DateTime date)
+    public async Task Open(int letterId, string letterTitle, string number, string sender, DateTime date, int senderUserId = 0)
     {
         title = letterTitle; letterNumber = number; senderName = sender; letterDate = date;
+        this.senderUserId = senderUserId;
         view = 0; visible = true; loading = true; selectedNode = null;
         StateHasChanged();
         try { roots = await LetterSvc.GetGardeshAsync(letterId); }
@@ -239,7 +243,7 @@
     private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
         <div class="tnode gnode-click @(selectedNode == n ? "sel" : "")" style="@(selectedNode == n ? "border-color:var(--p);box-shadow:0 0 0 3px rgba(79,70,229,.12)" : "")"
              @onclick="() => SelectNode(n)">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small> — @NodeSub(n)</small></div>
             <span class="tst @(IsDone(n) ? "g" : "w")">@StLabel(n)</span>
         </div>
@@ -258,7 +262,7 @@
     private RenderFragment FlowNode(ErjaTreeNodeDto n) => @<li>
         <div class="fnode @(IsDone(n) ? "ok" : "wt") gnode-click" style="@(selectedNode == n ? "border-color:var(--p);box-shadow:0 0 0 3px rgba(79,70,229,.15)" : "")"
              @onclick="() => SelectNode(n)">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small>@(NodeSub(n).Length > 34 ? NodeSub(n)[..34] + "…" : NodeSub(n))</small></div>
             <span class="fdot @(IsDone(n) ? "g" : "w")"></span>
         </div>

@@ -178,7 +178,7 @@
 
     private RenderFragment FlowNode(ErjaTreeNodeDto n) => @<li>
         <div class="fnode @(IsDone(n) ? "ok" : "wt")">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small>@NodeSub(n)</small></div>
             <span class="fdot" style="background:@(IsDone(n) ? "#22c55e" : "#f59e0b")"></span>
         </div>
@@ -191,7 +191,7 @@
     // گرهٔ بازگشتی درختواره — معادل الگوی GardeshModal نامه داخلی/صادره
     private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
         <div class="tnode">
-            <span class="mini"><i class="bi bi-person"></i></span>
+            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
             <div><b>@n.Reciver</b><small> — @NodeSub(n)</small></div>
             <span class="tst @(IsDone(n) ? "g" : "w")">@StLabel(n)</span>
         </div>
