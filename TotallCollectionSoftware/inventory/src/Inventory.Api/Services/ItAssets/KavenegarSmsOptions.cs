@@ -3,7 +3,7 @@ namespace Inventory.Api.Services.ItAssets;
 /// <summary>
 /// Shared Kavenegar settings, as read from appsettings.json. These are the fallback:
 /// once an ApiKey is saved in the AppSettings table it replaces the key, sender and
-/// send switch together (see KavenegarSmsStoredSettings), so the configuration survives
+/// send switch together (see KavenegarSmsSettingsCache), so the configuration survives
 /// a publish. Never put a real ApiKey in source control or send one to the browser.
 /// </summary>
 public sealed class KavenegarSmsOptions

@@ -48,9 +48,8 @@ public interface IKavenegarSmsGateway
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
 {
     private readonly KavenegarSmsOptions _file;
-    private readonly Func<KavenegarSmsOptions?>? _stored;
+    private readonly KavenegarSmsSettingsCache? _cache;
     private readonly Func<HttpMessageHandler> _handlerFactory;
-    private KavenegarSmsOptions? _resolved;
 
     public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options)
         : this(options, () => SharedTransport.Handler)
@@ -58,26 +57,27 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
     }
 
     /// <summary>
-    /// درگاهی که تنظیماتش را از دیتابیس می‌گیرد و در نبود آن به فایل برمی‌گردد.
+    /// درگاهی که تنظیماتش را از کش حافظه می‌گیرد و در نبود مقدار ذخیره‌شده به فایل برمی‌گردد.
     /// </summary>
-    public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<KavenegarSmsOptions?> stored)
-        : this(options, () => SharedTransport.Handler, stored)
+    public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, KavenegarSmsSettingsCache cache)
+        : this(options, () => SharedTransport.Handler, cache)
     {
     }
 
     // Tests supply an in-memory handler, so they never contact the SMS provider.
     internal KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<HttpMessageHandler> handlerFactory,
-        Func<KavenegarSmsOptions?>? stored = null)
+        KavenegarSmsSettingsCache? cache = null)
     {
         _file = options.Value;
         _handlerFactory = handlerFactory;
-        _stored = stored;
+        _cache = cache;
     }
 
-    // Settings are read once per scope and then reused, so a queue batch cannot see the
-    // key change halfway through. A caller that saves new settings gets them on its next
-    // request, which is the same freshness the other database-backed integrations give.
-    private KavenegarSmsOptions Options => _resolved ??= _stored?.Invoke() ?? _file;
+    // A plain in-memory field read: no database call, no blocking. These properties run on
+    // synchronous, hot paths (work-order and repair queues, watchers), so any I/O here
+    // starves the thread pool under load and surfaces as a false "SMS disabled".
+    // The cache is refreshed asynchronously and updated the moment settings are saved.
+    private KavenegarSmsOptions Options => _cache?.Current ?? _file;
 
     public bool IsEnabled => Options.SdkSendEnabled;
     // Presence only; this does not verify the key, sender ownership or network connectivity.

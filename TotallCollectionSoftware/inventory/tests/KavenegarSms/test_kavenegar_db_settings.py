@@ -17,7 +17,7 @@ ENTITY = 'src/Inventory.Api/Entities/Core/AppSetting.cs'
 SCHEMA = 'src/Inventory.Api/Data/AppSettingsSchemaV1.cs'
 SERVICE = 'src/Inventory.Api/Services/Catalog/InventoryService.cs'
 GATEWAY = 'src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs'
-STORED = 'src/Inventory.Api/Services/ItAssets/KavenegarSmsStoredSettings.cs'
+CACHE = 'src/Inventory.Api/Services/ItAssets/KavenegarSmsSettingsCache.cs'
 DTO = 'src/Inventory.Shared/Dtos/CatalogDtos.cs'
 PAGE = 'src/Inventory.Client/Pages/Settings/Index.razor'
 
@@ -63,22 +63,52 @@ class KavenegarDatabaseSettings(unittest.TestCase):
         self.assertRegex(save, r'else if \(!string\.IsNullOrWhiteSpace\(dto\.KavenegarApiKey\)\)')
         self.assertIn('s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;', save)
 
-    def test_gateway_prefers_the_database_and_falls_back_to_the_file(self):
+    def test_gateway_prefers_the_cache_and_falls_back_to_the_file(self):
         gateway = read(GATEWAY)
-        stored = read(STORED)
-        # One resolved snapshot, database first, file second.
-        self.assertIn('_resolved ??= _stored?.Invoke() ?? _file', gateway)
+        # Cached value first, appsettings.json second.
+        self.assertIn('_cache?.Current ?? _file', gateway)
         # The synchronous surface the queues and tests rely on is unchanged.
         for prop in ('bool IsEnabled', 'bool IsConfigured', 'bool IsLookupConfigured'):
             self.assertIn(prop, gateway)
-        # An empty key in the database means "not configured here", so the file wins.
-        self.assertIn('string.IsNullOrWhiteSpace(row.KavenegarApiKey)) return null;', stored)
-        # A database missing the new columns must not take SMS down.
-        self.assertIn('catch', stored)
 
-    def test_registration_passes_the_database_reader(self):
+    def test_sync_gateway_path_never_touches_the_database(self):
+        """The regression this guards: a blocking query behind IsEnabled starved the thread
+        pool, and the resulting failure was misreported as "SMS disabled" on the work order."""
+        gateway = read(GATEWAY)
+        for forbidden in ('AppDbContext', 'db.AppSettings', 'FirstOrDefault(',
+                          'AsNoTracking', 'Microsoft.EntityFrameworkCore'):
+            self.assertNotIn(forbidden, gateway,
+                             'the gateway must not reach the database on its synchronous path')
+
+    def test_cache_reads_async_logs_failures_and_keeps_last_good_value(self):
+        cache = read(CACHE)
+        # Async only; a synchronous query here is what caused the outage.
+        self.assertIn('await db.AppSettings', cache)
+        self.assertIn('FirstOrDefaultAsync', cache)
+        self.assertNotIn('.FirstOrDefault()', cache)
+        # A failed read must be visible and must not disable sending.
+        self.assertRegex(cache, r'catch \(Exception ex\)')
+        self.assertIn('_log.LogWarning(ex', cache)
+        failure_block = cache[cache.index('catch (Exception ex)'):]
+        self.assertNotIn('_stored = null', failure_block.split('public void Apply')[0],
+                         'a failed refresh must keep the last known good settings')
+        # An empty key means "nothing stored", so the file values apply again.
+        self.assertIn('string.IsNullOrEmpty(key)', cache)
+
+    def test_cache_is_a_singleton_refreshed_in_the_background_and_primed_at_startup(self):
         program = read('src/Inventory.Api/Program.cs')
-        self.assertIn('KavenegarSmsStoredSettings.Read(db, options.Value)', program)
+        self.assertIn('AddSingleton<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache>', program)
+        self.assertIn('AddHostedService<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsRefresher>', program)
+        # Primed right after the migrations so the first request sees real settings.
+        self.assertIn('smsCache.RefreshAsync(', program)
+        self.assertLess(program.index('DbInitializer.InitializeAsync(app);'),
+                        program.index('smsCache.RefreshAsync('))
+
+    def test_saving_settings_updates_the_cache_immediately(self):
+        service = read(SERVICE)
+        self.assertIn('_smsCache.Apply(s.KavenegarApiKey, s.KavenegarSender, s.KavenegarSdkSendEnabled', service)
+        save = service[service.index('SaveSettingsAsync'):]
+        self.assertLess(save.index('await _db.SaveChangesAsync();'), save.index('_smsCache.Apply('))
 
     def test_dto_and_settings_page_expose_the_fields(self):
         dto = read(DTO)

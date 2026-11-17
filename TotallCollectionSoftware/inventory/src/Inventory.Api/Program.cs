@@ -298,14 +298,16 @@ builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(
 // SDK برای صف تعمیرات و دستور کار استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
 // کلید/خط/سوئیچ پیامک از جدول تنظیمات خوانده می‌شود تا با هر publish پاک نشود،
 // دقیقاً مثل کلید «سفیر بله» بالاتر. تا وقتی کلیدی ذخیره نشده، appsettings.json معتبر است.
-builder.Services.AddScoped<IKavenegarSmsGateway>(sp =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<
-        Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>();
-    var db = sp.GetRequiredService<AppDbContext>();
-    return new KavenegarSmsGateway(options,
-        () => Inventory.Api.Services.ItAssets.KavenegarSmsStoredSettings.Read(db, options.Value));
-});
+//
+// مقدارها در یک کش Singleton نگهداری و به‌صورت ناهمگام تازه می‌شوند. درگاه هرگز خودش
+// دیتابیس را صدا نمی‌زند: IsEnabled/IsConfigured روی مسیرهای همگام و داغ اجرا می‌شوند و
+// هر I/O آنجا thread را بلاک می‌کند و زیر بار استخر thread را گرسنه می‌کند.
+builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache>();
+builder.Services.AddHostedService<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsRefresher>();
+builder.Services.AddScoped<IKavenegarSmsGateway>(sp => new KavenegarSmsGateway(
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<
+        Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>(),
+    sp.GetRequiredService<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache>()));
 builder.Services.Configure<Inventory.Api.Services.Core.UserProfileOtpOptions>(builder.Configuration.GetSection("ProfileOtp"));
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery>();
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserProfileService, Inventory.Api.Services.Core.UserProfileService>();
@@ -793,6 +795,20 @@ else if (schemaVerbose)
 // ساخت دیتابیس و داده اولیه (نه در زمان ابزارهای EF)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
+
+// پر کردن کش تنظیمات پیامک بلافاصله پس از مهاجرت‌ها، تا اولین درخواست هم مقدار واقعی
+// را ببیند و نه مقدار فایل. شکستش هرگز بالا آمدن برنامه را متوقف نمی‌کند.
+if (!EF.IsDesignTime)
+{
+    using var smsScope = app.Services.CreateScope();
+    var smsCache = app.Services.GetRequiredService<Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache>();
+    var smsFile = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<
+        Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>().Value;
+    await smsCache.RefreshAsync(smsScope.ServiceProvider.GetRequiredService<AppDbContext>(), smsFile);
+    app.Logger.LogInformation(
+        "[SMS] تنظیمات پیامک از دیتابیس بارگذاری شد؟ {Loaded} — منبع فعال: {Source}",
+        smsCache.EverLoaded, smsCache.Current is null ? "appsettings.json" : "دیتابیس");
+}
 
 // ================== آماده‌سازی لایسنس ==================
 // «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز

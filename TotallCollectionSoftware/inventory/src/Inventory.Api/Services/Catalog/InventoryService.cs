@@ -18,11 +18,17 @@ public class InventoryService : IInventoryService
 {
     private readonly Db.AppDbContext _db;
     private readonly ILogger<InventoryService> _log;
+    private readonly Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache? _smsCache;
+    private readonly Inventory.Api.Services.ItAssets.KavenegarSmsOptions? _smsFile;
 
-    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log, IConfiguration? configuration = null)
+    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log, IConfiguration? configuration = null,
+        Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache? smsCache = null,
+        Microsoft.Extensions.Options.IOptions<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>? smsFile = null)
     {
         _db = db;
         _log = log;
+        _smsCache = smsCache;
+        _smsFile = smsFile?.Value;
     }
 
     // =============================== تنظیمات ===============================
@@ -74,6 +80,10 @@ public class InventoryService : IInventoryService
         s.KavenegarSender = string.IsNullOrWhiteSpace(dto.KavenegarSender) ? null : dto.KavenegarSender.Trim();
         s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;
         await _db.SaveChangesAsync();
+        // اعمال فوری روی کش تا تغییر بدون ری‌استارت و بدون انتظار برای تازه‌سازی دوره‌ای
+        // بلافاصله در ارسال‌های بعدی دیده شود.
+        if (_smsCache is not null && _smsFile is not null)
+            _smsCache.Apply(s.KavenegarApiKey, s.KavenegarSender, s.KavenegarSdkSendEnabled, _smsFile);
         return await GetSettingsAsync();
     }
 
