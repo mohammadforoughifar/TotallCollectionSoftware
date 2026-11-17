@@ -18,6 +18,12 @@
     public bool ManifestOk { get; set; }
     public List<string> KeyWarnings { get; set; } = new();
 
+    /// <summary>نتیجهٔ سنجش کلید امضا با کلیدهای جاسازی‌شده در محصول.</summary>
+    public SignerKeyService.ProductKeyCheck? ProductCheck { get; set; }
+
+    /// <summary>نتیجهٔ بررسی یک فایل لایسنس با کلیدهای محصول (شبیه‌سازی نصب مشتری).</summary>
+    public (bool Ok, string Headline, List<string> Details)? LicenseCheck { get; set; }
+
     public async Task<IActionResult> OnPostKeygenAsync()
     {
         var keyId = Request.Form["keyId"].ToString();
@@ -49,6 +55,20 @@
         var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
         var (ok, message) = await Keys.RegisterInManifestAsync(folder, actor);
         ManifestOk = ok; ManifestMessage = message;
+        return Page();
+    }
+
+    /// <summary>«آیا کلید امضا با کلید داخل محصول می‌خواند؟» — همان علت خطای LICENSE_REJECTED.</summary>
+    public IActionResult OnPostCheckProductKey()
+    {
+        ProductCheck = Keys.CheckAgainstProductKeys(Request.Form["productPass"].ToString());
+        return Page();
+    }
+
+    /// <summary>بررسی فایل لایسنس با کلیدهای محصول — دقیقاً همان کاری که نصب مشتری می‌کند.</summary>
+    public IActionResult OnPostCheckLicenseProduct()
+    {
+        LicenseCheck = Keys.CheckLicenseAgainstProductKeys(Request.Form["licenseFile"].ToString());
         return Page();
     }
 
@@ -241,6 +261,90 @@
                     @foreach (var w in KeyWarnings) { <li>@w</li> }
                 </ul>
             </div>
+        </div>
+    }
+</div></div>
+
+<div class="card"><div class="card-head">تشخیص: چرا مشتری «امضای فایل لایسنس معتبر نیست» می‌گیرد؟</div><div class="card-body">
+    <p class="hint" style="line-height:1.95;margin:0 0 .8rem">
+        نصب مشتری، امضا را با <b>کلید عمومیِ جاسازی‌شده در همان نسخهٔ نصب‌شده</b> بررسی می‌کند؛
+        پنل پیش از ذخیره، فایل را با کلید عمومیِ همین ماشین می‌سنجد. اگر این دو کلید یکی نباشند،
+        پنل «سبز» می‌شود ولی مشتری فایل را رد می‌کند (شناسهٔ کلید یکی است، اثر انگشت کلید یکی نیست).
+        این دو دکمه همان مقایسه را انجام می‌دهند — بدون خط فرمان.
+    </p>
+
+    <form method="post" asp-page-handler="CheckProductKey" style="border-top:1px solid #e6e9ef;padding-top:.8rem">
+        <div class="grid">
+            <div class="field"><label for="productPass">رمز کلید خصوصی (اگر رمزدار است)</label>
+                <input id="productPass" name="productPass" type="password" autocomplete="off" class="mono" /></div>
+        </div>
+        <button type="submit" class="btn">۱) کلید امضا با کلید محصول می‌خواند؟</button>
+        <p class="hint">اثر انگشت کلید امضا از خود کلید خصوصی مشتق می‌شود و با اثر انگشت کلیدهای
+            جاسازی‌شده در بیلد محصول مقایسه می‌شود. رمز در پاسخ صفحه و لاگ نوشته نمی‌شود.</p>
+    </form>
+
+    @if (ProductCheck is not null)
+    {
+        <div class="alert @(ProductCheck.Ok ? "ok" : "error")" style="margin-top:.8rem">
+            <b>@ProductCheck.Headline</b>
+            <ul class="hint" style="line-height:1.9;margin:.5rem 0 0">
+                @foreach (var d in ProductCheck.Details) { <li>@d</li> }
+            </ul>
+            @if (ProductCheck.SignerFingerprint is { Length: 64 })
+            {
+                <div class="hint mono small" style="margin-top:.5rem;direction:ltr;text-align:left">
+                    signer: @ProductCheck.SignerFingerprint
+                </div>
+            }
+            @if (ProductCheck.ProductKeys.Count > 0)
+            {
+                <table class="table" style="margin-top:.6rem">
+                    <tr><th style="width:28%">کلید داخل محصول</th><th>اثر انگشت</th></tr>
+                    @foreach (var pk in ProductCheck.ProductKeys)
+                    {
+                        <tr><td class="mono">@pk.KeyId</td><td class="mono small" style="direction:ltr;text-align:left">@pk.Fingerprint</td></tr>
+                    }
+                </table>
+            }
+        </div>
+    }
+
+    <form method="post" asp-page-handler="CheckLicenseProduct" style="margin-top:1rem;border-top:1px solid #e6e9ef;padding-top:.8rem">
+        @{
+            var licFiles = new List<string>();
+            try
+            {
+                var dir = Signing.LicenseFolder;
+                if (System.IO.Directory.Exists(dir))
+                    licFiles = System.IO.Directory.GetFiles(dir, "*.lic").OrderByDescending(System.IO.File.GetLastWriteTimeUtc).Take(50).ToList();
+            }
+            catch { /* پوشهٔ لایسنس‌ها خوانده نشد — فهرست خالی */ }
+        }
+        @if (licFiles.Count > 0)
+        {
+            <div class="field"><label for="licenseFile">فایل لایسنس صادرشده</label>
+                <select id="licenseFile" name="licenseFile">
+                    @foreach (var f in licFiles)
+                    {
+                        <option value="@f">@System.IO.Path.GetFileName(f) — @System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm")</option>
+                    }
+                </select></div>
+            <button type="submit" class="btn ghost">۲) همین فایل روی نصب مشتری پذیرفته می‌شود؟</button>
+        }
+        else
+        {
+            <p class="hint">هنوز فایل لایسنس صادرشده‌ای در پوشهٔ
+                <span class="mono">@Signing.LicenseFolder</span> نیست؛ پس از اولین امضا این فهرست پر می‌شود.</p>
+        }
+    </form>
+
+    @if (LicenseCheck is { } lc)
+    {
+        <div class="alert @(lc.Ok ? "ok" : "error")" style="margin-top:.8rem">
+            <b>@lc.Headline</b>
+            <ul class="hint" style="line-height:1.9;margin:.5rem 0 0">
+                @foreach (var d in lc.Details) { <li>@d</li> }
+            </ul>
         </div>
     }
 </div></div>

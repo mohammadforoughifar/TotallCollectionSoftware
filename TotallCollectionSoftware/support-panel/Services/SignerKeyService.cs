@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Inventory.Licensing.Crypto;
 using LicenseSigner.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -208,6 +209,154 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
         }
 
         return new ActiveKeyInfo(true, keyId, publicPath, privatePath, fingerprint, encrypted);
+    }
+
+    /// <summary>
+    /// نتیجهٔ سنجش «کلید امضا» با «کلیدهای جاسازی‌شده در محصول».
+    /// </summary>
+    public sealed record ProductKeyCheck(bool Ok, string Headline, List<string> Details,
+        string? SignerFingerprint, string? MatchedKeyId, List<(string KeyId, string Fingerprint)> ProductKeys);
+
+    /// <summary>
+    /// آیا لایسنسی که این پنل امضا می‌کند، روی نصب مشتری پذیرفته می‌شود؟
+    ///
+    /// <para>
+    /// این همان چیزی است که خطای <c>LICENSE_REJECTED — امضای فایل لایسنس معتبر نیست</c> را
+    /// از قبل تشخیص می‌دهد: مقایسهٔ <b>اثر انگشت کلید</b> (نه فقط <c>keyId</c>) بین کلید امضا و
+    /// کلیدهای جاسازی‌شده در <c>Inventory.Licensing</c>ِ همین بیلد.
+    /// </para>
+    /// <para>
+    /// اثر انگشت کلید امضا از خود کلید خصوصی مشتق می‌شود (نیازمند رمز، اگر کلید رمزدار باشد)؛
+    /// اگر رمز داده نشود، از فایل کلید عمومی خوانده و صریح «کم‌اعتبار» علامت‌گذاری می‌شود.
+    /// </para>
+    /// </summary>
+    public ProductKeyCheck CheckAgainstProductKeys(string? password)
+    {
+        var details = new List<string>();
+        PublicKeyRing ring;
+        try
+        {
+            ring = PublicKeyRing.FromEmbedded();
+        }
+        catch (Exception ex)
+        {
+            return new ProductKeyCheck(false, "بررسی ممکن نشد: " + ex.Message, details, null, null, new());
+        }
+
+        var product = ring.Entries
+            .Select(e => (e.KeyId, Fingerprint: PublicKeyRing.Fingerprint(e.PublicKeyPem, e.Algorithm) ?? "?"))
+            .ToList();
+
+        if (product.Count == 0)
+            return new ProductKeyCheck(false,
+                "در بیلد پنل هیچ کلید تولیدی جاسازی نشده است؛ مقایسه ممکن نیست.", details, null, null, product);
+
+        var info = DescribeActiveKey();
+        if (!info.Exists)
+            return new ProductKeyCheck(false, "کلید عمومی فعال پیدا نشد؛ ابتدا کلید را بسازید یا وصل کنید.",
+                details, null, null, product);
+
+        string? signerFp = null;
+        var derivedFromPrivate = false;
+
+        var privatePath = options.PrivateKeyPath;
+        if (!string.IsNullOrWhiteSpace(privatePath) && File.Exists(privatePath))
+        {
+            try
+            {
+                var pem = File.ReadAllText(privatePath);
+                var encrypted = pem.Contains("ENCRYPTED PRIVATE KEY", StringComparison.Ordinal);
+                var pass = string.IsNullOrEmpty(password) ? EnvironmentPassword : password;
+                using var rsa = RSA.Create();
+                if (encrypted)
+                {
+                    if (string.IsNullOrEmpty(pass))
+                    {
+                        details.Add("کلید خصوصی رمزدار است و رمزی وارد نشد؛ اثر انگشت از فایل کلید عمومی خوانده شد (اعتبار کمتر).");
+                    }
+                    else
+                    {
+                        rsa.ImportFromEncryptedPem(pem, pass);
+                        derivedFromPrivate = true;
+                    }
+                }
+                else
+                {
+                    rsa.ImportFromPem(pem);
+                    derivedFromPrivate = true;
+                }
+
+                if (derivedFromPrivate)
+                    signerFp = Convert.ToHexString(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+            }
+            catch (CryptographicException)
+            {
+                details.Add("رمز کلید خصوصی درست نیست؛ اثر انگشت از فایل کلید عمومی خوانده شد (اعتبار کمتر).");
+            }
+            catch (Exception ex)
+            {
+                details.Add("خواندن کلید خصوصی ممکن نشد: " + ex.Message);
+            }
+        }
+
+        signerFp ??= info.Fingerprint;
+        if (signerFp is null)
+            return new ProductKeyCheck(false, "اثر انگشت کلید امضا خوانده نشد (فایل کلید عمومی خراب است).",
+                details, null, null, product);
+
+        if (!derivedFromPrivate)
+            details.Add("مبنای مقایسه: فایل کلید عمومی همین ماشین (نه مشتق از کلید خصوصی).");
+
+        var match = product.FirstOrDefault(k => string.Equals(k.Fingerprint, signerFp, StringComparison.OrdinalIgnoreCase));
+        if (match.KeyId is not null)
+        {
+            details.Add($"کلید امضا با کلید «{match.KeyId}» داخل محصول می‌خواند ⇒ لایسنس‌های صادرشده پذیرفته می‌شوند.");
+            return new ProductKeyCheck(true, "✔ کلید امضا با کلید داخل محصول می‌خواند", details, signerFp, match.KeyId, product);
+        }
+
+        details.Add("کلید امضا با هیچ کلید جاسازی‌شده‌ای در این بیلد محصول نمی‌خواند؛ فایلی که با این کلید امضا شود روی نصب مشتری با خطای «امضای فایل لایسنس معتبر نیست» رد می‌شود.");
+        details.Add("رفع ۱: با کلید خصوصیِ همان جفتِ نصب مشتری امضا کنید (نسخهٔ پشتیبان کلید قبلی).");
+        details.Add("رفع ۲: همین کلید عمومی را در Keys/manifest.json محصول ثبت کنید (این صفحه ← «ثبت این کلید در نرم‌افزار مشتری»)، بیلد Release تازه بگیرید و همان نسخه را روی نصب مشتری جایگزین کنید؛ سپس همان فایل .lic را دوباره بارگذاری کنید.");
+        return new ProductKeyCheck(false, "❌ کلید امضا با کلید داخل محصول نمی‌خواند", details, signerFp, null, product);
+    }
+
+    /// <summary>
+    /// بررسی یک فایل لایسنس با «کلیدهای جاسازی‌شده در محصول» — همان چیزی که نصب مشتری انجام می‌دهد.
+    /// برای پاسخ به این پرسش که «همین فایلی که مشتری رد کرد، روی یک نصب سالم پذیرفته می‌شود؟»
+    /// </summary>
+    public (bool Ok, string Headline, List<string> Details) CheckLicenseAgainstProductKeys(string filePath)
+    {
+        var details = new List<string>();
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return (false, "فایل لایسنس پیدا نشد.", details);
+
+        PublicKeyRing ring;
+        try
+        {
+            ring = PublicKeyRing.FromEmbedded();
+        }
+        catch (Exception ex)
+        {
+            return (false, "خواندن کلیدهای محصول ممکن نشد: " + ex.Message, details);
+        }
+
+        if (ring.KeyIds.Count == 0)
+            return (false, "این بیلد پنل هیچ کلید تولیدی ندارد؛ بررسی ممکن نیست.", details);
+
+        var result = LicenseVerifier.Verify(File.ReadAllText(filePath), ring);
+        if (result.Ok && result.Document is not null)
+        {
+            details.Add($"سریال: {result.Document.Serial} | شناسهٔ نصب: {result.Document.InstallationId ?? "—"}");
+            details.Add($"کلیدهای معتبر این بیلد: {string.Join("، ", ring.KeyIds)}");
+            return (true, "✔ این فایل روی نصب مشتری پذیرفته می‌شود.", details);
+        }
+
+        details.Add("پیام مشتری: " + result.ErrorText);
+        var envelopeKeyId = result.Envelope?.KeyId;
+        details.Add(envelopeKeyId is null
+            ? "شناسهٔ کلید از فایل خوانده نشد (ساختار فایل خراب است)."
+            : $"شناسهٔ کلیدِ فایل: {envelopeKeyId} | کلیدهای این بیلد: {string.Join("، ", ring.KeyIds)}");
+        return (false, "❌ این فایل روی نصب مشتری هم رد می‌شود.", details);
     }
 
     /// <summary>رمز موجود در متغیر محیطی پنل (اگر ست شده باشد) — فقط برای مقایسه، نه ذخیره.</summary>
