@@ -39,13 +39,16 @@ public static class WorkOrderSmsQueue
             .Select(c => c.Name).SingleOrDefaultAsync(ct);
         var template = WorkOrderSmsPolicy.TemplateName(kind, options);
         var configured = gateway.IsLookupConfigured && KavenegarSmsValidation.TemplateName(template);
+        // همان الگوی بله: وضعیت ارسال در همین لحظه و ناهمگام از دیتابیس خوانده می‌شود،
+        // نه از یک مقدار کش‌شده که ممکن است عقب مانده باشد. یک‌بار برای کل این رویداد.
+        var sendEnabled = await KavenegarSmsSettingsCache.SendEnabledAsync(db, gateway.IsEnabled, ct);
         var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).OrderBy(u => u.Id).ToListAsync(ct);
         var candidates = new List<Candidate>();
         foreach (var user in users)
         {
             var mobile = KavenegarSmsValidation.NormalizeMobile(user.Mobile);
             var access = user.IsActive && await WorkOrderSmsCompanyAccess.HasAccessAsync(db, user, order.CompanyId.Value, ct);
-            var status = WorkOrderSmsPolicy.InitialStatus(user.Mobile, access, revision.HasValue, gateway.IsEnabled,
+            var status = WorkOrderSmsPolicy.InitialStatus(user.Mobile, access, revision.HasValue, sendEnabled,
                 configured, companyName, order.Number, order.Title, order.DueAt, kind);
             // The key is stable after the phone is erased on completion. Different users
             // with the same normalized phone get at most one message for this operation.
@@ -164,7 +167,8 @@ public sealed class WorkOrderSmsDispatcher(AppDbContext db, IKavenegarSmsGateway
             state = WorkOrderSmsStatus.NoCompanyAccess;
         else if (!await CompanySmsServicePolicy.IsEnabledForRevisionAsync(db, job.CompanyId, SmsModuleCatalog.WorkOrders, job.PermissionRevision, ct))
             state = WorkOrderSmsStatus.ModuleDisabled;
-        else if (!gateway.IsEnabled) state = WorkOrderSmsStatus.Disabled;
+        else if (!await KavenegarSmsSettingsCache.SendEnabledAsync(db, gateway.IsEnabled, ct))
+            state = WorkOrderSmsStatus.Disabled;
         else if (!gateway.IsLookupConfigured || !KavenegarSmsValidation.TemplateName(template)) state = WorkOrderSmsStatus.NotConfigured;
         else if (!KavenegarSmsValidation.CompanyToken(companyName)) state = WorkOrderSmsStatus.InvalidCompanyName;
         else if (number is null) state = WorkOrderSmsStatus.InvalidOrderNumber;

@@ -124,6 +124,54 @@ class KavenegarDatabaseSettings(unittest.TestCase):
         self.assertNotIn('model.KavenegarApiKeyHint', key_input.group(0))
 
 
+QUEUE = 'src/Inventory.Api/Services/ItAssets/WorkOrderSmsQueue.cs'
+BALE = 'src/Inventory.Api/Services/System/MessengerService.cs'
+
+
+class ReadsSettingsTheWayBaleDoes(unittest.TestCase):
+    """Bale has never shown a false "disabled", so the SMS path copies its read.
+
+    MessengerService.TokensAsync awaits a fresh AppSettings read on every send. The
+    SMS send decision now does the same at both points that can write Disabled, so a
+    stale or emptied cache can no longer silence a correctly configured gateway.
+    """
+
+    def test_bale_still_reads_its_token_fresh_on_every_send(self):
+        bale = read(BALE)
+        tokens = bale.split('TokensAsync()')[1][:400]
+        self.assertIn('await _db.AppSettings', tokens)
+        self.assertIn('AsNoTracking', tokens)
+
+    def test_send_decision_reads_the_database_asynchronously(self):
+        cache = read(CACHE)
+        self.assertRegex(cache, r'public static async Task<bool> SendEnabledAsync\(')
+        body = cache.split('SendEnabledAsync(')[1].split('public void Apply')[0]
+        self.assertIn('AsNoTracking', body)
+        self.assertIn('OrderBy(s => s.Id)', body)
+        self.assertIn('FirstOrDefaultAsync', body)
+        # Async only: a synchronous read here is what starved the thread pool before.
+        self.assertNotRegex(body, r'\.FirstOrDefault\(\)')
+
+    def test_database_wins_and_the_cache_is_only_a_fallback(self):
+        body = read(CACHE).split('SendEnabledAsync(')[1].split('public void Apply')[0]
+        self.assertRegex(body, r'!string\.IsNullOrWhiteSpace\(row\.KavenegarApiKey\)')
+        self.assertIn('fallback', body)
+
+    def test_both_places_that_can_write_disabled_use_the_fresh_read(self):
+        queue = read(QUEUE)
+        self.assertIn('await KavenegarSmsSettingsCache.SendEnabledAsync(db, gateway.IsEnabled, ct)', queue)
+        disabled = [ln for ln in queue.splitlines() if 'WorkOrderSmsStatus.Disabled' in ln]
+        self.assertTrue(disabled)
+        for line in disabled:
+            self.assertNotIn('gateway.IsEnabled', line)
+        # Staging resolves it once per event rather than once per recipient.
+        self.assertIn('var sendEnabled = await KavenegarSmsSettingsCache.SendEnabledAsync(', queue)
+        self.assertIn('revision.HasValue, sendEnabled', queue)
+        loop = queue.split('foreach (var user in users)')[1].split('var existing =')[0]
+        self.assertNotIn('SendEnabledAsync', loop,
+                         'خواندن تنظیمات نباید به ازای هر گیرنده تکرار شود.')
+
+
 if __name__ == '__main__':
     unittest.main()
 

@@ -87,6 +87,29 @@ public sealed class KavenegarSmsSettingsCache
     }
 
     /// <summary>
+    /// همان الگوی «بله»: وضعیت ارسال در <b>لحظهٔ ارسال</b> و به‌صورت ناهمگام مستقیم از
+    /// دیتابیس خوانده می‌شود. سرویس بله هم توکنش را دقیقاً همین‌طور می‌خواند
+    /// (<c>MessengerService.TokensAsync</c>) و به همین دلیل هیچ‌وقت «خاموش» دیده نمی‌شود.
+    ///
+    /// تفاوتش با کش این است که کش ممکن است بین دو تازه‌سازی عقب بماند؛ این متد همیشه
+    /// همان چیزی را می‌بیند که در دیتابیس نوشته شده. چون ناهمگام است، برخلاف نسخهٔ اولیه
+    /// هیچ thread ای را بلاک نمی‌کند.
+    ///
+    /// فقط وقتی دیتابیس کلیدی ندارد به مقدار کش/فایل برمی‌گردیم — یعنی نصب تازه‌ای که
+    /// هنوز کلید در آن ذخیره نشده است.
+    /// </summary>
+    public static async Task<bool> SendEnabledAsync(AppDbContext db, bool fallback, CancellationToken ct = default)
+    {
+        var row = await db.AppSettings.AsNoTracking()
+            .OrderBy(s => s.Id)
+            .Select(s => new { s.KavenegarApiKey, s.KavenegarSdkSendEnabled })
+            .FirstOrDefaultAsync(ct);
+        return row is not null && !string.IsNullOrWhiteSpace(row.KavenegarApiKey)
+            ? row.KavenegarSdkSendEnabled
+            : fallback;
+    }
+
+    /// <summary>
     /// اعمال فوری مقدارها پس از ذخیرهٔ تنظیمات، بدون انتظار برای تازه‌سازی دوره‌ای.
     /// کلید خالی یعنی «چیزی در دیتابیس نیست» و مقدارهای فایل دوباره معتبر می‌شوند.
     ///
