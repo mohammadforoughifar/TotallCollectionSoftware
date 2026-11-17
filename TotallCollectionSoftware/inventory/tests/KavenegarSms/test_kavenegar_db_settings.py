@@ -126,3 +126,56 @@ class KavenegarDatabaseSettings(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SettingsRowStaysTheSameRow(unittest.TestCase):
+    """A send must never see the settings as "off" because of a non-deterministic read.
+
+    The settings page writes the full tracked entity while the cache reads a narrow
+    AsNoTracking projection. Without an explicit order these are free to return
+    different rows, so the page could enable SMS on one row while the send path kept
+    reading another. Every AppSettings lookup therefore pins the same row.
+    """
+
+    def test_every_appsettings_lookup_is_explicitly_ordered(self):
+        for path in (CACHE, SERVICE):
+            body = read(path)
+            for line in body.splitlines():
+                if 'AppSettings' in line and 'FirstOrDefault' in line:
+                    self.assertIn('OrderBy', line,
+                                  f'{path}: خواندن AppSettings بدون ترتیب صریح: {line.strip()}')
+            if 'AppSettings' in body and 'OrderBy' in body:
+                self.assertRegex(body, r'OrderBy\(\w+ => \w+\.Id\)')
+
+    def test_periodic_refresh_never_turns_a_working_gateway_off(self):
+        cache = read(CACHE)
+        refresh = cache.split('public async Task RefreshAsync')[1].split('public void Apply')[0]
+        # An empty or missing row leaves the last known-good value in place and returns
+        # before Apply can clear it; only an explicit save may clear the stored key.
+        self.assertRegex(refresh, r'row is null \|\| string\.IsNullOrWhiteSpace\(row\.KavenegarApiKey\)')
+        guard = refresh.split('row is null ||')[1]
+        self.assertIn('return;', guard.split('var before')[0])
+        self.assertLess(guard.index('return;'), guard.index('Apply('),
+                        'تازه‌سازی نباید پیش از بررسی خالی‌بودن، Apply را صدا بزند.')
+        self.assertIn('LogWarning', guard)
+
+    def test_refresh_reports_when_the_effective_switch_changes(self):
+        cache = read(CACHE)
+        self.assertIn('var before = _stored?.SdkSendEnabled;', cache)
+        self.assertRegex(cache, r'if \(before != row\.KavenegarSdkSendEnabled\)')
+        self.assertIn('LogInformation', cache)
+
+    def test_unrelated_settings_saves_cannot_disable_sms(self):
+        service = read(SERVICE)
+        self.assertIn('var touchesSms = dto.ClearKavenegarApiKey', service)
+        block = service.split('var touchesSms')[1]
+        self.assertIn('if (touchesSms)', block)
+        guarded = block.split('if (touchesSms)')[1]
+        # Both the sender and the switch are only written when the request really
+        # carried the SMS section; the warehousing page posts this same global DTO.
+        self.assertIn('s.KavenegarSender =', guarded.split('}')[0])
+        self.assertIn('s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;', guarded.split('}')[0])
+
+
+if __name__ == '__main__':
+    unittest.main()

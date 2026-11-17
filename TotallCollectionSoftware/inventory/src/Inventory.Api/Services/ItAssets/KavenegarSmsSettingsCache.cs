@@ -48,10 +48,33 @@ public sealed class KavenegarSmsSettingsCache
     {
         try
         {
+            // ترتیب صریح لازم است: این پروجکشن باریک و خواندن موجودیت کامل در صفحهٔ تنظیمات
+            // دو شکل متفاوت دارند و بدون ORDER BY می‌توانند ردیف‌های متفاوتی برگردانند.
+            // آن وقت صفحه روی یک ردیف می‌نویسد و ارسال از ردیف دیگری می‌خواند.
             var row = await db.AppSettings.AsNoTracking()
-                .Select(s => new { s.KavenegarApiKey, s.KavenegarSender, s.KavenegarSdkSendEnabled })
+                .OrderBy(s => s.Id)
+                .Select(s => new { s.Id, s.KavenegarApiKey, s.KavenegarSender, s.KavenegarSdkSendEnabled })
                 .FirstOrDefaultAsync(ct);
-            Apply(row?.KavenegarApiKey, row?.KavenegarSender, row?.KavenegarSdkSendEnabled ?? false, file);
+
+            if (row is null || string.IsNullOrWhiteSpace(row.KavenegarApiKey))
+            {
+                // تازه‌سازی دوره‌ای هرگز یک مقدار سالم را خاموش نمی‌کند. پاک کردن کلید فقط
+                // کار صریح مدیر است و از مسیر ذخیره بلافاصله اعمال می‌شود؛ خواندن خالی در
+                // پس‌زمینه تقریباً همیشه نشانهٔ ناهنجاری است، نه خواستهٔ مدیر.
+                if (_stored is not null)
+                    _log.LogWarning("[SMS] تازه‌سازی، کلیدی در دیتابیس پیدا نکرد؛ مقدار سالم قبلی حفظ شد و ارسال خاموش نشد.");
+                else if (!_everLoaded)
+                    _log.LogWarning("[SMS] هنوز کلیدی در «تنظیمات ← سامانهٔ پیامکی» ذخیره نشده؛ مقدارهای appsettings.json به کار می‌روند.");
+                _everLoaded = true;
+                return;
+            }
+
+            var before = _stored?.SdkSendEnabled;
+            Apply(row.KavenegarApiKey, row.KavenegarSender, row.KavenegarSdkSendEnabled, file);
+            if (before != row.KavenegarSdkSendEnabled)
+                _log.LogInformation(
+                    "[SMS] وضعیت ارسال از دیتابیس به‌روز شد: فعال={Enabled} (ردیف {Id}، طول کلید {Length}).",
+                    row.KavenegarSdkSendEnabled, row.Id, row.KavenegarApiKey.Trim().Length);
             _everLoaded = true;
         }
         catch (Exception ex)
