@@ -71,6 +71,7 @@ public static class Program
                 "inspect-request" => InspectRequest(rest),
                 "companies" => Companies(rest),
                 "keys" => Keys(rest),
+                "doctor" => Doctor(rest),
                 _ => Unknown(command)
             };
         }
@@ -190,6 +191,18 @@ public static class Program
         }
 
         var bytes = SignAndSerialize(document, args);
+
+        // ⛔ دروازهٔ تحویل: همان فایلی که ساخته شد را با «کلیدهای جاسازی‌شده در محصول» می‌سنجیم.
+        // دلیل وجودش یک خطای واقعی است: پنل فایل را با کلید عمومیِ ماشین پشتیبانی تأیید می‌کرد
+        // (پس سالم به‌نظر می‌رسید) ولی کلید عمومیِ جاسازی‌شده در نصب مشتری کلید دیگری بود و
+        // مشتری خطای «امضای فایل لایسنس معتبر نیست» می‌گرفت.
+        if (!ProductGate(bytes, args, out var gateError))
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("⛔ فایل نوشته نشد: " + gateError);
+            return 7;
+        }
+
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath))!);
         File.WriteAllBytes(outPath, bytes);
 
@@ -280,6 +293,14 @@ public static class Program
         }
 
         var bytes = SignAndSerialize(document, args);
+
+        if (!ProductGate(bytes, args, out var gateError))
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("⛔ فایل نوشته نشد: " + gateError);
+            return 7;
+        }
+
         File.WriteAllBytes(outPath, bytes);
         AppendJournal(document, outPath, installationId, bytes);
         Console.WriteLine($"\n✅ لایسنس پل صادر شد: {outPath} (تا {document.Items[0].Term.ValidUntil:yyyy-MM-dd})");
@@ -348,6 +369,244 @@ public static class Program
             Console.WriteLine($"   • [{issue.Severity}] {issue.Code}: {issue.Message}");
 
         return issues.Any(i => i.Severity == LicenseIssueSeverity.Error) ? 6 : 0;
+    }
+
+    // ==================== product gate + doctor ====================
+
+    /// <summary>
+    /// اثر انگشت sha256 (hex) کلید عمومی از متن PEM — همان معیاری که در <c>Keys/manifest.json</c>
+    /// ثبت می‌شود و هنگام بارگذاری در نصب مشتری بررسی می‌شود.
+    /// </summary>
+    private static string? FingerprintOfPem(string pem)
+    {
+        try
+        {
+            using var rsa = KeyImport.RsaFromPem(pem);
+            return Convert.ToHexString(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+        }
+        catch { return null; }
+    }
+
+    /// <summary>اثر انگشت کلید عمومیِ متناظر با کلید خصوصی داده‌شده (بدون چاپ هیچ بخشی از کلید خصوصی).</summary>
+    private static string? FingerprintOfPrivateKey(string[] args)
+    {
+        try
+        {
+            using var rsa = LoadPrivateKey(args);
+            return Convert.ToHexString(SHA256.HashData(rsa.ExportSubjectPublicKeyInfo())).ToLowerInvariant();
+        }
+        catch { return null; }
+    }
+
+    private static string Short(string? fingerprint) =>
+        string.IsNullOrWhiteSpace(fingerprint) ? "—" : fingerprint[..16] + "…";
+
+    /// <summary>
+    /// دروازهٔ تحویل: آیا فایلِ همین حالا امضاشده، روی نصب مشتریِ <b>همین بیلد</b> پذیرفته می‌شود؟
+    ///
+    /// <para>
+    /// خطای واقعی که این دروازه را لازم کرد: پنل لایسنس فایل را با کلید عمومیِ ماشین پشتیبانی
+    /// تأیید می‌کرد و «سالم» ذخیره می‌شد، ولی نصب مشتری کلید عمومی دیگری (کلید جاسازی‌شده در بیلد
+    /// منتشرشده) داشت؛ نتیجه: <c>LICENSE_REJECTED — امضای فایل لایسنس معتبر نیست</c>.
+    /// تفاوت «شناسهٔ کلید» تنها کافی نیست: باید <b>اثر انگشت کلید</b> هم یکی باشد.
+    /// </para>
+    /// </summary>
+    private static bool ProductGate(byte[] licenseBytes, string[] args, out string failure)
+    {
+        failure = "";
+        if (args.Contains("--allow-foreign-key")) return true;
+
+        PublicKeyRing ring;
+        try
+        {
+            ring = PublicKeyRing.FromEmbedded();
+        }
+        catch (Exception ex)
+        {
+            failure = $"بررسی کلیدهای محصول ممکن نشد: {ex.Message}";
+            return false;
+        }
+
+        var text = Encoding.UTF8.GetString(licenseBytes);
+        string keyId = "";
+        try { keyId = LicenseJson.ReadEnvelope(text)?.KeyId ?? ""; } catch { /* ساختار در Verify گزارش می‌شود */ }
+
+        if (ring.KeyIds.Count == 0)
+        {
+            failure = "این بیلد ابزار هیچ کلید تولیدی جاسازی‌شده‌ای ندارد (بیلد Debug یا manifest ناقص)؛ " +
+                      "نمی‌توان تأیید کرد که نصب مشتری امضا را می‌پذیرد. با بیلد Release ابزار اجرا کنید.";
+            return false;
+        }
+
+        if (!ring.KeyIds.Contains(keyId, StringComparer.OrdinalIgnoreCase))
+        {
+            failure = $"کلید «{keyId}» در حلقهٔ اعتماد بیلد محصول نیست؛ نصب مشتری همان خطای «کلید امضا شناخته‌شده نیست» را می‌دهد. " +
+                      "کلیدهای این بیلد: " + string.Join("، ", ring.KeyIds) + ".";
+            return false;
+        }
+
+        var result = LicenseVerifier.Verify(text, ring);
+        if (result.Ok) return true;
+
+        var embedded = ring.Entries.FirstOrDefault(e => string.Equals(e.KeyId, keyId, StringComparison.OrdinalIgnoreCase));
+        var embeddedFp = embedded is null ? null : FingerprintOfPem(embedded.PublicKeyPem);
+        var mineFp = FingerprintOfPrivateKey(args);
+
+        failure = "فایل امضاشده با کلیدهای جاسازی‌شده در محصول تأیید نشد: " + result.ErrorText + Environment.NewLine +
+                  $"   • کلید امضا (ساخته‌شده از کلید خصوصی): {Short(mineFp)}" + Environment.NewLine +
+                  $"   • کلید جاسازی‌شده در محصول برای «{keyId}»: {Short(embeddedFp)}" + Environment.NewLine +
+                  (mineFp is not null && embeddedFp is not null && !string.Equals(mineFp, embeddedFp, StringComparison.OrdinalIgnoreCase)
+                      ? "   ⇒ این دو کلید یکی نیستند: کلید خصوصیِ امضا با کلید عمومیِ داخل نصب مشتری جفت نیست." + Environment.NewLine +
+                        "   راه‌حل: یا با کلید خصوصیِ همان جفتِ قبلی امضا کنید، یا کلید عمومیِ فعلی را در «Keys/manifest.json» " +
+                        "ثبت کنید (پنل: تنظیمات ← کلیدهای امضا ← ثبت در manifest محصول)، بیلد Release تازه بگیرید و همان را روی نصب مشتری جایگزین کنید."
+                      : "   ⇒ payload/امضا در مسیر ساخت دست‌کاری شده یا کلید عمومی در دسترس نیست.")
+                  + Environment.NewLine +
+                  "   برای بررسی کامل: LicenseTool doctor --license <file.lic> --private-key <pem>";
+        return false;
+    }
+
+    /// <summary>
+    /// تشخیص یک‌مرحله‌ای خطای «امضای فایل لایسنس معتبر نیست» / «کلید شناخته‌شده نیست»:
+    /// کلیدهای جاسازی‌شدهٔ این بیلد، کلید امضا، و (اگر فایل لایسنس داده شود) نتیجهٔ واقعی بررسی.
+    ///
+    /// <para>هیچ کلید خصوصی چاپ نمی‌شود؛ فقط اثر انگشت کلید عمومی و نتیجهٔ بررسی.</para>
+    /// </summary>
+    private static int Doctor(string[] args)
+    {
+        var licensePath = Arg(args, "--license") ?? (args.Length > 0 && !args[0].StartsWith("--") ? args[0] : null);
+        var publicPath = Arg(args, "--public-key");
+        var privatePath = Arg(args, "--private-key") ?? Environment.GetEnvironmentVariable("LICENSETOOL_PRIVATE_KEY");
+
+        Console.WriteLine("■ کلیدهای جاسازی‌شده در این بیلد محصول (Inventory.Licensing.dll):");
+        PublicKeyRing ring;
+        try
+        {
+            ring = PublicKeyRing.FromEmbedded();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ خواندن کلیدهای جاسازی‌شده ممکن نشد: {ex.Message}");
+            return 2;
+        }
+
+        if (ring.KeyIds.Count == 0)
+        {
+            Console.WriteLine("   (هیچ کلیدی) — این بیلد Release قابل استفاده برای صدور نیست.");
+        }
+        else
+        {
+            foreach (var entry in ring.Entries)
+                Console.WriteLine($"   • {entry.KeyId,-16} {entry.Algorithm,-6} اثر انگشت: {FingerprintOfPem(entry.PublicKeyPem)}");
+        }
+
+        if (ring.LoadErrors.Count > 0)
+        {
+            Console.WriteLine("   یادداشت بارگذاری: " + string.Join(" | ", ring.LoadErrors.Take(5)));
+        }
+
+        string? signerFp = null;
+        if (!string.IsNullOrWhiteSpace(privatePath))
+        {
+            if (!File.Exists(privatePath))
+            {
+                Console.Error.WriteLine($"❌ فایل کلید خصوصی نیست: {privatePath}");
+                return 2;
+            }
+
+            signerFp = FingerprintOfPrivateKey(args);
+            if (signerFp is null)
+            {
+                Console.Error.WriteLine("❌ خواندن کلید خصوصی ممکن نشد (رمز اشتباه؟ متغیر LICENSETOOL_KEY_PASSWORD را بررسی کنید).");
+                return 2;
+            }
+
+            Console.WriteLine();
+            Console.WriteLine($"■ کلید امضا (از کلید خصوصی): {signerFp}");
+            var matches = ring.Entries
+                .Where(e => string.Equals(FingerprintOfPem(e.PublicKeyPem), signerFp, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.KeyId)
+                .ToList();
+
+            if (matches.Count > 0)
+            {
+                Console.WriteLine($"   ✔ این کلید با کلید «{matches[0]}» در بیلد محصول می‌خواند؛ لایسنس‌های این کلید پذیرفته می‌شوند.");
+            }
+            else
+            {
+                Console.WriteLine("   ❌ این کلید با هیچ کلید جاسازی‌شده‌ای در این بیلد نمی‌خواند.");
+                Console.WriteLine("      ⇒ لایسنسی که با این کلید امضا شود، روی نصب مشتری رد می‌شود (همان خطای امضای نامعتبر).");
+                Console.WriteLine("      ⇒ رفع: یا کلید خصوصیِ جفتِ نصب مشتری را بیاورید، یا کلید عمومیِ این کلید را در");
+                Console.WriteLine("         Keys/manifest.json ثبت کنید و نسخهٔ Release مشتری را با آن بیلد و جایگزین کنید.");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(publicPath))
+        {
+            if (!File.Exists(publicPath))
+            {
+                Console.Error.WriteLine($"❌ فایل کلید عمومی نیست: {publicPath}");
+                return 2;
+            }
+
+            var fp = FingerprintOfPem(File.ReadAllText(publicPath));
+            Console.WriteLine();
+            Console.WriteLine($"■ کلید عمومی داده‌شده: {fp}  ({publicPath})");
+            if (signerFp is not null)
+                Console.WriteLine(string.Equals(fp, signerFp, StringComparison.OrdinalIgnoreCase)
+                    ? "   ✔ با کلید امضا یکی است."
+                    : "   ❌ با کلید امضا یکی نیست — پنل اگر با این کلید عمومی تأیید می‌کند، نتیجهٔ تأییدش گمراه‌کننده است.");
+        }
+
+        if (string.IsNullOrWhiteSpace(licensePath)) return signerFp is null ? 0 : (ring.Entries.Any(e => string.Equals(FingerprintOfPem(e.PublicKeyPem), signerFp, StringComparison.OrdinalIgnoreCase)) ? 0 : 7);
+
+        if (!File.Exists(licensePath))
+        {
+            Console.Error.WriteLine($"❌ فایل لایسنس نیست: {licensePath}");
+            return 2;
+        }
+
+        var text = File.ReadAllText(licensePath);
+        SignedLicenseDocument? envelope = null;
+        try { envelope = LicenseJson.ReadEnvelope(text); } catch { /* زیر گزارش می‌شود */ }
+
+        Console.WriteLine();
+        Console.WriteLine($"■ فایل لایسنس: {licensePath}");
+        if (envelope is null)
+        {
+            Console.Error.WriteLine("   ❌ ساختار پوشش امضا خوانده نشد (فایل خراب یا رمزگذاری‌شده است).");
+            return 4;
+        }
+
+        Console.WriteLine($"   شناسهٔ کلید: {envelope.KeyId} | الگوریتم: {envelope.Algorithm} | نسخهٔ پوشش: {envelope.EnvelopeVersion}");
+        byte[] payload;
+        try { payload = Convert.FromBase64String(envelope.Payload); }
+        catch
+        {
+            Console.Error.WriteLine("   ❌ payload کدگذاری Base64 معتبری ندارد.");
+            return 4;
+        }
+
+        Console.WriteLine($"   SHA256 محتوای امضاشده: {Sha256Hex(payload)} | حجم payload: {payload.Length} بایت");
+
+        var verify = LicenseVerifier.Verify(text, ring);
+        if (verify.Ok && verify.Document is not null)
+        {
+            Console.WriteLine("   ✔ روی این بیلد محصول پذیرفته می‌شود.");
+            Console.WriteLine($"     سریال: {verify.Document.Serial} | نصب: {verify.Document.InstallationId ?? "—"}");
+            return 0;
+        }
+
+        Console.WriteLine("   ❌ روی این بیلد محصول رد می‌شود: " + verify.ErrorText);
+        var fpOfKey = ring.Entries
+            .Where(e => string.Equals(e.KeyId, envelope.KeyId, StringComparison.OrdinalIgnoreCase))
+            .Select(e => FingerprintOfPem(e.PublicKeyPem))
+            .FirstOrDefault();
+        Console.WriteLine($"     اثر انگشت کلید جاسازی‌شده برای «{envelope.KeyId}»: {fpOfKey ?? "— (این شناسه در بیلد نیست)"}");
+        if (signerFp is not null)
+            Console.WriteLine($"     اثر انگشت کلید امضا: {signerFp}");
+        if (fpOfKey is not null && signerFp is not null && !string.Equals(fpOfKey, signerFp, StringComparison.OrdinalIgnoreCase))
+            Console.WriteLine("     ⇒ قطعی: کلید امضا با کلید جاسازی‌شده در محصول یکی نیست (این علت خطاست).");
+        return 7;
     }
 
     /// <summary>
@@ -1204,11 +1463,17 @@ public static class Program
           companies <a.lic> [b.lic ...] [--public-key <pem>|--manifest <json>]
                  نمای «هر شرکت چه ماژول و چند صندلی دارد» (چند شرکت روی یک نصب).
 
+          doctor [--license <file.lic>] [--private-key <pem>] [--public-key <pem>]
+                 تشخیص یک‌مرحله‌ای «امضای فایل لایسنس معتبر نیست»: کلیدهای جاسازی‌شدهٔ این بیلد،
+                 کلید امضا، و نتیجهٔ واقعی بررسی فایل. (کلید خصوصی چاپ نمی‌شود.)
+
           verify <file.lic> [--installation-id <id>] [--public-key <pem>|--manifest <json>]
           inspect-request <license-request.json>
 
         نکته‌ها:
           • بدون --yes هیچ فایلی امضا نمی‌شود (پیش‌نمایش ادغام را ببینید).
+          • پس از امضا، فایل با «کلیدهای جاسازی‌شدهٔ محصول» سنجیده می‌شود؛ اگر نخواند نوشته نمی‌شود
+            (کد خروج ۷). استثنای توسعه: --allow-foreign-key (نصب مشتری آن را رد می‌کند).
           • کلید خصوصی: --private-key یا LICENSETOOL_PRIVATE_KEY (هرگز در مخزن نگذارید).
           • دفتر صدور: LICENSETOOL_JOURNAL یا ~/.licensetool/issued-licenses.jsonl
         """);

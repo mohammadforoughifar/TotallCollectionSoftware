@@ -76,6 +76,12 @@ public sealed class PublicKeyRing
     /// <summary>خطاهای بارگذاری (کلیدی که اثر انگشتش مطابق manifest نبود، رد می‌شود).</summary>
     public IReadOnlyList<string> LoadErrors => _loadErrors;
 
+    /// <summary>
+    /// کلیدهای بارگذاری‌شده با متن PEM — برای ابزار تشخیص (<c>LicenseTool doctor</c>) که باید
+    /// اثر انگشت هر کلید را با کلید امضا مقایسه کند. فقط‌خواندنی؛ کلید عمومی راز نیست.
+    /// </summary>
+    public IReadOnlyList<PublicKeyEntry> Entries => _keys.Values.ToList();
+
     /// <summary>ساخت حلقه از ردیف‌های آماده (برای تست و برای ابزار صدور).</summary>
     public static PublicKeyRing FromEntries(IEnumerable<PublicKeyEntry> entries)
     {
