@@ -29,6 +29,29 @@ public class AppSettings
     /// <summary>توکن ایتایار</summary>
     public string? EitaaToken { get; set; }
 
+    // ---------- سامانهٔ پیامکی کاوه‌نگار (سراسری) ----------
+
+    /// <summary>
+    /// کلید API کاوه‌نگار — فقط نوشتنی. سرور هنگام خواندن همیشه خالی برمی‌گرداند.
+    /// خالی فرستادن یعنی «کلید فعلی را نگه دار»؛ برای حذف از ClearKavenegarApiKey استفاده کنید.
+    /// </summary>
+    public string? KavenegarApiKey { get; set; }
+
+    /// <summary>
+    /// نشانهٔ کوتاه کلید ذخیره‌شده برای نمایش (مثل <c>••••۳D۳D</c>) — فقط خواندنی.
+    /// خالی یعنی هنوز کلیدی در دیتابیس ذخیره نشده است.
+    /// </summary>
+    public string? KavenegarApiKeyHint { get; set; }
+
+    /// <summary>حذف کلید ذخیره‌شده. با true، کلید پاک می‌شود و دوباره از فایل خوانده می‌شود.</summary>
+    public bool ClearKavenegarApiKey { get; set; }
+
+    /// <summary>خط فرستندهٔ کاوه‌نگار — فقط برای ارسال متنی ساده؛ Lookup به آن وابسته نیست.</summary>
+    public string? KavenegarSender { get; set; }
+
+    /// <summary>سوئیچ ارسال پیامک تعمیرات و دستور کار.</summary>
+    public bool KavenegarSdkSendEnabled { get; set; }
+
     /// <summary>شماره معرف سامانه در پیام‌ها</summary>
     public string? MessengerSenderNumber { get; set; } = "09111189771";
 

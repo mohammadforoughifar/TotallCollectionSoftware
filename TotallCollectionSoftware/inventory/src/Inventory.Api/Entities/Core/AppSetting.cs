@@ -31,6 +31,20 @@ public class AppSetting
     /// <summary>توکن ایتایار (eitaayar.ir)</summary>
     public string? EitaaToken { get; set; }
 
+    // ---------- سامانهٔ پیامکی کاوه‌نگار (سراسری برای کل سامانه) ----------
+    // در دیتابیس نگهداری می‌شوند تا با هر publish از بین نروند. تا وقتی کلید اینجا
+    // خالی باشد، مقدارهای appsettings.json استفاده می‌شوند؛ با پر شدن کلید، همین
+    // سه مقدار به‌صورت یکجا جای فایل را می‌گیرند. نام الگوها همچنان از فایل خوانده می‌شود.
+
+    /// <summary>کلید API کاوه‌نگار. هرگز در پاسخ API برنمی‌گردد؛ فقط نشانهٔ کوتاه آن.</summary>
+    [MaxLength(200)] public string? KavenegarApiKey { get; set; }
+
+    /// <summary>خط فرستندهٔ کاوه‌نگار — فقط برای ارسال متنی ساده؛ Lookup به آن وابسته نیست.</summary>
+    [MaxLength(30)] public string? KavenegarSender { get; set; }
+
+    /// <summary>سوئیچ ارسال پیامک تعمیرات و دستور کار. پیش‌فرض خاموش.</summary>
+    public bool KavenegarSdkSendEnabled { get; set; }
+
     /// <summary>شماره معرف سامانه — در امضای پیام‌ها می‌آید</summary>
     [MaxLength(20)] public string? MessengerSenderNumber { get; set; } = "09111189771";
 

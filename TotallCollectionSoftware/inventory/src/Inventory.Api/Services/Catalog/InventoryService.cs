@@ -32,7 +32,10 @@ public class InventoryService : IInventoryService
         var s = await _db.AppSettings.FirstOrDefaultAsync();
         return s is null
             ? new AppSettings()
-            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, BaleSafirApiAccessKey = s.BaleSafirApiAccessKey, BaleSafirBotId = s.BaleSafirBotId, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs };
+            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, BaleSafirApiAccessKey = s.BaleSafirApiAccessKey, BaleSafirBotId = s.BaleSafirBotId, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs,
+                // کلید پیامک هرگز بیرون نمی‌رود؛ فقط نشانهٔ کوتاه آن تا مدیر بداند ذخیره شده است.
+                KavenegarApiKey = null, KavenegarApiKeyHint = MaskKey(s.KavenegarApiKey),
+                KavenegarSender = s.KavenegarSender, KavenegarSdkSendEnabled = s.KavenegarSdkSendEnabled };
     }
 
     public async Task<AppSettings> SaveSettingsAsync(AppSettings dto)
@@ -63,8 +66,26 @@ public class InventoryService : IInventoryService
         // مدت نمایش اعلان‌ها و پیام‌ها (سراسری): ۰ = تا بستن دستی، در غیر این‌صورت بین ۵ ثانیه تا ۱ ساعت؛ مقدار نامعتبر → پیش‌فرض
         s.NotifyBannerMs = SanitizeNotifyMs(dto.NotifyBannerMs, 120_000);
         s.NotifyToastMs = SanitizeNotifyMs(dto.NotifyToastMs, 20_000);
+        // کلید پیامک فقط‌نوشتنی است: چون خواندن آن را برنمی‌گرداند، یک ذخیرهٔ معمولی
+        // نباید کلید را پاک کند. خالی = دست‌نخورده، مقدار تازه = جایگزینی،
+        // و پاک کردن فقط با درخواست صریح مدیر انجام می‌شود.
+        if (dto.ClearKavenegarApiKey) s.KavenegarApiKey = null;
+        else if (!string.IsNullOrWhiteSpace(dto.KavenegarApiKey)) s.KavenegarApiKey = dto.KavenegarApiKey.Trim();
+        s.KavenegarSender = string.IsNullOrWhiteSpace(dto.KavenegarSender) ? null : dto.KavenegarSender.Trim();
+        s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;
         await _db.SaveChangesAsync();
         return await GetSettingsAsync();
+    }
+
+    /// <summary>
+    /// نشانهٔ کوتاه کلید ذخیره‌شده: فقط چهار نویسهٔ پایانی دیده می‌شود تا مدیر بتواند
+    /// کلید را تشخیص دهد بدون آنکه مقدار واقعی از سرور بیرون برود.
+    /// </summary>
+    private static string? MaskKey(string? key)
+    {
+        var trimmed = key?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return null;
+        return trimmed.Length <= 4 ? new string('\u2022', 8) : new string('\u2022', 8) + trimmed[^4..];
     }
 
     /// <summary>اعتبارسنجی مدت نمایش (میلی‌ثانیه): ۰ = تا بستن دستی؛ در غیر این‌صورت بین ۵۰۰۰ تا ۳۶۰۰۰۰۰؛ خارج از بازه → مقدار پیش‌فرض.</summary>
