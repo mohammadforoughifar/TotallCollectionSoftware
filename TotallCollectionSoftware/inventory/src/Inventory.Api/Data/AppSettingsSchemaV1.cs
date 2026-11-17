@@ -10,6 +10,9 @@ namespace Inventory.Api.Data;
 //  • AppSettings.NotifyBannerMs: مدت نمایش اعلان زندهٔ بالای صفحه (ms) — پیش‌فرض ۲ دقیقه
 //  • AppSettings.NotifyToastMs:  مدت نمایش پیام کوتاه/توست (ms) — پیش‌فرض ۲۰ ثانیه
 //    (مدیر سامانه این‌ها را از صفحهٔ «تنظیمات» تعیین می‌کند؛ سراسری برای همهٔ کاربران)
+//  • AppSettings.Kavenegar*: کلید/خط/سوئیچ سامانهٔ پیامکی — در دیتابیس می‌مانند تا با
+//    هر publish پاک نشوند. افزودن ستون‌ها داده‌ای را تغییر نمی‌دهد؛ تا وقتی کلید خالی
+//    باشد رفتار قبلی (خواندن از appsettings.json) دست‌نخورده است.
 // ============================================================
 public static class AppSettingsSchemaV1
 {
@@ -26,6 +29,18 @@ IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSetti
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'NotifyToastMs') IS NULL
     ALTER TABLE dbo.AppSettings ADD NotifyToastMs int NOT NULL DEFAULT(20000);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'KavenegarApiKey') IS NULL
+    ALTER TABLE dbo.AppSettings ADD KavenegarApiKey nvarchar(200) NULL;");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'KavenegarSender') IS NULL
+    ALTER TABLE dbo.AppSettings ADD KavenegarSender nvarchar(30) NULL;");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'KavenegarSdkSendEnabled') IS NULL
+    ALTER TABLE dbo.AppSettings ADD KavenegarSdkSendEnabled bit NOT NULL DEFAULT(0);");
     }
 
     // ==================== SQLite ====================
@@ -36,6 +51,15 @@ IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSetti
 
         if (!await ColumnExistsAsync(db, "AppSettings", "NotifyToastMs"))
             await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN NotifyToastMs INTEGER NOT NULL DEFAULT 20000;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "KavenegarApiKey"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN KavenegarApiKey TEXT NULL;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "KavenegarSender"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN KavenegarSender TEXT NULL;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "KavenegarSdkSendEnabled"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN KavenegarSdkSendEnabled INTEGER NOT NULL DEFAULT 0;");
     }
 
     private static async Task<bool> ColumnExistsAsync(AppDbContext db, string table, string column)

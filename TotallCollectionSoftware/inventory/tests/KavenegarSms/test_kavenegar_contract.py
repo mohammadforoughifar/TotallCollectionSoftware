@@ -23,7 +23,10 @@ class KavenegarFoundationContracts(unittest.TestCase):
 
     def test_gateway_is_registered_for_repair_and_work_order_outboxes(self):
         program = read('src/Inventory.Api/Program.cs')
-        self.assertIn('AddScoped<IKavenegarSmsGateway, KavenegarSmsGateway>()', program)
+        # Registered through a factory so the key can come from the database, but still
+        # Scoped and still bound to the concrete gateway.
+        self.assertIn('AddScoped<IKavenegarSmsGateway>(', program)
+        self.assertIn('new KavenegarSmsGateway(', program)
         uses = []
         for path in SRC.rglob('*'):
             if path.is_file() and path.suffix in ('.cs', '.razor') and 'IKavenegarSmsGateway' in path.read_text(encoding='utf-8'):
@@ -68,7 +71,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertIn('AllowAutoRedirect = false', gateway)
         self.assertIn('ActivityHeadersPropagator = null', gateway)
         self.assertIn('UseCookies = false', gateway)
-        self.assertIn('Uri.EscapeDataString(_options.ApiKey.Trim())', gateway)
+        self.assertIn('Uri.EscapeDataString(Options.ApiKey.Trim())', gateway)
         self.assertIn('new KavenegarApi(key, http)', gateway)
         self.assertIn('api.SendAsync(', gateway)
         self.assertIn('api.VerifyLookupAsync(', gateway)

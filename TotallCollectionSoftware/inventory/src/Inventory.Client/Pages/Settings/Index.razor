@@ -205,6 +205,76 @@
     </div>
 </div>
 
+@* ================== سامانهٔ پیامکی (کاوه‌نگار) ================== *@
+<div class="card mt-3" id="sms">
+    <div class="card-header">
+        <i class="bi bi-chat-left-text text-primary"></i>
+        <span class="card-title">سامانهٔ پیامکی (کاوه‌نگار)</span>
+        @if (!loading && model.KavenegarSdkSendEnabled && !string.IsNullOrWhiteSpace(model.KavenegarApiKeyHint))
+        {
+            <span class="badge bg-success-subtle text-success ms-2">فعال</span>
+        }
+        else if (!loading)
+        {
+            <span class="badge bg-secondary-subtle text-secondary ms-2">غیرفعال</span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <p class="fs-8 text-muted mb-3">
+                این تنظیمات در <b>دیتابیس همین نصب</b> ذخیره می‌شوند؛ بنابراین با هر بار publish از بین نمی‌روند و
+                روی هر سیستم جداگانه قابل تنظیم‌اند. تغییر آن‌ها <b>بدون نیاز به ری‌استارت سرور</b> اعمال می‌شود.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">کلید API کاوه‌نگار</label>
+                    <input class="form-control num" dir="ltr" type="password" autocomplete="new-password"
+                           placeholder="@KavenegarKeyPlaceholder"
+                           @bind="model.KavenegarApiKey" />
+                    <div class="fs-9 text-muted mt-1">
+                        کلید از پنل کاوه‌نگار بخش «حساب کاربری ← انتخاب API-Key» گرفته می‌شود.
+                        به دلیل محرمانه بودن، کلید ذخیره‌شده هرگز نمایش داده نمی‌شود و فقط چهار نویسهٔ پایانی آن دیده می‌شود.
+                        @if (!string.IsNullOrWhiteSpace(model.KavenegarApiKeyHint))
+                        {
+                            <text><b>این کادر را خالی بگذارید تا کلید فعلی دست‌نخورده بماند.</b></text>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(model.KavenegarApiKeyHint))
+                    {
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="kavClear" @bind="model.ClearKavenegarApiKey" />
+                            <label class="form-check-label fs-9" for="kavClear">کلید ذخیره‌شده پاک شود (بازگشت به کلید فایل تنظیمات)</label>
+                        </div>
+                    }
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">خط فرستنده</label>
+                    <input class="form-control num" dir="ltr" placeholder="2000660110" @bind="model.KavenegarSender" />
+                    <div class="fs-9 text-muted mt-1">
+                        فقط برای پیامک متنی ساده لازم است. پیامک‌های دستور کار و تعمیرات از روش
+                        <span dir="ltr">Lookup</span> (الگوی تأییدشده) ارسال می‌شوند و به خط فرستنده وابسته نیستند.
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ارسال پیامک</label>
+                    <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" id="kavEnabled" @bind="model.KavenegarSdkSendEnabled" />
+                        <label class="form-check-label" for="kavEnabled">
+                            @(model.KavenegarSdkSendEnabled ? "ارسال پیامک فعال است" : "ارسال پیامک غیرفعال است")
+                        </label>
+                    </div>
+                    <div class="fs-9 text-muted mt-1">
+                        تا وقتی این سوئیچ خاموش باشد، در صفحه‌های دستور کار و تعمیرات پیام
+                        «ارسال پیامک در سرور غیرفعال است» دیده می‌شود. ارسال واقعی علاوه بر این سوئیچ، به
+                        مجوز ماژول پیامک برای شرکت و تأیید الگو در پنل کاوه‌نگار هم نیاز دارد.
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
 @* ================== HTTPS و اعلان اندروید ================== *@
 <div class="card mt-3" id="https">
     <div class="card-header">
@@ -597,6 +667,12 @@
 @code {
     private AppSettings model = new();
     private bool loading = true, saving;
+
+    /// <summary>راهنمای کادر کلید پیامک: کلید واقعی هرگز از سرور نمی‌آید، فقط نشانهٔ کوتاه آن.</summary>
+    private string KavenegarKeyPlaceholder =>
+        string.IsNullOrWhiteSpace(model.KavenegarApiKeyHint)
+            ? "هنوز کلیدی ذخیره نشده"
+            : "ذخیره‌شده: " + model.KavenegarApiKeyHint;
 
     protected override async Task OnInitializedAsync()
     {

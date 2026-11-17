@@ -47,27 +47,44 @@ public interface IKavenegarSmsGateway
 
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
 {
-    private readonly KavenegarSmsOptions _options;
+    private readonly KavenegarSmsOptions _file;
+    private readonly Func<KavenegarSmsOptions?>? _stored;
     private readonly Func<HttpMessageHandler> _handlerFactory;
+    private KavenegarSmsOptions? _resolved;
 
     public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options)
         : this(options, () => SharedTransport.Handler)
     {
     }
 
-    // Tests supply an in-memory handler, so they never contact the SMS provider.
-    internal KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<HttpMessageHandler> handlerFactory)
+    /// <summary>
+    /// درگاهی که تنظیماتش را از دیتابیس می‌گیرد و در نبود آن به فایل برمی‌گردد.
+    /// </summary>
+    public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<KavenegarSmsOptions?> stored)
+        : this(options, () => SharedTransport.Handler, stored)
     {
-        _options = options.Value;
-        _handlerFactory = handlerFactory;
     }
 
-    public bool IsEnabled => _options.SdkSendEnabled;
+    // Tests supply an in-memory handler, so they never contact the SMS provider.
+    internal KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<HttpMessageHandler> handlerFactory,
+        Func<KavenegarSmsOptions?>? stored = null)
+    {
+        _file = options.Value;
+        _handlerFactory = handlerFactory;
+        _stored = stored;
+    }
+
+    // Settings are read once per scope and then reused, so a queue batch cannot see the
+    // key change halfway through. A caller that saves new settings gets them on its next
+    // request, which is the same freshness the other database-backed integrations give.
+    private KavenegarSmsOptions Options => _resolved ??= _stored?.Invoke() ?? _file;
+
+    public bool IsEnabled => Options.SdkSendEnabled;
     // Presence only; this does not verify the key, sender ownership or network connectivity.
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey)
-                                && !string.IsNullOrWhiteSpace(_options.Sender);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Options.ApiKey)
+                                && !string.IsNullOrWhiteSpace(Options.Sender);
     // verify/lookup uses the account's approved template, not the ordinary sender line.
-    public bool IsLookupConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
+    public bool IsLookupConfigured => !string.IsNullOrWhiteSpace(Options.ApiKey);
 
     public async Task<KavenegarSmsSendResult> SendAsync(string recipient, string message)
     {
@@ -79,7 +96,7 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
             || recipient.IndexOfAny(new[] { ',', ';', '\r', '\n' }) >= 0)
             return new(KavenegarSmsSendState.InvalidRequest);
 
-        return await SendCoreAsync(api => api.SendAsync(_options.Sender.Trim(), recipient.Trim(), message));
+        return await SendCoreAsync(api => api.SendAsync(Options.Sender.Trim(), recipient.Trim(), message));
     }
 
     public Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string companyName, string template) =>
@@ -138,12 +155,12 @@ public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
         using var capture = new ReturnStatusHandler(_handlerFactory());
         using var http = new HttpClient(capture, disposeHandler: false)
         {
-            Timeout = TimeSpan.FromSeconds(Math.Clamp(_options.TimeoutSeconds, 5, 120))
+            Timeout = TimeSpan.FromSeconds(Math.Clamp(Options.TimeoutSeconds, 5, 120))
         };
 
         try
         {
-            var key = Uri.EscapeDataString(_options.ApiKey.Trim());
+            var key = Uri.EscapeDataString(Options.ApiKey.Trim());
             var api = new KavenegarApi(key, http);
             var sent = await send(api).ConfigureAwait(false);
 
