@@ -43,9 +43,13 @@ internal static class WorkOrderSmsAppearance
         WorkOrderSmsStatus.Delivered => "تحویل‌شده",
         WorkOrderSmsStatus.Failed => "درگاه پیامک، ارسال را ناموفق اعلام کرد",
         WorkOrderSmsStatus.Unknown => "نتیجه نامشخص؛ پیش از ارسال دوباره، وضعیت را در کاوه‌نگار بررسی کنید",
-        WorkOrderSmsStatus.InvalidMobile => "موبایل گیرنده ثبت نشده یا معتبر نیست؛ ارسال نشد",
-        WorkOrderSmsStatus.Disabled => "ارسال پیامک در سرور غیرفعال است؛ ارسال نشد",
-        WorkOrderSmsStatus.NotConfigured => "کلید API یا نام الگوی پیامک تنظیم نشده است؛ ارسال نشد",
+        WorkOrderSmsStatus.InvalidMobile => "شمارهٔ موبایل این گیرنده در پروفایلش ثبت نشده یا معتبر نیست؛ ارسال نشد",
+        // این وضعیت دو علت کاملاً متفاوت دارد و نوشتن فقط «غیرفعال است» گمراه‌کننده بود:
+        // سوئیچ واقعاً خاموش باشد، یا سرور نتوانسته باشد تنظیمات پیامک را بخواند. هر دو
+        // اینجا نوشته می‌شوند تا مدیر بداند کجا را نگاه کند.
+        WorkOrderSmsStatus.Disabled => "ارسال انجام نشد چون در لحظهٔ ارسال، تنظیمات پیامک «خاموش» دیده شد: "
+            + "یا سوئیچ «تنظیمات ← سامانهٔ پیامکی» خاموش است، یا سرور نتوانست تنظیمات را از دیتابیس بخواند",
+        WorkOrderSmsStatus.NotConfigured => "کلید API، خط فرستنده یا نام الگوی پیامک کامل نیست؛ «تنظیمات ← سامانهٔ پیامکی» را بررسی کنید",
         WorkOrderSmsStatus.Cancelled => "اطلاعات گیرنده یا دستور کار پیش از ارسال تغییر کرده بود؛ ارسال نشد",
         WorkOrderSmsStatus.ModuleDisabled => "مجوز پیامک «دستور کار» برای این شرکت غیرفعال بود یا لغو شد؛ ارسال نشد",
         WorkOrderSmsStatus.InvalidCompanyName => "نام شرکت با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
