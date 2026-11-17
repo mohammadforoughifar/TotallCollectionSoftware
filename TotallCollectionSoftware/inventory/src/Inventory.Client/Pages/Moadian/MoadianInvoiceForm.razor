@@ -233,7 +233,7 @@ else
                                         {
                                             <MoadianGoodsCombo Goods="Goods"
                                                                 SelectedId="row.GoodsOrServicesId"
-                                                                Name="row.Name"
+                                                                Name="@row.Name"
                                                                 AutoFocus="@(_autoFocusRow == row)"
                                                                 OnPick="g => PickGoods(row, g)"
                                                                 OnClear="() => ClearGoods(row)"
