@@ -52,8 +52,9 @@
     public async Task<IActionResult> OnPostRegisterKey()
     {
         var folder = Request.Form["keysFolder"].ToString();
+        var allowReplace = Request.Form["allowReplace"].ToString() == "on";
         var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
-        var (ok, message) = await Keys.RegisterInManifestAsync(folder, actor);
+        var (ok, message) = await Keys.RegisterInManifestAsync(folder, actor, allowReplace: allowReplace);
         ManifestOk = ok; ManifestMessage = message;
         return Page();
     }
@@ -240,6 +241,8 @@
                 <div class="field"><label for="keysFolder">یا خودکار ثبت کن: مسیر پوشهٔ Keys محصول</label>
                     <input id="keysFolder" name="keysFolder" class="mono"
                            placeholder="C:\src\TotallCollectionSoftware\inventory\src\Inventory.Licensing\Keys" /></div>
+                <div class="field"><label><input type="checkbox" name="allowReplace" /> جایگزینی ردیف موجود با همین شناسه
+                    (خطرناک — فقط اگر هیچ لایسنس فعالی با کلید قبلی وجود ندارد)</label></div>
                 <button type="submit" class="btn ghost">افزودن/به‌روزرسانی ردیف در manifest و کپی کلید عمومی</button>
                 <p class="hint">پوشه‌ای که <span class="mono">manifest.json</span> در آن است. نسخهٔ پشتیبان از manifest گرفته می‌شود،
                     ردیف‌های قبلی حذف نمی‌شوند و بعد از آن باید بیلد Release بگیرید (کلیدها داخل اسمبلی جاسازی می‌شوند).</p>

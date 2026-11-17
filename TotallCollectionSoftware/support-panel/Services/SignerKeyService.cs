@@ -412,7 +412,7 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
     /// تا لایسنس‌های صادرشده با کلیدهای قدیمی معتبر بمانند. نسخهٔ پشتیبان manifest ساخته می‌شود.
     /// </summary>
     public async Task<(bool Ok, string Message)> RegisterInManifestAsync(string keysFolder, SupportUser actor,
-        CancellationToken ct = default)
+        CancellationToken ct = default, bool allowReplace = false)
     {
         var info = DescribeActiveKey();
         if (!info.Exists || info.Fingerprint is not { Length: 64 })
@@ -462,6 +462,26 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
                 {
                     existing = entry;
                     break;
+                }
+            }
+
+            // ⛔ محافظ «کلید منتشرشده»:
+            // اگر ردیفی با همین keyId هست ولی کلید عمومی‌اش چیز دیگری است، بی‌صدا جایگزین نمی‌کنیم.
+            // یک‌بار همین جایگزینی باعث شد نصب‌های منتشرشده کلید قدیمی داشته باشند و همهٔ
+            // لایسنس‌های تازه با «امضای فایل لایسنس معتبر نیست» رد شوند، در حالی که پنل «سبز» بود.
+            if (existing is not null && !allowReplace)
+            {
+                var oldSha = existing["sha256"]?.GetValue<string>();
+                if (!string.IsNullOrWhiteSpace(oldSha) &&
+                    !string.Equals(oldSha, info.Fingerprint, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (false,
+                        $"ردیف «{info.KeyId}» در manifest هست ولی کلید عمومی‌اش با کلید فعال یکی نیست " +
+                        $"(اثر انگشت موجود {oldSha![..12]}… ≠ فعال {info.Fingerprint![..12]}…). " +
+                        "جایگزینی یک کلیدِ منتشرشده، لایسنس‌های امضاشده با کلید قبلی را روی نصب‌هایی که هنوز " +
+                        "نسخهٔ قدیمی را دارند بی‌اعتبار می‌کند. راه درست: در «ساخت جفت‌کلید» یک شناسهٔ تازه " +
+                        "(مثلاً sup-202612) بسازید تا ردیف تازه اضافه شود و ردیف قبلی بماند. " +
+                        "اگر مطمئنید هیچ لایسنس فعالی با کلید قبلی وجود ندارد، تیک «جایگزینی ردیف موجود» را بزنید.");
                 }
             }
 

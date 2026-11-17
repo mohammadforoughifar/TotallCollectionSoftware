@@ -240,6 +240,25 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         var prepared = await PrepareAsync(request, draft, ct);
         if (prepared.Error is not null) return new SignOutcome { Error = prepared.Error };
 
+        // ⛔ پیش‌بررسی «هم‌خوانی کلید امضا با کلیدهای داخل همین بیلد».
+        // چرا لازم شد؟ چون اگر پنل یا LicenseTool از سورس قدیمی بیلد شده باشند، دروازهٔ ابزار
+        // فایل را نمی‌نویسد و پیامِ ابزار شبیه «کلید محصول اشتباه است» دیده می‌شد؛ در حالی که
+        // مشکل، کهنه بودن خودِ پنل/ابزار بود. این‌جا تفکیک می‌کنیم تا راه‌حل روشن باشد.
+        var precheck = keys.CheckAgainstProductKeys(keyPassword);
+        if (!precheck.Ok && precheck.SignerFingerprint is { Length: 64 })
+        {
+            return new SignOutcome
+            {
+                Error = "امضا انجام نشد: کلید امضا با کلیدهای جاسازی‌شده در همین بیلد پنل/ابزار یکی نیست. " +
+                        $"اثر انگشت کلید امضا: {precheck.SignerFingerprint[..16]}… | کلیدهای این بیلد: " +
+                        string.Join("، ", precheck.ProductKeys.Select(k => $"{k.KeyId}={k.Fingerprint[..12]}…")) + ". " +
+                        "دو حالت دارد: (۱) کلید عمومی محصول را تازه ثبت کرده‌اید و پنل/LicenseTool را دوباره بیلد نکرده‌اید " +
+                        "⇒ از آخرین سورس، LicenseTool و پنل را Release بیلد کنید و دوباره امضا کنید. " +
+                        "(۲) واقعاً کلید امضا عوض شده ⇒ ردیف تازه با شناسهٔ تازه در manifest ثبت و نسخهٔ محصول را منتشر کنید. " +
+                        "مقایسهٔ دقیق: تنظیمات ← کارت «تشخیص»."
+            };
+        }
+
         // پیش‌بررسی رمز: اگر رمز با کلید نمی‌خواند، ابزار اجرا نمی‌شود و پیام روشن داده می‌شود.
         var formPassword = string.IsNullOrEmpty(keyPassword) ? null : keyPassword;
         var envPassword = keys.EnvironmentPassword;
