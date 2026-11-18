@@ -54,6 +54,8 @@ public sealed class ModulePermissionFilter : IAsyncActionFilter
             ["Repairs.ReverseWarrantyCredit"] = new("Repairs", "Update"),
             ["ShopTradeIn.FinalizeTradeIn"] = new("Repairs", "Update"),
             ["ShopTradeIn.Use"] = new("Repairs", "Update"),
+            ["Orders.CreateProforma"] = new("Orders", "Create"),
+            ["Orders.ConvertProforma"] = new("Orders", "Create"),
             ["Orders.ReconcileCash"] = new("Orders", "Update"),
             ["Orders.ReceiveCredit"] = new("Orders", "Update"),
             ["Orders.ReverseCreditReceipt"] = new("Orders", "Update"),

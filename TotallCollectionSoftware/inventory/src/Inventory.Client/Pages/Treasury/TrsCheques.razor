@@ -267,7 +267,7 @@
         </div>
         <div class="col-md-4">
             <label class="form-label">شناسه صیاد</label>
-            <input class="form-control num" @bind="form.SayadId" maxlength="16" dir="ltr" />
+            <ShopDigitsInput @bind-Value="form.SayadId" CssClass="form-control num" MaxDigits="16" ValidLengths="@(new[] { 16 })" ErrorMessage="شناسه صیاد باید دقیقاً ۱۶ رقم باشد." />
         </div>
 
         <div class="col-md-4">

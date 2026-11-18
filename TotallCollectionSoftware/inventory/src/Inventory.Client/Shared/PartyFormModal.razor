@@ -55,34 +55,28 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">موبایل</label>
-                <input class="form-control @(FieldClass("mobile"))" @bind="party.Mobile" inputmode="tel" data-digits="tel" dir="ltr"
-                       maxlength="16" title="شماره موبایل باید دقیقاً ۱۱ رقم باشد" data-party-field="mobile" />
+                <ShopDigitsInput @bind-Value="party.Mobile" Field="mobile" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="شماره موبایل باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
                 @FieldError("mobile")
-                <div class="fs-9 text-muted mt-1">۱۱ رقم؛ مثال: 09123456789</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">تلفن ثابت</label>
-                <input class="form-control @(FieldClass("phone"))" @bind="party.Phone" inputmode="tel" data-digits="tel" dir="ltr"
-                       maxlength="16" title="شماره تلفن باید دقیقاً ۱۱ رقم باشد (همراه پیشوند شهر)" />
+                <ShopDigitsInput @bind-Value="party.Phone" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="شماره تلفن ثابت باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
                 @FieldError("phone")
-                <div class="fs-9 text-muted mt-1">۱۱ رقم همراه پیشوند شهر؛ مثال: 02112345678</div>
             </div>
             <div class="col-12">
                 <label class="form-label">آدرس</label>
                 <input class="form-control" @bind="party.Address" />
             </div>
-            <div class="col-md-6">
-                <label class="form-label">@(Type == PartyType.Customer ? "شناسه ملی خریدار" : "شناسه ملی/اقتصادی تأمینکننده")</label>
-                <input class="form-control @(FieldClass("taxId"))" dir="ltr" inputmode="numeric" maxlength="14" @bind="party.TaxId" />
-                @FieldError("taxId")
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">@(Type == PartyType.Customer ? "کد پستی خریدار" : "کد پستی تأمینکننده")</label>
-                <input class="form-control @(FieldClass("postal"))" dir="ltr" inputmode="numeric" maxlength="10"
-                       title="کد پستی باید دقیقاً ۱۰ رقم باشد" @bind="party.PostalCode" />
-                @FieldError("postal")
-                <div class="fs-9 text-muted mt-1">کد پستی دقیقاً ۱۰ رقم</div>
-            </div>
+                <div class="col-md-6">
+                    <label class="form-label">@(Type == PartyType.Customer ? "شناسه ملی خریدار" : "شناسه ملی/اقتصادی تأمینکننده")</label>
+                    <ShopDigitsInput @bind-Value="party.TaxId" MaxDigits="14" ValidLengths="@(new[] { 10, 11, 12, 14 })" ErrorMessage="شناسه ملی/مالیاتی باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم باشد." />
+                    @FieldError("taxId")
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@(Type == PartyType.Customer ? "کد پستی خریدار" : "کد پستی تأمینکننده")</label>
+                    <ShopDigitsInput @bind-Value="party.PostalCode" MaxDigits="10" ValidLengths="@(new[] { 10 })" ErrorMessage="کد پستی باید دقیقاً ۱۰ رقم باشد." />
+                    @FieldError("postal")
+                </div>
             @if (Type == PartyType.Customer && AllowReferrerPicker)
             {
                 <div class="col-12">

@@ -162,6 +162,19 @@ static class Program
         Check(await WorkOrderSmsCompanyAccess.HasAccessAsync(db,db.Users.Single(u=>u.Id==12),1),"unrestricted legacy admin fallback");
         db.UserCompanyAccesses.Add(new UserCompanyAccess {UserId=12,CompanyId=2});
         Check(!await WorkOrderSmsCompanyAccess.HasAccessAsync(db,db.Users.Single(u=>u.Id==12),1),"admin with company rows is restricted like middleware");
+        var eligible = WorkOrderSmsCompanyAccess.EligibleUsers(db, 1).Select(u => u.Id).ToHashSet();
+        Check(eligible.Contains(1) && eligible.Contains(11) && !eligible.Contains(4) && !eligible.Contains(12),
+            "recipient list and delivery use the same company-access policy");
+        db.Users.Add(new User { Id=13, Username="ambiguous" });
+        db.SystemUsers.Add(new SystemUser { Username="ambiguous", CompanyId=1 });
+        db.SystemUsers.Add(new SystemUser { Username="ambiguous", CompanyId=2 });
+        db.Users.Add(new User { Id=14, Username="inactive", IsActive=false });
+        db.UserCompanyAccesses.Add(new UserCompanyAccess { UserId=14, CompanyId=1 });
+        Check(!await WorkOrderSmsCompanyAccess.HasAccessAsync(db,db.Users.Single(u=>u.Id==13),1) &&
+              !WorkOrderSmsCompanyAccess.EligibleUsers(db,1).Any(u=>u.Id==14) &&
+              !WorkOrderSmsCompanyAccess.EligibleUsers(db,0).Any(),
+            "ambiguous legacy access, inactive users and missing company fail closed");
+
         Check((await CompanySmsServicePolicy.GetEnabledRevisionAsync(db,2,SmsModuleCatalog.WorkOrders)) is null,
             "company 2 repair permission does not enable work orders");
 

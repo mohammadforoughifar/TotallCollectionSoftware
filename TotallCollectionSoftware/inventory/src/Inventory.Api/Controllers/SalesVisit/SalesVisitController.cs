@@ -61,6 +61,8 @@ public class SalesVisitController : ControllerBase
             ReferrerId = actor.ReferrerId,
             ReferrerName = actor.ReferrerName,
             IsAdmin = actor.IsAdmin,
+            IsSalesManager = actor.IsSalesManager,
+            CanEditVisitPrice = actor.CanEditVisitPrice,
             CanCreate = actor.CanCreate,
             CanApprove = actor.CanApprove,
             CanFinance = actor.CanFinance,
@@ -79,11 +81,11 @@ public class SalesVisitController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<VisOrderDto>>> GetAll(
         [FromQuery] VisOrderStatus? status, [FromQuery] int? partyId,
-        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? search)
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? search, [FromQuery] bool mine = false)
     {
         if (!await HasAnyAsync("View", "Create", "Approve", "FinanceView")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
-        return Ok(await _svc.GetListAsync(actor, status, partyId, from, to, search));
+        return Ok(await _svc.GetListAsync(actor, status, partyId, from, to, search, mine: mine));
     }
 
     /// <summary>صف تأیید مدیر فروش همراه هشدار کسری موجودی.</summary>
@@ -92,6 +94,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.ApprovalsQueueAsync(actor));
     }
 
@@ -107,13 +110,13 @@ public class SalesVisitController : ControllerBase
     /// <summary>
     /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا در بازهٔ زمانی.
     /// یک سطر برای هر کالا + جمع سفارش + موجودی کل + کسری.
-    /// مدیر/مالی همهٔ درخواست‌های شرکت را می‌بیند و ویزیتور فقط درخواست‌های خودش را.
+    /// فقط نقش مدیر فروش همهٔ درخواست‌های شرکت را می‌بیند؛ سایر کاربران فقط سفارش‌های خود را.
     /// </summary>
     [HttpGet("requests-report")]
     public async Task<ActionResult<VisRequestsReportDto>> RequestsReport(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] bool includeCanceled = false)
     {
-        if (!await HasAnyAsync("Approve", "FinanceView", "View", "Export")) return Forbid();
+        if (!await HasAnyAsync("Approve", "FinanceView", "View", "Create", "Export")) return Forbid();
 
         var toDate = (to ?? DateTime.Today).Date;
         var fromDate = (from ?? toDate.AddDays(-30)).Date;
@@ -125,11 +128,11 @@ public class SalesVisitController : ControllerBase
 
     /// <summary>آمار کارتابلی/داشبوردی.</summary>
     [HttpGet("stats")]
-    public async Task<ActionResult<VisQueueStats>> Stats()
+    public async Task<ActionResult<VisQueueStats>> Stats([FromQuery] bool mine = false)
     {
         if (!await HasAnyAsync("View", "Create", "Approve", "FinanceView")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
-        return Ok(await _svc.StatsAsync(actor));
+        return Ok(await _svc.StatsAsync(actor, mine));
     }
 
     /// <summary>یک سفارش با سطرها و گردش کامل.</summary>
@@ -173,6 +176,15 @@ public class SalesVisitController : ControllerBase
         return Ok(await _svc.ProductsAsync(actor, warehouseId, search));
     }
 
+    /// <summary>قیمت جاری کالاهای سفارش موجود برای نمایش در فرم ویرایش.</summary>
+    [HttpPost("product-prices")]
+    public async Task<ActionResult<List<VisProductLite>>> ProductPrices([FromBody] List<int> productIds)
+    {
+        if (!await HasAnyAsync("Create", "Update", "Approve", "View")) return Forbid();
+        var actor = await _svc.ResolveActorAsync(User);
+        return Ok(await _svc.ProductPricesAsync(actor, productIds));
+    }
+
     /// <summary>انبارهای فعال.</summary>
     [HttpGet("warehouses")]
     public async Task<ActionResult<List<VisWarehouseLite>>> Warehouses()
@@ -211,6 +223,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         // دیگر پیش‌نویس فاکتور ساخته نمی‌شود: تأیید مدیر سفارش را به «کارتابل مالی» می‌برد و
         // مالی با یک اقدام، سند فروش فروشگاه (نقد/چک/اقساط) را ثبت می‌کند.
         return Ok(await _svc.ApproveAsync(actor, id, decision?.Comment,
@@ -222,6 +235,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.ReturnAsync(actor, id, decision?.Comment ?? ""));
     }
 
@@ -230,6 +244,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.RejectAsync(actor, id, decision?.Comment ?? ""));
     }
 

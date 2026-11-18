@@ -1077,6 +1077,10 @@ else
                                     {
                                         <span class="ms-chip">@t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
                                     }
+                                    @foreach (var t in unavailableTargets.Where(t => selTargets.Contains(t.Id)))
+                                    {
+                                        <span class="ms-chip text-danger" title="گیرنده دیگر مجاز نیست؛ برای ذخیره حذف کنید">@t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
+                                    }
                                     <i class="bi bi-chevron-@(tDropOpen ? "up" : "down") ms-caret"></i>
                                 </div>
                                 @if (tDropOpen)
@@ -1098,6 +1102,8 @@ else
                                     </div>
                                 }
                             </div>
+                            @if (unavailableTargets.Any(t => selTargets.Contains(t.Id)))
+                            { <div class="text-danger small">گیرندگان نامجاز قبلی را پیش از ذخیره حذف کنید.</div> }
                         </div>
 
                         <div class="col-12 col-md-8">
@@ -1153,10 +1159,13 @@ else
                                     @foreach (var (val, fa) in RecurrenceOpts) { <option value="@val">@fa</option> }
                                 </select>
                             </div>
-                            <div class="small text-muted mt-2">
-                                <i class="bi bi-chat-dots"></i>
-                                در صورت فعال‌بودن پیامک دستور کار برای شرکت، ثبت و افزودن گیرنده به‌صورت خودکار اطلاع‌رسانی می‌شود.
-                                عنوانِ بیشتر از محدودیت الگو فقط در پیامک با «...» کوتاه می‌شود؛ عنوان دستور تغییر نمی‌کند.
+                            <div class="small mt-2" role="status" aria-live="polite">
+                                @if (companySmsEnabled == true)
+                                { <span class="text-success"><i class="bi bi-check-circle-fill" aria-hidden="true"></i> سرویس پیامکی فعال است</span> }
+                                else if (companySmsEnabled == false)
+                                { <span class="text-danger"><i class="bi bi-x-circle-fill" aria-hidden="true"></i> پیامک دستور کار برای شرکت فعال نیست</span> }
+                                else
+                                { <span class="text-muted"><i class="bi bi-question-circle" aria-hidden="true"></i> وضعیت پیامک قابل دریافت نیست</span> }
                             </div>
                         </section>
                     </div>
@@ -2749,6 +2758,8 @@ else
     private int mineAll, assignedAll, archiveAll;
     private List<CalItem> calItems = new();
     private List<TargetOpt> targets = new();
+    private List<TargetOpt> unavailableTargets = new();
+    private bool? companySmsEnabled;
     private HashSet<int> expanded = new();
 
     // صفحه‌بندی
@@ -3418,6 +3429,7 @@ else
         gdAddOpen = true;
         gdAddLoading = true;
         StateHasChanged();
+        targets = new();
         try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         gdAddLoading = false;
@@ -4461,9 +4473,7 @@ else
         newDueDate = due.Date;
         newDueTime = TimeOnly.FromDateTime(due);
         selTargets = ids;
-        foreach (var t in extra)
-            if (!targets.Any(x => x.Id == t.Id))
-                targets.Add(t);
+        unavailableTargets = extra.Where(t => !targets.Any(x => x.Id == t.Id)).ToList();
         newProjectId = prjId;
         newWeight = prjWeight;
         if (prjId > 0)
@@ -4517,10 +4527,8 @@ else
                     await ShowNewFormAsync(letter.Title, sbInner.ToString());
 
                     // پیش‌انتخاب گیرندگانِ گردش نامه (گیرنده/ارجاع/هامش) — قابل ویرایش/حذف
-                    foreach (var u in letter.ReciversGirande) selTargets.Add(u.UserId);
-                    foreach (var u in letter.ReciversErja) selTargets.Add(u.UserId);
-                    foreach (var u in letter.ReciversHamesh) selTargets.Add(u.UserId);
-                    AugmentTargets(letter);
+                    foreach (var u in letter.ReciversGirande.Concat(letter.ReciversErja).Concat(letter.ReciversHamesh))
+                        if (targets.Any(t => t.Id == u.UserId)) selTargets.Add(u.UserId);
                 }
                 else await ShowNewFormAsync("", "");
             }
@@ -4577,11 +4585,9 @@ else
                     var crew = letter.Erjas.Where(e => e.ReciverUserId > 0)
                                            .Select(e => (Id: e.ReciverUserId, Name: e.ReciverName))
                                            .GroupBy(x => x.Id).Select(g => g.First()).ToList();
-                    foreach (var u in crew.Where(x => x.Id != access.UserId))
-                        selTargets.Add(u.Id);
                     var known = targets.Select(t => t.Id).ToHashSet();
-                    foreach (var u in crew.Where(x => !known.Contains(x.Id)))
-                        targets.Add(new TargetOpt { Id = u.Id, Username = string.IsNullOrWhiteSpace(u.Name) ? $"کاربر {u.Id}" : u.Name });
+                    foreach (var u in crew.Where(x => x.Id != access.UserId && known.Contains(x.Id)))
+                        selTargets.Add(u.Id);
                 }
                 else await ShowNewFormAsync("", "");
             }
@@ -4622,11 +4628,9 @@ else
                                     .Where(x => x.UserId > 0)
                                     .Select(x => (Id: x.UserId, Name: x.FullName))
                                     .GroupBy(x => x.Id).Select(g => g.First()).ToList();
-                    foreach (var u in crew.Where(x => x.Id != access.UserId))
-                        selTargets.Add(u.Id);
                     var known = targets.Select(t => t.Id).ToHashSet();
-                    foreach (var u in crew.Where(x => !known.Contains(x.Id)))
-                        targets.Add(new TargetOpt { Id = u.Id, Username = string.IsNullOrWhiteSpace(u.Name) ? $"کاربر {u.Id}" : u.Name });
+                    foreach (var u in crew.Where(x => x.Id != access.UserId && known.Contains(x.Id)))
+                        selTargets.Add(u.Id);
                 }
                 else await ShowNewFormAsync("", "");
             }
@@ -4682,8 +4686,8 @@ else
                     var d = $"<p><b>مربوط به بند {itemNo} صورتجلسه «{mDetail.Title}» مورخ {mDetail.MeetingDate:yyyy/MM/dd}:</b></p>" +
                             $"<p>{item?.Description}</p>";
                     await ShowNewFormAsync(t, d);
-                    if (item?.ResponsibleUserId != null) selTargets = new() { item.ResponsibleUserId.Value };
-                    else if (item?.FollowUpUserId != null) selTargets = new() { item.FollowUpUserId.Value };
+                    if (item?.ResponsibleUserId is int responsible && targets.Any(t => t.Id == responsible)) selTargets.Add(responsible);
+                    else if (item?.FollowUpUserId is int followUp && targets.Any(t => t.Id == followUp)) selTargets.Add(followUp);
                     if (item?.DueDate != null)
                     {
                         var targetDue = item.DueDate.Value.Date.AddHours(17);
@@ -4704,7 +4708,7 @@ else
                         sb.Append($"<li>بند {itm.RowNo}: {itm.Description}</li>");
                     sb.Append("</ul>");
                     await ShowNewFormAsync(t, sb.ToString());
-                    selTargets = mDetail.Participants.Where(p => p.Kind == "Attendee").Select(p => p.UserId).ToHashSet();
+                    selTargets = mDetail.Participants.Where(p => p.Kind == "Attendee" && targets.Any(t => t.Id == p.UserId)).Select(p => p.UserId).ToHashSet();
                     _sourceLabel = $"صورتجلسه «{mDetail.Title}»";
                 }
             }
@@ -4738,23 +4742,18 @@ else
         newFiles.Clear();
         // کلید تازه برای این بارِ پر کردن فرم (ضدِ ثبت تکراری در سرور)
         newRequestId = Guid.NewGuid().ToString("N");
-        try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
+        targets = new(); unavailableTargets = new(); companySmsEnabled = null;
+        try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); }
+        catch (Exception ex) { formError = $"دریافت گیرندگان مجاز ممکن نشد: {ex.Message}"; }
+        try { companySmsEnabled = (await Http.GetFromJsonAsync<CompanySmsStatus>("/api/workorders/sms-status"))?.Enabled; }
+        catch { companySmsEnabled = null; }
         showNew = true;
         StateHasChanged();
         await Task.Delay(80);
         if (rte != null) await rte.SetHtmlAsync(desc ?? "");
     }
 
-    /// <summary>گیرندگان گردش نامه که در لیست مجاز نیستند را به‌عنوان گزینه اضافه می‌کند تا چیپ قابل نمایش باشند.</summary>
-    private void AugmentTargets(Inventory.Shared.Dtos.InnerLetterDetailDto letter)
-    {
-        var known = targets.Select(t => t.Id).ToHashSet();
-        foreach (var u in letter.ReciversGirande.Concat(letter.ReciversErja).Concat(letter.ReciversHamesh))
-        {
-            if (u.UserId > 0 && !known.Contains(u.UserId))
-                targets.Add(new TargetOpt { Id = u.UserId, Username = string.IsNullOrWhiteSpace(u.FullName) ? $"کاربر {u.UserId}" : u.FullName });
-        }
-    }
+    private sealed class CompanySmsStatus { public bool Enabled { get; set; } }
 
     private void OnFilesSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
         => newFiles = e.GetMultipleFiles(int.MaxValue).ToList();
@@ -4780,6 +4779,8 @@ else
         if (string.IsNullOrWhiteSpace(newTitle)) { formError = "عنوان را وارد کنید."; return; }
         if (newTitle.Trim().Length > 200) { formError = "عنوان دستور کار نباید بیشتر از ۲۰۰ نویسه باشد؛ عنوان ذخیره‌شده کوتاه نمی‌شود."; return; }
         if (selTargets.Count == 0) { formError = "حداقل یک نفر را انتخاب کنید."; return; }
+        if (selTargets.Any(id => !targets.Any(t => t.Id == id)))
+        { formError = "گیرندگان نامجاز را پیش از ذخیره حذف کنید."; return; }
         if (newDueDate == null) { formError = "تاریخ مقرر را انتخاب کنید."; return; }
         // بند ۱: تاریخ/ساعت مقرر نباید قبل از الان باشد
         var dueCheck = newDueDate.Value.Date.Add(newDueTime.ToTimeSpan());

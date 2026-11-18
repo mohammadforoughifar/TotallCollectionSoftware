@@ -79,7 +79,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fs-8">شماره کارت (۱۶ رقم)</label>
-                    <input class="form-control num @(CardNumberError is not null ? "is-invalid" : "")" @bind="form.CardNumber" @bind:event="oninput" dir="ltr" inputmode="numeric"
+                    <input class="form-control num @(CardNumberError is not null ? "is-invalid" : "")" @bind="form.CardNumber" @bind:event="oninput" dir="ltr" inputmode="numeric" maxlength="16" data-digits="digits" data-shop-max-digits="16"
                            aria-invalid="@(CardNumberError is not null ? "true" : "false")" aria-describedby="quick-bank-card-error" placeholder="xxxx-xxxx-xxxx-xxxx" />
                     @if (CardNumberError is not null) { <div id="quick-bank-card-error" class="invalid-feedback d-block" role="status">@CardNumberError</div> }
                 </div>
@@ -87,7 +87,7 @@
                     <label class="form-label fs-8">شماره شبا (بدون IR)</label>
                     <div class="input-group" dir="ltr">
                         <span class="input-group-text">IR</span>
-                        <input class="form-control num @(IbanError is not null ? "is-invalid" : "")" @bind="form.Iban" @bind:event="oninput" placeholder="۲۴ رقم شبا" inputmode="text"
+                        <input class="form-control num @(IbanError is not null ? "is-invalid" : "")" @bind="form.Iban" @bind:event="oninput" placeholder="۲۴ رقم شبا" inputmode="numeric" maxlength="24" data-digits="digits" data-shop-max-digits="24" data-shop-iban="true"
                                aria-invalid="@(IbanError is not null ? "true" : "false")" aria-describedby="quick-bank-iban-error" />
                     </div>
                     @if (IbanError is not null) { <div id="quick-bank-iban-error" class="invalid-feedback d-block" role="status">@IbanError</div> }

@@ -391,7 +391,7 @@
                                 </div>
                                 <div class="col-6">
                                     <label class="op-label">شناسه صیادی (۱۶ رقم)</label>
-                                    <input class="form-control form-control-sm num text-center op-input" maxlength="16" @bind="newCheque.SayadId" placeholder="کد ۱۶ رقمی صیاد" />
+                                    <ShopDigitsInput @bind-Value="newCheque.SayadId" CssClass="form-control form-control-sm num text-center op-input" MaxDigits="16" ValidLengths="@(new[] { 16 })" ErrorMessage="شناسه صیاد باید دقیقاً ۱۶ رقم باشد." />
                                 </div>
                             </div>
 

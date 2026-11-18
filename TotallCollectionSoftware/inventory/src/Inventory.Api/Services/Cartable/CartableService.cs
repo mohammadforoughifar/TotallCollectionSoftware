@@ -137,15 +137,19 @@ public class SalesVisitCartableSource : ICartableSource
     public async Task<IEnumerable<CartableItemDto>> GetMineAsync(CartableContext ctx, CancellationToken ct = default)
     {
         var items = new List<CartableItemDto>();
-        var canApprove = ctx.Has("SalesVisit.Approve");
+        var isSalesManager = ctx.UserId > 0 && await _db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId && u.IsActive)
+            .AnyAsync(u => _db.UserRoles.Any(ur => ur.UserId == u.Id &&
+                _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive && r.Name == "SalesManager")), ct);
+        var canApprove = ctx.IsAdmin || (isSalesManager && ctx.Has("SalesVisit.Approve"));
         var canFinance = ctx.Has("SalesVisit.FinanceView");
         var canCreate = ctx.Has("SalesVisit.Create");
 
         // ---------------- ویزیتور ----------------
-        if (canCreate && ctx.ReferrerId is > 0)
+        if (canCreate && ctx.UserId > 0)
         {
             var myReturned = await _db.VisOrders.AsNoTracking()
-                .Where(o => o.ReferrerId == ctx.ReferrerId && o.Status == VisOrderStatus.Returned)
+                .Where(o => o.CreatedByUserId == ctx.UserId && o.Status == VisOrderStatus.Returned)
                 .CountAsync(ct);
             if (myReturned > 0)
                 items.Add(new CartableItemDto
@@ -163,7 +167,7 @@ public class SalesVisitCartableSource : ICartableSource
                 });
 
             var myDrafts = await _db.VisOrders.AsNoTracking()
-                .Where(o => o.ReferrerId == ctx.ReferrerId && o.Status == VisOrderStatus.Draft)
+                .Where(o => o.CreatedByUserId == ctx.UserId && o.Status == VisOrderStatus.Draft)
                 .CountAsync(ct);
             if (myDrafts > 0)
                 items.Add(new CartableItemDto

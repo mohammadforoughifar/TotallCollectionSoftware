@@ -79,22 +79,26 @@ public static class WorkOrderSmsQueue
 /// <summary>Match active-company middleware rules without trusting a client-selected company.</summary>
 public static class WorkOrderSmsCompanyAccess
 {
-    public static async Task<bool> HasAccessAsync(AppDbContext db, User user, int companyId, CancellationToken ct = default)
+    // SQL-filterable so recipient paging is applied after company access, not before it.
+    public static IQueryable<User> EligibleUsers(AppDbContext db, int companyId)
     {
-        if (!user.IsActive || companyId <= 0) return false;
-        var activeAccess = await db.UserCompanyAccesses.AsNoTracking()
-            .Where(a => a.UserId == user.Id && db.SystemCompanies.Any(c => c.Id == a.CompanyId && c.IsActive))
-            .Select(a => a.CompanyId).ToListAsync(ct);
-        if (activeAccess.Count > 0) return activeAccess.Contains(companyId);
-        // Legacy SystemUsers is only consulted when there are no active access rows,
-        // just like ActiveCompanyMiddleware. Ambiguous legacy ownership fails closed.
-        var legacy = await db.SystemUsers.AsNoTracking()
-            .Where(u => u.Username == user.Username && u.CompanyId != null &&
-                db.SystemCompanies.Any(c => c.Id == u.CompanyId && c.IsActive))
-            .Select(u => u.CompanyId!.Value).Distinct().ToListAsync(ct);
-        if (legacy.Count > 0) return legacy.Count == 1 && legacy[0] == companyId;
-        return string.Equals(user.Role, "Admin", StringComparison.Ordinal);
+        if (companyId <= 0) return db.Users.AsNoTracking().Where(u => false);
+        return db.Users.AsNoTracking().Where(u => u.IsActive &&
+            db.SystemCompanies.Any(c => c.Id == companyId && c.IsActive) &&
+            (db.UserCompanyAccesses.Any(a => a.UserId == u.Id && a.CompanyId == companyId) ||
+             (!db.UserCompanyAccesses.Any(a => a.UserId == u.Id &&
+                  db.SystemCompanies.Any(c => c.Id == a.CompanyId && c.IsActive)) &&
+              ((db.SystemUsers.Where(s => s.Username == u.Username && s.CompanyId != null &&
+                    db.SystemCompanies.Any(c => c.Id == s.CompanyId && c.IsActive))
+                    .Select(s => s.CompanyId).Distinct().Count() == 1 &&
+                db.SystemUsers.Any(s => s.Username == u.Username && s.CompanyId == companyId)) ||
+               (!db.SystemUsers.Any(s => s.Username == u.Username && s.CompanyId != null &&
+                    db.SystemCompanies.Any(c => c.Id == s.CompanyId && c.IsActive)) && u.Role == "Admin")))));
     }
+
+    public static Task<bool> HasAccessAsync(AppDbContext db, User user, int companyId, CancellationToken ct = default)
+        => EligibleUsers(db, companyId).AnyAsync(u => u.Id == user.Id, ct);
+
 }
 
 /// <summary>One atomic claim, then at most one SDK request; uncertain results are terminal.</summary>

@@ -125,7 +125,7 @@ class PriceAndDeclutterContracts(unittest.TestCase):
         self.assertIn('@bind="description"', FORM)
 
     def test_shortcut_asset_is_updated_and_scoped(self):
-        self.assertIn('js/order-entry.js?v=8', INDEX)
+        self.assertIn('js/order-entry.js?v=9', INDEX)
         self.assertRegex(INDEX, r'Inventory\.Client\.styles\.css\?v=(?:9|[1-9][0-9]+)')
         self.assertNotIn("event.key === 'F7' && isInvoice", JS)
         self.assertIn("event.key === 'F7' && !modal", JS)

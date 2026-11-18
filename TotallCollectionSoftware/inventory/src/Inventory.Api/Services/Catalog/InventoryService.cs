@@ -144,13 +144,18 @@ public class InventoryService : IInventoryService
 
     public async Task<Referrer> SaveReferrerAsync(Referrer dto)
     {
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone, "تلفن معرف");
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
+        var bank = new TrsAccount { CardNumber = dto.CardNumber, Iban = dto.Iban };
+        var bankError = ShopIdentifierRules.ValidateBank(bank);
+        if (bankError is not null) throw new InvalidOperationException(bankError);
+        dto.CardNumber = bank.CardNumber;
+        dto.Iban = bank.Iban;
         if (string.IsNullOrWhiteSpace(dto.Name))
             throw new InvalidOperationException("نام معرف را وارد کنید.");
         if (dto.GoodsCommissionPercent is < 0 or > 100 || dto.ServiceCommissionPercent is < 0 or > 100)
             throw new InvalidOperationException("درصد پورسانت باید بین ۰ و ۱۰۰ باشد.");
-        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone);
-        if (phoneError is not null) throw new InvalidOperationException(phoneError);
-        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
 
         var card = NullIfEmpty(dto.CardNumber)?.Replace(" ", "").Replace("-", "");
         if (card is not null && (card.Length != 16 || !card.All(char.IsDigit)))
@@ -190,8 +195,6 @@ public class InventoryService : IInventoryService
         entity.CardNumber = NullIfEmpty(dto.CardNumber);
         entity.Iban = NullIfEmpty(dto.Iban);
         entity.CanViewProducts = dto.CanViewProducts;
-        // سقف تخفیف مجاز ویزیتور در سفارش میدانی (۰ = بدون سقف)
-        entity.MaxDiscountPercent = Math.Clamp(dto.MaxDiscountPercent, 0, 100);
         entity.IsActive = dto.IsActive;
         await _db.SaveChangesAsync();
 
@@ -1642,7 +1645,7 @@ public class InventoryService : IInventoryService
     public async Task<Warehouse> SaveWarehouseAsync(Warehouse dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name)) throw new InvalidOperationException("نام انبار را وارد کنید.");
-        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone);
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone, "تلفن انبار");
         if (phoneError is not null) throw new InvalidOperationException(phoneError);
         dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
         Db.Warehouse entity;

@@ -1660,10 +1660,10 @@ else
             return allowed;
         }
 
-        // گزارش تجمیع درخواست‌های ویزیتوری — مخصوص مدیر فروش/مالی (تأیید) و دارندگان مجوز خروجی.
+        // گزارش تجمیع با محدودهٔ مستقل سمت سرور برای ویزیتور و مدیر فروش.
         if (p.StartsWith("sales/requests-report"))
         {
-            var ok = Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.Export");
+            var ok = Auth.Has("SalesVisit.View") || Auth.Has("SalesVisit.Create") || Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.FinanceView") || Auth.Has("SalesVisit.Export");
             if (!ok) deniedTitle = "گزارش درخواست‌های ویزیتوری";
             return ok;
         }
@@ -1678,7 +1678,7 @@ else
             // زیرمسیرهای حساس ویزیتوری سطح دقیق خودشان را دارند و با «مدیریت بخش» باز نمی‌شوند.
             if (p.StartsWith("sales/approvals") || p.StartsWith("sales/requests"))
             {
-                var ok = Auth.Has("SalesVisit.Approve");
+                var ok = Auth.IsAdmin || (Auth.IsSalesManager && Auth.Has("SalesVisit.Approve"));
                 if (!ok) deniedTitle = "تأیید سفارش‌های ویزیتور";
                 return ok;
             }

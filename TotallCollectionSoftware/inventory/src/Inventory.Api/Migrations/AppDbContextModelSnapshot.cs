@@ -17330,6 +17330,25 @@ namespace Inventory.Api.Migrations
 
                     b.Navigation("UserRoles");
                 });
+            modelBuilder.Entity("Inventory.Api.Data.SalesProforma", b =>
+                {
+                    b.Property<string>("Id").HasMaxLength(32).HasColumnType("nvarchar(32)");
+                    b.Property<int>("CompanyId").HasColumnType("int");
+                    b.Property<string>("Number").IsRequired().HasMaxLength(40).HasColumnType("nvarchar(40)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
+                    b.Property<string>("DocumentJson").IsRequired().HasColumnType("nvarchar(max)");
+                    b.Property<int?>("SaleOrderId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.ToTable("SalesProformas");
+                });
+            modelBuilder.Entity("Inventory.Api.Data.ShopVisitorDiscount", b =>
+                {
+                    b.Property<int>("CompanyId").HasColumnType("int");
+                    b.Property<int>("UserId").HasColumnType("int");
+                    b.Property<decimal>("MaxDiscountPercent").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.HasKey("CompanyId", "UserId");
+                    b.ToTable("ShopVisitorDiscounts");
+                });
             // Shop pricing history is additive; older legacy snapshot omissions are intentionally not guessed here.
             modelBuilder.Entity("Inventory.Api.Data.ShopPricingPolicy", b =>
                 {

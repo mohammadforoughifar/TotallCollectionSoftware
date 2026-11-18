@@ -56,8 +56,8 @@ public static class ShopIdentifierRules
     {
         var phone = NormalizePhone(value);
         if (phone is null) return null;
-        return phone.Length == 11 && IsDigits(phone)
-            ? null : $"{label} باید دقیقاً ۱۱ رقم باشد.";
+        return phone.Length == 11 && IsDigits(phone) && phone[0] == '0'
+            ? null : $"{label} باید دقیقاً ۱۱ رقم با صفر آغازین باشد.";
     }
 
     /// <summary>اعتبارسنجی یکجای شماره تماس و کد پستی فرمهایی که Party نیستند.</summary>
@@ -90,16 +90,14 @@ public static class ShopIdentifierRules
     /// </summary>
     public static string? ValidateParty(Party party)
     {
-        party.PostalCode = Normalize(party.PostalCode);
-        party.TaxId = Normalize(party.TaxId);
+        var phoneError = ValidatePhone(party.Mobile, "شماره موبایل") ?? ValidatePhone(party.Phone, "شماره تلفن ثابت");
+        if (phoneError is not null) return phoneError;
         party.Mobile = NormalizePhone(party.Mobile);
         party.Phone = NormalizePhone(party.Phone);
+        party.PostalCode = Normalize(party.PostalCode);
+        party.TaxId = Normalize(party.TaxId);
         if (party.PostalCode is not null && (party.PostalCode.Length != 10 || !IsDigits(party.PostalCode)))
             return "کد پستی باید دقیقاً ۱۰ رقم باشد.";
-        var mobileError = ValidatePhone(party.Mobile, "شماره موبایل");
-        if (mobileError is not null) return mobileError;
-        var phoneError = ValidatePhone(party.Phone, "شماره تلفن");
-        if (phoneError is not null) return phoneError;
         if (party.TaxId is not null && (party.TaxId.Length is not (10 or 11 or 12 or 14) || !IsDigits(party.TaxId)))
             return "شناسه ملی/مالیاتی باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم باشد.";
         return null;

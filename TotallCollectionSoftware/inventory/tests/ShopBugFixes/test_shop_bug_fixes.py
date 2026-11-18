@@ -57,8 +57,8 @@ class Bug1And2PartyValidation(unittest.TestCase):
     def test_supplier_form_has_the_same_fields_and_rules(self):
         # فیلدهای شناسه/کد پستی دیگر فقط مخصوص مشتری نیستند.
         self.assertIn('Type == PartyType.Supplier ? "تأمین', MODAL)
-        self.assertIn('@bind="party.TaxId"', MODAL)
-        self.assertIn('@bind="party.PostalCode"', MODAL)
+        self.assertIn('@bind-Value="party.TaxId"', MODAL)
+        self.assertIn('@bind-Value="party.PostalCode"', MODAL)
         self.assertNotIn('@if (Type == PartyType.Customer)\n', MODAL)
         # ValidateParty هیچ شرطی روی نوع طرف حساب نمیگذارد.
         self.assertNotIn('party.Type', RULES.split('public static string? ValidateParty', 1)[1])
@@ -90,7 +90,7 @@ class Bug3SharedIdentifierRules(unittest.TestCase):
                 text = read(path)
                 self.assertTrue('ShopIdentifierRules.Validate' in text, text[:80])
         # server-side guards for the forms that do not use a Party
-        self.assertIn('ShopIdentifierRules.ValidatePhone(dto.Phone)', SERVICE)
+        self.assertIn('ShopIdentifierRules.ValidatePhone(dto.Phone,', SERVICE)
         self.assertIn('SaveWarehouseAsync', SERVICE)
 
 

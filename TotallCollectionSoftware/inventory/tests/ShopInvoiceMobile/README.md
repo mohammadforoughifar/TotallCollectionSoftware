@@ -2,7 +2,7 @@
 
 ## Behavior
 - QuickBank uses the bank picker (and its existing add-bank manager) as the single bank-name input. Account title remains separate. Removing/clearing the selected bank clears its model value; opening a new form resets the selection.
-- Card and IBAN inputs show live inline errors using the same strict ShopIdentifierRules used by the shop save API. Raw input is not truncated to a potentially valid prefix. Counts apply to normalized digits: card 16, Iranian IBAN 24 excluding optional IR; Persian/Arabic digits and formatting separators remain supported. Optional empty fields remain optional. This does not check checksum/ownership.
+- Card and IBAN inputs show live inline errors using the same strict ShopIdentifierRules used by the shop save API. Shop bank inputs cap typed and pasted digits at the allowed length; a pasted overflow is trimmed to fit the available space. Counts apply to normalized digits: card 16, Iranian IBAN 24 excluding optional IR; Persian/Arabic digits and formatting separators remain supported. Optional empty fields remain optional. This does not check checksum/ownership.
 - Invoice payment totals are explicitly bold. The invoice footer (not shared Modal or global CSS) has equal-sized grid buttons; small screens use two rows/two columns with a shorter accessible back label.
 - The always-visible paper-size combo is removed from the invoice footer. Save-and-print/F4 opens a small paper-choice dialog (company default, A4, A5). Cancel/Escape performs no save. Confirm/F1 invokes the existing SaveInternal(true), preserving invoice/payment validation and save-before-preview order. Normal Save/F1 remains unchanged. The child dialog carries the invoice marker so shortcuts stay in the top modal.
 

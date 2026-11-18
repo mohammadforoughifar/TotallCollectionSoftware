@@ -224,7 +224,7 @@
                                 </td>
                                 @if (me?.CanApprove == true || me?.CanFinance == true)
                                 {
-                                    <td class="text-dark fs-8 fw-500">@o.ReferrerName</td>
+                                    <td class="text-dark fs-8 fw-500">@(string.IsNullOrWhiteSpace(o.CreatedByName) ? "ثبت‌کننده نامشخص" : o.CreatedByName)</td>
                                 }
                                 <td class="text-start num fw-900 fs-7.5 text-dark">
                                     @Fa.Money(o.TotalNet)
@@ -618,9 +618,9 @@
         try
         {
             me = await Api.MeAsync();
-            stats = await Api.StatsAsync();
+            stats = await Api.StatsAsync(mine: true);
             VisOrderStatus? st = int.TryParse(statusFilter, out var v) ? (VisOrderStatus)v : null;
-            items = await Api.ListAsync(st, search) ?? new List<VisOrderDto>();
+            items = await Api.ListAsync(st, search, mine: true) ?? new List<VisOrderDto>();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }

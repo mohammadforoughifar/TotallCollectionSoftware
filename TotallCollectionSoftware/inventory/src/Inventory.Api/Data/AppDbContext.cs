@@ -127,6 +127,8 @@ public class AppDbContext : DbContext
     public DbSet<RsReport> RsReports => Set<RsReport>();
     public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
     public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
+    public DbSet<ShopVisitorDiscount> ShopVisitorDiscounts => Set<ShopVisitorDiscount>();
+    public DbSet<SalesProforma> SalesProformas => Set<SalesProforma>();
     public DbSet<ShopPrintSetting> ShopPrintSettings => Set<ShopPrintSetting>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
@@ -1896,6 +1898,8 @@ public class AppDbContext : DbContext
         // هر رکورد فقط در شرکت فعالِ انتخاب‌شده در نوار بالای برنامه دیده می‌شود.
         // ActiveCompanyId == null یعنی زمینهٔ شرکتی تعیین نشده (اجرای پس‌زمینه/نصب اولیه) → بدون فیلتر.
         mb.Entity<Product>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
+        mb.Entity<ShopVisitorDiscount>().HasKey(x => new { x.CompanyId, x.UserId });
+        mb.Entity<ShopVisitorDiscount>().Property(x => x.MaxDiscountPercent).HasPrecision(18, 2);
         mb.Entity<ShopPrintSetting>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopPricingPolicy>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);
         mb.Entity<ShopSalePrice>().HasQueryFilter(x => ActiveCompanyId == null || x.CompanyId == ActiveCompanyId);

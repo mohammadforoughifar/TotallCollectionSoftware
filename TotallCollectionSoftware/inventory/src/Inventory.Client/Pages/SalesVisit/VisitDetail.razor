@@ -140,7 +140,7 @@ else
             <div class="card">
                 <div class="card-header vis-card-header"><i class="bi bi-info-circle"></i><span class="card-title">اطلاعات</span></div>
                 <div class="card-body fs-8">
-                    <div class="vis-row"><span>ویزیتور</span><b>@order.ReferrerName</b></div>
+                    <div class="vis-row"><span>ویزیتور</span><b>@(string.IsNullOrWhiteSpace(order.CreatedByName) ? "ثبت‌کننده نامشخص" : order.CreatedByName)</b></div>
                     <div class="vis-row"><span>مشتری</span><b>@order.PartyName</b></div>
                     <div class="vis-row"><span>انبار</span><b>@order.WarehouseName</b></div>
                     <div class="vis-row"><span>پرداخت</span><b>@VisUi.PaymentText(order.PaymentMethod)</b></div>

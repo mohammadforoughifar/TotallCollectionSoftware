@@ -383,6 +383,16 @@
                     </div>
                 }
 
+                @if (new[] { "Purchase", "Sale", "GoodsIssue", "Repairs", "Expenses", "Installments", "OpeningBalance", "Settlement" }.Any(key => ShopAccess.CanSee(Auth, key)))
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gOpsActions ? "open" : "")" @onclick="() => gOpsActions = !gOpsActions">
+                            <span><i class="bi bi-lightning"></i>عملیات</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gOpsActions)
+                        {
+                            <div class="nav-sub-items">
                 @* خرید و فروش دو بخش مستقل‌اند (مجوز قدیمی هر دو «Orders» بود و قابل تفکیک نبود) *@
                 @if (ShopAccess.CanSee(Auth, "Purchase"))
                 {
@@ -395,10 +405,6 @@
                     <NavLink class="nav-link" href="orders/sale" @onclick="NotifyClose">
                         <i class="bi bi-cart3"></i><span>فروش</span>
                     </NavLink>
-                }
-                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
-                {
-                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات چاپ</span></NavLink>
                 }
                 @if (ShopAccess.CanSee(Auth, "GoodsIssue"))
                 {
@@ -436,11 +442,10 @@
                         <i class="bi bi-cash-stack"></i><span>تسویه فاکتورها</span>
                     </NavLink>
                 }
-                @if (ShopAccess.CanSee(Auth, "Guide"))
-                {
-                    <NavLink class="nav-link" href="shop-guide" @onclick="NotifyClose">
-                        <i class="bi bi-journal-check"></i><span>راهنمای سامانه</span>
-                    </NavLink>
+
+                            </div>
+                        }
+                    </div>
                 }
 
                 @* ---------- زیرمنوی گزارش‌های فروشگاهی ---------- *@
@@ -493,7 +498,7 @@
 
                                 @* گزارش تجمیع سفارش‌های ویزیتوری — داده‌اش از ماژول فروش و ویزیتوری است،
                                    پس مجوزش همان SalesVisit است (تأیید یا خروجی). *@
-                                @if (Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.Export"))
+                                @if (Auth.Has("SalesVisit.View") || Auth.Has("SalesVisit.Create") || Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.FinanceView") || Auth.Has("SalesVisit.Export"))
                                 {
                                     <NavLink class="nav-link" href="sales/requests-report" @onclick="NotifyClose">
                                         <i class="bi bi-clipboard-data"></i><span>گزارش تجمیع سفارش‌ها</span>
@@ -590,7 +595,7 @@
                                    «سفارش‌های من» (sales/visits) وجود دارد و تکرار آن در منو
                                    ورودی اضافی و مسیر نگهداری دوباره ایجاد میکرد. محافظ مسیر
                                    sales/visits/new در RouteGuardsـه MainLayout همچنان پابرجاست. *@
-                                @if (Auth.Has("SalesVisit.Approve"))
+                                @if (Auth.IsAdmin || (Auth.IsSalesManager && Auth.Has("SalesVisit.Approve")))
                                 {
                                     <NavLink class="nav-link" href="sales/approvals" @onclick="NotifyClose">
                                         <i class="bi bi-patch-check"></i><span>تأیید سفارش‌ها</span>
@@ -611,6 +616,18 @@
                         }
                     </div>
                 }
+
+                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
+                {
+                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات فروشگاه</span></NavLink>
+                }
+                @if (ShopAccess.CanSee(Auth, "Guide"))
+                {
+                    <NavLink class="nav-link" href="shop-guide" @onclick="NotifyClose">
+                        <i class="bi bi-journal-check"></i><span>راهنمای سامانه</span>
+                    </NavLink>
+                }
+
             </div>
         }
     </div>
@@ -944,7 +961,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gOpsBase, gOpsReports, gOpsDash;
+    private bool gOpsBase, gOpsReports, gOpsDash, gOpsActions;
     /// <summary>سطوح «اطلاعات پایهٔ مودیان» — هر یک از این‌ها بدون سطح مشاهده هم منو را باز می‌کند.</summary>
     private static readonly string[] MoadianBasicInfoActions =
         { "Company", "FiscalYear", "Connection", "Units", "Goods", "Customers" };
@@ -1015,7 +1032,7 @@
     // «گزارش تجمیع سفارش‌ها» هم داخل همین زیرمنو است؛ پس دارندهٔ فقط SalesVisit.Approve/Export
     // هم باید زیرمنو را ببیند، وگرنه آیتمش بی‌مسیر می‌ماند.
     private bool ShowOpsReportsSub => ShopAccess.CanSeeAny(Auth, "Kardex", "OrderReports", "PartyStatements", "Expenses", "Repairs")
-                                      || Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.Export");
+                                      || Auth.Has("SalesVisit.View") || Auth.Has("SalesVisit.Create") || Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.FinanceView") || Auth.Has("SalesVisit.Export");
     /// <summary>
     /// گروه «فروش و ویزیتوری» با مجوز بخش فروشگاه (<c>Shop.SalesVisit.View/Manage</c>)
     /// **یا** مجوزهای ماژول قدیمی <c>SalesVisit.*</c> باز می‌شود؛ پیش‌تر فقط حالت اول
@@ -1060,6 +1077,7 @@
         gDocs = false;
         gProjects = false;
         gOps = false;
+        gOpsActions = false;
         gOpsBase = false;
         gOpsDash = false;
         gOpsReports = false;

@@ -1,14 +1,15 @@
 @page "/shop/print-settings"
 @inject IShopPrintSettingsClient SettingsClient
+@inject IApiClient Api
 @inject ICompanyProfileService ProfileClient
 @inject IAuthState Auth
 @inject IToastService Toast
 
-<PageTitle>تنظیمات چاپ فروشگاه</PageTitle>
-<div class="page-head"><div><h1>تنظیمات چاپ فروشگاه</h1><p class="lead">اطلاعات بانکی فروشنده · مستقل برای شرکت فعال</p></div></div>
+<PageTitle>تنظیمات فروشگاه</PageTitle>
+<div class="page-head"><div><h1>تنظیمات فروشگاه</h1><p class="lead">چاپ و فروش ویزیتوری · مستقل برای شرکت فعال</p></div></div>
 @if (!CanView)
 {
-    <div class="alert alert-danger">مجوز مشاهدهٔ تنظیمات چاپ را ندارید.</div>
+    <div class="alert alert-danger">مجوز مشاهدهٔ تنظیمات فروشگاه را ندارید.</div>
 }
 else if (loading)
 {
@@ -20,15 +21,33 @@ else if (loadError is not null)
 }
 else
 {
+    <section class="card mb-3">
+        <div class="card-header">تنظیمات فروش ویزیتوری</div>
+        <div class="card-body">
+            <p class="text-muted">سقف تخفیف برای هر ویزیتور فعالِ شرکت انتخاب‌شده جداگانه تنظیم می‌شود. مقدار صفر یعنی تخفیف مجاز نیست.</p>
+            @if (visitorError is not null) { <p class="text-danger" role="alert">@visitorError</p> }
+            @if (visitors.Count == 0 && visitorError is null) { <p>ویزیتور فعالی با مجوز ثبت سفارش در این شرکت یافت نشد.</p> }
+            @foreach (var visitor in visitors)
+            {
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2" @key="visitor.UserId">
+                    <label for="@($"visitor-cap-{visitor.UserId}")">@visitor.UserName</label>
+                    <input id="@($"visitor-cap-{visitor.UserId}")" class="form-control" style="width: 110px" type="number" min="0" max="100" step="0.01" @bind="visitor.MaxDiscountPercent" disabled="@(!CanManage || visitorBusy)" />
+                    <span>٪</span>
+                    @if (CanManage) { <button type="button" class="btn btn-outline-primary btn-sm" disabled="@visitorBusy" @onclick="() => SaveVisitor(visitor)">ذخیره</button> }
+                </div>
+            }
+        </div>
+    </section>
     <div class="shop-print-layout">
         <section class="card"><div class="card-header">کارت‌ها و شباهای فروشنده</div><div class="card-body">
             <p class="text-muted">شماره کارت ۱۶ رقم و شبا ۲۴ رقم بدون IR است. مالکیت و صحت بانکی حساب بررسی نمی‌شود.</p>
             @foreach (var row in rows)
             {
                 <div class="bank-editor" @key="row">
-                    <label>شماره کارت<input @ref="row.CardRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="16" maxlength="16" value="@row.Card" aria-invalid="@InvalidCard(row).ToString().ToLowerInvariant()" @oninput="e => ChangeCard(row, e.Value?.ToString())" @onkeydown="e => CardKey(e, row)" disabled="@(!CanManage || busy)" /></label>
-                    <label>شماره شبا<div class="iban-editor" dir="ltr"><span>IR</span><input @ref="row.IbanRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="24" maxlength="24" value="@row.Iban" aria-invalid="@InvalidIban(row).ToString().ToLowerInvariant()" @oninput="e => ChangeIban(row, e.Value?.ToString())" disabled="@(!CanManage || busy)" /></div></label>
-                    @if (InvalidCard(row) || InvalidIban(row)) { <small class="text-danger">شماره ناقص، غیرعددی یا تکراری است.</small> }
+                    <label>شماره کارت<input @ref="row.CardRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="16" maxlength="16" data-digits="digits" data-shop-max-digits="16" value="@row.Card" aria-invalid="@InvalidCard(row).ToString().ToLowerInvariant()" @oninput="e => ChangeCard(row, e.Value?.ToString())" @onkeydown="e => CardKey(e, row)" disabled="@(!CanManage || busy)" /></label>
+                    <label>شماره شبا<div class="iban-editor" dir="ltr"><span>IR</span><input @ref="row.IbanRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="24" maxlength="24" data-digits="digits" data-shop-max-digits="24" data-shop-iban="true" value="@row.Iban" aria-invalid="@InvalidIban(row).ToString().ToLowerInvariant()" @oninput="e => ChangeIban(row, e.Value?.ToString())" disabled="@(!CanManage || busy)" /></div></label>
+                    @if (InvalidCard(row)) { <small class="text-danger" role="status">شماره کارت باید دقیقاً ۱۶ رقم و غیرتکراری باشد.</small> }
+                    @if (InvalidIban(row)) { <small class="text-danger" role="status">شماره شبا باید دقیقاً ۲۴ رقم و غیرتکراری باشد.</small> }
                     @if (CanManage) { <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Remove(row)" disabled="@busy">حذف</button> }
                 </div>
             }
@@ -56,6 +75,9 @@ else
 @code {
     private class BankRow : ShopPrintBankDto { public ElementReference IbanRef; public ElementReference CardRef; }
     private List<BankRow> rows = new();
+    private List<ShopVisitorDiscountDto> visitors = new();
+    private bool visitorBusy;
+    private string? visitorError;
     private CompanyProfileDto? profile;
     private bool loading = true, busy, focusNewRow;
     private string? error, loadError;
@@ -64,9 +86,26 @@ else
     protected override async Task OnInitializedAsync()
     {
         if (!CanView) { loading = false; return; }
-        try { profile = await ProfileClient.GetAsync(); SetRows(await SettingsClient.GetAsync()); }
+        try { profile = await ProfileClient.GetAsync(); SetRows(await SettingsClient.GetAsync());
+            try { visitors = await Api.GetAsync<List<ShopVisitorDiscountDto>>("api/shop-print-settings/visitors"); }
+            catch (Exception ex) { visitorError = ex.Message; }
+        }
         catch (Exception ex) { loadError = ex.Message; }
         finally { loading = false; }
+    }
+    private async Task SaveVisitor(ShopVisitorDiscountDto visitor)
+    {
+        if (!CanManage || visitorBusy) return;
+        if (visitor.MaxDiscountPercent < 0 || visitor.MaxDiscountPercent > 100 || decimal.Round(visitor.MaxDiscountPercent, 2) != visitor.MaxDiscountPercent)
+        { visitorError = "سقف تخفیف باید بین صفر و صد و حداکثر با دو رقم اعشار باشد."; return; }
+        try
+        {
+            visitorBusy = true; visitorError = null;
+            await Api.PutAsync<ShopVisitorDiscountDto>($"api/shop-print-settings/visitors/{visitor.UserId}", visitor);
+            Toast.Success("سقف تخفیف ویزیتور ذخیره شد.");
+        }
+        catch (Exception ex) { visitorError = ex.Message; }
+        finally { visitorBusy = false; }
     }
     private void SetRows(ShopPrintSettingsDto value) { rows = value.Banks.Select(b => new BankRow { Card = b.Card, Iban = b.Iban.StartsWith("IR") ? b.Iban[2..] : b.Iban }).ToList(); if (rows.Count == 0) rows.Add(new()); }
     private static bool Digits(string value, int count) => value.Length == count && value.All(c => c >= '0' && c <= '9');

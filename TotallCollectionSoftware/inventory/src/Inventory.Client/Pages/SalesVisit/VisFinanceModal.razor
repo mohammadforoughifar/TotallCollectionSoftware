@@ -18,7 +18,7 @@
         {
             <div class="row g-2 mb-3 fs-8">
                 <div class="col-6 col-md-3"><span class="text-muted">مشتری:</span> <b>@Order.PartyName</b></div>
-                <div class="col-6 col-md-3"><span class="text-muted">ویزیتور:</span> <b>@Order.ReferrerName</b></div>
+                <div class="col-6 col-md-3"><span class="text-muted">ویزیتور:</span> <b>@(string.IsNullOrWhiteSpace(Order.CreatedByName) ? "ثبت‌کننده نامشخص" : Order.CreatedByName)</b></div>
                 <div class="col-6 col-md-3"><span class="text-muted">انبار:</span> <b>@Order.WarehouseName</b></div>
                 <div class="col-6 col-md-3">
                     <span class="text-muted">مبلغ سفارش:</span>

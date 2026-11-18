@@ -59,6 +59,9 @@ public class RepairService : IRepairService
 
     public async Task<Technician> SaveTechnicianAsync(Technician dto)
     {
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone, "تلفن تعمیرکار");
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {

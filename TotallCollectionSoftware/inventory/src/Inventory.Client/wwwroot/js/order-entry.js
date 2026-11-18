@@ -40,6 +40,7 @@
 
     function placeSearchMenu(anchor, menu) {
         if (!anchor || !menu) return;
+        menu._orderAnchor = anchor;
         const modal = anchor.closest('.modal-content');
         if (!modal) return;
         const a = anchor.getBoundingClientRect(), box = modal.getBoundingClientRect();
@@ -54,14 +55,17 @@
         const left = Math.max(leftEdge, Math.min(a.left, rightEdge - width));
         const below = Math.max(0, bottomEdge - a.bottom - 4);
         const above = Math.max(0, a.top - topEdge - 4);
-        const placeBelow = below >= 180 || below >= above;
-        const height = Math.max(0, Math.min(250, placeBelow ? below : above));
+        // Measure the rendered menu at its final width before choosing a side.
+        // Reserving 250px for a short list put its visible bottom far above the input.
         menu.style.width = Math.round(width) + 'px';
+        menu.style.maxHeight = '250px';
+        const naturalHeight = Math.min(250, menu.getBoundingClientRect().height);
+        const placeBelow = below >= naturalHeight || below >= above;
+        const height = Math.max(0, Math.min(naturalHeight, placeBelow ? below : above));
         menu.style.left = Math.round(left) + 'px';
         menu.style.top = Math.round(placeBelow ? a.bottom + 4 : a.top - height - 4) + 'px';
-        menu.style.maxHeight = Math.round(height) + 'px';
+        menu.style.maxHeight = Math.round(Math.max(0, Math.min(250, placeBelow ? below : above))) + 'px';
         menu.style.visibility = height > 0 ? 'visible' : 'hidden';
-        menu._orderAnchor = anchor;
     }
     window.addEventListener('scroll', function () {
         document.querySelectorAll('.ss-menu[data-order-constrained="true"]').forEach(menu => placeSearchMenu(menu._orderAnchor, menu));
