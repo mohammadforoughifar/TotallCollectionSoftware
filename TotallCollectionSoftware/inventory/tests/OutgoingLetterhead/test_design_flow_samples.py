@@ -345,9 +345,12 @@ class ComposeSafetyTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 source = self.service(tree)
                 design = self.method_body(source, "private byte[] BuildDesignContentPdf(")
-                self.assertEqual(design.count("page.Foreground()"), 1,
-                                 "چاپ صفحه باید فقط یک لایهٔ Foreground داشته باشد")
-                self.assertRegex(design, r"page\.Foreground\(\)\.Element\(fg =>")
+                # یک لایهٔ Foreground، با دو شاخهٔ انحصاری: مقدارها روی برچسب‌های هنر
+                # (شرکت ۱) یا روی کادرهای اعلام‌شدهٔ قالب (بقیهٔ شرکت‌ها). هر شاخه فقط
+                # یک بار Element می‌گیرد، پس هیچ کانتینر تک‌فرزندی دوبار پر نمی‌شود.
+                self.assertEqual(design.count("page.Foreground()"), 2,
+                                 "هر مسیر مقدارها یک لایهٔ Foreground دارد و فقط یک بار پر می‌شود")
+                self.assertEqual(design.count("page.Foreground().Element(fg =>"), 2)
 
     def test_meta_values_share_one_child_container(self):
         """شماره/تاریخ/پیوست: یک ستون، نه چند `.Element` روی همان کانتینر."""

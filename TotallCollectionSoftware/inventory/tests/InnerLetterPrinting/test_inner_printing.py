@@ -160,7 +160,11 @@ class InnerPrintingTests(unittest.TestCase):
         self.assertIn("meta?.Receiver?.Top", source)
         self.assertIn("meta?.Title?.Top", source)
         # اعداد «کاغذ» هر شرکت: ۱۰۰۳ مثل قبل، ۱۰۰۵ با هنر خودش (۱۳۳pt).
-        self.assertIn("designTop > 0f ? designTop : InnerLetterPaperProfile.ContentTop(companyId, a5)", source)
+        # شروع متن: از کادر قالب، وگرنه پروفایل همان طرح؛ با هنر فایل سربرگ (شرکت ۱)
+        # مبنای درست «پایین هنر» است، نه نوار آبی شرکت دیگری.
+        self.assertIn("var contentTop = designTop > 0f", source)
+        self.assertIn("Math.Max(InnerLetterPaperProfile.ContentTop(companyId, a5), artTop)", source)
+        self.assertIn("letterheadArt is { Length: > 0 }", source)
         self.assertIn("OutgoingLetterDesignLayout.Slot.Caption", source)
         self.assertIn("captionBox.Left - (titleBox.Left + titleBox.Width)", source)
         self.assertIn("InfoBlock(c, rows, infoFontSize", source)
@@ -236,7 +240,10 @@ class InnerPrintingTests(unittest.TestCase):
         self.assertIn("HeaderMetaPainter.Draw(host, metaRows", source)
         self.assertIn("InnerLetterPaperProfile.ContentTop(companyId, a5)", source)
         self.assertIn("InnerLetterPaperProfile.FooterReserve(companyId, a5)", source)
-        self.assertIn("page.Header().Height(contentTop);", source)
+        # MinHeight نه Height: ارتفاع قطعیِ ناحیهٔ سربرگ با محتوای متغیر «تضاد محدودیت»
+        # می‌سازد و چاپ با DocumentLayoutException شکست می‌خورد (متن‌های بلند).
+        self.assertIn("page.Header().MinHeight(contentTop);", source)
+        self.assertIn("ClampHeaderTop(contentTop, a5)", source)
         # کادرها با مختصات مطلق‌اند؛ کسر مبدأ page.Header همان ایراد «یک ردیف بالاتر» بود.
         self.assertNotIn("HeaderField(", source)
         self.assertNotIn("HomepaLetterheadLayout.Number(a5)", source)
@@ -341,16 +348,19 @@ class InnerPrintingTests(unittest.TestCase):
         service = (OFFICE / "InnerLetterPrintService.cs").read_text()
         self.assertIn("MetaLayout(", service)
         # شناسهٔ شرکت هم به رندر می‌رود تا «اعداد کاغذ» همان طرح انتخاب شود (۱۰۰۵ ≠ ۱۰۰۳).
-        self.assertRegex(service, r"hasAttachment, fonts,\s*meta, company!\.Id\);")
+        self.assertRegex(service, r"hasAttachment, fonts,\s*meta, company!\.Id, letterheadArt\);")
         # و اگر رسم کادرهای سربرگ شکست بخورد، چاپ با meta=null تکرار می‌شود
         # (نامه نباید به‌خاطر سه مقدار سربرگ کامل چاپ‌نشده بماند).
-        self.assertRegex(service, r"hasAttachment, fonts,\s*null, company!\.Id\);")
+        self.assertRegex(service, r"hasAttachment, fonts,\s*null, company!\.Id, letterheadArt\);")
 
     def test_background_is_a_repeating_page_background_and_body_can_flow(self):
         source = (OFFICE / "InnerLetterPdfRenderer.cs").read_text()
         # تصویر سربرگ یک بار در InnerLetterheadTemplates آماده می‌شود؛ اینجا دست‌نخورده
         # در PDF گذاشته می‌شود تا هر چاپ یک بار دیگر resize/encode نشود.
-        self.assertIn("page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();", source)
+        # هنر از خودِ فایل سربرگ شرکت (شرکت ۱: forough-letterhead.pdf) و وگرنه تصویر قالب؛
+        # در هر دو حالت بدون تغییر اندازه/کدگذاری دوباره در PDF گذاشته می‌شود.
+        self.assertIn("page.Background().Image(letterheadArt ?? homepaBackground!)", source)
+        self.assertIn(".UseOriginalImage().FitUnproportionally();", source)
         self.assertIn("page.Size(a5 ? PageSizes.A5 : PageSizes.A4)", source)
         self.assertIn("c.Item().Text(body).AlignRight();", source)
         self.assertNotIn(".ShowEntire(", source)
@@ -400,10 +410,15 @@ class InnerPrintingTests(unittest.TestCase):
         if "var companyArt =" in service:
             company_branch = service.split("var companyArt =", 1)[1].split("var header = company?", 1)[0]
             self.assertIn("InnerLetterheadTemplates.TryLoadForCompany(", company_branch)
+            # «forough» فقط به‌عنوان فایل اختصاصی همین شرکت (۱) مجاز است، آن هم از مسیر
+            # wwwroot/uploads/letterheads — نه سربرگ نمونهٔ شرکت دیگری.
+            self.assertIn("PrintAssetResolver.ForoughLetterheadFileName", company_branch)
+            self.assertNotIn("forough-letterhead.pdf\"", company_branch.replace(
+                "PrintAssetResolver.ForoughLetterheadFileName", ""))
         else:
             company_branch = service.split("if (company?.Id == 1003)", 1)[1].split("var header = company?", 1)[0]
             self.assertIn("InnerLetterheadTemplates.LoadHomepa(", company_branch)
-        self.assertNotIn("forough", company_branch)
+            self.assertNotIn("forough", company_branch)
         self.assertIn("throw new InnerLetterPrintException", company_branch)
         loader = (OFFICE / "InnerLetterheadTemplates.cs").read_text()
         self.assertIn('"Reports", "InnerLetters", "Companies", "1003"', loader)

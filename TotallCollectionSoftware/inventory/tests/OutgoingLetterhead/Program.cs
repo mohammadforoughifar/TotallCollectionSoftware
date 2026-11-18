@@ -151,6 +151,10 @@ foreach (var isA5 in new[] { true, false })
     var footerReserve = Convert.ToSingle(footerReserveMethod.Invoke(null, new object[] { isA5 }));
     var valueFontSize = Convert.ToSingle(valueFontSizeMethod.Invoke(null, new object[] { isA5 }));
     Check(Math.Abs(headerHeight - (isA5 ? 150 : 160)) < 0.001, $"1003/{(isA5 ? "A5" : "A4")} header reservation stays fixed");
+    // NOTE (2026-11): the renderer reserves this height with MinHeight, not a fixed Height.
+    // A fixed height conflicts with variable header content and makes QuestPDF throw
+    // DocumentLayoutException ("ساخت PDF نامه ناموفق بود") — the numbers below are only
+    // the reservation used by the layout helpers, and are asserted against those helpers.
     Check(Math.Abs(receiverPadding - (isA5 ? 28 : 80)) < 0.001, $"1003/{(isA5 ? "A5" : "A4")} top padding clears the diagonal artwork");
     var receiverStart = (isA5 ? 16 : 24) + headerHeight + receiverPadding;
     var artworkBottom = isA5 ? 163 : 232;

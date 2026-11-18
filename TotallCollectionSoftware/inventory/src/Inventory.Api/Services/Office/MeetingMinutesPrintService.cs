@@ -243,7 +243,23 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var companyResolution = await ResolveCompanyAsync(m.CompanyId);
         var companyName = companyResolution.Name;
         var companyId = companyResolution.CompanyId;
-        var registeredLetterhead = ResolveLetterheadPath(companyResolution.LetterheadFileName);
+
+        // ── فروغ آریا (پیش‌فرض ۱ و ۲): سربرگ همیشه فایل wwwroot/uploads/letterheads/forough-letterhead.pdf ──
+        // درخواست کارفرما: صورتجلسهٔ شرکت ۱ هم از همان مسیر نامه‌های صادره/داخلی چاپ شود.
+        // فایل ثبت‌شده روی رکورد شرکت (که می‌تواند از خانوادهٔ دیگری باشد) برای این شرکت‌ها
+        // نادیده گرفته می‌شود.
+        var isForough = companyId is int foroughCandidate
+            && PrintAssetResolver.IsForoughCompany(foroughCandidate, _configuration?["Reporting:ForoughCompanyIds"]);
+        var foroughLetterhead = isForough
+            ? ResolveLetterheadPath($"uploads/letterheads/{PrintAssetResolver.ForoughLetterheadFileName}")
+            : null;
+        if (isForough)
+            _log.LogInformation(
+                "صورتجلسه {MinutesId}: سربرگ از فایل اختصاصی فروغ آریا خوانده می‌شود. CompanyId={CompanyId}, Path={Path}, RegisteredIgnored={Registered}",
+                m.Id, companyId, foroughLetterhead, companyResolution.LetterheadFileName ?? "—");
+
+        var registeredLetterhead = foroughLetterhead
+            ?? ResolveLetterheadPath(companyResolution.LetterheadFileName);
 
         // اگر خودِ صورتجلسه شرکت ندارد، سربرگ از «شرکت فعال» می‌آید؛ این را صریح لاگ می‌کنیم
         // تا دوباره سرّی نماند که چرا چاپ روی سربرگ شرکت دیگری انجام شده است.
@@ -272,26 +288,43 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
             templateLetterhead = null;
         }
 
-        var letterheadSource = templateLetterhead != null ? "قالب MRT (Watermark.ImageBytes)"
+        // برای فروغ آریا فایل اختصاصی مقدم بر طرح جاسازی‌شده در قالب است (منبع واحد، همان
+        // فایلی که نامهٔ صادره و داخلی استفاده می‌کنند) — درخواست کارفرما.
+        var useForoughFile = isForough && foroughLetterhead != null;
+        if (isForough)
+            _log.LogInformation(
+                "صورتجلسه {MinutesId}: سربرگ از فایل اختصاصی فروغ آریا. File={File}, Template={Template}, Chosen={Chosen}",
+                m.Id, foroughLetterhead ?? "—", templatePath ?? "—",
+                useForoughFile ? PrintAssetResolver.ForoughLetterheadFileName : "قالب MRT");
+
+        var letterheadSource = useForoughFile
+                ? $"فایل اختصاصی فروغ آریا ({PrintAssetResolver.ForoughLetterheadFileName})"
+            : templateLetterhead != null ? "قالب MRT (Watermark.ImageBytes)"
             : registeredLetterhead != null ? "فایل ثبت‌شدهٔ شرکت"
             : "هیچ (چاپ بدون سربرگ)";
-        var letterheadPath = templateLetterhead ?? registeredLetterhead;
-        _log.LogInformation(
-            "صورتجلسه {MinutesId} شرکت {CompanyId}: قالب={Template} | سربرگ={LetterheadSource} ({LetterheadPath})",
-            m.Id, companyId, templatePath ?? "یافت نشد", letterheadSource, letterheadPath ?? "—");
+        var letterheadPath = useForoughFile
+            ? foroughLetterhead
+            : templateLetterhead ?? registeredLetterhead;
 
         // ── ساخت محتوای صورتجلسه، با نردبان «سربرگ حفظ شود» ──
         // قبلاً هر استثنایی در ساخت محتوا بی‌صدا گرفته می‌شد و letterheadPath=null می‌شد؛
         // نتیجه این بود که صورتجلسه «بدون سربرگ» چاپ می‌شد و هیچ سرنخی در لاگ نبود.
         // اکنون هر پله لاگ می‌شود و تا جای ممکن سربرگ همان شرکت حفظ می‌شود.
         var hasLetterhead = letterheadPath != null;
+        // برای شرکت ۱ مقدارها روی سه ردیفِ نقطه‌چینِ چاپ‌شده روی هنر نامه (forough-letterhead.pdf)
+        // نوشته می‌شوند: مختصات کادرهای متای قالب شرکت ۱ هیچ‌گاه برای این هنر کالیبره نشده
+        // است (کادر تاریخ y منفی دارد). هنر جانشین (Watermark قالب شرکت ۱) همان تصویر است،
+        // پس همان ردیف‌ها برای آن هم درست‌اند. بدون سربرگ (withLetterhead=false) برچسبی روی
+        // کاغذ نیست، پس مقدار تنها و بی‌برچسب چاپ نمی‌شود و مسیر عادی می‌ماند.
+        var metaOnArtwork = isForough && hasLetterhead;
         byte[]? templateContent = null;
         if (design is { HasRequiredSlots: true } templateLayout)
         {
             try
             {
                 templateContent = BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
-                    hasLetterhead, attachmentCount, letterheadProfile);
+                    hasLetterhead, attachmentCount, letterheadProfile,
+                    metaOnArtwork: metaOnArtwork);
             }
             catch (Exception ex)
             {
@@ -303,7 +336,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 try
                 {
                     templateContent = BuildTemplateContentPdf(m, parts, items, templateLayout, isA5, companyName,
-                        hasLetterhead, attachmentCount, letterheadProfile, withHeaderMeta: false);
+                        hasLetterhead, attachmentCount, letterheadProfile, withHeaderMeta: false,
+                        metaOnArtwork: metaOnArtwork);
                 }
                 catch (Exception retryEx)
                 {
@@ -328,7 +362,10 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
         try
         {
-            return OverlayOnLetterhead(contentPdf, letterheadPath);
+            // نوار سربرگ روی صفحه‌های دوم و بعد تکرار می‌شود (سربرگ شرکت ۱ فقط یک صفحهٔ
+            // کامل است؛ تکرار کامل آن صفحه را شلوغ می‌کرد).
+            return OverlayOnLetterhead(contentPdf, letterheadPath,
+                letterheadProfile.HeaderReserve);
         }
         catch (Exception ex)
         {
@@ -485,7 +522,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         bool hasLetterhead,
         int attachmentCount,
         MinutesLetterheadProfile letterheadProfile,
-        bool withHeaderMeta = true)
+        bool withHeaderMeta = true,
+        bool metaOnArtwork = false)
     {
         EnsureFonts();
 
@@ -524,11 +562,15 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         var headerReserve = hasLetterhead ? letterheadProfile.HeaderReserve : 0f;
 
         // ── متای سربرگ: شماره / تاریخ / پیوست روی برچسب‌های چاپ‌شدهٔ سربرگ ──
-        var metaRows = BuildHeaderMetaRows(design, number, meetingDate, attachmentText, hasLetterhead);
+        // برای شرکت ۱ (هنر فایل سربرگ) مقدارها روی همان سه ردیف نقطه‌چینی می‌نشینند که روی
+        // خودِ هنر چاپ شده‌اند؛ بقیهٔ شرکت‌ها مختصات کادرهای قالب خودشان را دارند.
+        var metaRows = metaOnArtwork
+            ? BuildArtworkMetaRows(design, number, meetingDate, attachmentText, hasLetterhead, isA5)
+            : BuildHeaderMetaRows(design, number, meetingDate, attachmentText, hasLetterhead);
         var metaBottom = metaRows.Count == 0 ? 0f : metaRows.Max(row => row.Top + row.Height);
-
-        // عنوان: از قالب (۱۹۳pt در A4). بدون سربرگ، متا بالای صفحه است و عنوان بعد از آن می‌آید.
         var titleTop = titleBox?.Top ?? 96f;
+
+        // عنوان: از قالب. بدون سربرگ، متا بالای صفحه است و عنوان بعد از آن می‌آید.
         if (!hasLetterhead) titleTop = Math.Max(24f, metaBottom + 24f);
 
         // فاصلهٔ هر بخش تا بخش بعدی از دل قالب خوانده می‌شود؛ مقادیر جای‌گزین برای قالب‌های ناقص.
@@ -558,9 +600,12 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     .LineHeight(1.6f)
                     .DirectionFromRightToLeft());
 
-                // یک نوار خالی هم‌اندازهٔ ناحیهٔ سربرگ؛ روی صفحه‌های دوم به بعد متن را از زیر
-                // نوار آبی دور نگه می‌دارد.
-                page.Header().Height(headerReserve);
+                // ناحیهٔ سربرگ (ارتفاع = رزرو پروفایل همان شرکت): هم متن صفحه‌های دوم را از
+                // زیر سربرگ دور نگه می‌دارد و هم همان ارتفاعی است که overlay برای تکرار
+                // «نوار سربرگ» استفاده می‌کند.
+                // MinHeight نه Height: ارتفاع قطعیِ ناحیهٔ سربرگ با محتوای متغیر تضاد
+                // محدودیت می‌سازد و کل چاپ را با DocumentLayoutException رد می‌کند.
+                page.Header().MinHeight(headerReserve);
 
                 // مقادیر سربرگ در لایهٔ سراسری صفحه و با مختصات مطلق، روی برچسب‌های چاپ‌شده.
                 // با withHeaderMeta=false این لایه رسم نمی‌شود (مسیر «تلاش دوباره» وقتی رسم
@@ -842,6 +887,57 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         Add(design.MeetingDate, date);
         Add(design.Attachment, attachment);
         return rows.OrderBy(row => row.Top).ToList();
+    }
+
+    /// <summary>
+    /// سه ردیفِ متای چاپ‌شده روی هنر سربرگ فروغ آریا (<c>forough-letterhead.pdf</c>) —
+    /// بر حسب point در قاب نهایی A4: تاریخ ۲۶، شماره ۵۳، پیوست ۸۰ با ارتفاع کادر ۱۵pt.
+    ///
+    /// <para>خط‌چین سه ردیف روی y = ۳۵٫۴ / ۶۳٫۱ / ۸۹٫۷pt است (اندازه‌گیری پیکسلی خودِ هنر
+    /// در قاب A4)؛ پس کادر هر ردیف با ارتفاع ۱۵pt از ۲۷٫۹ شروع می‌شود تا متن وسط خط بیفتد
+    /// (۲۸ + ۷٫۵ = ۳۵٫۵). همین اعداد در کادرهای
+    /// <c>Reports/InnerLetters/Companies/1/Inner-A4.mrt</c> و
+    /// <c>Reports/OutgoingLetters/Companies/1/Outgoing-A4.mrt</c> هم هست
+    /// (۰٫۳۶۱ / ۰٫۷۳۶ / ۱٫۱۱۱ اینچ). در A5 در نسبت ۰٫۷۰۷۱ ضرب می‌شوند، چون هنر با
+    /// <c>FitUnproportionally</c> روی کل کاغذ کشیده می‌شود.</para>
+    /// </summary>
+    private static List<HeaderMetaRow> BuildArtworkMetaRows(MeetingMinutesDesignLayout design,
+        string number, string date, string attachment, bool hasLetterhead, bool isA5)
+    {
+        var scale = isA5 ? 0.7071f : 1f;
+        // ستون مقدار: همان کادر متای قالب (x = ۲۴ تا ۸۴pt در A4؛ ۴pt پیش از انتهای خط‌چین
+        // که تا ≈۸۸ می‌رود و برچسب‌ها از ≈۹۲ شروع می‌شوند).
+        const float valueLeft = 24f;
+        const float valueRight = 84f;
+        // فاصلهٔ اندازه‌گیری‌شدهٔ سه خط‌چین: ۳۵٫۴ / ۶۳٫۱ / ۸۹٫۷ → ۲۷٫۲.
+        const float rowPitch = 27.2f;
+        const float rowHeight = 15f;
+        // ۲۸ = خط‌چین اول (۳۵٫۴) منهای نیم ارتفاع کادر، تا متن وسط خط بنشیند (برابر نامهٔ
+        // صادره؛ ۰٫۱pt اختلاف اندازه‌گیری، در چاپ دیده نمی‌شود).
+        const float firstRowTop = 28f;
+        var rows = new List<HeaderMetaRow>(3);
+
+        // ترتیب ردیف‌ها همان ترتیب چاپ‌شده روی هنر است: تاریخ ← شماره ← پیوست.
+        void Add(MeetingMinutesDesignLayout.Box? box, string value, int row)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            rows.Add(new HeaderMetaRow(
+                Left: valueLeft * scale,
+                Top: (firstRowTop + row * rowPitch) * scale,
+                Width: (valueRight - valueLeft) * scale,
+                Height: rowHeight * scale,
+                Value: value,
+                // روی نوار خاکستریِ روشنِ هنر، مقدار با مشکی خوانده می‌شود؛ رنگ کادر قالب
+                // (سفید، برای کادرهای آبیِ شرکت‌های دیگر) اینجا خوانده نمی‌شود.
+                Color: hasLetterhead ? "#000000" : Ink,
+                FontSize: box is { FontSize: > 0 } ? Math.Min(box.FontSize, 9f) : 8f,
+                Fill: null));
+        }
+
+        Add(design.MeetingDate, date, 0);
+        Add(design.Number, number, 1);
+        Add(design.Attachment, attachment, 2);
+        return rows;
     }
 
     /// <summary>
@@ -1218,7 +1314,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     }
 
     /// <summary>قرار دادن صفحات روی سربرگ (PDF یا تصویر)</summary>
-    private static byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath)
+    private static byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath,
+        float repeatHeaderTo = 0f)
     {
         using var contentStream = new MemoryStream(contentPdf);
         using var contentDoc = PdfReader.Open(contentStream, PdfDocumentOpenMode.Import);
@@ -1250,7 +1347,28 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                     ? ArtRect(page, letterheadImg.PointWidth, letterheadImg.PointHeight)
                     : rect;
 
-            if (isPdf && letterheadForm != null)
+            if (i > 0 && repeatHeaderTo > 1f)
+            {
+                // برش (نه تغییر اندازه): همان هنر با همان مقیاس، محدود به نوار بالای صفحه.
+                var artWidth = isPdf && letterheadForm != null
+                    ? letterheadForm.PointWidth
+                    : letterheadImg?.PointWidth ?? page.Width.Point;
+                var band = PrintAssetResolver.LetterheadBandRect(
+                    page.Width.Point, Math.Min(artWidth, page.Width.Point), repeatHeaderTo);
+                gfx.Save();
+                gfx.IntersectClip(new XRect(band.X, band.Y, band.Width, band.Height));
+                if (isPdf && letterheadForm != null)
+                {
+                    letterheadForm.PageNumber = 1;
+                    gfx.DrawImage(letterheadForm, artRect);
+                }
+                else if (letterheadImg != null)
+                {
+                    gfx.DrawImage(letterheadImg, artRect);
+                }
+                gfx.Restore();
+            }
+            else if (isPdf && letterheadForm != null)
             {
                 letterheadForm.PageNumber = 1;
                 gfx.DrawImage(letterheadForm, artRect);

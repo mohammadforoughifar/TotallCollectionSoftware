@@ -50,6 +50,25 @@ internal static class LetterPrintTemplate
 
     internal static float MmToPoints(float millimeters) => millimeters * 72f / 25.4f;
 
+    /// <summary>سه اندازهٔ قلمِ چاپ نامه: بدنه، ریز (متا/سمت) و عنوان.</summary>
+    internal readonly record struct FontSizeSet(float Body, float Small, float Title);
+
+    /// <summary>
+    /// اندازهٔ قلمِ بدنه بر پایهٔ «نامهٔ داخلی» (۱۱pt در A4 و ۹pt در A5) — همان قاعده‌ای که
+    /// نامهٔ صادره و داخلی را یکدست نگه می‌دارد. اگر خودِ طرح عدد کوچک‌تری خواسته باشد همان
+    /// ملاک است. <paramref name="compact"/> فقط در تلاش دوبارهٔ پس از شکست چیدمان روشن
+    /// می‌شود و قلم را یک پله (حداکثر تا کف ۷pt) کوچک می‌کند تا متن بلند در ناحیهٔ چاپ جا شود.
+    /// </summary>
+    internal static FontSizeSet FontSizes(bool isA5, float designBodyFontSize = 0f, bool compact = false)
+    {
+        var likeInnerLetter = isA5 ? 9f : 11f;
+        if (compact) likeInnerLetter = Math.Max(7f, likeInnerLetter - 1f);
+        var body = designBodyFontSize > 0f ? Math.Min(likeInnerLetter, designBodyFontSize) : likeInnerLetter;
+        var small = isA5 ? 7f : 9f;
+        if (compact) small = Math.Max(6f, small - 1f);
+        return new FontSizeSet(body, small, isA5 ? 9.5f : 12f);
+    }
+
     /// <summary>علامت راست‌به‌چپ (Right-to-Left Mark) — یک کاراکتر قویِ RTL و بی‌عرض.</summary>
     internal const string Rlm = "\u200F";
 

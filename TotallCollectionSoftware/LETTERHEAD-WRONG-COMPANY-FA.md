@@ -9,7 +9,13 @@
 |---|---|---|
 | **نامهٔ صادره** | `OutgoingLetters.CompanyId` (شرکت ثبت‌شده روی خود نامه) | `SystemCompanies.LetterheadFileName` یا سربرگ جاسازی‌شده در `Reports/OutgoingLetters/Companies/{id}/Outgoing-A4.mrt` |
 | **نامهٔ داخلی** | **شرکت فعالی که کاربر بالای صفحه انتخاب کرده** (نامهٔ داخلی ستون شرکت ندارد) | `SystemCompanies.LetterheadFileName` یا `Reports/InnerLetters/Companies/{id}/Inner-A4.mrt` |
-| **صورتجلسه** | شرکت فعالِ همان درخواست | `SystemCompanies.LetterheadFileName` |
+| **صورتجلسه** | شرکت فعالِ همان درخواست | `SystemCompanies.LetterheadFileName` یا سربرگ جاسازی‌شده در `Reports/MeetingMinutes/Companies/{id}/Minutes-A4.mrt` |
+
+> **استثنای مصوب (از ۱۴۰۵/۰۸/۲۵):** شرکت‌های «فروغ آریا» (پیش‌فرض شناسه‌های ۱ و ۲ —
+> `Reporting:ForoughCompanyIds`) همیشه و در هر سه چاپ از فایل
+> `wwwroot/uploads/letterheads/forough-letterhead.pdf` استفاده می‌کنند؛ فایل ثبت‌شده روی
+> رکورد شرکت و Watermark قالب برای این شرکت‌ها **نادیده گرفته می‌شود** و اگر فایل نباشد،
+> چاپ با پیام فارسی روشن متوقف می‌شود. جزئیات: [`FOROUGH-LETTERHEAD-FA.md`](FOROUGH-LETTERHEAD-FA.md).
 
 پس «سربرگ شرکت دیگر» چهار علت ممکن دارد:
 
