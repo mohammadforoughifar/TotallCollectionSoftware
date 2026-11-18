@@ -32,6 +32,8 @@ class WorkOrderCompanyScopeTests(unittest.TestCase):
     def test_ui_no_unscoped_prefill_or_stale_target_list(self):
         ui = read('Inventory.Client/Pages/ItAssets/WorkOrders.razor')
         self.assertIn('/api/workorders/sms-status', ui)
+        self.assertIn('سرویس پیامکی فعال است', ui)
+        self.assertNotIn('پیامک دستور کار برای شرکت فعال است', ui)
         self.assertIn('companySmsEnabled == true', ui)
         self.assertIn('companySmsEnabled == false', ui)
         self.assertIn('bi-check-circle-fill', ui)
