@@ -41,4 +41,69 @@ class VisitorSettingsTests(unittest.TestCase):
         self.assertIn('o.CreatedByUserId == ctx.UserId', cartable)
         self.assertIn('Api.ListAsync(st, search, mine: true)', read('Inventory.Client/Pages/SalesVisit/MyVisits.razor'))
 
+
+class SalesManagerDiscountPolicyTests(unittest.TestCase):
+    def test_role_is_resolved_from_active_user_and_active_db_role(self):
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        actor = service[service.index('public async Task<VisActor> ResolveActorAsync'):service.index('//  شرکت (کمپانی)')]
+        for condition in ['dbUser?.IsActive == true', '_db.UserRoles.AsNoTracking()',
+                          'ur.UserId == uid', 'role.IsActive && role.Name == "SalesManager"',
+                          'IsSalesManager = isSalesManager']:
+            self.assertIn(condition, actor)
+        self.assertIn('IsSalesManager = actor.IsSalesManager', read('Inventory.Api/Controllers/SalesVisit/SalesVisitController.cs'))
+
+    def test_save_and_submit_enforce_current_user_cap_without_approve_exemption(self):
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        save = service[service.index('public async Task<VisOrderDto> SaveAsync'):service.index('public async Task<VisOrderDto> SubmitAsync')]
+        submit = service[service.index('public async Task<VisOrderDto> SubmitAsync'):service.index('public async Task<VisOrderDto> ApproveAsync')]
+        self.assertIn('var actorCap = actor.MaxDiscountPercent', save)
+        self.assertIn('if (!actor.IsSalesManager && exceedsActorCap)', save)
+        self.assertIn('l.DiscountAmount * 100m > l.Quantity * l.UnitPrice * actorCap', save)
+        self.assertIn('var unitPrice = actor.CanEditVisitPrice ? l.UnitPrice', save)
+        self.assertIn('if (!actor.IsSalesManager)', submit)
+        self.assertIn('var cap = actor.MaxDiscountPercent', submit)
+        self.assertNotIn('if (!actor.CanApprove && !actor.IsAdmin', save + submit)
+
+    def test_ui_uses_same_role_flag(self):
+        ui = read('Inventory.Client/Pages/SalesVisit/VisitForm.razor')
+        self.assertIn('@if (me?.IsSalesManager == true)', ui)
+        self.assertIn('Disabled="@(me?.CanEditVisitPrice != true)"', ui)
+        self.assertIn('private bool OverLimit => me?.IsSalesManager != true', ui)
+        self.assertIn('if (me?.IsSalesManager != true && me != null)', ui)
+        self.assertIn('public bool IsSalesManager { get; set; }', read('Inventory.Shared/Dtos/SalesVisitDtos.cs'))
+
+class VisitorReportAndPriceTests(unittest.TestCase):
+    def test_report_is_filtered_in_query_before_all_aggregations(self):
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        report = service[service.index('public async Task<VisRequestsReportDto> RequestsReportAsync'):service.index('private sealed record ReportLineRow')]
+        self.assertIn('o.CompanyId == actor.CompanyId', report)
+        self.assertIn('if (!actor.IsSalesManager)', report)
+        self.assertIn('o.CreatedByUserId == actor.UserId', report)
+        self.assertLess(report.index('o.CreatedByUserId == actor.UserId'), report.index('var orders = await query'))
+        self.assertIn('ScopedToMe = !actor.IsSalesManager', report)
+        self.assertNotIn('actor.CanSeeAll', report)
+        self.assertIn('o.CreatedByUserId', report)
+        self.assertIn('includeUnknown: true', report)
+
+    def test_visitor_and_manager_combined_role_is_not_allowed_to_edit_price(self):
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        self.assertIn('role.IsActive && role.Name == "SalesVisitor"', service)
+        self.assertIn('CanEditVisitPrice => IsSalesManager && !IsSalesVisitor', service)
+        self.assertIn('if (!actor.CanEditVisitPrice && l.UnitPrice != unitPrice)', service)
+        self.assertIn('if (!actor.CanEditVisitPrice)', service[service.index('public async Task<VisOrderDto> SubmitAsync'):])
+        ui = read('Inventory.Client/Pages/SalesVisit/VisitForm.razor')
+        self.assertIn('ReadOnly="@(me?.CanEditVisitPrice != true)"', ui)
+        self.assertIn('bg-light text-muted', ui)
+        self.assertIn('Api.ProductPricesAsync(ids)', ui)
+        self.assertIn('line.UnitPrice = prices[line.ProductId]', ui)
+        self.assertIn('if (me?.CanEditVisitPrice != true) return;', ui)
+
+    def test_visitor_can_reach_report_without_export_or_approve(self):
+        controller = read('Inventory.Api/Controllers/SalesVisit/SalesVisitController.cs')
+        self.assertIn('HasAnyAsync("Approve", "FinanceView", "View", "Create", "Export")', controller)
+        for path in ['Inventory.Client/Layout/MainLayout.razor', 'Inventory.Client/Layout/NavMenu.razor']:
+            src = read(path)
+            start = src.index('sales/requests-report')
+            self.assertIn('SalesVisit.View', src[max(0, start-400):start+500])
+
 if __name__ == '__main__': unittest.main()

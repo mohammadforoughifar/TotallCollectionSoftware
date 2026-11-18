@@ -40,6 +40,10 @@ public sealed record VisActor(
     /// <summary>نام شرکت مؤثر — برای نمایش در فرم سفارش.</summary>
     public string CompanyName { get; init; } = "";
     public bool CanManagePricing { get; init; }
+    // Exemption is based on the active SalesManager role, not approval/admin permissions.
+    public bool IsSalesManager { get; init; }
+    public bool IsSalesVisitor { get; init; }
+    public bool CanEditVisitPrice => IsSalesManager && !IsSalesVisitor;
 
     /// <summary>دیدن همهٔ سفارش‌های شرکت (مدیر فروش/مالی) در مقابل فقط سفارش‌های خودش (ویزیتور).</summary>
     public bool CanSeeAll => IsAdmin || CanApprove || CanFinance;
@@ -101,6 +105,7 @@ public interface IVisOrderService
     Task<VisCustomerLite> CreateCustomerAsync(VisActor actor, string name, string? phone, string? mobile, string? address);
 
     Task<List<VisProductLite>> ProductsAsync(VisActor actor, int? warehouseId, string? search, int take = 50);
+    Task<List<VisProductLite>> ProductPricesAsync(VisActor actor, List<int> productIds);
 
     /// <summary>انبارهای فعالِ شرکتِ کاربر.</summary>
     Task<List<VisWarehouseLite>> WarehousesAsync(VisActor actor);
@@ -149,6 +154,16 @@ public class VisOrderService : IVisOrderService
             ? await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == uid)
             : null;
 
+        var isSalesManager = dbUser?.IsActive == true && await _db.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == uid)
+            .Join(_db.Roles.AsNoTracking(), ur => ur.RoleId, role => role.Id, (ur, role) => role)
+            .AnyAsync(role => role.IsActive && role.Name == "SalesManager");
+
+        var isSalesVisitor = dbUser?.IsActive == true && await _db.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == uid)
+            .Join(_db.Roles.AsNoTracking(), ur => ur.RoleId, role => role.Id, (ur, role) => role)
+            .AnyAsync(role => role.IsActive && role.Name == "SalesVisitor");
+
         int? referrerId = dbUser?.ReferrerId;
         if (referrerId is not > 0 && int.TryParse(user.FindFirstValue("referrerId"), out var rid) && rid > 0)
             referrerId = rid;
@@ -182,6 +197,8 @@ public class VisOrderService : IVisOrderService
         {
             CompanyId = companyId,
             CompanyName = companyName,
+            IsSalesManager = isSalesManager,
+            IsSalesVisitor = isSalesVisitor,
             CanManagePricing = isAdmin || perms.Contains("Shop.Pricing.Manage")
         };
     }
@@ -481,8 +498,10 @@ public class VisOrderService : IVisOrderService
             if (p.IsService && l.Quantity <= 0)
                 throw new InvalidOperationException($"مقدار خدمت «{p.Name}» باید بزرگ‌تر از صفر باشد.");
 
-            var unitPrice = actor.CanApprove || actor.IsAdmin ? l.UnitPrice
+            var unitPrice = actor.CanEditVisitPrice ? l.UnitPrice
                 : effectivePrices.TryGetValue(p.Id, out var price) ? price.Price : p.SalePrice;
+            if (!actor.CanEditVisitPrice && l.UnitPrice != unitPrice)
+                throw new InvalidOperationException("قیمت فروش تغییر کرده است؛ سفارش را باز و قیمت‌ها را بازخوانی کنید.");
             var gross = l.Quantity * unitPrice;
 
             // تخفیف دو حالته: ورودی تا ۹۹ درصد است و از ۱۰۰ به بالا مبلغ ریالی.
@@ -520,7 +539,7 @@ public class VisOrderService : IVisOrderService
 
         Recalculate(entity);
 
-        // کنترل سقف تخفیف ویزیتور: ویزیتور نمی‌تواند بیش از سقف تعیین‌شده توسط مدیر تخفیف دهد، ولی مدیر/ادمین محدودیت ندارد
+        // هشدار سفارش بر اساس سقف ثبت‌کننده؛ اعمال محدودیت بر اساس سقف کاربر فعلی است.
         var cap = entity.CompanyId is > 0
             ? await _db.ShopVisitorDiscounts.AsNoTracking()
                 .Where(x => x.CompanyId == entity.CompanyId && x.UserId == entity.CreatedByUserId)
@@ -530,9 +549,13 @@ public class VisOrderService : IVisOrderService
             ? l.DiscountAmount * 100m > l.Quantity * l.UnitPrice * cap
             : l.DiscountPercent > cap);
 
-        if (!actor.CanApprove && !actor.IsAdmin && entity.DiscountOverLimit)
+        var actorCap = actor.MaxDiscountPercent;
+        var exceedsActorCap = entity.Lines.Any(l => l.DiscountIsAmount
+            ? l.DiscountAmount * 100m > l.Quantity * l.UnitPrice * actorCap
+            : l.DiscountPercent > actorCap);
+        if (!actor.IsSalesManager && exceedsActorCap)
         {
-            throw new InvalidOperationException($"درصد تخفیف واردشده بیش از سقف مجاز ویزیتور ({cap}٪) است.");
+            throw new InvalidOperationException($"درصد تخفیف واردشده بیش از سقف مجاز شما ({actorCap}٪) است.");
         }
 
         await _db.SaveChangesAsync();
@@ -581,13 +604,16 @@ public class VisOrderService : IVisOrderService
         if (order.Status is not (VisOrderStatus.Draft or VisOrderStatus.Returned))
             throw new InvalidOperationException("این سفارش قبلاً ارسال شده است.");
         if (order.Lines.Count == 0) throw new InvalidOperationException("سفارش بدون سطر کالا قابل ارسال نیست.");
-        if (!actor.CanApprove && !actor.IsAdmin)
+        if (!actor.IsSalesManager)
         {
             var cap = actor.MaxDiscountPercent;
             if (order.Lines.Any(l => l.DiscountIsAmount
                 ? l.DiscountAmount * 100m > l.Quantity * l.UnitPrice * cap
                 : l.DiscountPercent > cap))
                 throw new InvalidOperationException("تخفیف سفارش بیش از سقف فعلی شماست؛ سفارش را ویرایش کنید.");
+        }
+        if (!actor.CanEditVisitPrice)
+        {
             var ids = order.Lines.Select(l => l.ProductId).Distinct().ToList();
             var prices = await ShopPricingService.ResolveAsync(_db, ids, DateTime.Today);
             var products = await _db.Products.IgnoreQueryFilters().AsNoTracking()
@@ -597,7 +623,6 @@ public class VisOrderService : IVisOrderService
                 (prices.TryGetValue(l.ProductId, out var price) ? price.Price : products[l.ProductId].SalePrice)))
                 throw new InvalidOperationException("قیمت فروش تغییر کرده است؛ سفارش را باز و مجدداً ذخیره کنید.");
         }
-
 
         var from = order.Status;
         order.Status = VisOrderStatus.Submitted;
@@ -1074,14 +1099,15 @@ public class VisOrderService : IVisOrderService
         if (end < start) (start, end) = (end, start);
         var endExclusive = end.AddDays(1);
 
+        if (actor.CompanyId is not > 0) throw new InvalidOperationException("شرکت فعال انتخاب نشده است.");
         var query = _db.VisOrders.AsNoTracking()
-            .Where(o => o.Date >= start && o.Date < endExclusive);
+            .Where(o => o.CompanyId == actor.CompanyId && o.Date >= start && o.Date < endExclusive);
 
         if (!includeCanceled)
             query = query.Where(o => o.Status != VisOrderStatus.Canceled && o.Status != VisOrderStatus.Rejected);
 
-        // ویزیتور فقط دادهٔ خودش؛ مدیر/مالی همهٔ شرکت.
-        if (!actor.CanSeeAll)
+        // فقط نقش فعال مدیر فروش گزارش تمام سفارش‌های شرکت را می‌بیند.
+        if (!actor.IsSalesManager)
         {
             query = query.Where(o => actor.UserId > 0 && o.CreatedByUserId == actor.UserId);
         }
@@ -1089,7 +1115,8 @@ public class VisOrderService : IVisOrderService
         var orders = await query
             .Select(o => new ReportOrderRow(
                 o.Id,
-                o.ReferrerId,
+                o.CreatedByUserId,
+                o.CreatedByName,
                 o.ReferrerName,
                 o.PartyId,
                 o.PartyName,
@@ -1148,9 +1175,11 @@ public class VisOrderService : IVisOrderService
             var orderQty = o.Lines.Where(l => l.ProductId > 0).Sum(l => l.Quantity);
             var lineCount = o.Lines.Count(l => l.ProductId > 0);
 
-            AccumulateGroup(refMap, refProducts, refQtyByProduct, o.ReferrerId,
-                string.IsNullOrWhiteSpace(o.ReferrerName) ? $"ویزیتور #{o.ReferrerId}" : o.ReferrerName,
-                o, orderQty, lineCount);
+            var visitorName = !string.IsNullOrWhiteSpace(o.CreatedByName) ? o.CreatedByName
+                : !string.IsNullOrWhiteSpace(o.ReferrerName) ? o.ReferrerName
+                : o.CreatedByUserId > 0 ? $"ویزیتور #{o.CreatedByUserId}" : "ثبت‌کننده نامشخص";
+            AccumulateGroup(refMap, refProducts, refQtyByProduct, o.CreatedByUserId,
+                visitorName, o, orderQty, lineCount, includeUnknown: true);
 
             AccumulateGroup(cusMap, cusProducts, cusQtyByProduct, o.PartyId,
                 string.IsNullOrWhiteSpace(o.PartyName) ? $"مشتری #{o.PartyId}" : o.PartyName,
@@ -1241,7 +1270,7 @@ public class VisOrderService : IVisOrderService
             TotalShortageQty = rows.Where(r => r.HasShortage).Sum(r => r.ShortageQty),
             ShortageRowCount = rows.Count(r => r.HasShortage),
             IncludesCanceled = includeCanceled,
-            ScopedToMe = !actor.CanSeeAll,
+            ScopedToMe = !actor.IsSalesManager,
             GeneratedAt = DateTime.Now
         };
     }
@@ -1250,7 +1279,7 @@ public class VisOrderService : IVisOrderService
     private sealed record ReportLineRow(int ProductId, string ProductCode, string ProductName,
         string? Unit, decimal Quantity, decimal LineTotal);
 
-    private sealed record ReportOrderRow(int Id, int ReferrerId, string ReferrerName, int PartyId,
+    private sealed record ReportOrderRow(int Id, int CreatedByUserId, string CreatedByName, string ReferrerName, int PartyId,
         string PartyName, decimal TotalNet, decimal TotalDiscount, List<ReportLineRow> Lines);
 
     /// <summary>افزودن یک سفارش به تجمیع «ویزیتور» یا «مشتری».</summary>
@@ -1258,9 +1287,9 @@ public class VisOrderService : IVisOrderService
         Dictionary<int, VisRequestsGroupRow> map,
         Dictionary<int, HashSet<int>> productSets,
         Dictionary<int, Dictionary<int, decimal>> qtyByProduct,
-        int id, string title, ReportOrderRow order, decimal orderQty, int lineCount)
+        int id, string title, ReportOrderRow order, decimal orderQty, int lineCount, bool includeUnknown = false)
     {
-        if (id <= 0) return;
+        if (id < 0 || (id == 0 && !includeUnknown)) return;
 
         if (!map.TryGetValue(id, out var group))
         {
@@ -1608,6 +1637,20 @@ public class VisOrderService : IVisOrderService
         }
 
         return list;
+    }
+
+    public async Task<List<VisProductLite>> ProductPricesAsync(VisActor actor, List<int> productIds)
+    {
+        if (actor.CompanyId is not > 0) throw new InvalidOperationException("شرکت فعال انتخاب نشده است.");
+        var ids = (productIds ?? new()).Where(id => id > 0).Distinct().ToList();
+        if (ids.Count > 500) throw new InvalidOperationException("تعداد کالاهای سفارش بیش از حد مجاز است.");
+        var products = await _db.Products.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => ids.Contains(p.Id) && (p.CompanyId == null || p.CompanyId == actor.CompanyId))
+            .Select(p => new VisProductLite { Id = p.Id, SalePrice = p.SalePrice })
+            .ToListAsync();
+        var prices = await ShopPricingService.ResolveAsync(_db, ids, DateTime.Today);
+        foreach (var p in products) if (prices.TryGetValue(p.Id, out var price)) p.SalePrice = price.Price;
+        return products;
     }
 
     /// <summary>انبارهای فعالِ شرکتِ کاربر — ویزیتور فقط انبار کمپانی خودش را می‌بیند.</summary>

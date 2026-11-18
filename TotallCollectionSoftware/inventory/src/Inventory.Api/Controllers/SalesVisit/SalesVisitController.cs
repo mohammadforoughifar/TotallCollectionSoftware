@@ -61,6 +61,8 @@ public class SalesVisitController : ControllerBase
             ReferrerId = actor.ReferrerId,
             ReferrerName = actor.ReferrerName,
             IsAdmin = actor.IsAdmin,
+            IsSalesManager = actor.IsSalesManager,
+            CanEditVisitPrice = actor.CanEditVisitPrice,
             CanCreate = actor.CanCreate,
             CanApprove = actor.CanApprove,
             CanFinance = actor.CanFinance,
@@ -107,13 +109,13 @@ public class SalesVisitController : ControllerBase
     /// <summary>
     /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا در بازهٔ زمانی.
     /// یک سطر برای هر کالا + جمع سفارش + موجودی کل + کسری.
-    /// مدیر/مالی همهٔ درخواست‌های شرکت را می‌بیند و ویزیتور فقط درخواست‌های خودش را.
+    /// فقط نقش مدیر فروش همهٔ درخواست‌های شرکت را می‌بیند؛ سایر کاربران فقط سفارش‌های خود را.
     /// </summary>
     [HttpGet("requests-report")]
     public async Task<ActionResult<VisRequestsReportDto>> RequestsReport(
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] bool includeCanceled = false)
     {
-        if (!await HasAnyAsync("Approve", "FinanceView", "View", "Export")) return Forbid();
+        if (!await HasAnyAsync("Approve", "FinanceView", "View", "Create", "Export")) return Forbid();
 
         var toDate = (to ?? DateTime.Today).Date;
         var fromDate = (from ?? toDate.AddDays(-30)).Date;
@@ -171,6 +173,15 @@ public class SalesVisitController : ControllerBase
         if (!await HasAnyAsync("Create", "Approve", "View")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
         return Ok(await _svc.ProductsAsync(actor, warehouseId, search));
+    }
+
+    /// <summary>قیمت جاری کالاهای سفارش موجود برای نمایش در فرم ویرایش.</summary>
+    [HttpPost("product-prices")]
+    public async Task<ActionResult<List<VisProductLite>>> ProductPrices([FromBody] List<int> productIds)
+    {
+        if (!await HasAnyAsync("Create", "Update", "Approve", "View")) return Forbid();
+        var actor = await _svc.ResolveActorAsync(User);
+        return Ok(await _svc.ProductPricesAsync(actor, productIds));
     }
 
     /// <summary>انبارهای فعال.</summary>

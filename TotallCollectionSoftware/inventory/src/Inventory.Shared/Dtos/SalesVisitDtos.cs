@@ -212,6 +212,8 @@ public class VisActorInfo
     public int? ReferrerId { get; set; }
     public string ReferrerName { get; set; } = "";
     public bool IsAdmin { get; set; }
+    public bool IsSalesManager { get; set; }
+    public bool CanEditVisitPrice { get; set; }
     public bool CanCreate { get; set; }
     public bool CanApprove { get; set; }
     public bool CanFinance { get; set; }

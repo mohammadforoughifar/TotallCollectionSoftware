@@ -329,9 +329,9 @@ else
                                         @* قیمت واحد برای ویزیتور خاکستری و غیرقابل ویرایش است (فقط خواندنی) *@
                                         <MoneyInput Value="l.UnitPrice"
                                                     ValueChanged="v => SetPrice(l, v)"
-                                                    Disabled="@(me?.CanApprove != true && me?.IsAdmin != true)"
-                                                    ReadOnly="@(me?.CanApprove != true && me?.IsAdmin != true)"
-                                                    CssClass="@($"form-control form-control-sm text-center num {(me?.CanApprove != true && me?.IsAdmin != true ? "bg-light text-muted" : "")}")" />
+                                                    Disabled="@(me?.CanEditVisitPrice != true)"
+                                                    ReadOnly="@(me?.CanEditVisitPrice != true)"
+                                                    CssClass="@($"form-control form-control-sm text-center num {(me?.CanEditVisitPrice != true ? "bg-light text-muted" : "")}")" />
                                     </div>
                                     <div class="vis-cell c-disc">
                                         <span class="vis-cell-label">تخفیف</span>
@@ -374,10 +374,10 @@ else
                         </div>
                     }
 
-                    @if (me?.CanApprove == true || me?.IsAdmin == true)
+                    @if (me?.IsSalesManager == true)
                     {
                         <div class="badge bg-info-subtle text-info border border-info-subtle p-2 mt-2 d-inline-flex align-items-center gap-1">
-                            <i class="bi bi-shield-check"></i> دسترسی مدیر: شما مجاز به اعمال هر مقدار تخفیف بدون محدودیت سقف هستید.
+                            <i class="bi bi-shield-check"></i> نقش مدیر فروش: سقف تخفیف ویزیتوری برای شما اعمال نمی‌شود.
                         </div>
                     }
                     else if (me != null)
@@ -1384,7 +1384,7 @@ else
     private decimal Gross => model.Lines.Sum(l => l.Quantity * l.UnitPrice);
     private decimal Discount => model.Lines.Sum(LineDiscount);
     private decimal Net => Gross - Discount;
-    private bool OverLimit => me?.CanApprove != true && me?.IsAdmin != true
+    private bool OverLimit => me?.IsSalesManager != true
                               && me != null
                               && model.Lines.Any(l => ExceedsCap(l, me.MaxDiscountPercent));
 
@@ -1461,6 +1461,26 @@ else
                 // سرچ سراسری حذف شده، پس فهرست کمبوی سطرها باید دقیقاً از انبار
                 // واقعی سفارش باشد (پیش از لود سفارش، انبار پیشفرض بارگیری شده بود).
                 await ReloadProductLookupAsync();
+                if (!me.CanEditVisitPrice)
+                {
+                    var ids = model.Lines.Select(l => l.ProductId).Where(id => id > 0).Distinct().ToList();
+                    try
+                    {
+                        var prices = (await Api.ProductPricesAsync(ids)).ToDictionary(p => p.Id, p => p.SalePrice);
+                        if (ids.Any(id => !prices.ContainsKey(id)))
+                            throw new InvalidOperationException("قیمت برخی کالاهای سفارش یافت نشد.");
+                        foreach (var line in model.Lines.Where(l => l.ProductId > 0))
+                        {
+                            line.UnitPrice = prices[line.ProductId];
+                            RecalcLine(line);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        blocked = $"دریافت قیمت فروش ممکن نشد: {ex.Message}";
+                        return;
+                    }
+                }
             }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1609,6 +1629,7 @@ else
 
     private void SetPrice(VisOrderLineDto line, string? value)
     {
+        if (me?.CanEditVisitPrice != true) return;
         line.UnitPrice = Math.Max(0, Fa.ParseDecimal(value));
         RecalcLine(line);
     }
@@ -1616,6 +1637,7 @@ else
     /// <summary>قیمت واحد از کامپوننت MoneyInput (مقدار عددی آماده)</summary>
     private void SetPrice(VisOrderLineDto line, decimal value)
     {
+        if (me?.CanEditVisitPrice != true) return;
         line.UnitPrice = Math.Max(0, value);
         RecalcLine(line);
     }
@@ -1743,8 +1765,8 @@ else
         if (model.Lines.Any(l => l.Quantity <= 0)) { Toast.Error("مقدار هر سطر باید بزرگ‌تر از صفر باشد."); return; }
         if (deliveryDate is null) { Toast.Error("تاریخ دریافت محصول را انتخاب کنید."); return; }
 
-        // محدودیت سقف تخفیف برای ویزیتور (مدیر محدودیت ندارد)
-        if (me?.CanApprove != true && me?.IsAdmin != true && me != null)
+        // فقط نقش فعال مدیر فروش از سقف تخفیف مستثناست.
+        if (me?.IsSalesManager != true && me != null)
         {
             var invalidLine = model.Lines.FirstOrDefault(l => ExceedsCap(l, me.MaxDiscountPercent));
             if (invalidLine is not null)

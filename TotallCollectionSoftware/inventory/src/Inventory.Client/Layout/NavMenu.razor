@@ -606,7 +606,7 @@
                                         <i class="bi bi-collection"></i><span>همهٔ درخواست‌ها</span>
                                     </NavLink>
                                 }
-                                @if (Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.Export"))
+                                @if (Auth.Has("SalesVisit.View") || Auth.Has("SalesVisit.Create") || Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.FinanceView") || Auth.Has("SalesVisit.Export"))
                                 {
                                     <NavLink class="nav-link" href="sales/requests-report" @onclick="NotifyClose">
                                         <i class="bi bi-clipboard-data"></i><span>گزارش تجمیع سفارش‌ها</span>

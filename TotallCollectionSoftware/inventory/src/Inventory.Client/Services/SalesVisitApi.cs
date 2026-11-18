@@ -37,6 +37,7 @@ public interface ISalesVisitApi
     Task<List<VisCustomerLite>> CustomersAsync(string? search);
     Task<VisCustomerLite> CreateCustomerAsync(VisCustomerLite input);
     Task<List<VisProductLite>> ProductsAsync(int? warehouseId, string? search);
+    Task<List<VisProductLite>> ProductPricesAsync(List<int> productIds);
     Task<List<VisWarehouseLite>> WarehousesAsync();
 }
 
@@ -109,6 +110,9 @@ public class SalesVisitApi : ISalesVisitApi
 
     public Task<VisCustomerLite> CreateCustomerAsync(VisCustomerLite input) =>
         _api.PostAsync<VisCustomerLite>("api/sales-visit/customers", input);
+
+    public Task<List<VisProductLite>> ProductPricesAsync(List<int> productIds) =>
+        _api.PostAsync<List<VisProductLite>>("api/sales-visit/product-prices", productIds);
 
     public Task<List<VisProductLite>> ProductsAsync(int? warehouseId, string? search) =>
         _api.GetAsync<List<VisProductLite>>(
