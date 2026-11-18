@@ -148,6 +148,9 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("نام معرف را وارد کنید.");
         if (dto.GoodsCommissionPercent is < 0 or > 100 || dto.ServiceCommissionPercent is < 0 or > 100)
             throw new InvalidOperationException("درصد پورسانت باید بین ۰ و ۱۰۰ باشد.");
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone);
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
 
         var card = NullIfEmpty(dto.CardNumber)?.Replace(" ", "").Replace("-", "");
         if (card is not null && (card.Length != 16 || !card.All(char.IsDigit)))
@@ -855,6 +858,12 @@ public class InventoryService : IInventoryService
             var parent = await _db.ProductCategories.FindAsync(dto.ParentId)
                 ?? throw new InvalidOperationException("گروه والد یافت نشد.");
 
+            // افزودن زیرگروه به گروهی که خودش کالا دارد، آن کالاها را روی «گروه والد»
+            // رها میکند؛ پیش از ایجاد چنین درختی جلوگیری میشود.
+            if (await _db.Products.AnyAsync(p => p.Category == parent.Name || p.CategoryId == parent.Id))
+                throw new InvalidOperationException(
+                    "این گروه دارای کالا است؛ ابتدا کالاها را به یک زیرگروه منتقل کنید تا گروه فعلی والد نشود.");
+
             // بررسی حلقه: والد انتخابی نباید از نوادگان همین گروه باشد
             var cursor = parent;
             while (cursor?.ParentId != null)
@@ -1004,12 +1013,71 @@ public class InventoryService : IInventoryService
         await _db.SaveChangesAsync();
     }
 
-    // =============================== ورود اکسل کالا ===============================
+    // =============================== ورود اکسل کالا / خدمات ===============================
 
-    /// <summary>ستون‌های فایل اکسل: کد کالا | نام کالا | گروه | واحد | قیمت خرید | قیمت فروش | نقطه سفارش | حداکثر موجودی | بارکد | توضیحات</summary>
-    public async Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null)
+    // نگاشت ستونها بر اساس «عنوان» انجام میشود تا فایلهای قدیمی ۱۰ستونه هم
+    // بدون تغییر کار کنند و ستونهای تازه (ارزش افزوده، وضعیت، شناسه مالیاتی)
+    // فقط در صورت وجود خوانده شوند. مقادیر پیشفرض، چینش قدیمی اکسل کالا است.
+    private static readonly (string Key, string[] Aliases)[] ProductImportColumnAliases =
+    {
+        ("code", new[] { "کد کالا", "کد خدمت", "کد" }),
+        ("name", new[] { "نام کالا", "نام خدمت", "نام" }),
+        ("category", new[] { "گروه", "گروه کالا", "دستهبندی", "دسته بندی" }),
+        ("unit", new[] { "واحد", "واحد شمارش" }),
+        ("purchase", new[] { "قیمت خرید" }),
+        ("sale", new[] { "قیمت فروش" }),
+        ("reorder", new[] { "نقطه سفارش", "حداقل موجودی" }),
+        ("max", new[] { "حداکثر موجودی", "حداکثر موجودی مطلوب", "تعداد مطلوب" }),
+        ("barcode", new[] { "بارکد" }),
+        ("desc", new[] { "توضیحات", "شرح" }),
+        ("vat", new[] { "ارزش افزوده", "مالیات بر ارزش افزوده", "VAT" }),
+        ("status", new[] { "وضعیت کالا", "وضعیت خدمت", "وضعیت" }),
+        ("taxCode", new[] { "شناسه مالیاتی", "کد مالیاتی" })
+    };
+
+    private static string NormalizeImportHeader(string? value) =>
+        Fa.ToEn(value ?? "").Trim()
+          .Replace("\u200c", "").Replace("\u00A0", " ").Replace("-", " ")
+          .ToLowerInvariant();
+
+    private static Dictionary<string, int> ResolveImportColumns(ClosedXML.Excel.IXLRow headerRow)
+    {
+        var cols = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["code"] = 1, ["name"] = 2, ["category"] = 3, ["unit"] = 4,
+            ["purchase"] = 5, ["sale"] = 6, ["reorder"] = 7, ["max"] = 8,
+            ["barcode"] = 9, ["desc"] = 10, ["vat"] = 0, ["status"] = 0, ["taxCode"] = 0
+        };
+        // حداکثر ۲۰ ستون کافی است (قالب رسمی ۱۳ ستون دارد). خواندن سلول خالی
+        // در ClosedXML بیخطر است و وابستگی به LastCellUsed روی سطر خالی نداریم.
+        var headers = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var c = 1; c <= 20; c++)
+        {
+            var key = NormalizeImportHeader(headerRow.Cell(c).GetString());
+            if (key.Length > 0 && !headers.ContainsKey(key)) headers[key] = c;
+        }
+        foreach (var (key, aliases) in ProductImportColumnAliases)
+        {
+            foreach (var alias in aliases)
+            {
+                if (!headers.TryGetValue(NormalizeImportHeader(alias), out var column)) continue;
+                cols[key] = column;
+                break;
+            }
+        }
+        return cols;
+    }
+
+    /// <summary>
+    /// ورود گروهی «کالا» یا «خدمات» از اکسل. علاوه بر ستونهای قدیمی، ستونهای
+    /// «ارزش افزوده» و «وضعیت کالا/خدمت» (و «شناسه مالیاتی») خوانده میشوند؛
+    /// فایلهای قدیمی بدون این ستونها همچنان با مقادیر پیشفرض وارد میشوند.
+    /// </summary>
+    public async Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null,
+        ProductImportKind kind = ProductImportKind.Goods)
     {
         var result = new ExcelImportResult();
+        var isService = kind == ProductImportKind.Services;
 
         using var wb = new ClosedXML.Excel.XLWorkbook(excelStream);
         var ws = wb.Worksheets.FirstOrDefault()
@@ -1017,7 +1085,19 @@ public class InventoryService : IInventoryService
 
         var lastRow = ws.LastRowUsed()?.RowNumber() ?? 0;
         if (lastRow < 2)
-            throw new InvalidOperationException("فایل اکسل خالی است؛ داده‌ها باید از سطر ۲ (بعد از عنوان) شروع شوند.");
+            throw new InvalidOperationException("فایل اکسل خالی است؛ دادهها باید از سطر ۲ (بعد از عنوان) شروع شوند.");
+
+        var cols = ResolveImportColumns(ws.Row(1));
+        string Text(ClosedXML.Excel.IXLRow row, string key)
+            => cols.TryGetValue(key, out var c) && c > 0 ? row.Cell(c).GetString().Trim() : "";
+        decimal Whole(ClosedXML.Excel.IXLRow row, string key)
+            => cols.TryGetValue(key, out var c) && c > 0 ? ReadWholePrice(row.Cell(c)) : 0m;
+        decimal Number(ClosedXML.Excel.IXLRow row, string key)
+            => cols.TryGetValue(key, out var c) && c > 0 ? ReadDecimal(row.Cell(c)) : 0m;
+        decimal? Vat(ClosedXML.Excel.IXLRow row)
+            => cols.TryGetValue("vat", out var c) && c > 0 ? ReadOptionalVat(row.Cell(c)) : null;
+        bool Active(ClosedXML.Excel.IXLRow row)
+            => !cols.TryGetValue("status", out var c) || c <= 0 || ReadImportActive(row.Cell(c));
 
         for (int r = 2; r <= lastRow; r++)
         {
@@ -1026,36 +1106,42 @@ public class InventoryService : IInventoryService
 
             try
             {
-                var code = row.Cell(1).GetString().Trim();
-                var name = row.Cell(2).GetString().Trim();
-                var category = row.Cell(3).GetString().Trim();
-                var unit = row.Cell(4).GetString().Trim();
-                var purchase = ReadWholePrice(row.Cell(5));
-                var sale = ReadWholePrice(row.Cell(6));
-                var reorder = ReadDecimal(row.Cell(7));
-                var maxStock = ReadDecimal(row.Cell(8));
-                var barcode = row.Cell(9).GetString().Trim();
-                var desc = row.Cell(10).GetString().Trim();
+                var code = Text(row, "code");
+                var name = Text(row, "name");
+                var category = Text(row, "category");
+                var unit = Text(row, "unit");
+                var purchase = isService ? 0m : Whole(row, "purchase");
+                var sale = Whole(row, "sale");
+                var reorder = isService ? 0m : Number(row, "reorder");
+                var maxStock = isService ? 0m : Number(row, "max");
+                var barcode = isService ? "" : Text(row, "barcode");
+                var desc = Text(row, "desc");
+                var taxCode = Text(row, "taxCode");
+                var vat = Vat(row);
+                var active = Active(row);
 
                 if (string.IsNullOrWhiteSpace(name))
-                    throw new InvalidOperationException("نام کالا خالی است.");
+                    throw new InvalidOperationException(isService ? "نام خدمت خالی است." : "نام کالا خالی است.");
                 if (purchase < 0 || sale < 0 || reorder < 0 || maxStock < 0)
-                    throw new InvalidOperationException("مقادیر عددی نمی‌توانند منفی باشند.");
+                    throw new InvalidOperationException("مقادیر عددی نمیتوانند منفی باشند.");
 
                 await SaveProductAsync(new Product
                 {
                     Code = code,
                     Name = name,
-                    Category = string.IsNullOrWhiteSpace(category) ? null : category,
-                    Unit = string.IsNullOrWhiteSpace(unit) ? "عدد" : unit,
+                    Category = isService || string.IsNullOrWhiteSpace(category) ? null : category,
+                    Unit = isService ? "خدمت" : string.IsNullOrWhiteSpace(unit) ? "عدد" : unit,
                     PurchasePrice = purchase,
                     SalePrice = sale,
                     ReorderPoint = reorder,
                     MaxStock = maxStock,
                     Barcode = string.IsNullOrWhiteSpace(barcode) ? null : barcode,
                     Description = string.IsNullOrWhiteSpace(desc) ? null : desc,
-                    WarehouseId = warehouseId is > 0 ? warehouseId : null,
-                    IsActive = true
+                    TaxCode = string.IsNullOrWhiteSpace(taxCode) ? null : taxCode,
+                    InvoiceVatValue = vat,
+                    IsActive = active,
+                    IsService = isService,
+                    WarehouseId = isService ? null : warehouseId is > 0 ? warehouseId : null
                 });
 
                 result.Imported++;
@@ -1072,6 +1158,34 @@ public class InventoryService : IInventoryService
 
         // SaveProductAsync creates each missing unit for that product's own company.
         return result;
+    }
+
+    /// <summary>ارزش افزوده اختیاری: خالی = پیشفرض، ۰..۱۰۰ = درصد، بالای ۱۰۰ = مبلغ ریالی.</summary>
+    private static decimal? ReadOptionalVat(ClosedXML.Excel.IXLCell cell)
+    {
+        if (cell.IsEmpty()) return null;
+        var raw = Fa.ToEn(cell.GetString()).Trim()
+            .Replace("%", "").Replace("٪", "").Replace(",", "").Replace("\u066c", "").Trim();
+        if (raw.Length == 0) return null;
+        if (!decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value))
+            throw new InvalidOperationException($"ارزش افزوده «{cell.GetString()}» عدد معتبری نیست.");
+        if (!OrderLineAmounts.IsValidVatValue(value))
+            throw new InvalidOperationException("ارزش افزوده باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+        return value;
+    }
+
+    /// <summary>ستون «وضعیت کالا/خدمت»: خالی = فعال؛ فعال/غیرفعال (و معادلهایش) پذیرفته میشود.</summary>
+    private static bool ReadImportActive(ClosedXML.Excel.IXLCell cell)
+    {
+        if (cell.IsEmpty()) return true;
+        var raw = NormalizeImportHeader(cell.GetString()).Trim();
+        if (raw.Length == 0) return true;
+        return raw switch
+        {
+            "فعال" or "active" or "1" or "true" or "بله" or "yes" => true,
+            "غیرفعال" or "غیر فعال" or "inactive" or "0" or "false" or "خیر" or "no" => false,
+            _ => throw new InvalidOperationException($"وضعیت «{cell.GetString()}» معتبر نیست؛ از «فعال» یا «غیرفعال» استفاده کنید.")
+        };
     }
 
     private static decimal ReadWholePrice(ClosedXML.Excel.IXLCell cell)
@@ -1107,14 +1221,29 @@ public class InventoryService : IInventoryService
             : throw new InvalidOperationException($"مقدار «{cell.GetString()}» عدد معتبری نیست.");
     }
 
-    /// <summary>ساخت فایل اکسل نمونه برای ورود گروهی کالا (با دو سطر مثال).</summary>
-    public byte[] BuildProductTemplate()
+    private static string[] ProductTemplateHeaders(ProductImportKind kind)
     {
+        var isService = kind == ProductImportKind.Services;
+        // ترتیب ۱۰ ستون اول با فایلهای قدیمی یکسان است؛ ستونهای تازه به انتها اضافه شدهاند.
+        return new[]
+        {
+            isService ? "کد خدمت" : "کد کالا",
+            isService ? "نام خدمت" : "نام کالا",
+            "گروه", "واحد", "قیمت خرید", "قیمت فروش", "نقطه سفارش",
+            "حداکثر موجودی", "بارکد", "توضیحات", "ارزش افزوده",
+            isService ? "وضعیت خدمت" : "وضعیت کالا", "شناسه مالیاتی"
+        };
+    }
+
+    /// <summary>ساخت فایل اکسل نمونه برای ورود گروهی کالا «یا» خدمات (با دو سطر مثال).</summary>
+    public byte[] BuildProductTemplate(ProductImportKind kind = ProductImportKind.Goods)
+    {
+        var isService = kind == ProductImportKind.Services;
         using var wb = new ClosedXML.Excel.XLWorkbook();
-        var ws = wb.Worksheets.Add("کالاها");
+        var ws = wb.Worksheets.Add(isService ? "خدمات" : "کالاها");
         ws.RightToLeft = true;
 
-        string[] headers = { "کد کالا", "نام کالا", "گروه", "واحد", "قیمت خرید", "قیمت فروش", "نقطه سفارش", "حداکثر موجودی", "بارکد", "توضیحات" };
+        var headers = ProductTemplateHeaders(kind);
         for (int i = 0; i < headers.Length; i++)
         {
             var c = ws.Cell(1, i + 1);
@@ -1124,30 +1253,54 @@ public class InventoryService : IInventoryService
             c.Style.Border.OutsideBorder = ClosedXML.Excel.XLBorderStyleValues.Thin;
         }
 
-        // دو سطر نمونه
-        ws.Cell(2, 1).Value = "";              ws.Cell(3, 1).Value = "P-9001";
-        ws.Cell(2, 2).Value = "روغن ترمز DOT4"; ws.Cell(3, 2).Value = "کمک فنر جلو";
-        ws.Cell(2, 3).Value = "روغن";           ws.Cell(3, 3).Value = "جلوبندی";
-        ws.Cell(2, 4).Value = "لیتر";           ws.Cell(3, 4).Value = "عدد";
-        ws.Cell(2, 5).Value = 450000;           ws.Cell(3, 5).Value = 3200000;
-        ws.Cell(2, 6).Value = 590000;           ws.Cell(3, 6).Value = 4100000;
-        ws.Cell(2, 7).Value = 10;               ws.Cell(3, 7).Value = 4;
-        ws.Cell(2, 8).Value = 60;               ws.Cell(3, 8).Value = 20;
-        ws.Cell(2, 9).Value = "6260001112223";  ws.Cell(3, 9).Value = "";
-        ws.Cell(2, 10).Value = "سطر نمونه — قابل حذف"; ws.Cell(3, 10).Value = "سطر نمونه — قابل حذف";
+        // دو سطر نمونه (شامل ارزش افزوده و وضعیت)
+        if (isService)
+        {
+            ws.Cell(2, 1).Value = "";                 ws.Cell(3, 1).Value = "S-9001";
+            ws.Cell(2, 2).Value = "نصب و راهاندازی";   ws.Cell(3, 2).Value = "سرویس دورهای";
+            ws.Cell(2, 3).Value = "";                 ws.Cell(3, 3).Value = "";
+            ws.Cell(2, 4).Value = "خدمت";             ws.Cell(3, 4).Value = "خدمت";
+            ws.Cell(2, 5).Value = 0;                  ws.Cell(3, 5).Value = 0;
+            ws.Cell(2, 6).Value = 850000;             ws.Cell(3, 6).Value = 1200000;
+            ws.Cell(2, 10).Value = "سطر نمونه — قابل حذف"; ws.Cell(3, 10).Value = "سطر نمونه — قابل حذف";
+            ws.Cell(2, 11).Value = 10;                ws.Cell(3, 11).Value = 0;
+            ws.Cell(2, 12).Value = "فعال";            ws.Cell(3, 12).Value = "غیرفعال";
+            ws.Cell(2, 13).Value = "";                ws.Cell(3, 13).Value = "";
+        }
+        else
+        {
+            ws.Cell(2, 1).Value = "";              ws.Cell(3, 1).Value = "P-9001";
+            ws.Cell(2, 2).Value = "روغن ترمز DOT4"; ws.Cell(3, 2).Value = "کمک فنر جلو";
+            ws.Cell(2, 3).Value = "روغن";           ws.Cell(3, 3).Value = "جلوبندی";
+            ws.Cell(2, 4).Value = "لیتر";           ws.Cell(3, 4).Value = "عدد";
+            ws.Cell(2, 5).Value = 450000;           ws.Cell(3, 5).Value = 3200000;
+            ws.Cell(2, 6).Value = 590000;           ws.Cell(3, 6).Value = 4100000;
+            ws.Cell(2, 7).Value = 10;               ws.Cell(3, 7).Value = 4;
+            ws.Cell(2, 8).Value = 60;               ws.Cell(3, 8).Value = 20;
+            ws.Cell(2, 9).Value = "6260001112223";  ws.Cell(3, 9).Value = "";
+            ws.Cell(2, 10).Value = "سطر نمونه — قابل حذف"; ws.Cell(3, 10).Value = "سطر نمونه — قابل حذف";
+            ws.Cell(2, 11).Value = 10;              ws.Cell(3, 11).Value = 0;
+            ws.Cell(2, 12).Value = "فعال";          ws.Cell(3, 12).Value = "غیرفعال";
+            ws.Cell(2, 13).Value = "";              ws.Cell(3, 13).Value = "";
+        }
 
-        ws.Columns(1, 10).AdjustToContents();
+        ws.Columns(1, headers.Length).AdjustToContents();
 
         // راهنما در کاربرگ دوم
         var help = wb.Worksheets.Add("راهنما");
         help.RightToLeft = true;
-        help.Cell(1, 1).Value = "راهنمای ورود کالا از اکسل";
+        help.Cell(1, 1).Value = isService ? "راهنمای ورود خدمات از اکسل" : "راهنمای ورود کالا از اکسل";
         help.Cell(1, 1).Style.Font.Bold = true;
-        help.Cell(3, 1).Value = "• داده‌ها را از سطر ۲ کاربرگ «کالاها» وارد کنید (سطر ۱ عنوان است).";
-        help.Cell(4, 1).Value = "• «نام کالا» اجباری است؛ بقیه ستون‌ها اختیاری‌اند.";
-        help.Cell(5, 1).Value = "• «کد کالا» خالی باشد، خودکار ساخته می‌شود؛ کد تکراری خطا می‌دهد.";
-        help.Cell(6, 1).Value = "• گروه یا واحد جدید باشد، خودکار در اطلاعات پایه ساخته می‌شود.";
-        help.Cell(7, 1).Value = "• دو سطر نمونه در کاربرگ «کالاها» را قبل از ورود نهایی حذف کنید.";
+        help.Cell(3, 1).Value = $"• دادهها را از سطر ۲ کاربرگ «{(isService ? "خدمات" : "کالاها")}» وارد کنید (سطر ۱ عنوان است).";
+        help.Cell(4, 1).Value = $"• «{(isService ? "نام خدمت" : "نام کالا")}» اجباری است؛ بقیه ستونها اختیاریاند.";
+        help.Cell(5, 1).Value = "• «ارزش افزوده»: ۰ تا ۱۰۰ درصد، بالای ۱۰۰ مبلغ ثابت ریالی؛ خالی = بدون ارزش افزوده.";
+        help.Cell(6, 1).Value = "• «وضعیت کالا/خدمت»: فعال یا غیرفعال؛ خالی = فعال.";
+        help.Cell(7, 1).Value = isService
+            ? "• خدمات موجودی انبار، بارکد، گروه و واحد ندارند؛ فقط نام، قیمت فروش، ارزش افزوده و وضعیت خوانده میشود."
+            : "• گروه یا واحد جدید باشد، خودکار در اطلاعات پایه ساخته میشود؛ گروه دارای زیرگروه قابل انتخاب نیست.";
+        help.Cell(8, 1).Value = "• «شناسه مالیاتی» اختیاری است و در صورت ورود باید ۵ تا ۲۰ نویسه و یکتا باشد.";
+        help.Cell(9, 1).Value = "• ستونها بر اساس عنوان شناسایی میشوند؛ فایلهای ۱۰ستونه قدیمی هم پذیرفته میشوند.";
+        help.Cell(10, 1).Value = "• دو سطر نمونه را قبل از ورود نهایی حذف کنید.";
         help.Columns(1, 1).AdjustToContents();
 
         using var ms = new MemoryStream();
@@ -1340,6 +1493,19 @@ public class InventoryService : IInventoryService
                         AllowsFractionalQuantity = ShopQuantityRules.DefaultAllowsFraction(entity.Unit), CreatedAt = DateTime.Now });
                 entity.Category = NullIfEmpty(dto.Category);
 
+                // گروه والد (دارای زیرگروه) نباید مستقیماً کالا بگیرد؛ کالا فقط روی
+                // برگ درخت گروهها ثبت میشود. قانون روی سرور هم اعمال میشود تا ورود
+                // اکسل یا کلاینتهای قدیمی نتوانند آن را دور بزنند.
+                if (entity.Category is not null)
+                {
+                    var leafIds = await _db.ProductCategories.AsNoTracking()
+                        .Where(c => c.Name == entity.Category).Select(c => c.Id).ToListAsync();
+                    if (leafIds.Count > 0 && await _db.ProductCategories.AsNoTracking()
+                        .AnyAsync(c => c.ParentId.HasValue && leafIds.Contains(c.ParentId.Value)))
+                        throw new InvalidOperationException(
+                            $"گروه «{entity.Category}» دارای زیرگروه است؛ یکی از زیرگروهها را انتخاب کنید. ثبت کالا روی گروه والد مجاز نیست.");
+                }
+
                 // Keep the keyed and legacy text representation consistent when the shop form changes group.
                 if (entity.Category == null) entity.CategoryId = null;
                 else
@@ -1353,6 +1519,20 @@ public class InventoryService : IInventoryService
                     else if (entity.CategoryId is not > 0 || !matching.Contains(entity.CategoryId.Value))
                         entity.CategoryId = matching.Count == 1 ? matching[0] : null;
                 }
+                // واحد «فقط صحیح» (مثلاً عدد) نباید آستانههای اعشاری داشته باشد؛
+                // همان قانون هم در فرم کالای جدید و هم در ورود اکسل اعمال میشود.
+                if (dto.ReorderPoint < 0 || dto.MaxStock < 0)
+                    throw new InvalidOperationException("نقطهٔ سفارش و حداکثر موجودی نمیتوانند منفی باشند.");
+                var unitRuleRows = await _db.MeasureUnits.AsNoTracking()
+                    .Where(u => u.CompanyId == unitOwner && u.Name == entity.Unit)
+                    .Select(u => (bool?)u.AllowsFractionalQuantity).ToListAsync();
+                var allowsFraction = unitRuleRows.Count == 1
+                    ? unitRuleRows[0] : ShopQuantityRules.DefaultAllowsFraction(entity.Unit);
+                if (allowsFraction == false &&
+                    (!ShopQuantityRules.IsWhole(dto.ReorderPoint) || !ShopQuantityRules.IsWhole(dto.MaxStock)))
+                    throw new InvalidOperationException(
+                        $"واحد «{entity.Unit}» فقط مقدار صحیح میپذیرد؛ نقطهٔ سفارش و حداکثر موجودی نمیتوانند اعشاری باشند.");
+
                 entity.Barcode = NullIfEmpty(dto.Barcode);
                 entity.SalePrice = dto.SalePrice;
                 entity.PurchasePrice = dto.PurchasePrice;
@@ -1461,6 +1641,10 @@ public class InventoryService : IInventoryService
 
     public async Task<Warehouse> SaveWarehouseAsync(Warehouse dto)
     {
+        if (string.IsNullOrWhiteSpace(dto.Name)) throw new InvalidOperationException("نام انبار را وارد کنید.");
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone);
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
         Db.Warehouse entity;
         if (dto.Id == 0) { entity = new Db.Warehouse(); _db.Warehouses.Add(entity); }
         else entity = await _db.Warehouses.FindAsync(dto.Id) ?? throw new InvalidOperationException("انبار یافت نشد.");
@@ -1578,6 +1762,8 @@ public class InventoryService : IInventoryService
 
     public async Task<Party> SavePartyAsync(Party dto)
     {
+        if (string.IsNullOrWhiteSpace(dto.Name)) throw new InvalidOperationException("نام طرف حساب را وارد کنید.");
+        // قواعد مشترک مشتری و تأمینکننده: کد پستی ۱۰ رقم، تلفن/موبایل ۱۱ رقم، شناسهٔ ملی معتبر.
         var identifierError = ShopIdentifierRules.ValidateParty(dto);
         if (identifierError is not null) throw new InvalidOperationException(identifierError);
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
@@ -1653,6 +1839,57 @@ public class InventoryService : IInventoryService
     }
 
     // =============================== موجودی ===============================
+
+    /// <summary>
+    /// موجودی «تا تاریخ» را از روی اسناد تاریخدار بازسازی میکند. جدول Stocks یک
+    /// تجمیع بدون تاریخ است و خرید فردا را در موجودی فاکتور دیروز نشان میدهد؛
+    /// این متد همان ترتیب و علائم RecalcStockAsync را فقط تا asOf اعمال میکند.
+    /// </summary>
+    public async Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetStockQuantitiesAsOfAsync(
+        DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
+        int? excludeTransactionId = null)
+    {
+        var end = asOf.Date.AddDays(1); // تمام اسناد «روز asOf» هم شامل شوند
+        var query = _db.Transactions.Include(t => t.Lines).AsNoTracking()
+            .Where(t => t.Date < end);
+        if (warehouseId is > 0) query = query.Where(t => t.WarehouseId == warehouseId);
+        if (excludeTransactionId is > 0) query = query.Where(t => t.Id != excludeTransactionId.Value);
+        var filterIds = productIds is { Count: > 0 } ? productIds.ToArray() : null;
+        if (filterIds is not null)
+            query = query.Where(t => t.Lines.Any(l => filterIds.Contains(l.ProductId)));
+        var txns = await query.OrderBy(t => t.Date).ThenBy(t => t.Id).ToListAsync();
+        var allowed = filterIds?.ToHashSet();
+
+        var result = new Dictionary<(int WarehouseId, int ProductId), decimal>();
+        foreach (var t in txns)
+        {
+            foreach (var l in t.Lines)
+            {
+                if (allowed is not null && !allowed.Contains(l.ProductId)) continue;
+                var key = (t.WarehouseId, l.ProductId);
+                result.TryGetValue(key, out var qty);
+                // Initial/Adjustment «تنظیم» موجودی است (reset)، نه افزایش/کاهش.
+                result[key] = t.Type switch
+                {
+                    TransactionType.Purchase or TransactionType.SaleReturn => qty + l.Quantity,
+                    TransactionType.Sale or TransactionType.WarrantyOut => qty - l.Quantity,
+                    _ => l.Quantity
+                };
+            }
+        }
+
+        // گردش ماژول انبارداری تاریخ سند ندارد؛ دقیقاً مانند RecalcStockAsync به مانده اضافه میشود.
+        var invQuery = _db.InvStocks.AsNoTracking().AsQueryable();
+        if (warehouseId is > 0) invQuery = invQuery.Where(s => s.WarehouseId == warehouseId);
+        foreach (var s in await invQuery.ToListAsync())
+        {
+            if (allowed is not null && !allowed.Contains(s.ProductId)) continue;
+            var key = (s.WarehouseId, s.ProductId);
+            result.TryGetValue(key, out var qty);
+            result[key] = qty + s.Quantity;
+        }
+        return result;
+    }
 
     public async Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize)
     {
@@ -1780,7 +2017,9 @@ public class InventoryService : IInventoryService
             // بررسی موجودی کافی برای فروش (خدمات موجودی ندارد — طبق تنظیمات)
             if (cmd.Type == TransactionType.Sale && !settings.AllowNegativeStock)
             {
-                var stocks = await _db.Stocks.Where(s => s.WarehouseId == cmd.WarehouseId && productIds.Contains(s.ProductId)).ToListAsync();
+                // موجودی «تا تاریخ فاکتور» ملاک است، نه تجمیع فعلی Stocks:
+                // رسید خریدِ آینده نباید به فاکتور فروش عقبدار موجودی بدهد.
+                var asOfStock = await GetStockQuantitiesAsOfAsync(date, cmd.WarehouseId, productIds);
                 if (cmd.IsWarrantyInvoice)
                 {
                     var physicalIds = productIds.Where(id => !products[id].IsService).ToList();
@@ -1791,7 +2030,7 @@ public class InventoryService : IInventoryService
                         throw new InvalidOperationException("برای کالای گارانتی گردش آینده ثبت شده است؛ پیش از خروج، ترتیب موجودی را بررسی کنید.");
                     foreach (var group in cmd.Lines.Where(l => !products[l.ProductId].IsService).GroupBy(l => l.ProductId))
                     {
-                        var available = stocks.FirstOrDefault(s => s.ProductId == group.Key)?.Quantity ?? 0m;
+                        var available = asOfStock.TryGetValue((cmd.WarehouseId, group.Key), out var wq) ? wq : 0m;
                         if (available < group.Sum(l => l.Quantity))
                             throw new InvalidOperationException($"موجودی «{products[group.Key].Name}» برای خروج گارانتی کافی نیست.");
                     }
@@ -1799,8 +2038,7 @@ public class InventoryService : IInventoryService
                 foreach (var l in cmd.Lines)
                 {
                     if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
-                    var stock = stocks.FirstOrDefault(s => s.ProductId == l.ProductId);
-                    var available = stock?.Quantity ?? 0;
+                    var available = asOfStock.TryGetValue((cmd.WarehouseId, l.ProductId), out var aq) ? aq : 0m;
                     if (available < l.Quantity)
                     {
                         var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";
@@ -2287,6 +2525,28 @@ public class InventoryService : IInventoryService
                 }
             }
 
+            // ویرایش فاکتور فروش: موجودی باید در «تاریخ همان سند» کافی باشد، نه
+            // تجمیع فعلی. سند در حال ویرایش حذف میشود تا دوبار مصرف نشود و رسید
+            // خرید آینده نمیتواند کمبود تاریخ گذشته را پوشش دهد.
+            if (txn.Type == TransactionType.Sale && !(await GetSettingsAsync()).AllowNegativeStock)
+            {
+                var updateAsOf = cmd.Date == default ? txn.Date : cmd.Date;
+                var updateIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
+                var updateStock = await GetStockQuantitiesAsOfAsync(updateAsOf, cmd.WarehouseId, updateIds, txn.Id);
+                foreach (var group in cmd.Lines
+                    .Where(l => !products.TryGetValue(l.ProductId, out var p) || !p.IsService)
+                    .GroupBy(l => l.ProductId))
+                {
+                    var available = updateStock.TryGetValue((cmd.WarehouseId, group.Key), out var q) ? q : 0m;
+                    if (available < group.Sum(l => l.Quantity))
+                    {
+                        var name = products.TryGetValue(group.Key, out var np) ? np.Name : "";
+                        throw new InvalidOperationException(
+                            $"موجودی «{name}» در تاریخ سند کافی نیست (موجود: {available:0.##}).");
+                    }
+                }
+            }
+
             if (txn.Type == TransactionType.Purchase)
             {
                 var pricedProductIds = await _db.ShopSalePrices.AsNoTracking().Where(h => h.PurchaseTransactionId == txn.Id)
@@ -2691,10 +2951,10 @@ public class InventoryService : IInventoryService
         await ValidateShopLineRulesAsync(cmd, products);
         if (await _db.Transactions.AnyAsync(t => t.WarehouseId == warehouseId && t.Date > at && t.Lines.Any(l => ids.Contains(l.ProductId))))
             throw new InvalidOperationException("برای کالای گارانتی گردش آینده ثبت شده است؛ پیش از خروج، ترتیب موجودی را بررسی کنید.");
-        var stocks = await _db.Stocks.Where(s => s.WarehouseId == warehouseId && ids.Contains(s.ProductId)).ToListAsync();
+        var asOfStock = await GetStockQuantitiesAsOfAsync(at, warehouseId, ids);
         foreach (var group in supplied.GroupBy(i => i.ProductId!.Value))
         {
-            var available = stocks.FirstOrDefault(s => s.ProductId == group.Key)?.Quantity ?? 0m;
+            var available = asOfStock.TryGetValue((warehouseId, group.Key), out var aq) ? aq : 0m;
             if (available < group.Sum(i => i.Quantity))
                 throw new InvalidOperationException($"موجودی «{products[group.Key].Name}» برای خروج گارانتی کافی نیست.");
         }
@@ -3476,11 +3736,13 @@ public class InventoryService : IInventoryService
             }
             if (!settings.AllowNegativeStock)
             {
-                var stocks = await _db.Stocks.Where(s => s.WarehouseId == cmd.WarehouseId && productIds.Contains(s.ProductId)).ToListAsync();
+                // ویرایش فاکتور فروش هم موجودی را در «تاریخ همان فاکتور» بررسی میکند؛
+                // سند در حال ویرایش از شمارش حذف میشود تا دوبار مصرف نشود.
+                var asOfStock = await GetStockQuantitiesAsOfAsync(editDate, cmd.WarehouseId, productIds, saleId);
                 foreach (var l in cmd.Lines)
                 {
                     if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
-                    var available = stocks.FirstOrDefault(s => s.ProductId == l.ProductId)?.Quantity ?? 0m;
+                    var available = asOfStock.TryGetValue((cmd.WarehouseId, l.ProductId), out var eq) ? eq : 0m;
                     if (available < l.Quantity)
                     {
                         var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";

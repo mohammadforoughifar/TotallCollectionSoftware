@@ -173,7 +173,8 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label">کد پستی شرکت</label>
-                        <input class="form-control num" dir="ltr" value="@newCp.PostalCode" @oninput="e => newCp.PostalCode = e.Value?.ToString()" />
+                        <input class="form-control num" dir="ltr" value="@newCp.PostalCode" @oninput="e => newCp.PostalCode = e.Value?.ToString()"
+                               maxlength="10" title="کد پستی شرکت باید دقیقاً ۱۰ رقم باشد" />
                     </div>
                 </div>
                 <button class="btn @(newCp.cpinfoid > 0 ? "btn-primary" : "btn-success") mt-3" @onclick="SaveCompany" disabled="@savingCp">
@@ -447,6 +448,9 @@
         if (SystemCompanies.Count > 0 && newCp.CompanyId is null or <= 0) { Toast.Error("شرکت سیستم (کمپانی) را انتخاب کنید."); return; }
         if (string.IsNullOrWhiteSpace(newCp.PersianName)) { Toast.Error("نام شرکت الزامی است."); return; }
         if (string.IsNullOrWhiteSpace(newCp.Nationalid)) { Toast.Error("کد ملی / شناسهٔ ثبت شرکت الزامی است."); return; }
+        var postalError = ShopIdentifierRules.ValidatePostalCode(newCp.PostalCode, "کد پستی شرکت");
+        if (postalError is not null) { Toast.Error(postalError); return; }
+        newCp.PostalCode = ShopIdentifierRules.Normalize(newCp.PostalCode);
         if (string.IsNullOrWhiteSpace(newCp.Type)) newCp.Type = "حقیقی";
         savingCp = true;
         StateHasChanged();

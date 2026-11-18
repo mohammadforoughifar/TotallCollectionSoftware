@@ -115,6 +115,20 @@ class PricingContractTests(unittest.TestCase):
         self.assertIn('p.CategoryId == null && p.Category != null', PRICING)
         self.assertIn('گروه متنی مبهم', PRICING)
 
+    def test_group_direction_uses_string_select_and_supports_decrease(self):
+        ui = (ROOT / 'src/Inventory.Client/Pages/Shop/Pricing.razor').read_text()
+        self.assertIn('@bind="priceDirection"', ui)
+        self.assertIn('<option value="increase">', ui)
+        self.assertIn('<option value="decrease">', ui)
+        self.assertIn('private string priceDirection = "increase";', ui)
+        self.assertIn('!string.Equals(priceDirection, "decrease"', ui)
+        self.assertNotIn('@bind="increase"', ui)
+        # فرمول سرور برای کاهش همان جهت منفی است و آزمون C# آن را اجرا میکند.
+        self.assertIn('request.Increase ? request.Percent : -request.Percent', PRICING)
+        probe = Path(__file__).with_name('Program.cs').read_text()
+        self.assertIn('Increase = false', probe)
+        self.assertIn('group decrease lowers the price', probe)
+
     def test_optional_purchase_price_is_permission_guarded_and_date_effective(self):
         self.assertIn('NewSalePrice.HasValue', CTRL)
         self.assertIn('Shop.Pricing.Manage', CTRL)

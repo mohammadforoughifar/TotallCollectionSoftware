@@ -65,11 +65,13 @@ public interface IProductService
     Task<Product> SaveAsync(Product product);
     Task DeleteAsync(int id);
 
-    /// <summary>ورود گروهی کالا از فایل اکسل.</summary>
-    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId);
+    /// <summary>ورود گروهی کالا «یا» خدمات از فایل اکسل (kind تعیین‌کنندهٔ نوع است).</summary>
+    Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId,
+        ProductImportKind kind = ProductImportKind.Goods);
 
-    /// <summary>دانلود فایل اکسل نمونه (با توکن احراز هویت؛ مرورگر را از صفحه خارج نمی‌کند).</summary>
-    Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync();
+    /// <summary>دانلود فایل اکسل نمونهٔ کالا یا خدمات (با توکن احراز هویت؛ مرورگر را از صفحه خارج نمی‌کند).</summary>
+    Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync(
+        ProductImportKind kind = ProductImportKind.Goods);
 }
 
 /// <summary>سرویس انبارها.</summary>
@@ -115,8 +117,12 @@ public interface IOrderService
     Task<PagedResult<Product>> GetInvoiceProductsAsync(TransactionType type, int page = 1, int pageSize = 10000);
     Task<List<LookupItem>> GetInvoiceWarehousesAsync(TransactionType type, bool activeOnly = false);
     Task<List<Party>> GetInvoicePartiesAsync(TransactionType type);
-    /// <summary>موجودی تعدادی انبار برای فهرست کالای فاکتور، بدون بهای تمام‌شده.</summary>
-    Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000);
+    /// <summary>
+    /// موجودی تعدادی انبار برای فهرست کالای فاکتور، بدون بهای تمام‌شده.
+    /// asOf = تاریخ سند؛ اسناد بعد از آن در موجودی دیده نمیشوند.
+    /// </summary>
+    Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1,
+        int pageSize = 10000, DateTime? asOf = null);
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null, bool openingOnly = false);
     Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
         int? partyId = null, int? warehouseId = null, bool? hasChequeIncome = null);

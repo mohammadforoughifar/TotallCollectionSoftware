@@ -62,6 +62,9 @@
     {
         if (saving || !CanManage) return;
         if (string.IsNullOrWhiteSpace(technician.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
+        var phoneError = ShopIdentifierRules.ValidatePhone(technician.Phone);
+        if (phoneError is not null) { Toast.Error(phoneError); return; }
+        technician.Phone = ShopIdentifierRules.NormalizePhone(technician.Phone);
         saving = true;
         try
         {

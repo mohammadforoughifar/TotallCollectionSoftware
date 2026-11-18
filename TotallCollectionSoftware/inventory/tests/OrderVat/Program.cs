@@ -103,6 +103,29 @@ Check(!stock.IsLoaded && stock.Quantities.Count == 0, "a changing total between 
 await stock.LoadAsync(0, (_, _, _) => throw new Exception("no warehouse must not query stock"));
 Check(stock.WarehouseId == 0 && !stock.IsLoaded && !stock.IsLoading, "clearing the warehouse also clears its snapshot");
 
+// The dated overload sends the invoice date on every page; the legacy overload
+// keeps working for callers that have no document date yet.
+var datedStock = new InvoiceWarehouseStock();
+var past = DateTime.Today.AddDays(-30);
+DateTime? observedAsOf = null;
+var datedLoad = datedStock.LoadAsync(6, past, (id, page, size, asOf) =>
+{
+    observedAsOf = asOf;
+    Check(id == 6 && size == 10000 && asOf == past, "dated stock request carries the invoice date");
+    return Task.FromResult(new PagedResult<InvoiceStockItem>
+    {
+        TotalCount = 1, Items = new() { new() { WarehouseId = id, ProductId = 1, Quantity = 3m } }
+    });
+});
+Check(await datedLoad && datedStock.AsOf == past && observedAsOf == past && datedStock.Quantities[1] == 3m,
+    "the snapshot remembers its as-of date and loads every page with that date");
+await datedStock.LoadAsync(6, (id, _, _) => Task.FromResult(new PagedResult<InvoiceStockItem>
+{
+    TotalCount = 1, Items = new() { new() { WarehouseId = id, ProductId = 1, Quantity = 8m } }
+}));
+Check(datedStock.AsOf is null && datedStock.Quantities[1] == 8m,
+    "the legacy no-date overload still produces a current-stock snapshot");
+
 foreach (var section in ShopSections.All)
 {
     Check(!ShopSections.AliasAllows("Orders.ViewProfit", section.ViewPermission) &&
@@ -278,6 +301,27 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
     fractional.Lines[0].Price = 1.234m;
     try { await service.CreateOrderAsync(fractional); throw new Exception("taxed price precision was accepted"); }
     catch (InvalidOperationException) { Console.WriteLine("PASS: taxed price beyond storage precision rejected"); }
+
+    // Bug 9 runtime: a purchase dated in the future raises the *current* stock,
+    // but an invoice dated today must still see only today's movements.
+    var tomorrowPurchase = new OrderCommand { WarehouseId = wh.Id, PartyId = party.Id,
+        Type = TransactionType.Purchase, Date = DateTime.Today.AddDays(3), PaymentMethod = PaymentMethod.Cash,
+        CashAmount = 10000, Lines = new() { new() { ProductId = product.Id, Quantity = 10, Price = 1000 } } };
+    await service.CreateOrderAsync(tomorrowPurchase);
+    var currentStock = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1)).Result!).Value!;
+    var datedStockPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1, DateTime.Today)).Result!).Value!;
+    Check(currentStock.Items.Single().Quantity == 11.25m && datedStockPage.Items.Single().Quantity == 1.25m,
+        "the invoice stock endpoint excludes future receipts when asOf is given");
+    Check((await service.GetStockQuantitiesAsOfAsync(DateTime.Today, wh.Id, new[] { product.Id }))[(wh.Id, product.Id)] == 1.25m,
+        "dated stock service replays only documents up to the requested date");
+    var historicalSale = new OrderCommand { WarehouseId = wh.Id, PartyId = party.Id, Type = TransactionType.Sale,
+        Date = DateTime.Today, PaymentMethod = PaymentMethod.Cash, CashAmount = 4950,
+        Lines = new() { new() { ProductId = product.Id, Quantity = 5, Price = 1000, DiscountPercent = 10, VatValue = 10 } } };
+    var beforeRejectedSale = await db.Transactions.CountAsync();
+    try { await service.CreateOrderAsync(historicalSale); throw new Exception("future receipt funded a backdated sale"); }
+    catch (InvalidOperationException ex) when (ex.Message.Contains("موجودی")) { }
+    Check(await db.Transactions.CountAsync() == beforeRejectedSale,
+        "a backdated sale cannot consume stock that only arrives later");
 }
 
 public sealed class TestEffectivePermissions : IEffectivePermissions

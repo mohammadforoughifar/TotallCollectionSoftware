@@ -122,7 +122,9 @@
         </div>
         <div class="col-md-6">
             <label class="form-label">تلفن</label>
-            <input class="form-control" @bind="form.Phone" data-digits="tel" dir="ltr" inputmode="tel" />
+            <input class="form-control" @bind="form.Phone" data-digits="tel" dir="ltr" inputmode="tel"
+                   maxlength="16" title="شماره تلفن باید دقیقاً ۱۱ رقم باشد" />
+            <div class="fs-9 text-muted mt-1">۱۱ رقم همراه پیشوند شهر</div>
         </div>
         <div class="col-12">
             <label class="form-label">یادداشت</label>
@@ -190,6 +192,9 @@
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام انبار را وارد کنید."); return; }
+        var contactError = ShopIdentifierRules.ValidatePhone(form.Phone);
+        if (contactError is not null) { Toast.Error(contactError); return; }
+        form.Phone = ShopIdentifierRules.NormalizePhone(form.Phone);
         saving = true;
         try
         {

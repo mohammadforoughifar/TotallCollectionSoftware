@@ -14,6 +14,10 @@ obj/
 .DS_Store
 Thumbs.db
 
+## Python test bytecode
+__pycache__/
+*.py[cod]
+
 ## IDE
 .idea/
 *.slnLaunch.user

@@ -56,7 +56,10 @@ else
                 <p class="pricing-intro">قیمت جدید از تاریخ انتخابی اعمال می‌شود؛ مبلغ فاکتورهای ثبت‌شده تغییر نمی‌کند.</p>
                 <div class="pricing-fields">
                     <div><label class="form-label" for="priceGroup">گروه کالا</label><select id="priceGroup" class="form-select" @bind="categoryId" disabled="@(!CanManage || busy)"><option value="0">انتخاب گروه…</option>@foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }</select></div>
-                    <div><label class="form-label" for="priceDirection">نوع تغییر</label><select id="priceDirection" class="form-select" @bind="increase" disabled="@(!CanManage || busy)"><option value="true">افزایش</option><option value="false">کاهش</option></select></div>
+                    @* بایند مستقیم select روی مقدار bool در بلیزور پشتیبانی نمیشود (تبدیل رشته به bool
+                       شکست میخورد و گزینهٔ «کاهش» هرگز اعمال نمیشد). مقدار بهصورت رشته نگه
+                       داشته میشود و صریحاً به bool تبدیل میگردد. *@
+                    <div><label class="form-label" for="priceDirection">نوع تغییر</label><select id="priceDirection" class="form-select" @bind="priceDirection" disabled="@(!CanManage || busy)"><option value="increase">افزایش</option><option value="decrease">کاهش</option></select></div>
                     <div><label class="form-label" for="changePercent">درصد</label><div class="input-group"><input id="changePercent" class="form-control num" dir="ltr" inputmode="decimal" @bind="percentText" disabled="@(!CanManage || busy)" /><span class="input-group-text">٪</span></div></div>
                     <div><label class="form-label">تاریخ اجرا</label><DatePicker @bind-Value="effectiveDate" OpenOnFocus="true" /></div>
                 </div>
@@ -66,7 +69,7 @@ else
                 </div>
                 @if (preview is not null)
                 {
-                    <div class="pricing-preview-header"><strong>پیش‌نمایش</strong><span>@preview.Rows.Count.Num() کالا · @(preview.Rows.Count(r => r.NewPrice.HasValue).Num()) قابل تغییر</span></div>
+                    <div class="pricing-preview-header"><strong>پیش‌نمایش (@(increase ? "افزایش" : "کاهش") @percentText٪)</strong><span>@preview.Rows.Count.Num() کالا · @(preview.Rows.Count(r => r.NewPrice.HasValue).Num()) قابل تغییر</span></div>
                     <div class="table-responsive pricing-table"><table class="table table-sm align-middle mb-0"><thead><tr><th>کالا</th><th>قیمت قبلی</th><th>قیمت جدید</th><th>وضعیت</th></tr></thead><tbody>
                         @foreach (var row in preview.Rows)
                         {
@@ -110,7 +113,11 @@ else
     private List<LookupItem> categories = new();
     private List<ShopPriceHistoryItem> history = new();
     private int categoryId;
-    private bool increase = true, includeDescendants;
+    // «کاهش» باید واقعاً اعمال شود: bool مستقیماً به select بایند نمیشود، چون بایندر
+    // بلیزور رشتهٔ "false" را به bool تبدیل نمیکند (همیشه «افزایش» میماند).
+    private string priceDirection = "increase";
+    private bool increase => !string.Equals(priceDirection, "decrease", StringComparison.OrdinalIgnoreCase);
+    private bool includeDescendants;
     private DateTime? effectiveDate = DateTime.Today;
     private ShopPriceAdjustmentPreview? preview;
     private ShopPriceAdjustmentRequest? previewRequest;
