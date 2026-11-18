@@ -12,7 +12,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label" for="tech-phone-@formKey">موبایل / تلفن</label>
-                <input id="tech-phone-@formKey" class="form-control" @bind="technician.Phone" inputmode="tel" data-digits="tel" dir="ltr" disabled="@saving" />
+                <ShopDigitsInput @bind-Value="technician.Phone" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="تلفن تعمیرکار باید دقیقاً ۱۱ رقم با صفر آغازین باشد." Id="@($"tech-phone-{formKey}")" Disabled="saving" />
             </div>
             <div class="col-md-6">
                 <label class="form-label" for="tech-specialty-@formKey">تخصص</label>
@@ -62,6 +62,8 @@
     {
         if (saving || !CanManage) return;
         if (string.IsNullOrWhiteSpace(technician.Name)) { Toast.Error("نام تعمیرکار را وارد کنید."); return; }
+        var phoneError = ShopIdentifierRules.ValidatePhone(technician.Phone, "تلفن تعمیرکار");
+        if (phoneError is not null) { Toast.Error(phoneError); return; }
         saving = true;
         try
         {

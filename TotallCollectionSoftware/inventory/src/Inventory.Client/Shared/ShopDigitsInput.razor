@@ -1,0 +1,38 @@
+@namespace Inventory.Client.Shared
+
+<input id="@Id" class="@CssClass @(ShowError ? "is-invalid" : "")" dir="ltr" inputmode="numeric"
+       maxlength="@MaxDigits" data-digits="digits" data-shop-max-digits="@MaxDigits"
+       data-shop-iban="@(Iban ? "true" : null)" disabled="@Disabled"
+       data-party-field="@Field" value="@Value" @oninput="OnInput" @onblur="OnBlur"
+       aria-invalid="@(ShowError ? "true" : "false")" aria-describedby="@(ShowError ? errorId : null)" />
+@if (ShowError)
+{
+    <div id="@errorId" class="invalid-feedback d-block" role="status">@ErrorMessage</div>
+}
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public int MaxDigits { get; set; }
+    [Parameter] public int[] ValidLengths { get; set; } = Array.Empty<int>();
+    [Parameter] public string ErrorMessage { get; set; } = "";
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Field { get; set; }
+    [Parameter] public string CssClass { get; set; } = "form-control";
+    [Parameter] public bool Iban { get; set; }
+    [Parameter] public bool Phone { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    private readonly string errorId = "shop-digits-" + Guid.NewGuid().ToString("N");
+    private bool touched;
+    private bool ShowError
+    {
+        get
+        {
+            if (!touched || string.IsNullOrWhiteSpace(Value)) return false;
+            var text = Iban ? ShopIdentifierRules.NormalizeIban(Value) : Phone ? ShopIdentifierRules.NormalizePhone(Value) : ShopIdentifierRules.Normalize(Value);
+            return text is not null && (!ShopIdentifierRules.IsDigits(text) || !ValidLengths.Contains(text.Length) || (Phone && !text.StartsWith("0", StringComparison.Ordinal)));
+        }
+    }
+    private async Task OnInput(ChangeEventArgs args) => await ValueChanged.InvokeAsync(args.Value?.ToString());
+    private void OnBlur() => touched = true;
+}

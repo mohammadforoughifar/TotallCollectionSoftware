@@ -122,7 +122,7 @@
         </div>
         <div class="col-md-6">
             <label class="form-label">تلفن</label>
-            <input class="form-control" @bind="form.Phone" data-digits="tel" dir="ltr" inputmode="tel" />
+            <ShopDigitsInput @bind-Value="form.Phone" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="تلفن انبار باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
         </div>
         <div class="col-12">
             <label class="form-label">یادداشت</label>
@@ -190,6 +190,8 @@
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام انبار را وارد کنید."); return; }
+        var phoneError = ShopIdentifierRules.ValidatePhone(form.Phone, "تلفن انبار");
+        if (phoneError is not null) { Toast.Error(phoneError); return; }
         saving = true;
         try
         {

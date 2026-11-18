@@ -635,6 +635,25 @@
         } catch (e) { /* برخی نوع‌های input از setSelectionRange پشتیبانی نمی‌کنند */ }
     }
 
+    // Shop identifiers count digits, not separators; normalize a paste before
+    // the browser applies maxlength so a formatted value is not cut mid-number.
+    document.addEventListener('paste', function (e) {
+        var el = e.target;
+        if (!isDigitInput(el) || !el.hasAttribute('data-shop-max-digits') || !e.clipboardData) return;
+        var max = Number(el.getAttribute('data-shop-max-digits'));
+        if (!Number.isInteger(max) || max <= 0) return;
+        var start = el.selectionStart == null ? el.value.length : el.selectionStart;
+        var end = el.selectionEnd == null ? start : el.selectionEnd;
+        var text = normalizeDigits(e.clipboardData.getData('text') || '');
+        if (el.getAttribute('data-shop-iban') === 'true') text = text.replace(/^\s*IR/i, '');
+        var inserted = sanitize(text, 'digits');
+        var retained = sanitize(el.value.slice(0, start) + el.value.slice(end), 'digits').length;
+        inserted = inserted.slice(0, Math.max(0, max - retained));
+        e.preventDefault();
+        el.setRangeText(inserted, start, end, 'end');
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+    }, true);
+
     document.addEventListener('input', function (e) {
         if (isDigitInput(e.target)) apply(e.target);
     }, true);

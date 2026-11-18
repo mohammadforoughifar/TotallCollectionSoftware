@@ -144,6 +144,14 @@ public class InventoryService : IInventoryService
 
     public async Task<Referrer> SaveReferrerAsync(Referrer dto)
     {
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone, "تلفن معرف");
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
+        var bank = new TrsAccount { CardNumber = dto.CardNumber, Iban = dto.Iban };
+        var bankError = ShopIdentifierRules.ValidateBank(bank);
+        if (bankError is not null) throw new InvalidOperationException(bankError);
+        dto.CardNumber = bank.CardNumber;
+        dto.Iban = bank.Iban;
         if (string.IsNullOrWhiteSpace(dto.Name))
             throw new InvalidOperationException("نام معرف را وارد کنید.");
         if (dto.GoodsCommissionPercent is < 0 or > 100 || dto.ServiceCommissionPercent is < 0 or > 100)
@@ -1459,6 +1467,9 @@ public class InventoryService : IInventoryService
 
     public async Task<Warehouse> SaveWarehouseAsync(Warehouse dto)
     {
+        var phoneError = ShopIdentifierRules.ValidatePhone(dto.Phone, "تلفن انبار");
+        if (phoneError is not null) throw new InvalidOperationException(phoneError);
+        dto.Phone = ShopIdentifierRules.NormalizePhone(dto.Phone);
         Db.Warehouse entity;
         if (dto.Id == 0) { entity = new Db.Warehouse(); _db.Warehouses.Add(entity); }
         else entity = await _db.Warehouses.FindAsync(dto.Id) ?? throw new InvalidOperationException("انبار یافت نشد.");

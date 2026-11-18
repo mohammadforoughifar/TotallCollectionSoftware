@@ -17,6 +17,15 @@ public static class ShopIdentifierRules
         return normalized?.StartsWith("IR", StringComparison.Ordinal) == true ? normalized[2..] : normalized;
     }
 
+    public static string? NormalizePhone(string? value) => Normalize(value)?.Replace("(", "").Replace(")", "");
+
+    public static string? ValidatePhone(string? value, string fieldName = "شماره تلفن")
+    {
+        var normalized = NormalizePhone(value);
+        return normalized is not null && (normalized.Length != 11 || !IsDigits(normalized) || normalized[0] != '0')
+            ? $"{fieldName} باید دقیقاً ۱۱ رقم با صفر آغازین باشد." : null;
+    }
+
     public static bool IsDigits(string value) => value.All(c => c is >= '0' and <= '9');
     public static string? ValidateBank(TrsAccount account)
     {
@@ -38,6 +47,10 @@ public static class ShopIdentifierRules
 
     public static string? ValidateParty(Party party)
     {
+        var phoneError = ValidatePhone(party.Mobile, "شماره موبایل") ?? ValidatePhone(party.Phone, "شماره تلفن ثابت");
+        if (phoneError is not null) return phoneError;
+        party.Mobile = NormalizePhone(party.Mobile);
+        party.Phone = NormalizePhone(party.Phone);
         party.PostalCode = Normalize(party.PostalCode);
         party.TaxId = Normalize(party.TaxId);
         if (party.PostalCode is not null && (party.PostalCode.Length != 10 || !IsDigits(party.PostalCode)))

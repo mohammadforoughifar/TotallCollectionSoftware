@@ -33,3 +33,10 @@ Check(ShopIdentifierRules.ValidateCheque(new TrsCheque { SayadId = "۱۲۳" }) i
 Check(ShopIdentifierRules.ValidateCheque(new TrsCheque { SayadId = "۱۲۳۴۵۶۷۸۹۰۱۲۳۴۵۶" }) is null, "Persian Sayad");
 Check(ShopIdentifierRules.ValidateCheque(new TrsCheque()) is null, "Optional Sayad");
 Console.WriteLine("Shop identifier and quantity checks passed.");
+
+Check(ShopIdentifierRules.ValidatePhone(null) is null, "Optional phone");
+Check(ShopIdentifierRules.ValidatePhone("۰۲۱-۱۲۳۴۵۶۷۸") is null, "Persian landline");
+Check(ShopIdentifierRules.NormalizePhone("۰۹۱۲۱۲۳۴۵۶۷") == "09121234567", "Phone leading zero");
+Check(ShopIdentifierRules.ValidatePhone("0912") is not null, "Short phone");
+Check(ShopIdentifierRules.ValidatePhone("91212345678") is not null, "Phone without leading zero");
+Check(ShopIdentifierRules.ValidatePhone("091212345678") is not null, "Long phone");

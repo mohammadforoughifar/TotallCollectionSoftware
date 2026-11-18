@@ -44,9 +44,10 @@ else
             @foreach (var row in rows)
             {
                 <div class="bank-editor" @key="row">
-                    <label>شماره کارت<input @ref="row.CardRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="16" maxlength="16" value="@row.Card" aria-invalid="@InvalidCard(row).ToString().ToLowerInvariant()" @oninput="e => ChangeCard(row, e.Value?.ToString())" @onkeydown="e => CardKey(e, row)" disabled="@(!CanManage || busy)" /></label>
-                    <label>شماره شبا<div class="iban-editor" dir="ltr"><span>IR</span><input @ref="row.IbanRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="24" maxlength="24" value="@row.Iban" aria-invalid="@InvalidIban(row).ToString().ToLowerInvariant()" @oninput="e => ChangeIban(row, e.Value?.ToString())" disabled="@(!CanManage || busy)" /></div></label>
-                    @if (InvalidCard(row) || InvalidIban(row)) { <small class="text-danger">شماره ناقص، غیرعددی یا تکراری است.</small> }
+                    <label>شماره کارت<input @ref="row.CardRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="16" maxlength="16" data-digits="digits" data-shop-max-digits="16" value="@row.Card" aria-invalid="@InvalidCard(row).ToString().ToLowerInvariant()" @oninput="e => ChangeCard(row, e.Value?.ToString())" @onkeydown="e => CardKey(e, row)" disabled="@(!CanManage || busy)" /></label>
+                    <label>شماره شبا<div class="iban-editor" dir="ltr"><span>IR</span><input @ref="row.IbanRef" class="form-control" dir="ltr" inputmode="numeric" data-shop-bank="24" maxlength="24" data-digits="digits" data-shop-max-digits="24" data-shop-iban="true" value="@row.Iban" aria-invalid="@InvalidIban(row).ToString().ToLowerInvariant()" @oninput="e => ChangeIban(row, e.Value?.ToString())" disabled="@(!CanManage || busy)" /></div></label>
+                    @if (InvalidCard(row)) { <small class="text-danger" role="status">شماره کارت باید دقیقاً ۱۶ رقم و غیرتکراری باشد.</small> }
+                    @if (InvalidIban(row)) { <small class="text-danger" role="status">شماره شبا باید دقیقاً ۲۴ رقم و غیرتکراری باشد.</small> }
                     @if (CanManage) { <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => Remove(row)" disabled="@busy">حذف</button> }
                 </div>
             }

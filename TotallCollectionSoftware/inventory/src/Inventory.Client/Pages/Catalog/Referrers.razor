@@ -155,7 +155,7 @@
         </div>
         <div class="col-md-4">
             <label class="form-label">تلفن</label>
-            <input class="form-control" @bind="form.Phone" dir="ltr" data-digits="tel" inputmode="tel" />
+            <ShopDigitsInput @bind-Value="form.Phone" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="تلفن معرف باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
         </div>
         <div class="col-md-4">
             <label class="form-label">درصد پورسانت کالا</label>
@@ -175,15 +175,13 @@
         </div>
         <div class="col-md-6">
             <label class="form-label">شماره کارت (۱۶ رقم)</label>
-            <input class="form-control num" @bind="form.CardNumber" dir="ltr" maxlength="16"
-                   placeholder="6037xxxxxxxxxxxx" inputmode="numeric" />
+            <ShopDigitsInput @bind-Value="form.CardNumber" MaxDigits="16" ValidLengths="@(new[] { 16 })" ErrorMessage="شماره کارت باید دقیقاً ۱۶ رقم باشد." />
         </div>
         <div class="col-md-6">
             <label class="form-label">شماره شبا (۲۴ رقم پس از IR)</label>
             <div class="input-group" dir="ltr">
                 <span class="input-group-text">IR</span>
-                <input class="form-control num" @bind="form.Iban" dir="ltr" maxlength="24"
-                       placeholder="xxxxxxxxxxxxxxxxxxxxxxxx" inputmode="numeric" />
+                <ShopDigitsInput @bind-Value="form.Iban" MaxDigits="24" ValidLengths="@(new[] { 24 })" Iban="true" ErrorMessage="شماره شبا باید دقیقاً ۲۴ رقم باشد." />
             </div>
         </div>
         <div class="col-12">
@@ -311,6 +309,12 @@
         form.GoodsCommissionPercent = Fa.ParseDecimal(fGoods);
         form.ServiceCommissionPercent = Fa.ParseDecimal(fService);
 
+        var bank = new TrsAccount { CardNumber = form.CardNumber, Iban = form.Iban };
+        var bankError = ShopIdentifierRules.ValidateBank(bank);
+        if (bankError is not null) { Toast.Error(bankError); return; }
+        form.CardNumber = bank.CardNumber; form.Iban = bank.Iban;
+        var phoneError = ShopIdentifierRules.ValidatePhone(form.Phone, "تلفن معرف");
+        if (phoneError is not null) { Toast.Error(phoneError); return; }
         saving = true;
         try
         {

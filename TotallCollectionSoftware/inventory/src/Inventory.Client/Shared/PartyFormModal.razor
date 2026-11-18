@@ -45,11 +45,11 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">موبایل</label>
-                <input class="form-control" @bind="party.Mobile" inputmode="tel" data-digits="tel" dir="ltr" data-party-field="mobile" />
+                <ShopDigitsInput @bind-Value="party.Mobile" Field="mobile" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="شماره موبایل باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
             </div>
             <div class="col-md-6">
                 <label class="form-label">تلفن ثابت</label>
-                <input class="form-control" @bind="party.Phone" inputmode="tel" data-digits="tel" dir="ltr" />
+                <ShopDigitsInput @bind-Value="party.Phone" MaxDigits="11" ValidLengths="@(new[] { 11 })" Phone="true" ErrorMessage="شماره تلفن ثابت باید دقیقاً ۱۱ رقم با صفر آغازین باشد." />
             </div>
             <div class="col-12">
                 <label class="form-label">آدرس</label>
@@ -59,11 +59,11 @@
             {
                 <div class="col-md-6">
                     <label class="form-label">شناسه ملی خریدار</label>
-                    <input class="form-control" dir="ltr" inputmode="numeric" maxlength="14" @bind="party.TaxId" />
+                    <ShopDigitsInput @bind-Value="party.TaxId" MaxDigits="14" ValidLengths="@(new[] { 10, 11, 12, 14 })" ErrorMessage="شناسه ملی/مالیاتی باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم باشد." />
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد پستی خریدار</label>
-                    <input class="form-control" dir="ltr" inputmode="numeric" maxlength="10" @bind="party.PostalCode" />
+                    <ShopDigitsInput @bind-Value="party.PostalCode" MaxDigits="10" ValidLengths="@(new[] { 10 })" ErrorMessage="کد پستی باید دقیقاً ۱۰ رقم باشد." />
                 </div>
             }
             @if (Type == PartyType.Customer && AllowReferrerPicker)
