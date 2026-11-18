@@ -55,7 +55,10 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
 
             // شرکت: فهرست صرفاً خواندنی و بر اساس CompanyIdهای مجاز کاربر فیلتر می‌شود؛
             // اپراتور صدور فاکتور برای انتخاب شرکت نباید مجوز تغییر/حذف شرکت مودیان بگیرد.
-            ["GetCpInfos"] = "View",
+            // ‏«اطلاعات پایه» فقط با دسترسی مشاهده باز نمی‌شود؛ هر نقشی که یکی از
+            // سطح‌های اطلاعات پایه (شرکت/سال مالی/اتصال/کالا/واحد/مشتری) را دارد برای
+            // انتخاب خدمات‌دهنده به این فهرست نیاز دارد. سه گزینه با «|» یعنی «هر یک کافی است».
+            ["GetCpInfos"] = "View|Company|FiscalYear|Connection|Goods|Units|Customers",
             ["SaveCpInfo"] = "Company",
             ["DeleteCpInfo"] = "Company",
 
@@ -63,7 +66,9 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
             ["GetConnectForCpInfo"] = "Connection",
 
             // دوره مالی: خواندن برای تکمیل فرم صورتحساب لازم است، اما ایجاد/ویرایش آن مستقل است.
-            ["GetFiscalYears"] = "View",
+            // خواندن سال مالی برای «مدیر سال مالی» (بدون مشاهدهٔ کل مودیان) هم مجاز است؛
+            // ذخیره فقط با سطح FiscalYear انجام می‌شود و «مشاهده» جای آن را نمی‌گیرد.
+            ["GetFiscalYears"] = "View|FiscalYear",
             ["SaveFiscalYear"] = "FiscalYear",
 
             // اتصال و حافظه مالیاتی
@@ -166,11 +171,17 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
         }
 
         var permissions = await _permissions.GetAsync(user);
-        var granted = permissions.Contains($"{Module}.{requiredAction}")
+        // مقدار نگاشت می‌تواند چند گزینهٔ جایگزین با «|» باشد (مثلاً «View|FiscalYear»)؛
+        // داشتن هر یک از آن‌ها کافی است. این کار فقط برای endpointهایی است که خواندنشان
+        // از چند مسیر مجاز است، نه برای عملیات نوشتن (نوشتن همیشه یک سطح مشخص دارد).
+        var granted = requiredAction
+                          .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                          .Any(action => permissions.Contains($"{Module}.{action}"))
                       || await _permissions.IsLegacyAdminAsync(user);
         if (!granted)
         {
-            context.Result = Forbidden("شما مجوز لازم برای این عملیات سامانهٔ مودیان را ندارید.");
+            context.Result = Forbidden(
+                $"شما مجوز لازم برای این عملیات سامانهٔ مودیان را ندارید (سطح لازم: {requiredAction.Replace("|", " یا ")}).");
             return;
         }
 

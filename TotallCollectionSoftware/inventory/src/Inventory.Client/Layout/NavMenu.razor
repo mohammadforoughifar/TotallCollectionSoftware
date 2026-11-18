@@ -604,7 +604,9 @@
     }
 
     @* ============ سامانه مودیان (صورتحساب الکترونیکی) ============ *@
-    @if (Auth.CanSee("Moadian"))
+    @* گروه مودیان فقط با «مشاهدهٔ مودیان» باز نمی‌شود: نقش‌هایی مثل «مدیر سال مالی»
+       سطح دیده‌بانی ندارند ولی باید به اطلاعات پایه و فرم سال مالی برسند. *@
+    @if (CanSeeMoadian || CanSeeMoadianBasicInfo)
     {
         <div class="nav-group group-moadian">
             <button type="button" class="nav-section-title nav-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">
@@ -614,21 +616,30 @@
             @if (gMoadian)
             {
                 <div class="nav-group-items">
-                    <NavLink class="nav-link" href="moadian" Match="NavLinkMatch.All" @onclick="NotifyClose">
-                        <i class="bi bi-speedometer2"></i><span>نمای کلی</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="moadian/invoices" @onclick="NotifyClose">
-                        <i class="bi bi-journal-text"></i><span>صورتحساب‌ها</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="moadian/invoices/new" @onclick="NotifyClose">
-                        <i class="bi bi-journal-plus"></i><span>صورتحساب جدید</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="moadian/basic-info" @onclick="NotifyClose">
-                        <i class="bi bi-archive"></i><span>اطلاعات پایه</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="moadian/guide" @onclick="NotifyClose">
-                        <i class="bi bi-journal-check"></i><span>راهنما</span>
-                    </NavLink>
+                    @if (CanSeeMoadian)
+                    {
+                        <NavLink class="nav-link" href="moadian" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-speedometer2"></i><span>نمای کلی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="moadian/invoices" @onclick="NotifyClose">
+                            <i class="bi bi-journal-text"></i><span>صورتحساب‌ها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="moadian/invoices/new" @onclick="NotifyClose">
+                            <i class="bi bi-journal-plus"></i><span>صورتحساب جدید</span>
+                        </NavLink>
+                    }
+                    @if (CanSeeMoadianBasicInfo)
+                    {
+                        <NavLink class="nav-link" href="moadian/basic-info" @onclick="NotifyClose">
+                            <i class="bi bi-archive"></i><span>اطلاعات پایه</span>
+                        </NavLink>
+                    }
+                    @if (CanSeeMoadian)
+                    {
+                        <NavLink class="nav-link" href="moadian/guide" @onclick="NotifyClose">
+                            <i class="bi bi-journal-check"></i><span>راهنما</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>
@@ -917,6 +928,17 @@
     [Parameter] public EventCallback OnNavigate { get; set; }
 
     private bool gOpsBase, gOpsReports, gOpsDash;
+    /// <summary>سطوح «اطلاعات پایهٔ مودیان» — هر یک از این‌ها بدون سطح مشاهده هم منو را باز می‌کند.</summary>
+    private static readonly string[] MoadianBasicInfoActions =
+        { "Company", "FiscalYear", "Connection", "Units", "Goods", "Customers" };
+
+    /// <summary>مشاهدهٔ مودیان (داشبورد، صورت‌حساب‌ها، راهنما).</summary>
+    private bool CanSeeMoadian => Auth.IsAdmin || Auth.CanSee("Moadian");
+
+    /// <summary>دسترسی به «اطلاعات پایه» — یا با مشاهدهٔ مودیان یا با هر سطح اطلاعات پایه.</summary>
+    private bool CanSeeMoadianBasicInfo => CanSeeMoadian
+        || MoadianBasicInfoActions.Any(a => Auth.Has($"Moadian.{a}"));
+
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
     private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل سامانه فروشگاهی
     private bool _hasMindFlowAccess;

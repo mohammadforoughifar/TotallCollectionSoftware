@@ -94,8 +94,15 @@
                                         <td class="num">@c.Nationalid</td>
                                         <td class="num">@c.EconomicNumber</td>
                                         <td class="text-end text-nowrap">
-                                            <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => EditCompany(c)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
-                                            <button type="button" class="mpa mpa-red mpa-ic" title="حذف" @onclick="() => DeleteCompany(c)"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                            @if (CanCompanyInfo)
+                                            {
+                                                <button type="button" class="mpa mpa-green mpa-ic" title="ویرایش" @onclick="() => EditCompany(c)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+                                                <button type="button" class="mpa mpa-red mpa-ic" title="حذف" @onclick="() => DeleteCompany(c)"><i class="bi bi-trash" aria-hidden="true"></i></button>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">فقط انتخاب</span>
+                                            }
                                         </td>
                                     </tr>
                                 }
@@ -107,7 +114,9 @@
         </div>
     </div>
 
-    @* ---------- ثبت / ویرایش شرکت ---------- *@
+    @* ---------- ثبت / ویرایش شرکت (فقط با دسترسی «اطلاعات شرکت») ---------- *@
+    @if (CanCompanyInfo)
+    {
     <div class="col-lg-5">
         <div class="card mi-blocked h-100">
             <div class="card-header d-flex align-items-center gap-2">
@@ -174,13 +183,19 @@
             </div>
         </div>
     </div>
+    }
 </div>
 
 @* ---------- سال‌های مالی ---------- *@
 <div class="row g-3 mt-1">
     <div class="col-12">
         <div class="card mi-blocked">
-            <div class="card-header"><i class="bi bi-calendar-range"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span></div>
+            <div class="card-header"><i class="bi bi-calendar-range"></i> سال‌های مالی شرکت «@(Current?.PersianName ?? "—")» <span class="text-muted small">— صورتحساب‌ها به یک سال مالی نیاز دارند</span>
+                @if (!CanFiscalYear)
+                {
+                    <span class="badge badge-soft-muted ms-2">فقط مشاهده</span>
+                }
+            </div>
             <div class="card-body">
                 @if (Ctx.CpInfoId <= 0)
                 {
@@ -189,6 +204,8 @@
                 else
                 {
                     <div class="row g-3">
+                        @if (CanFiscalYear)
+                        {
                         <div class="col-lg-5">
                             <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-calendar-plus text-success"></i> تعریف سال مالی جدید</span>
                             <div class="mb-2">
@@ -214,6 +231,17 @@
                                 ثبت سال مالی
                             </button>
                         </div>
+                        }
+                        else
+                        {
+                            <div class="col-lg-5">
+                                <div class="alert alert-info py-2 small mb-0">
+                                    <i class="bi bi-info-circle"></i>
+                                    برای تعریف یا ویرایش سال مالی، مدیر باید در «تنظیمات ← نقش‌ها و دسترسی‌ها ← سامانهٔ مودیان» گزینهٔ
+                                    <b>«مدیریت سال مالی مودیان»</b> را برای نقش شما فعال کند. سال‌های ثبت‌شده در سمت چپ قابل مشاهده است.
+                                </div>
+                            </div>
+                        }
                         <div class="col-lg-7">
                             <span class="fw-semibold d-flex align-items-center gap-2 mb-2"><i class="bi bi-list-ul"></i> سال‌های تعریف‌شده</span>
                             @if (FiscalYears.Count == 0)
@@ -249,6 +277,12 @@
 </div>
 
 @code {
+    /// <summary>مجوز ویرایش اطلاعات هویتی شرکت مودیان (Moadian.Company).</summary>
+    [Parameter] public bool CanCompanyInfo { get; set; } = true;
+
+    /// <summary>مجوز تعریف/ویرایش سال مالی (Moadian.FiscalYear) — مستقل از اطلاعات شرکت.</summary>
+    [Parameter] public bool CanFiscalYear { get; set; } = true;
+
     private VMShowCpinfoByCompany newCp = new() { Type = "حقیقی" };
     private List<VMShowCpinfoByCompany> CpInfos = new();
     private List<VMFiscalYear> FiscalYears = new();
@@ -381,6 +415,12 @@
 
     private async Task SaveCompany()
     {
+        if (!CanCompanyInfo)
+        {
+            Toast.Error("برای ثبت/ویرایش اطلاعات شرکت مودیان مجوز «اطلاعات شرکت مودیان» لازم است.");
+            return;
+        }
+
         // شرکت مودیانِ تازه باید دقیقاً به همان کمپانیِ انتخاب‌شده در کمبوی بالای برنامه
         // وصل شود؛ در غیر این صورت پس از ثبت، به‌دلیل فیلتر CompanyId در این صفحه دیده نمی‌شود.
         if (newCp.cpinfoid == 0)
@@ -439,6 +479,11 @@
 
     private async Task SaveFiscalYear()
     {
+        if (!CanFiscalYear)
+        {
+            Toast.Error("برای تعریف/ویرایش سال مالی مجوز «مدیریت سال مالی مودیان» لازم است.");
+            return;
+        }
         if (Ctx.CpInfoId <= 0) { Toast.Error("ابتدا یک شرکت انتخاب کنید."); return; }
         if (newFy.StartDatePicker is null) { Toast.Error("تاریخ شروع سال مالی را وارد کنید."); return; }
         if (newFy.EndDatePicker is null) { Toast.Error("تاریخ پایان سال مالی را وارد کنید."); return; }

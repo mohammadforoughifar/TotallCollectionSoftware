@@ -98,7 +98,7 @@
         @foreach (var t in Tabs)
         {
             <button type="button" role="tab" class="mi-tab @(ActiveTab == t.Key ? "active" : "")" aria-selected="@(ActiveTab == t.Key)" @onclick="() => Go(t.Key)">
-                <i class="bi @t.Icon" aria-hidden="true"></i> @t.Title
+                <i class="bi @t.Icon" aria-hidden="true"></i> @TabTitle(t)
             </button>
         }
     </div>
@@ -106,7 +106,7 @@
     @* فقط تبِ مجاز و فعال رندر می‌شود؛ ورود مستقیم به URL تب بدون مجوز نیز محتوا را نشان نمی‌دهد. *@
     @if (ActiveTab == "company")
     {
-        <MoadianTabCompany />
+        <MoadianTabCompany CanCompanyInfo="@CanCompanyInfo" CanFiscalYear="@CanFiscalYear" />
     }
     else if (ActiveTab == "connection")
     {
@@ -133,20 +133,34 @@ else
 @code {
     [Parameter] public string? Tab { get; set; }
 
-    private record TabInfo(string Key, string Title, string Icon, string Permission);
+    // ‏هر تب می‌تواند چند سطح مجوز داشته باشد و «داشتن هر یک» کافی است. تب شرکت دو
+    // مسئولیت مستقل دارد: اطلاعات هویتی شرکت (Moadian.Company) و تعریف/ویرایش سال مالی
+    // (Moadian.FiscalYear). پیش‌تر فقط با Moadian.Company باز می‌شد و نقش «مدیر سال مالی»
+    // با اینکه مجوزش را داشت، اصلاً به فرم سال مالی نمی‌رسید.
+    private record TabInfo(string Key, string[] Permissions, string Icon, string TitleWhenFull, string TitleWhenLimited);
     private static readonly TabInfo[] TabsList =
     {
-        new("company", "اطلاعات شرکت", "bi-building", "Moadian.Company"),
-        new("connection", "اطلاعات اتصال", "bi-plug", "Moadian.Connection"),
-        new("units", "واحدهای سنجش", "bi-rulers", "Moadian.Units"),
-        new("goods", "کالاها و خدمات", "bi-box", "Moadian.Goods"),
-        new("customers", "اطلاعات مشتریان", "bi-people", "Moadian.Customers"),
+        new("company", new[] { "Moadian.Company", "Moadian.FiscalYear" }, "bi-building", "اطلاعات شرکت و سال مالی", "سال‌های مالی"),
+        new("connection", new[] { "Moadian.Connection" }, "bi-plug", "اطلاعات اتصال", "اطلاعات اتصال"),
+        new("units", new[] { "Moadian.Units" }, "bi-rulers", "واحدهای سنجش", "واحدهای سنجش"),
+        new("goods", new[] { "Moadian.Goods" }, "bi-box", "کالاها و خدمات", "کالاها و خدمات"),
+        new("customers", new[] { "Moadian.Customers" }, "bi-people", "اطلاعات مشتریان", "اطلاعات مشتریان"),
     };
 
     // مدیر قدیمی که نقش RBAC ندارد، در API مجاز است؛ رابط نیز همان تجربهٔ کامل را دارد.
     private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
     private bool CanDiagnose => Can("Moadian.Diagnose");
-    private IReadOnlyList<TabInfo> Tabs => TabsList.Where(t => Can(t.Permission)).ToList();
+
+    /// <summary>مجوز ویرایش اطلاعات هویتی شرکت مودیان (ثبت/ویرایش خدمات‌دهنده).</summary>
+    private bool CanCompanyInfo => Can("Moadian.Company");
+
+    /// <summary>مجوز تعریف/ویرایش سال مالی — مستقل از ویرایش اطلاعات شرکت.</summary>
+    private bool CanFiscalYear => Can("Moadian.FiscalYear");
+
+    private static bool AnyOf(IEnumerable<string> permissions, Func<string, bool> can) => permissions.Any(can);
+    private IReadOnlyList<TabInfo> Tabs => TabsList.Where(t => AnyOf(t.Permissions, Can)).ToList();
+
+    private string TabTitle(TabInfo t) => t.Key == "company" && !CanCompanyInfo ? t.TitleWhenLimited : t.TitleWhenFull;
 
     // در صورت ورود مستقیم به URL غیرمجاز، اولین تب مجاز باز می‌شود؛ نه تب شرکت/اتصال.
     private string? ActiveTab => Tabs.Any(t => t.Key == Tab)

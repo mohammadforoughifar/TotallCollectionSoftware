@@ -129,7 +129,15 @@ else
                             @(ProviderId > 0
                                 ? "برای این شرکت سال مالی تعریف نشده — "
                                 : "شرکت مودیان انتخاب نشده — ")
-                            <NavLink href="moadian/basic-info/company">تعریف سال مالی</NavLink>
+                            @if (CanManageFiscalYear)
+                            {
+                                <NavLink href="moadian/basic-info/company">تعریف سال مالی</NavLink>
+                            }
+                            else
+                            {
+                                <span>تعریف سال مالی</span>
+                                <span class="text-muted">(دسترسی ندارید — از مدیر بخواهید «مدیریت سال مالی مودیان» را بدهد)</span>
+                            }
                         </div>
                     }
                     else
@@ -363,6 +371,9 @@ else
         && (d.Date < fy.StartDate.Date || d.Date > fy.EndDate.Date);
 
     private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+
+    /// <summary>دسترسی به فرم سال مالی: یا از راه اطلاعات شرکت، یا سطح مستقل سال مالی.</summary>
+    private bool CanManageFiscalYear => Can("Moadian.FiscalYear") || Can("Moadian.Company");
 
     // سیستمِ تب‌ها صفحه را زنده نگه می‌دارد (display:none)؛ پس اگر بعد از ثبت موفق دوباره
     // به همین تب برگردیم، فرم باید از نو آماده شود — وگرنه داده‌های همان صورتحسابِ ثبت‌شده
