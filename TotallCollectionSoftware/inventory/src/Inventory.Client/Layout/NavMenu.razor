@@ -125,7 +125,9 @@
     }
 
     @* ============ دستور کار (ماژول مستقل — فقط با مجوز مشاهده) ============ *@
-    @if (Auth.CanSee("WorkOrders") || Auth.CanSee("WorkProjects") || _hasMindFlowAccess || Auth.IsLoggedIn)
+    @* پیش‌تر «Auth.IsLoggedIn» در شرط بود و عنوان گروه «دستور کار» برای هر کاربر
+       وارد‌شده — حتی بدون هیچ مجوزی — دیده می‌شد؛ آیتم‌ها پنهان بودند ولی خودِ سرگروه نه. *@
+    @if (Auth.CanSee("WorkOrders") || Auth.CanSee("WorkProjects") || _hasMindFlowAccess)
     {
         <div class="nav-group group-wo">
             <button type="button" class="nav-section-title nav-toggle @(gWo ? "open" : "")" @onclick="() => gWo = !gWo">
@@ -569,7 +571,7 @@
                         @if (gVis)
                         {
                             <div class="nav-sub-items">
-                                @if (ShopAccess.CanSee(Auth, "SalesVisit"))
+                                @if (ShopAccess.CanSee(Auth, "SalesVisit") || Auth.Has("SalesVisit.View"))
                                 {
                                 <NavLink class="nav-link" href="sales/visits" @onclick="NotifyClose">
                                     <i class="bi bi-journal-text"></i><span>سفارش‌های من</span>
@@ -816,9 +818,13 @@
                         }
                     </NavLink>
                 }
-                <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
-                    <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
-                </NavLink>
+                @* این آیتم پیش‌تر بی‌هیچ بررسی مجوزی رندر می‌شد و در همهٔ نقش‌ها دیده می‌شد. *@
+                @if (ShopAccess.CanSee(Auth, "PartyStatements"))
+                {
+                    <NavLink class="nav-link" href="operations/reports/party-statements" @onclick="NotifyClose">
+                        <i class="bi bi-journal-check"></i><span>گزارش طلب و بدهی اشخاص</span>
+                    </NavLink>
+                }
             </div>
         }
     </div>
@@ -996,7 +1002,12 @@
                                                         "Parties", "Referrers", "Banks", "Pricing");
     private bool ShowOpsDashSub => Auth.Has("Dashboards.Financial") || ShopAccess.CanSee(Auth, "Dashboard");
     private bool ShowOpsReportsSub => ShopAccess.CanSeeAny(Auth, "Kardex", "OrderReports", "PartyStatements", "Expenses", "Repairs");
-    private bool ShowVisGroup => ShopAccess.CanSee(Auth, "SalesVisit");
+    /// <summary>
+    /// گروه «فروش و ویزیتوری» با مجوز بخش فروشگاه (<c>Shop.SalesVisit.View/Manage</c>)
+    /// **یا** مجوزهای ماژول قدیمی <c>SalesVisit.*</c> باز می‌شود؛ پیش‌تر فقط حالت اول
+    /// بررسی می‌شد و نقش‌هایی که فقط مجوز ماژول داشتند گروه را نمی‌دیدند.
+    /// </summary>
+    private bool ShowVisGroup => ShopAccess.CanSee(Auth, "SalesVisit") || Auth.CanSee("SalesVisit");
     // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
     // منوی او کاملاً خالی می‌ماند.
     private bool ShowOpsGroup => ShowOpsDashSub || ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup
@@ -1004,7 +1015,13 @@
                                                          "Installments", "OpeningBalance", "Settlement", "Guide", "PrintSettings");
 
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs", "ItVault", "Servers", "Ipam");
-    private bool ShowReportsGroup => true;
+    /// <summary>
+    /// گروه «گزارش‌ها» فقط با داشتن دست‌کم یک گزارش واقعی رندر می‌شود.
+    /// پیش‌تر مقدارش «true» بود و برای همهٔ نقش‌ها دیده می‌شد.
+    /// </summary>
+    private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex")
+                                  || Auth.Has("ReportPages.Reorder")
+                                  || ShopAccess.CanSee(Auth, "PartyStatements");
     // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");

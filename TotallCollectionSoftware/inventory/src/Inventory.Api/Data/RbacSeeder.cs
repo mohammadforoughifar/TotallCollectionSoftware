@@ -497,6 +497,11 @@ public static class RbacSeeder
         // بوده‌اند و مجوزهای اضافه‌شان محصول seed قدیمی بوده است.
         await RemoveFormerImplicitPermissionsFromMoadianOnlyRolesAsync(db);
 
+        // همان مسئله برای «صفحه‌های شخصی»: نسخه‌های قبلی «داشبورد من» و «گزارش‌ساز» را
+        // به همهٔ نقش‌های فعال تزریق می‌کردند، بی‌آنکه مدیر تیکی زده باشد؛ نتیجه، دیده‌شدن
+        // «داشبورد من» در منوی همهٔ نقش‌ها بود.
+        await RemoveFormerImplicitPersonalPermissionsAsync(db);
+
 // ================== نقش‌های ماژول ویزیتوری ==================
         // SalesVisitor: ویزیتور میدانی — ثبت و ارسال سفارش، مشاهدهٔ سفارش‌های خودش
         var salesVisitorRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "SalesVisitor");
@@ -774,5 +779,60 @@ public static class RbacSeeder
         await db.SaveChangesAsync();
 
         Console.WriteLine($"[RBAC] پاک‌سازی یک‌بارهٔ {toRemove.Count} مجوز تزریقی از نقش‌های صرفاً مودیان انجام شد.");
+    }
+
+    /// <summary>
+    /// پاک‌سازی یک‌بارهٔ مجوزهای «صفحه‌های شخصی» که نسخه‌های قبلی به‌طور خودکار به همهٔ
+    /// نقش‌های فعال می‌دادند (بدون تیک مدیر): <c>MyDashboards.View/Design</c> و
+    /// <c>ReportStudio.View</c>. اثر آن تزریق این بود که «داشبورد من» و «گزارش‌ساز» در
+    /// منوی همهٔ نقش‌ها دیده می‌شد.
+    /// <para>
+    /// این حذف فقط روی نقش‌های <b>غیر از Admin</b> انجام می‌شود، تنها یک‌بار اجرا می‌گردد
+    /// (رخداد در AuditLog) و مدیر می‌تواند هر زمان از «تنظیمات ← نقش‌ها و دسترسی‌ها»
+    /// دوباره آن را به نقش بدهد.
+    /// </para>
+    /// </summary>
+    private static async Task RemoveFormerImplicitPersonalPermissionsAsync(AppDbContext db)
+    {
+        const string migrationAction = "ImplicitPersonalAccessCleanupV2";
+        if (await db.AuditLogs.AsNoTracking().AnyAsync(l => l.Module == "RbacSeeder" && l.Action == migrationAction))
+            return;
+
+        var formerlyImplicit = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "MyDashboards.View",
+            "MyDashboards.Design",
+            "ReportStudio.View"
+        };
+
+        var rows = await (
+            from rp in db.RolePermissions
+            join role in db.Roles on rp.RoleId equals role.Id
+            join permission in db.Permissions on rp.PermissionId equals permission.Id
+            where role.Name != "Admin"
+            select new { Assignment = rp, RoleName = role.Name, permission.Module, permission.Action }
+        ).ToListAsync();
+
+        var toRemove = rows
+            .Where(r => formerlyImplicit.Contains($"{r.Module}.{r.Action}"))
+            .Select(r => r.Assignment)
+            .ToList();
+
+        if (toRemove.Count > 0)
+            db.RolePermissions.RemoveRange(toRemove);
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            At = DateTime.Now,
+            Module = "RbacSeeder",
+            Action = migrationAction,
+            HttpMethod = "SYSTEM",
+            Path = "startup/rbac",
+            Summary = $"پاک‌سازی {toRemove.Count} مجوز تزریقی صفحه‌های شخصی از نقش‌های غیرمدیر",
+            StatusCode = 200
+        });
+        await db.SaveChangesAsync();
+
+        Console.WriteLine($"[RBAC] پاک‌سازی یک‌بارهٔ {toRemove.Count} مجوز تزریقی صفحه‌های شخصی (داشبورد من/گزارش‌ساز) انجام شد.");
     }
 }

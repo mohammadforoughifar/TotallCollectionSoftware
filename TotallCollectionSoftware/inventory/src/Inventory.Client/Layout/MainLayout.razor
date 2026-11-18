@@ -1660,6 +1660,36 @@ else
             return allowed;
         }
 
+        // ── سامانه فروشگاهی: تیک «هر بخش» باید همان صفحه را واقعاً باز کند ──
+        // پیش‌تر گاردهای ماژول‌های قدیمی (Orders./Products./Expenses./Repairs./SalesVisit.)
+        // زودتر اعمال می‌شدند؛ نتیجه این بود که نقشی که فقط مجوز «بخش»های سامانه فروشگاهی
+        // داشت (مثلاً «فروش و ویزیتوری») به صفحه نمی‌رسید و تیک‌ها بی‌اثر به نظر می‌رسیدند.
+        var shopSection = Inventory.Shared.ShopSections.ForRoute(p);
+        if (shopSection is not null)
+        {
+            // زیرمسیرهای حساس ویزیتوری سطح دقیق خودشان را دارند و با «مدیریت بخش» باز نمی‌شوند.
+            if (p.StartsWith("sales/approvals") || p.StartsWith("sales/requests"))
+            {
+                var ok = Auth.Has("SalesVisit.Approve");
+                if (!ok) deniedTitle = "تأیید سفارش‌های ویزیتور";
+                return ok;
+            }
+            if (p.StartsWith("sales/finance-queue"))
+            {
+                var ok = Auth.Has("SalesVisit.FinanceView");
+                if (!ok) deniedTitle = "صف مالی سفارش‌های ویزیتور";
+                return ok;
+            }
+            if (p.StartsWith("sales/visits/new"))
+            {
+                var ok = Auth.Has("SalesVisit.Create") || ShopAccess.CanManage(Auth, shopSection);
+                if (!ok) deniedTitle = "ثبت سفارش ویزیتوری";
+                return ok;
+            }
+            if (ShopAccess.CanSee(Auth, shopSection)) return true;
+            // مجوز بخش نبود ⇒ گاردهای قدیمی پایین‌تر بررسی می‌شوند (سازگاری با نقش‌های موجود).
+        }
+
         foreach (var (prefix, perm, title) in RouteGuards)
         {
             if (!p.StartsWith(prefix)) continue;
