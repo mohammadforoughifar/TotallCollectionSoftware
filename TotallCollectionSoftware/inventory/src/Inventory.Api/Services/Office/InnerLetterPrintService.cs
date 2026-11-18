@@ -23,6 +23,7 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
     private readonly ILogger<InnerLetterPrintService> _log;
     private readonly int _letterheadDpi;
     private readonly string? _templateRoot;
+    private readonly string? _foroughCompanyIds;
 
     public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env,
         IHttpContextAccessor http, ILogger<InnerLetterPrintService> log, IConfiguration? configuration = null)
@@ -30,7 +31,21 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         _db = db; _files = files; _env = env; _http = http; _log = log;
         _letterheadDpi = ReadLetterheadDpi(configuration);
         _templateRoot = configuration?["Reporting:InnerLetters:TemplateRoot"];
+        // شرکت‌های فروغ آریا (پیش‌فرض «1,2»): سربرگشان همیشه forough-letterhead.pdf است.
+        _foroughCompanyIds = configuration?["Reporting:ForoughCompanyIds"];
     }
+
+    /// <summary>
+    /// هنر سربرگ فروغ آریا از فایل اختصاصی (forough-letterhead.pdf) — همان تصویری که نامهٔ
+    /// صادره با آن چاپ می‌شود. کش/کوچک‌سازی در InnerLetterheadTemplates انجام می‌شود.
+    /// </summary>
+    private byte[]? LoadForoughArtwork(bool a5)
+        => InnerLetterheadTemplates.TryLoadArtworkFromLetterheadFile(
+            _env.ContentRootPath, AppContext.BaseDirectory, a5, _letterheadDpi);
+
+    /// <summary>آیا این شرکت «فروغ آریا» است؟ (پیش‌فرض ۱ و ۲، قابل تنظیم)</summary>
+    private bool IsForoughCompany(int companyId)
+        => PrintAssetResolver.IsForoughCompany(companyId, _foroughCompanyIds);
 
     /// <summary>
     /// DPI سربرگ برای چاپ. پیش‌فرض ۲۰۰ (تصویر اصلی ۳۰۰dpi و ۸٫۷ مگاپیکسل است؛ همان تصویر
@@ -110,7 +125,33 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         var companyArt = company is null ? null
             : InnerLetterheadTemplates.TryLoadForCompany(_env.ContentRootPath, AppContext.BaseDirectory, company.Id, a5,
                 _letterheadDpi, _templateRoot);
-        if (companyArt != null)
+
+        // ── فروغ آریا: هنر سربرگ از خودِ فایل wwwroot/uploads/letterheads/forough-letterhead.pdf ──
+        // درخواست کارفرما: «همهٔ نامه‌های صادره و داخلی و صورتجلسهٔ شرکت ۱ سربرگش از این مسیر
+        // خوانده شود». تصویر جاسازی‌شده در قالب (Watermark) فقط جانشین است.
+        var isForough = company is not null && IsForoughCompany(company.Id);
+        byte[]? foroughArt = null;
+        if (isForough)
+        {
+            foroughArt = LoadForoughArtwork(a5);
+            if (foroughArt != null)
+            {
+                _log.LogInformation(
+                    "نامهٔ داخلی {LetterId}: هنر سربرگ از فایل {File} خوانده شد ({Kb}KB). CompanyId={CompanyId}",
+                    letterId, PrintAssetResolver.ForoughLetterheadFileName, foroughArt.Length / 1024, company!.Id);
+            }
+            else if (companyArt == null)
+            {
+                // هیچ هنری نیست: با هندسهٔ پیش‌فرض و فایل سربرگ (overlay) چاپ می‌شود.
+                _log.LogWarning(
+                    "فایل سربرگ {File} و تصویر جاسازی‌شده در قالب هر دو در دسترس نبودند؛ " +
+                    "نامهٔ داخلی {LetterId} با مختصات پیش‌فرض و فایل سربرگ چاپ می‌شود.",
+                    PrintAssetResolver.ForoughLetterheadFileName, letterId);
+            }
+        }
+
+        var letterheadArt = foroughArt ?? companyArt;
+        if (letterheadArt != null)
         {
             var loadMs = timing.ElapsedMilliseconds;
             try
@@ -123,7 +164,7 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                 try
                 {
                     pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
-                        meta, company!.Id);
+                        meta, company!.Id, letterheadArt);
                 }
                 catch (Exception metaFailure) when (meta != null)
                 {
@@ -134,12 +175,12 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
                         "رسم کادرهای شماره/تاریخ/پیوست ناموفق بود؛ چاپ بدون این سه مقدار تکرار می‌شود. LetterId={LetterId}, CompanyId={CompanyId}",
                         letterId, company!.Id);
                     pdf = InnerLetterPdfRenderer.Render(data, a5, withHamesh, companyArt, hasAttachment, fonts,
-                        null, company!.Id);
+                        null, company!.Id, letterheadArt);
                 }
                 _log.LogInformation(
                     "چاپ نامه داخلی روی قالب اختصاصی شرکت. LetterId={LetterId}, CompanyId={CompanyId}, Template={Template}, TemplateMs={TemplateMs}, RenderMs={RenderMs}, ArtKB={ArtKB}, Dpi={Dpi}, PdfKB={PdfKB}",
                     letterId, company!.Id, templatePath,
-                    loadMs, timing.ElapsedMilliseconds - loadMs, companyArt.Length / 1024, _letterheadDpi,
+                    loadMs, timing.ElapsedMilliseconds - loadMs, letterheadArt.Length / 1024, _letterheadDpi,
                     pdf.Length / 1024);
                 return pdf;
             }
@@ -151,8 +192,19 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             }
         }
 
+        // ── فروغ آریا (پیش‌فرض ۱ و ۲): سربرگ همیشه فایل اختصاصی forough-letterhead.pdf ──
+        // درخواست کارفرما: نامهٔ داخلی شرکت ۱ هم از همان مسیر نامهٔ صادره چاپ شود. فایل
+        // ثبت‌شده روی رکورد شرکت (که می‌تواند از خانوادهٔ دیگری باشد) نادیده گرفته می‌شود.
+        var foroughLetterhead = isForough
+            ? ResolveLetterheadPath($"uploads/letterheads/{PrintAssetResolver.ForoughLetterheadFileName}")
+            : null;
+        if (isForough)
+            _log.LogInformation(
+                "نامهٔ داخلی {LetterId}: سربرگ از فایل اختصاصی فروغ آریا خوانده می‌شود. CompanyId={CompanyId}, Path={Path}, RegisteredIgnored={Registered}",
+                letterId, company!.Id, foroughLetterhead, company.LetterheadFileName ?? "—");
+
         var header = company?.LetterheadFileName;
-        var headerPath = ResolveLetterheadPath(header);
+        var headerPath = foroughLetterhead ?? ResolveLetterheadPath(header);
 
         // نصب‌های تک‌شرکتیِ قدیمی که هیچ رکورد شرکتی ندارند: تنها جایی که استفاده از
         // سربرگ پیش‌فرض مجاز است، چون شرکت دیگری در سیستم وجود ندارد.
@@ -160,7 +212,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         {
             var anyActiveCompany = await _db.SystemCompanies.AsNoTracking().AnyAsync(x => x.IsActive, ct);
             if (!anyActiveCompany)
-                headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+                headerPath = ResolveLetterheadPath(
+                    $"uploads/letterheads/{PrintAssetResolver.ForoughLetterheadFileName}");
         }
 
         var content = InnerLetterPdfRenderer.Render(data, a5, withHamesh, null, hasAttachment, fonts);
@@ -193,7 +246,7 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         {
             _log.LogInformation("چاپ نامه داخلی روی سربرگ شرکت. LetterId={LetterId}, CompanyId={CompanyId}, File={File}",
                 letterId, companyId, Path.GetFileName(headerPath));
-            return Overlay(content, headerPath);
+            return Overlay(content, headerPath, HeaderBandHeight(a5, companyId));
         }
         catch (Exception ex)
         {
@@ -250,7 +303,15 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             .Select(x => (int?)x.CompanyId).FirstOrDefaultAsync(ct);
     }
 
-    private static byte[] Overlay(byte[] content, string headerPath)
+    /// <summary>
+    /// ارتفاع ناحیهٔ سربرگِ نامهٔ داخلی (pt) — همان عددی که پروفایل کاغذ برای رزرو سربرگ
+    /// می‌دهد، نه یک ثابت تازه. روی صفحه‌های دوم و بعد فقط این نوار از سربرگ تکرار می‌شود.
+    /// </summary>
+    /// <param name="companyId">شرکت نامه؛ ارتفاع رزرو به طرح سربرگ همان شرکت بستگی دارد.</param>
+    private static float HeaderBandHeight(bool a5, int? companyId)
+        => Math.Max(0f, InnerLetterPaperProfile.ContentTop(companyId, a5));
+
+    private static byte[] Overlay(byte[] content, string headerPath, float repeatHeaderTo = 0f)
     {
         using var input = new MemoryStream(content); using var source = PdfReader.Open(input, PdfDocumentOpenMode.Import); using var output = new PdfDocument();
         var isPdf = headerPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase); using var form = isPdf ? XPdfForm.FromFile(headerPath) : null; using var image = !isPdf ? XImage.FromFile(headerPath) : null; using var cs = new MemoryStream(content); using var contentForm = XPdfForm.FromStream(cs);
@@ -258,7 +319,18 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             // سربرگِ با نسبت نامناسب، بی‌کشیدگی رسم می‌شود (نقطه‌چین‌ها جابه‌جا نشوند).
             var art = form != null ? ArtRect(p, form.PointWidth, form.PointHeight)
                 : image != null ? ArtRect(p, image.PointWidth, image.PointHeight) : r;
-            if (form != null) { form.PageNumber = 1; g.DrawImage(form, art); } else if (image != null) g.DrawImage(image, art); contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
+            // صفحهٔ اول: کل هنر سربرگ. صفحه‌های بعد: همان هنر با همان مقیاس، بریده به نوار
+            // بالای سربرگ (سربرگ شرکت ۱ فقط یک صفحهٔ کامل است؛ تکرار کامل آن صفحه را شلوغ می‌کرد).
+            if (i > 0 && repeatHeaderTo > 1f)
+            {
+                var artWidth = form != null ? form.PointWidth : image!.PointWidth;
+                var strip = PrintAssetResolver.LetterheadBandRect(p.Width.Point, Math.Min(artWidth, p.Width.Point), repeatHeaderTo);
+                g.Save(); g.IntersectClip(new XRect(strip.X, strip.Y, strip.Width, strip.Height));
+                if (form != null) { form.PageNumber = 1; g.DrawImage(form, art); } else if (image != null) g.DrawImage(image, art);
+                g.Restore();
+            }
+            else if (form != null) { form.PageNumber = 1; g.DrawImage(form, art); } else if (image != null) g.DrawImage(image, art);
+            contentForm.PageNumber = i + 1; g.DrawImage(contentForm, r); }
         using var ms = new MemoryStream(); output.Save(ms); return ms.ToArray();
     }
 

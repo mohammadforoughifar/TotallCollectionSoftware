@@ -227,6 +227,83 @@ internal static class PrintAssetResolver
         return IsRenderable(path) ? path : null;
     }
 
+    // ==================== خانوادهٔ سربرگ هر شرکت ====================
+
+    /// <summary>
+    /// شرکت‌هایی که سربرگشان «فروغ آریا» است و باید همیشه از فایل
+    /// <c>wwwroot/uploads/letterheads/forough-letterhead.pdf</c> چاپ شوند.
+    /// درخواست کارفرما: نامهٔ صادره، نامهٔ داخلی و صورتجلسهٔ شرکت ۱ (و ۲ که طرح نمونهٔ
+    /// همان شرکت است) هرگز سربرگ شرکت دیگری (هومپا/آریا) نگیرند.
+    /// تنظیم: <c>Reporting:ForoughCompanyIds</c> (پیش‌فرض «1,2»).
+    /// </summary>
+    internal static readonly int[] DefaultForoughCompanyIds = { 1, 2 };
+
+    /// <summary>نام فایل سربرگِ شرکت فروغ آریا؛ یک‌جا نگه داشته شده تا سه سرویس چاپ یکی باشند.</summary>
+    internal const string ForoughLetterheadFileName = "forough-letterhead.pdf";
+
+    /// <summary>آیا این شرکت جزو شرکت‌های «فروغ آریا» است؟ (پیش‌فرض ۱ و ۲، قابل تنظیم)</summary>
+    internal static bool IsForoughCompany(int companyId, string? configuredIds)
+    {
+        if (companyId <= 0) return false;
+        var ids = ParseIds(configuredIds);
+        return (ids.Length == 0 ? DefaultForoughCompanyIds : ids).Contains(companyId);
+    }
+
+    /// <summary>
+    /// نام فایل ثبت‌شده روی رکورد شرکت به «خانوادهٔ» صاحبش نسبت داده می‌شود؛ اگر با
+    /// شرکتِ درخواستی نخواند، یعنی رکورد شرکت به فایل شرکت دیگری اشاره می‌کند و باید
+    /// نادیده گرفته شود.
+    ///
+    /// <para>ریشهٔ خطای «نامهٔ شرکت ۱۰۰۵ با سربرگ شرکت ۱ چاپ شد» همین بود: کد فقط
+    /// «وجود فایل» را می‌سنجید. حالا نام‌های شناخته‌شده بررسی می‌شوند:</para>
+    /// <list type="bullet">
+    ///   <item><c>homepa</c> ⇒ فقط شرکت‌های هومپا (۳ و ۱۰۰۳)</item>
+    ///   <item><c>aria</c> ⇒ فقط شرکت آریا همیار ژنراتور (۱۰۰۵)</item>
+    ///   <item><c>forough</c> ⇒ فقط شرکت فروغ آریا (۱ و ۲)</item>
+    /// </list>
+    /// فایل‌های بدون نشانه (مثل <c>company-7-{guid}.pdf</c> که از UI بارگذاری می‌شوند)
+    /// خنثی‌اند.
+    /// </summary>
+    /// <param name="companyId">شرکتی که برایش چاپ می‌کنیم.</param>
+    /// <param name="resolvedPath">مسیر یا نام فایل ثبت‌شده روی رکورد شرکت.</param>
+    /// <param name="homepaCompanyIds">شناسه‌های هومپا (متن تنظیمات، مثل «3,1003»).</param>
+    /// <param name="ariaCompanyIds">شناسه‌های آریا همیار ژنراتور (متن تنظیمات، مثل «1005»).</param>
+    /// <param name="foroughCompanyIds">شناسه‌های فروغ آریا (متن تنظیمات، مثل «1,2»).</param>
+    internal static bool RegisteredLetterheadBelongsToAnotherCompany(
+        int companyId, string? resolvedPath,
+        string? homepaCompanyIds = null, string? ariaCompanyIds = null, string? foroughCompanyIds = null)
+    {
+        if (string.IsNullOrWhiteSpace(resolvedPath)) return false;
+
+        var name = Path.GetFileNameWithoutExtension(resolvedPath.Replace('\\', '/')).ToLowerInvariant();
+        if (name.Length == 0) return false;
+
+        if (name.Contains("homepa", StringComparison.Ordinal))
+            return !IdList(homepaCompanyIds, new[] { 3, 1003 }).Contains(companyId);
+        if (name.Contains("aria", StringComparison.Ordinal))
+            // «forough» هم حرف‌های «aria» را ندارد، ولی نام‌هایی مثل «aria-company-1» ممکن است؛
+            // شرکت ۱/۲ فقط با خانوادهٔ forough پذیرفته می‌شوند.
+            return !IdList(ariaCompanyIds, new[] { 1005 }).Contains(companyId);
+        if (name.Contains("forough", StringComparison.Ordinal))
+            return !IsForoughCompany(companyId, foroughCompanyIds);
+
+        return false;
+    }
+
+    private static int[] IdList(string? configured, int[] fallback)
+    {
+        var ids = ParseIds(configured);
+        return ids.Length == 0 ? fallback : ids;
+    }
+
+    private static int[] ParseIds(string? configured)
+        => (configured ?? string.Empty)
+            .Split(new[] { ',', ';', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => int.TryParse(part.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var id) ? id : 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToArray();
+
     // ==================== رسم سربرگ روی صفحه ====================
 
     /// <summary>
@@ -255,6 +332,22 @@ internal static class PrintAssetResolver
         var width = assetWidth * scale;
         var height = assetHeight * scale;
         return ((pageWidth - width) / 2, 0, width, height);
+    }
+
+    /// <summary>
+    /// مستطیلِ «نوار بالای صفحه» از روی هنر سربرگ: از بالای کاغذ تا ارتفاع مشخص. سربرگ
+    /// شرکت فقط «سربرگ» است، پس تکرار یک نوار باریکِ بالای صفحه روی صفحه‌های دوم و بعد
+    /// (به‌جای تکرار کل صفحهٔ اول) درست است؛ ارتفاع نوار همان چیزی است که چیدمان برای
+    /// سربرگ رزرو می‌کند، پس متن هرگز روی آن نمی‌افتد.
+    /// </summary>
+    /// <param name="pageWidth">عرض کاغذ (pt).</param>
+    /// <param name="artWidth">عرض همرسم هنر سربرگ روی کاغذ (pt).</param>
+    /// <param name="bandHeight">ارتفاع نوار (pt).</param>
+    internal static (double X, double Y, double Width, double Height) LetterheadBandRect(
+        double pageWidth, double artWidth, double bandHeight)
+    {
+        if (pageWidth <= 0 || artWidth <= 0) return (0, 0, pageWidth, Math.Max(0, bandHeight));
+        return ((pageWidth - artWidth) / 2, 0, artWidth, Math.Max(0, bandHeight));
     }
 
     // ==================== پیام خطا ====================

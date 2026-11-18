@@ -153,7 +153,10 @@ class SharedLetterTemplateTests(unittest.TestCase):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
-                content = outgoing.split("page.Content().Column(col =>", 1)[1]
+                # فقط بلوک صفحهٔ مسیر «چیدمان طرح» بررسی می‌شود؛ مسیر «جایگزین» (که
+                # بعد از شکست چیدمان اجرا می‌شود) خط جداکنندهٔ مخصوص خودش را دارد.
+                design = outgoing.split("private byte[] BuildDesignContentPdf(", 1)[1]
+                content = design.split("page.Content().Column(col =>", 1)[1]
                 content = content.split("    }\n\n    /// <summary>", 1)[0]
                 self.assertNotIn("LetterPrintTemplate.Separator(col", content,
                                  "خط جداکننده نباید در چاپ ۱۰۰۳ رسم شود")
@@ -359,8 +362,13 @@ class SharedLetterTemplateTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 outgoing = self.outgoing(tree)
                 self.assertIn("page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);", outgoing)
-                self.assertIn("var likeInnerLetter = isA5 ? 9f : 11f;", outgoing)
-                self.assertIn("var bodyFontSize = body.FontSize > 0 ? Math.Min(likeInnerLetter, body.FontSize) : likeInnerLetter;", outgoing)
+                # قاعدهٔ ۱۱/۹pt حالا یک منبع مشترک دارد (LetterPrintTemplate.FontSizes) تا
+                # مسیر طرح و مسیر جایگزین هر دو همان اندازه را بدهند.
+                self.assertIn("LetterPrintTemplate.FontSizes(isA5, body.FontSize, compact).Body", outgoing)
+                shared = (office(tree) / "LetterPrintTemplate.cs").read_text(encoding="utf-8")
+                self.assertIn("var likeInnerLetter = isA5 ? 9f : 11f;", shared)
+                self.assertIn("var body = designBodyFontSize > 0f ? Math.Min(likeInnerLetter, designBodyFontSize) : likeInnerLetter;",
+                              shared)
                 self.assertIn("page.MarginBottom(footerReserve);", outgoing)
 
     def test_content_starts_below_the_blue_band_not_below_the_whole_art(self):

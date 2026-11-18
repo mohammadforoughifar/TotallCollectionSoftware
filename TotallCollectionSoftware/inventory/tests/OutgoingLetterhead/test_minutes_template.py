@@ -256,7 +256,10 @@ class MinutesPrintServiceTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
                 self.assertIn("ExtractTemplateLetterhead(templatePath)", service)
-                self.assertIn("var letterheadPath = templateLetterhead ?? registeredLetterhead;", service)
+                # برای فروغ آریا (شرکت ۱) فایل اختصاصی forough-letterhead.pdf بر طرح جاسازی‌شده
+                # مقدم است؛ برای بقیه همان «طرح قالب اول» مثل قبل.
+                self.assertIn("var letterheadPath = useForoughFile", service)
+                self.assertIn(": templateLetterhead ?? registeredLetterhead;", service)
                 # تصویر جاسازی‌شده هم قبل از استفاده بررسی می‌شود (خراب/ناشناخته ⇒ فایل شرکت).
                 self.assertIn("PrintAssetResolver.IsRenderable(templateLetterhead)", service)
                 self.assertIn('"Watermark"', service)
@@ -354,7 +357,9 @@ class MinutesPrintServiceTests(unittest.TestCase):
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
                 profile = self.profile(tree)
-                self.assertIn("page.Header().Height(headerReserve)", service)
+                # MinHeight نه Height: ارتفاع قطعیِ نوار سربرگ با محتوای متغیر «تضاد
+                # محدودیت» می‌سازد و چاپ صورتجلسه را با DocumentLayoutException رد می‌کند.
+                self.assertIn("page.Header().MinHeight(headerReserve)", service)
                 # رزرو سربرگ از پروفایل طرح می‌آید؛ پیش‌فرض همان «پایین نوار آبی + ۲۴» قبلی است.
                 self.assertIn("var headerReserve = hasLetterhead ? letterheadProfile.HeaderReserve : 0f;",
                               service)
@@ -834,7 +839,8 @@ class MinutesLetterheadIsNeverSilentlyDropped(unittest.TestCase):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 service = self.service(tree)
-                self.assertIn("return OverlayOnLetterhead(contentPdf, letterheadPath);", service)
+                # نوار سربرگ (ارتفاع رزرو همان شرکت) روی صفحه‌های دوم و بعد تکرار می‌شود.
+                self.assertIn("return OverlayOnLetterhead(contentPdf, letterheadPath,", service)
                 # اگر خود فایل سربرگ خراب باشد، تنها جایی است که بدون سربرگ چاپ می‌کنیم...
                 self.assertIn("catch { return BuildFallbackPdf(m, parts, items, companyName); }", service)
                 # ... و آن هم با «نسخهٔ بدون سربرگ» صریح، نه صفحهٔ نیمه‌کاره.

@@ -75,6 +75,16 @@ public sealed class OutgoingSignaturePrintException : Exception
     public OutgoingSignaturePrintException(string message) : base(message) { }
 }
 
+/// <summary>
+/// شکست ساخت PDF نامه که پس از همهٔ تلاش‌های جایگزین رخ داده است. متن پیام برای کاربر
+/// نهایی فارسی و روشن است (controller همین پیام را نمایش می‌دهد).
+/// </summary>
+public sealed class OutgoingLetterPrintException : Exception
+{
+    public OutgoingLetterPrintException(string message, Exception? innerException = null)
+        : base(message, innerException) { }
+}
+
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 {
     private sealed record SignatureSvgData(string Svg, int Width, int Height);
@@ -187,6 +197,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly List<(string Stage, long Ms)> _stageTimings = new(24);
     private readonly int[] _designDrivenCompanyIds;
 
+    // شرکت‌های «فروغ آریا» (پیش‌فرض ۱ و ۲): سربرگشان همیشه فایل forough-letterhead.pdf است و
+    // چیدمان چاپشان از طرح همان شرکت خوانده می‌شود.
+    private readonly int[] _foroughCompanyIds;
+
     // شرکت‌هایی که «طرح قالب» بر «فایل ثبت‌شدهٔ شرکت» اولویت دارد، حتی وقتی
     // PreferTemplateLetterhead خاموش است. پیش‌فرض: فقط ۱۰۰۳ (درخواست کارفرما).
     private readonly int[] _templateLetterheadCompanyIds;
@@ -268,6 +282,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultDesignDrivenCompanyIds);
         _templateLetterheadCompanyIds = CompanyIdsFor(
             "Reporting:OutgoingLetters:TemplateLetterheadCompanyIds", DefaultDesignDrivenCompanyIds);
+        // فروغ آریا: پیش‌فرض ۱ و ۲؛ سربرگ این شرکت‌ها همیشه forough-letterhead.pdf است،
+        // چه رکورد شرکت فایلی ثبت کرده باشد چه نه. قابل تنظیم بدون بیلد.
+        _foroughCompanyIds = CompanyIdsFor("Reporting:ForoughCompanyIds", PrintAssetResolver.DefaultForoughCompanyIds);
 
         _designPrint = DesignPrintSettings.Read(configuration);
 
@@ -342,19 +359,64 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     {
         if (string.IsNullOrWhiteSpace(resolvedPath)) return false;
 
-        var name = Path.GetFileNameWithoutExtension(resolvedPath).ToLowerInvariant();
-        if (name.Length == 0) return false;
+        // قاعدهٔ مشترک هر سه چاپ در PrintAssetResolver است (یک منبع، تا سه سرویس از هم جدا نیفتند).
+        // شناسه‌ها با CompanyTemplateMap نگاشت می‌شوند (نصب دیگری: هومپا = ۴ و …).
+        if (PrintAssetResolver.RegisteredLetterheadBelongsToAnotherCompany(
+                TemplateDesignId(companyId), resolvedPath,
+                string.Join(",", _homepaCompanyIds), string.Join(",", _ariaCompanyIds),
+                string.Join(",", _foroughCompanyIds)))
+            return true;
 
-        var designId = TemplateDesignId(companyId);
-        bool In(int[] ids) => ids.Select(TemplateDesignId).Contains(designId);
+        // خانوادهٔ فروغ آریا: هر شناسه‌ای که به طرح ۱ نگاشت شده باشد هم پذیرفته است.
+        var name = Path.GetFileNameWithoutExtension(resolvedPath.Replace('\\', '/')).ToLowerInvariant();
+        if (name.Contains("forough", StringComparison.Ordinal))
+            return !IsForoughCompany(companyId);
 
-        if (name.Contains("homepa", StringComparison.Ordinal)) return !In(_homepaCompanyIds);
-        if (name.Contains("aria", StringComparison.Ordinal)) return !In(_ariaCompanyIds);
-        if (name.Contains("forough", StringComparison.Ordinal)) return designId != 1;
-
-        // فایل بدون نشانهٔ شرکت (مثلاً company-{id}-{guid}.pdf از مسیر بارگذاری): خنثی است.
         return false;
     }
+
+    /// <summary>
+    /// آیا این شرکت «فروغ آریا» است؟ (پیش‌فرض: شناسه‌های ۱ و ۲، قابل تنظیم با
+    /// <c>Reporting:ForoughCompanyIds</c>). سربرگ این شرکت‌ها همیشه فایل
+    /// <c>wwwroot/uploads/letterheads/forough-letterhead.pdf</c> است — درخواست کارفرما.
+    /// </summary>
+    private bool IsForoughCompany(int companyId)
+    {
+        // قاعدهٔ مشترک در PrintAssetResolver است (یک منبع برای هر سه سرویس چاپ). شناسه هم
+        // مستقیم و هم از راه CompanyTemplateMap بررسی می‌شود: در نصب‌هایی که شناسهٔ شرکت و
+        // شناسهٔ طرح یکی نیستند (۲ = طرح نمونهٔ شرکت ۱) هر دو حالت درست کار کند.
+        var configured = string.Join(",", _foroughCompanyIds);
+        return PrintAssetResolver.IsForoughCompany(companyId, configured)
+            || PrintAssetResolver.IsForoughCompany(TemplateDesignId(companyId), configured);
+    }
+
+    /// <summary>
+    /// فایل سربرگ شرکت فروغ آریا. اگر فایل در wwwroot موجود نباشد، از مسیرهای مخزن
+    /// (همان قاعدهٔ مشترک) پیدا می‌شود؛ در نهایت مسیر قالبی که تصویر سربرگ شرکت ۱ را
+    /// جاسازی کرده است (OutgoingLetters/Companies/1) به‌عنوان آخرین جایگزین برمی‌گردد.
+    /// </summary>
+    private string? ResolveForoughLetterhead(bool isA5) => ResolveForoughLetterhead(isA5, out _);
+
+    /// <summary>همان متد بالا، با اعلام این‌که فایل از wwwroot آمد یا از طرح جاسازی‌شدهٔ قالب.</summary>
+    private string? ResolveForoughLetterhead(bool isA5, out bool fromTemplate)
+    {
+        var path = ResolveLetterheadPath($"uploads/letterheads/{PrintAssetResolver.ForoughLetterheadFileName}");
+        if (path != null)
+        {
+            fromTemplate = false;
+            return path;
+        }
+
+        fromTemplate = true;
+
+        _logger.LogWarning(
+            "فایل سربرگ فروغ آریا ({File}) پیدا نشد؛ سربرگ جاسازی‌شده در قالب شرکت ۱ استفاده می‌شود.",
+            PrintAssetResolver.ForoughLetterheadFileName);
+        return ExtractTemplateLetterhead(ForoughDesignId, isA5);
+    }
+
+    /// <summary>شناسهٔ پوشهٔ طرح شرکت فروغ آریا (همان پوشه‌ای که تصویر سربرگش را در قالب دارد).</summary>
+    private const int ForoughDesignId = 1;
 
     /// <summary>
     /// خواندن هندسهٔ چاپ از قالب شرکت با کش کوتاه‌مدت؛ کلید کش شامل طول و زمان تغییر فایل است،
@@ -1259,47 +1321,85 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var companyRecordMissing = hasCompanyId && company == null;
         var isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        var registeredPath = withLetterhead && !companyRecordMissing ? ResolveRegisteredLetterheadFile(company) : null;
-        var templateLetterheadPath = withLetterhead && selectedCompanyId is > 0
-            ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
-            : null;
-        // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
-        // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
-        // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
-        // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳).
-        var preferTemplate = PreferTemplateLetterhead
-            || (selectedCompanyId is int preferCompany && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
-        // گارد «سربرگ شرکت دیگر»: اگر فایل ثبت‌شده از آنِ شرکت دیگری باشد و قالب طرح
-        // سربرگ شرکتِ درست را داشته باشد، فایل ثبت‌شده نادیده گرفته می‌شود.
-        if (registeredPath != null && RegisteredLetterheadBelongsToAnotherCompany(selectedCompanyId ?? 0, registeredPath))
+        // ── فروغ آریا (پیش‌فرض شرکت‌های ۱ و ۲): سربرگ همیشه از فایل
+        //    wwwroot/uploads/letterheads/forough-letterhead.pdf می‌آید ──
+        // درخواست کارفرما: نامهٔ صادرهٔ شرکت ۱ (فروغ آریا) با سربرگ شرکت ۱۰۰۵ چاپ می‌شد؛
+        // علت این بود که فایل ثبت‌شده روی رکورد شرکت یا طرح جاسازی‌شده در قالب می‌توانست از
+        // خانوادهٔ شرکت دیگری باشد. برای شرکت‌های فروغ آریا هیچ منبع دیگری بررسی نمی‌شود.
+        string? letterheadPath;
+        string? templateLetterheadPath = null;
+        bool letterheadFromTemplate;
+        OutgoingLetterDesignLayout? designLayout;
+
+        var isForough = withLetterhead && selectedCompanyId is int foroughCandidate && IsForoughCompany(foroughCandidate);
+        if (isForough)
         {
-            var replacement = templateLetterheadPath;
-            _logger.LogWarning(
-                "فایل ثبت‌شدهٔ شرکت {CompanyId} سربرگ شرکت دیگری است و نادیده گرفته شد. RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, Fallback={Fallback}",
-                selectedCompanyId, registeredPath, templateLetterheadPath,
-                replacement != null ? "طرح قالب" : "همان فایل ثبت‌شده (قالب جایگزین ندارد)");
-            if (replacement != null) registeredPath = null;
+            letterheadPath = ResolveForoughLetterhead(isA5, out letterheadFromTemplate);
+            _logger.LogInformation(
+                "سربرگ نامه {LetterId} از فایل اختصاصی فروغ آریا خوانده شد. CompanyId={CompanyId}, Path={Path}, RegisteredIgnored={Registered}",
+                letterId, selectedCompanyId, letterheadPath, company?.LetterheadFileName ?? "—");
+
+            if (letterheadPath == null && hasCompanyId)
+                throw new RequiredCompanyLetterheadPrintException(
+                    $"سربرگ شرکت «{(string.IsNullOrWhiteSpace(company?.Name) ? "فروغ آریا" : company!.Name)}» پیدا نشد؛ " +
+                    $"چاپ متوقف شد. فایل «{PrintAssetResolver.ForoughLetterheadFileName}» را در مسیر " +
+                    "wwwroot/uploads/letterheads قرار دهید (یا از مسیر «سیستم ← شرکت‌ها» بارگذاری کنید).");
+
+            // چیدمان چاپ از فایل طرح همان شرکت (Reports/OutgoingLetters/Companies/1) خوانده
+            // می‌شود؛ شرکت‌های فروغ آریا همیشه طراحی‌محور چاپ می‌شوند، فارغ از
+            // Reporting:OutgoingLetters:DesignDrivenCompanyIds.
+            designLayout = withLetterhead && selectedCompanyId is > 0
+                ? ReadDesignLayout(selectedCompanyId!.Value, isA5)
+                : null;
+            if (designLayout != null)
+                _logger.LogInformation(
+                    "چاپ نامه {LetterId} با چیدمان فایل طرح انجام می‌شود. CompanyId={CompanyId}, BodyTop={BodyTop}, ContentBottom={ContentBottom}",
+                    letterId, selectedCompanyId, designLayout.BodyTop, designLayout.ContentBottom);
         }
+        else
+        {
+            var registeredPath = withLetterhead && !companyRecordMissing ? ResolveRegisteredLetterheadFile(company) : null;
+            templateLetterheadPath = withLetterhead && selectedCompanyId is > 0
+                ? ExtractTemplateLetterhead(selectedCompanyId.Value, isA5)
+                : null;
+            // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
+            // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
+            // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
+            // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳).
+            var preferTemplate = PreferTemplateLetterhead
+                || (selectedCompanyId is int preferCompany && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
+            // گارد «سربرگ شرکت دیگر»: اگر فایل ثبت‌شده از آنِ شرکت دیگری باشد و قالب طرح
+            // سربرگ شرکتِ درست را داشته باشد، فایل ثبت‌شده نادیده گرفته می‌شود.
+            if (registeredPath != null && RegisteredLetterheadBelongsToAnotherCompany(selectedCompanyId ?? 0, registeredPath))
+            {
+                var replacement = templateLetterheadPath;
+                _logger.LogWarning(
+                    "فایل ثبت‌شدهٔ شرکت {CompanyId} سربرگ شرکت دیگری است و نادیده گرفته شد. RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}, Fallback={Fallback}",
+                    selectedCompanyId, registeredPath, templateLetterheadPath,
+                    replacement != null ? "طرح قالب" : "همان فایل ثبت‌شده (قالب جایگزین ندارد)");
+                if (replacement != null) registeredPath = null;
+            }
 
-        var letterheadPath = preferTemplate && templateLetterheadPath != null
-            ? templateLetterheadPath
-            : registeredPath ?? templateLetterheadPath;
-        if (withLetterhead && !preferTemplate && registeredPath != null && templateLetterheadPath != null)
-            _logger.LogInformation(
-                "فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد. CompanyId={CompanyId}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}. " +
-                "برای چاپ با طرح پوشهٔ Companies مقدار Reporting:OutgoingLetters:PreferTemplateLetterhead=true را تنظیم کنید " +
-                "یا LetterheadFileName شرکت را خالی کنید.",
-                selectedCompanyId, registeredPath, templateLetterheadPath);
-        var letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
+            letterheadPath = preferTemplate && templateLetterheadPath != null
+                ? templateLetterheadPath
+                : registeredPath ?? templateLetterheadPath;
+            if (withLetterhead && !preferTemplate && registeredPath != null && templateLetterheadPath != null)
+                _logger.LogInformation(
+                    "فایل ثبت‌شدهٔ شرکت بر طرح قالب اولویت دارد. CompanyId={CompanyId}, RegisteredPath={RegisteredPath}, TemplatePath={TemplatePath}. " +
+                    "برای چاپ با طرح پوشهٔ Companies مقدار Reporting:OutgoingLetters:PreferTemplateLetterhead=true را تنظیم کنید " +
+                    "یا LetterheadFileName شرکت را خالی کنید.",
+                    selectedCompanyId, registeredPath, templateLetterheadPath);
+            letterheadFromTemplate = letterheadPath != null && letterheadPath == templateLetterheadPath;
 
-        // چیدمان چاپ از فایل طرح همان شرکت (اگر قالبش گیرنده/عنوان/متن را اعلام کند).
-        var designLayout = withLetterhead && selectedCompanyId is > 0 && UseDesignLayout(selectedCompanyId.Value)
-            ? ReadDesignLayout(selectedCompanyId.Value, isA5)
-            : null;
-        if (designLayout != null)
-            _logger.LogInformation(
-                "چاپ نامه {LetterId} با چیدمان فایل طرح انجام می‌شود. CompanyId={CompanyId}, BodyTop={BodyTop}, ContentBottom={ContentBottom}",
-                letterId, selectedCompanyId, designLayout.BodyTop, designLayout.ContentBottom);
+            // چیدمان چاپ از فایل طرح همان شرکت (اگر قالبش گیرنده/عنوان/متن را اعلام کند).
+            designLayout = withLetterhead && selectedCompanyId is > 0 && UseDesignLayout(selectedCompanyId.Value)
+                ? ReadDesignLayout(selectedCompanyId.Value, isA5)
+                : null;
+            if (designLayout != null)
+                _logger.LogInformation(
+                    "چاپ نامه {LetterId} با چیدمان فایل طرح انجام می‌شود. CompanyId={CompanyId}, BodyTop={BodyTop}, ContentBottom={ContentBottom}",
+                    letterId, selectedCompanyId, designLayout.BodyTop, designLayout.ContentBottom);
+        }
 
         if (withLetterhead && letterheadPath == null && !hasCompanyId)
         {
@@ -1308,7 +1408,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             // پایین‌تر خطای روشن داده می‌شود.
             if (activeCompanies.Count == 0)
             {
-                letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
+                letterheadPath = ResolveLetterheadPath(
+                    $"uploads/letterheads/{PrintAssetResolver.ForoughLetterheadFileName}");
                 if (letterheadPath == null)
                 {
                     var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
@@ -1421,10 +1522,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             "سربرگ نامه انتخاب شد. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}, FromTemplate={FromTemplate}",
             letterId, selectedCompanyId, letterheadPath, letterheadFromTemplate);
 
+        // ارتفاع ناحیهٔ سربرگِ همین چاپ: فقط برای تکرار «نوار سربرگ» روی صفحه‌های دوم و بعد.
+        // منبعش همان عددی است که چیدمان برای سربرگ رزرو می‌کند (نه یک ثابت تازه).
+        var headerBandHeight = designLayout?.HeaderBoxes
+            .Where(box => box.Slot is OutgoingLetterDesignLayout.Slot.Number
+                or OutgoingLetterDesignLayout.Slot.Date
+                or OutgoingLetterDesignLayout.Slot.Attachment)
+            .Select(box => box.Top + box.Height)
+            .DefaultIfEmpty(0f)
+            .Max() ?? 0f;
+        if (headerBandHeight <= 0f)
+            headerBandHeight = Math.Max(HomepaLetterheadLayout.ContentTop(isA5), isA5 ? 150f : 160f);
+        // شرکت ۱: نوار تکراری = همان نوار خاکستریِ بالای هنر + ۱۲mm (نقطه‌ای که بدنه از آن
+        // شروع می‌شود). با این عدد، صفحه‌های دوم و بعد سربرگ دارند و متن روی آن نمی‌افتد.
+        if (selectedCompanyId is int bandCompany && IsForoughCompany(bandCompany))
+        {
+            var artwork = ArtworkMetaGeometry.For(isA5);
+            headerBandHeight = artwork.Bottom + LetterPrintTemplate.MmToPoints(12f);
+        }
+
         byte[] contentPdf;
         try
         {
-            contentPdf = BuildContentPdf(
+            contentPdf = BuildContentPdfWithRecovery(
                 letter, signers, sematTitles, sematTitlesByUser, printData.AttachmentCount,
                 isA5, withCopy, copyTos,
                 hasLetterhead: letterheadPath != null,
@@ -1450,7 +1570,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             byte[] overlaidPdf;
             try
             {
-                overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath, letterId);
+                overlaidPdf = OverlayOnLetterhead(contentPdf, letterheadPath, letterId, headerBandHeight);
             }
             finally
             {
@@ -1742,6 +1862,201 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
     }
 
+    /// <summary>
+    /// ساخت محتوای نامه با «مسیرهای جایگزین»: چاپ هرگز نباید به‌خاطر یک بلوکِ نشکنِ بزرگ‌تر
+    /// از صفحه، کامل شکست بخورد. خطای گزارش‌شدهٔ کارفرما («ساخت PDF نامه ناموفق بود
+    /// (DocumentLayoutException)… وقتی متن نامه طولانی باشد») از همین جنس بود: گروه
+    /// «آخرین پاراگراف + رونوشت + امضا» با ShowEntire از یک صفحه بزرگ‌تر می‌شد و QuestPDF
+    /// کل رندر را رد می‌کرد.
+    ///
+    /// <para>ترتیب تلاش‌ها:</para>
+    /// <list type="number">
+    ///   <item>چیدمان عادی (همان خروجی قبلی — هیچ تغییری برای نامه‌های معمولی).</item>
+    ///   <item>بدون قفل‌کردن امضا به آخرین پاراگراف (متن و امضا مستقل صفحه‌بندی می‌شوند).</item>
+    ///   <item>حالت فشرده: قلم یک پله کوچک‌تر و بدون هیچ بلوک نشکن.</item>
+    ///   <item>آخرین سنگر: متنِ ساده بدون هیچ گروه نشکن و بدون تصویر امضا (اگر تصویر امضا
+    ///         خراب باشد) — نام و سمت امضاکنندگان به‌صورت یک خط چاپ می‌شود، نه صفحهٔ خالی.</item>
+    /// </list>
+    /// اگر هیچ‌کدام جواب نداد، استثنای اصلی با متن روشن بالا داده می‌شود (نه صفحهٔ سفید).
+    /// </summary>
+    private byte[] BuildContentPdfWithRecovery(
+        OutgoingLetter letter,
+        List<OutgoingLetterSigner> signers,
+        IReadOnlyDictionary<int, string> sematTitles,
+        IReadOnlyDictionary<int, string> sematTitlesByUser,
+        int attachmentCount,
+        bool isA5,
+        bool withCopy,
+        List<OutgoingLetterCopyTo>? copyTos,
+        bool hasLetterhead,
+        int? letterheadCompanyId,
+        bool withMargin,
+        OutgoingLetterDesignLayout? design)
+    {
+        var attempts = new (string Name, bool Compact, bool KeepTail)[]
+        {
+            ("normal", false, true),
+            ("tail-unlocked", false, false),
+            ("compact", true, false)
+        };
+
+        Exception? firstFailure = null;
+        foreach (var attempt in attempts)
+        {
+            try
+            {
+                return BuildContentPdf(
+                    letter, signers, sematTitles, sematTitlesByUser, attachmentCount,
+                    isA5, withCopy, copyTos, hasLetterhead, letterheadCompanyId,
+                    withMargin, design, attempt.Compact, attempt.KeepTail);
+            }
+            // هر نوع خطای موتور چاپ (نه فقط DocumentLayoutException): حتی خطای محدودیت
+            // اندازه یا محتوای غیرمنتظره هم نباید نامه را کامل از چاپ بیندازد. لغو درخواست
+            // کاربر مستثناست (باید همان‌جا تمام شود).
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                firstFailure ??= ex;
+                _logger.LogWarning(ex,
+                    "چیدمان چاپ نامه در تلاش «{Attempt}» جا نشد؛ تلاش بعدی. LetterId={LetterId}, Size={Size}, Letters={TextLength}, Kind={Kind}",
+                    attempt.Name, letter.Id, isA5 ? "A5" : "A4", letter.Text?.Length ?? 0, ex.GetType().Name);
+            }
+        }
+
+        _logger.LogError(firstFailure,
+            "هیچ‌یک از تلاش‌های چیدمان نامه جواب نداد؛ آخرین راه: متن ساده بدون گروه نشکن. LetterId={LetterId}, Size={Size}",
+            letter.Id, isA5 ? "A5" : "A4");
+
+        try
+        {
+            var fallback = BuildPlainFallbackPdf(letter, signers, sematTitlesByUser, attachmentCount,
+                isA5, hasLetterhead, letterheadCompanyId, withMargin, design);
+            _logger.LogWarning(
+                "نامه {LetterId} در حالت «متن ساده» چاپ شد (بلوک امضا/رونوشت جدا شد). Size={Size}",
+                letter.Id, isA5 ? "A5" : "A4");
+            return fallback;
+        }
+        catch (Exception fallbackEx)
+        {
+            _logger.LogError(fallbackEx, "چاپ جایگزین نامه هم ناموفق بود. LetterId={LetterId}", letter.Id);
+            throw new OutgoingLetterPrintException(
+                "ساخت PDF نامه ناموفق بود: چیدمان متن روی سربرگ شرکت جا نشد. " +
+                $"LetterId={letter.Id}, Size={(isA5 ? "A5" : "A4")}, " +
+                $"جزئیات: {firstFailure?.Message ?? fallbackEx.Message}", firstFailure ?? fallbackEx);
+        }
+    }
+
+    /// <summary>
+    /// آخرین سنگر چاپ: همان صفحه/سربرگ، ولی متن به‌صورت پاراگراف‌های ساده — بدون فهرست
+    /// نشکن، بدون قفل‌شدن با امضا و بدون <c>Height</c> قطعی. نام و سمت امضاکنندگان با همان
+    /// عنوان سِمَتِ چاپ (نه خالی) می‌آید، چون این هم «نسخهٔ چاپی» نامه است.
+    /// </summary>
+    private byte[] BuildPlainFallbackPdf(
+        OutgoingLetter letter,
+        List<OutgoingLetterSigner> signers,
+        IReadOnlyDictionary<int, string> sematTitlesByUser,
+        int attachmentCount,
+        bool isA5,
+        bool hasLetterhead,
+        int? letterheadCompanyId,
+        bool withMargin,
+        OutgoingLetterDesignLayout? design)
+    {
+        EnsureFonts();
+        var fontSizes = LetterPrintTemplate.FontSizes(isA5, 0f, compact: true);
+        var bodyFontSize = fontSizes.Body;
+        var sideMargin = withMargin ? _designPrint.SideMargin : 0f;
+        var footerReserve = _designPrint.FooterReserve ?? HomepaLetterheadLayout.DesignFooterReserve(isA5);
+        var pageWidth = isA5 ? 419.53f : 595.28f;
+        var pageHeight = isA5 ? 595.28f : 841.89f;
+        // عرض ستون متن: سقف = عرض کاغذ منهای دو حاشیه؛ هیچ‌وقت از کاغذ پهن‌تر نمی‌شود.
+        var maxTextWidth = Math.Max(120f, pageWidth - 2f * sideMargin);
+        var textWidth = design?.Body is { Width: > 0 } body
+            ? Math.Min(body.Width, maxTextWidth)
+            : maxTextWidth;
+        textWidth = Math.Clamp(textWidth, 120f, maxTextWidth);
+        var left = (pageWidth - textWidth) / 2f;
+
+        // ناحیهٔ بالای صفحه: همان رزروی که مسیر اصلی برای سربرگ می‌گذارد (ولی به‌صورت
+        // MinHeight و بدون هیچ کادر ثابت — پس هرگز تضاد محدودیت نمی‌سازد).
+        // سقف ۳۵٪ ارتفاع صفحه: حتی اگر هندسهٔ قالب عجیب باشد، متن دست‌کم یک‌سوم صفحه را دارد.
+        var headerReserve = hasLetterhead
+            ? Math.Clamp(
+                letterheadCompanyId is int fallbackCompany && IsForoughCompany(fallbackCompany)
+                    ? ArtworkMetaGeometry.For(isA5).Bottom + LetterPrintTemplate.MmToPoints(8f)
+                    : HomepaLetterheadLayout.ContentTop(isA5),
+                40f, pageHeight * 0.35f)
+            : 24f;
+
+        var receiverLine = ToPersianDigits(letter.ReceiverOrganization);
+        var number = ToPersianDigits(string.IsNullOrWhiteSpace(letter.SadereNumber)
+            ? letter.LetterNumber ?? "—" : letter.SadereNumber);
+        var date = FaDate(letter.DateSadere ?? letter.DateSabt);
+        var title = ToPersianDigits(letter.Title);
+        // نام + سمتِ چاپی (هر سه چاپ یک قاعده را برای سِمَت دارند).
+        var names = signers
+            .Select(signer =>
+            {
+                var name = ToPersianDigits(FullName(signer.User));
+                var semat = sematTitlesByUser.TryGetValue(signer.UserId, out var userTitle)
+                    ? userTitle?.Trim()
+                    : null;
+                return string.IsNullOrWhiteSpace(semat) ? name : $"{name} — {ToPersianDigits(semat)}";
+            })
+            .Where(line => !string.IsNullOrWhiteSpace(line))
+            .ToList();
+
+        var document = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(isA5 ? PageSizes.A5 : PageSizes.A4);
+                // همان حاشیهٔ بالای مسیر اصلی: از پایین ناحیهٔ سربرگ شروع می‌شود و متن
+                // هرگز روی نوار آبی/قوس‌های سربرگ نمی‌افتد.
+                page.MarginTop(headerReserve);
+                page.MarginLeft(left);
+                page.MarginRight(left);
+                page.MarginBottom(footerReserve);
+                page.PageColor(hasLetterhead ? Colors.Transparent : Colors.White);
+                page.DefaultTextStyle(style => style
+                    .FontFamily("Vazirmatn")
+                    .FontSize(bodyFontSize)
+                    .LineHeight(LetterPrintTemplate.BodyLineHeight)
+                    .DirectionFromRightToLeft());
+
+                page.Content().Column(col =>
+                {
+                    col.Spacing(4);
+                    if (!string.IsNullOrWhiteSpace(receiverLine))
+                        col.Item().Text($"به: {receiverLine}");
+                    if (!string.IsNullOrWhiteSpace(title))
+                        col.Item().Text($"موضوع: {title}").FontFamily("Vazirmatn-Bold");
+                    LetterPrintTemplate.InfoBlock(col, new List<LetterPrintTemplate.InfoRow>
+                    {
+                        new("شماره", number),
+                        new("تاریخ", date),
+                        new("پیوست", attachmentCount > 0 ? "دارد" : "ندارد")
+                    }, fontSizes.Small, 4f, _designPrint.LabelGap);
+                    LetterPrintTemplate.Spacer(col, 10f);
+                    // متن ساده: هر بلوک مستقل روان می‌شود (بدون ShowEntire، بدون قفل با امضا).
+                    if (!string.IsNullOrWhiteSpace(letter.Text))
+                        RichLetterPdfRenderer.AddTo(col, letter.Text, bodyFontSize,
+                            LetterPrintTemplate.BodyLineHeight, keepWithTrailingText: null,
+                            forceRtlParagraph: true,
+                            paragraphSpacing: LetterPrintTemplate.ParagraphSpacing);
+                    if (names.Count > 0)
+                    {
+                        LetterPrintTemplate.Spacer(col, 16f);
+                        col.Item().Text(string.Join("، ", names))
+                            .FontFamily("Vazirmatn-Bold").FontSize(bodyFontSize)
+                            .AlignRight().DirectionFromRightToLeft();
+                    }
+                });
+            });
+        });
+
+        return document.GeneratePdf();
+    }
+
     /// <summary>ساخت محتوای نامه با RTL صریح، فونت وزیرمتن و سربرگ ثبت‌شده.</summary>
     private byte[] BuildContentPdf(
         OutgoingLetter letter,
@@ -1755,7 +2070,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         bool hasLetterhead,
         int? letterheadCompanyId,
         bool withMargin,
-        OutgoingLetterDesignLayout? design)
+        OutgoingLetterDesignLayout? design,
+        bool compact = false,          // حالت «فشرده» برای تلاش دوباره پس از شکست چیدمان
+        bool keepTailTogether = true)  // قفل‌کردن امضا با آخرین پاراگراف
     {
         var hasAttachment = attachmentCount > 0;
         var fontTimer = Stopwatch.StartNew();
@@ -1818,7 +2135,9 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             var designContent = BuildDesignContentPdf(
                 letter, isA5, designLayout, number, date, receiverLine, title,
                 externalReference, attachmentCount, hasLetterhead: hasLetterhead,
-                signerCards: signerCards, copyTos: copyTos, withCopy: withCopy);
+                signerCards: signerCards, copyTos: copyTos, withCopy: withCopy,
+                letterheadCompanyId: letterheadCompanyId,
+                compact: compact, keepTailTogether: keepTailTogether);
             _logger.LogInformation(
                 "OutgoingLetterPrintTiming LetterId={LetterId} Stage=design-content StageMs={StageMs} Bytes={Bytes}",
                 letter.Id, designTimer.ElapsedMilliseconds, designContent.Length);
@@ -1826,14 +2145,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
 
         // ── بلوک امضا: هر نفر یک ستونِ مستقل، تصویر سپس نام و سمت با فاصلهٔ کم ──
-        var signerBlockWidth = isA5 ? 150f : 220f;
+        // عرض/ارتفاع امضا در این مسیر «سقف» است، نه اندازهٔ ثابت: کارت باید خودش را با
+        // ستون واقعیِ خودش (منهای پدینگ سلول جدول) هم‌اندازه کند. Width قطعی داخل سلولی که
+        // پدینگ دارد باعث تضاد محدودیت‌ها (DocumentLayoutException) می‌شد.
         var maxSignatureWidth = isA5 ? 138f : 205f;
         var maxSignatureHeight = isA5 ? 68f : 72f; // 91–96 CSS px at 96 dpi
         var signerColumns = signerCards.Count == 1 ? 1 : 2;
+        // عرض بلوک امضا از طرح یا محاسبهٔ قبلی؛ فقط برای ستون‌های ثابت و AlignLeft.
+        var signerBlockWidth = isA5 ? 150f : 220f;
 
         void AddSignerCard(IContainer container, (string Name, string Role, SignatureSvgData? Signature) signer)
         {
-            container.Width(signerBlockWidth).Column(card =>
+            // بدون Width قطعی: عرض کارت همان عرض در دسترس (ستون جدول منهای پدینگ) است.
+            container.Column(card =>
             {
                 if (signer.Signature is { } signature)
                 {
@@ -1872,8 +2196,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
             // Keep the complete signer block at the physical lower-left of the flowing letter
             // for every company; individual cards remain centered within their own columns.
+            // عرض بلوک = سقفِ مجموع ستون‌ها، نه اندازهٔ ثابت: قبلاً Width(220)·2=۴۴۰pt در A5
+            // (که عرض در دسترسش ~۳۶۳pt است) از عرض صفحه بیشتر می‌شد و QuestPDF با
+            // «The available horizontal space is less than the minimum width» رندر را
+            // شکست می‌داد؛ همان DocumentLayoutException در «ساخت PDF نامه ناموفق بود».
+            // MaxWidth فقط سقف می‌گذارد؛ اگر صفحه باریک‌تر باشد، بلوک با عرض واقعی می‌نشیند.
             target.Item().PaddingTop(signerTopPadding)
-                .AlignLeft().Width(signerBlockWidth * signerColumns)
+                .AlignLeft().MaxWidth(signerBlockWidth * signerColumns, Unit.Point)
                 .Column(block =>
                 {
                     block.Item().PaddingTop(tableTopPadding).Table(table =>
@@ -2142,8 +2471,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             "مقادیر شماره/تاریخ/پیوست از قالب شرکت خوانده شد. CompanyId={CompanyId}, Size={Size}, Color={Color}, FontSize={FontSize}",
                             letterheadCompanyId, isA5 ? "A5" : "A4", declared.Number.Color, declared.Number.FontSize);
 
+                        // MinHeight نه Height: کادر اعلام‌شدهٔ قالب می‌تواند پایین‌تر از ۱۵۰/۱۶۰pt
+                        // باشد (مثلاً در A5 طرح شرکت ۱)؛ ارتفاع قطعی در آن حالت «تضاد
+                        // محدودیت» می‌سازد و کل چاپ با DocumentLayoutException متوقف می‌شود.
                         page.Header().ContentFromLeftToRight()
-                            .Height(isA5 ? 150 : 160)
+                            .MinHeight(isA5 ? 150 : 160)
                             .Layers(layers =>
                             {
                                 // لایهٔ اصلی = کادر اول (خالی‌بودنش ارتفاع سربرگ را صفر می‌کرد).
@@ -2156,8 +2488,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     else
                     {
                         // No declared geometry in the company template: preserve the previous layout.
+                        // MinHeight (نه Height): رزرو ناحیهٔ سربرگ هرگز نباید با محتوای
+                        // متغیر تضاد محدودیت بسازد؛ ارتفاع ثابت یکی از علت‌های
+                        // DocumentLayoutException در «ساخت PDF نامه ناموفق بود» بود.
                         page.Header()
-                            .Height(isA5 ? 150 : 160)
+                            .MinHeight(isA5 ? 150 : 160)
                             .PaddingTop(isA5 ? 40 : 60)
                             .PaddingLeft(isA5 ? 7 : 14)
                             .Column(meta =>
@@ -2181,7 +2516,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 else
                 {
                     page.Header()
-                        .Height(isA5 ? 150 : 160)
+                        .MinHeight(isA5 ? 150 : 160)
                         .PaddingTop(isA5 ? 40 : 60)
                         .PaddingHorizontal(isA5 ? 48 : 68)
                         .Column(meta =>
@@ -2252,16 +2587,28 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         bool hasLetterhead,
         IReadOnlyList<(string Name, string Role, SignatureSvgData? Signature)> signerCards,
         IReadOnlyList<OutgoingLetterCopyTo>? copyTos,
-        bool withCopy)
+        bool withCopy,
+        int? letterheadCompanyId = null,
+        bool compact = false,
+        bool keepTailTogether = true)
     {
         // فهرست رونوشت بلند (بیش از ۶ مورد) نباید با امضا در یک گروه «نشکن» بماند؛ وگرنه
-        // گروه از ارتفاع صفحه بزرگ‌تر می‌شود. در آن حالت رونوشت‌ها جدا و روان چاپ می‌شوند
-        // (هر مورد خط خودش، شکست صفحهٔ طبیعی) و فقط بلوک امضا نشکن می‌ماند.
+        // گروه از ارتفاع صفحه بزرگ‌تر می‌شود و RenderPass شکست می‌خورد (DocumentLayoutException).
+        // در آن حالت رونوشت‌ها جدا و روان چاپ می‌شوند (هر مورد خط خودش، شکست صفحهٔ طبیعی) و
+        // فقط بلوک امضا نشکن می‌ماند. در تلاش دوبارهٔ «فشرده» هیچ‌چیز به متن قفل نمی‌شود.
         const int CopyGroupLimit = 6;
 
         var pageWidth = design.PageWidth > 0 ? design.PageWidth : (isA5 ? 419.53f : 595.28f);
         var pageHeight = design.PageHeight > 0 ? design.PageHeight : (isA5 ? 595.28f : 841.89f);
         var body = design.Body!;
+
+        // ── آیا مقدارهای شماره/تاریخ/پیوست باید روی برچسب‌های «چاپ‌شده روی خودِ هنر» بنشینند؟ ──
+        // فقط برای شرکت فروغ آریا (شرکت ۱) که سربرگش فایل forough-letterhead.pdf با سه خط
+        // نقطه‌چین در نوار خاکستری بالای صفحه است. برای شرکت‌های دیگر همان مسیر کالیبره
+        // (Homepa/Aria/کادرهای اعلام‌شدهٔ قالب) بدون تغییر اجرا می‌شود.
+        var alignMetaToArtwork = hasLetterhead && letterheadCompanyId is int metaCompany
+            && IsForoughCompany(metaCompany);
+        ArtworkMetaGeometry? artworkMeta = alignMetaToArtwork ? ArtworkMetaGeometry.For(isA5) : null;
 
         // ستون متن: عرض کادر متنِ طرح، ولی هرگز پهن‌تر از «صفحه منهای دو حاشیهٔ ۱۵mm»؛
         // بعد ستون دقیقاً وسط صفحه می‌نشیند تا حاشیهٔ چپ و راست برابر بمانند.
@@ -2286,16 +2633,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var artGap = Math.Max(_designPrint.ContentTopGap, _designPrint.HeaderArtGap);
         // شروع بلوک اطلاعات: با سربرگ واقعی، پایین «نوار آبی» + فاصلهٔ تأییدشدهٔ کارفرما
         // (۲۳۲/۱۶۳ پایینِ کلِ گرافیک است و متن را بی‌دلیل پایین می‌انداخت).
-        var contentTop = hasLetterhead
-            ? Math.Max(HomepaLetterheadLayout.ContentTop(isA5), metaBottom + 6f)
-            : Math.Max(artBottom + artGap, metaBottom + 6f);
+        // شرکت ۱: بلوک اطلاعات درست زیر خط «پیوست» همان هنر (پایین نوار خاکستری + ۱۲mm) — و
+        // این مبنا بر بقیه اولویت دارد، چون بقیهٔ اعداد برای سربرگ‌های دیگر کالیبره شده‌اند.
+        // در حالت فشرده (تلاش دوباره پس از شکست چیدمان) ناحیهٔ سربرگ از پروفایل هنر گرفته
+        // می‌شود، نه از اعداد کالیبره‌شدهٔ شرکت‌های دیگر؛ وگرنه فضای صفحه بی‌دلیل کم می‌شود.
+        var compactMeta = compact ? ArtworkMetaGeometry.For(isA5) : (ArtworkMetaGeometry?)null;
+        float contentTop;
+        if (artworkMeta is { } artwork)
+            contentTop = artwork.Bottom + LetterPrintTemplate.MmToPoints(12f);
+        else if (compactMeta is { } fallbackArtwork)
+            contentTop = fallbackArtwork.Bottom + LetterPrintTemplate.MmToPoints(10f);
+        else if (hasLetterhead)
+            contentTop = Math.Max(HomepaLetterheadLayout.ContentTop(isA5), metaBottom + 6f);
+        else
+            contentTop = Math.Max(artBottom + artGap, metaBottom + 6f);
+        // سقف: دست‌کم ۱۵۰/۲۰۰pt از انتهای صفحه برای متن و امضا بماند.
         contentTop = Math.Min(contentTop,
             Math.Max(0f, pageHeight - footerReserve - (isA5 ? 150f : 200f)));
 
         // اندازهٔ قلم مثل نامهٔ داخلی: ۱۱pt در A4 و ۹pt در A5 (یکدستی دو چاپ). اگر خودِ طرح
         // عدد کوچک‌تری خواسته باشد همان ملاک است تا متن در کادر طرح جا شود.
-        var likeInnerLetter = isA5 ? 9f : 11f;
-        var bodyFontSize = body.FontSize > 0 ? Math.Min(likeInnerLetter, body.FontSize) : likeInnerLetter;
+        // اندازهٔ قلم از یک منبع مشترک (LetterPrintTemplate.FontSizes) خوانده می‌شود؛
+        // «حالت فشرده» فقط در تلاش دوباره پس از شکست چیدمان روشن می‌شود.
+        var bodyFontSize = LetterPrintTemplate.FontSizes(isA5, body.FontSize, compact).Body;
         var infoFontSize = bodyFontSize;                       // «فونت یکدست و هم‌اندازه»
         var infoSpacing = Math.Max(LetterPrintTemplate.ParagraphSpacing, infoFontSize * 0.45f);
 
@@ -2403,14 +2763,23 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // ── سربرگ (روی هر صفحه): جدول دوستونهٔ شماره/تاریخ/پیوست ──
                 // سربرگ فقط ارتفاع ناحیهٔ بالای صفحه را رزرو می‌کند (تا متن روی قوس آبی نرود)؛
                 // خودِ مقدارها در لایهٔ Foreground با مختصات مطلق صفحه چاپ می‌شوند.
-                page.Header().ContentFromLeftToRight().Height(contentTop);
+                // Height → MinHeight: ارتفاع قطعیِ سربرگ با محتوای متغیرِ چیدمان‌ها (مثلاً
+                // «گیرنده نامه»ی دوسطری در A5) تضاد محدودیت می‌سازد و کل چاپ را با
+                // DocumentLayoutException متوقف می‌کند؛ MinHeight همان رزرو را می‌کند.
+                page.Header().ContentFromLeftToRight().MinHeight(contentTop);
 
                 // ── شماره/تاریخ/پیوست در لایهٔ سراسری صفحه (روی هر صفحه) ──
                 // مختصات از گوشهٔ بالا-چپ «خودِ صفحه» است، نه داخل حاشیه‌ها؛ وگرنه در A5 که
                 // برچسب‌های چاپ‌شده نزدیک لبه‌اند، مقدارها به سمت راست رانده می‌شدند و روی
                 // برچسب‌ها می‌افتادند.
-                page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,
-                    attachment, sideMargin));
+                // شرکت ۱ (فروغ آریا): برچسب‌های نقطه‌چین روی خودِ هنر سربرگ چاپ شده‌اند و
+                // مختصات کادرهای قالب برای آن هنر کالیبره نیست؛ مقدارها مستقیم روی همان
+                // نقطه‌چین‌ها نوشته می‌شوند.
+                if (alignMetaToArtwork)
+                    page.Foreground().Element(fg => AddArtworkMetaValues(fg, isA5, number, date, attachment));
+                else
+                    page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,
+                        attachment, sideMargin));
 
                 // ── بدنه: بلوک اطلاعات ← فاصلهٔ خالی ← متن ← امضا ──
                 page.Content().Column(col =>
@@ -2427,7 +2796,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     {
                         // آخرین پاراگراف کوتاه به بلوک امضا «قفل» می‌شود تا امضا تنها به
                         // صفحهٔ بعد نرود؛ متن بلند عادی می‌شکند.
-                        var copySplitsFreely = copyNames.Count > CopyGroupLimit;
+                        // در حالت فشرده هیچ گروه «نشکنی» ساخته نمی‌شود: هر بلوک مستقل روان می‌شود.
+                        var copySplitsFreely = compact || copyNames.Count > CopyGroupLimit || !keepTailTogether;
                         tailKeptWithText = RichLetterPdfRenderer.AddTo(
                             col, letter.Text, bodyFontSize, LetterPrintTemplate.BodyLineHeight,
                             keepWithTrailingText: copySplitsFreely ? null : RenderTail,
@@ -2450,6 +2820,79 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             letter.Id, isA5 ? "A5" : "A4", sideMargin, contentTop);
 
         return document.GeneratePdf();
+    }
+
+    /// <summary>
+    /// هندسهٔ سه خط نقطه‌چینِ هنر سربرگ فروغ آریا (forough-letterhead.pdf) بر حسب point در
+    /// قابِ نهایی A4.
+    ///
+    /// <para>این اعداد از <b>اندازه‌گیری پیکسلی خودِ تصویر</b> آمده‌اند (۱۸۲۸×۲۵۹۰ پیکسل،
+    /// نگاشت‌شده به قاب A4 چون QuestPDF هنر را با <c>FitUnproportionally</c> روی کل کاغذ
+    /// می‌کشد). نتیجهٔ اندازه‌گیری در قاب A4:</para>
+    /// <list type="bullet">
+    ///   <item>خط‌چین ردیف‌ها روی y = <b>۳۵٫۴</b> / <b>۶۳٫۱</b> / <b>۸۹٫۷</b>pt (فاصله ≈۲۷٫۲)</item>
+    ///   <item>متن برچسب‌های «تاریخ/شماره/پیوست»: ۲۹٫۶–۴۰٫۶ / ۵۷٫۲–۶۶٫۰ / ۸۵٫۲–۹۳٫۹pt</item>
+    ///   <item>خط‌چین از x≈۲۴ تا x≈۸۵ و برچسب‌ها از x≈۹۲ — پس ناحیهٔ مقدار x = ۲۴..۸۴ است
+    ///   (همان کادر متای <c>Inner-A4.mrt</c> و <c>Outgoing-A4.mrt</c> شرکت ۱:
+    ///   ۰٫۳۶۱/۰٫۷۳۶/۱٫۱۱۱ اینچ با عرض ۰٫۸۳۳ اینچ از x=۰٫۳۳۳ اینچ).</item>
+    /// </list>
+    /// <para>یعنی کادر <c>FirstRowTop + RowHeight/2</c> دقیقاً روی خط‌چین می‌افتد:
+    /// ۲۸ + ۷٫۵ = ۳۵٫۵ و ۲۸ + ۲۷٫۲ + ۷٫۵ = ۶۲٫۷ و ۲۸ + ۵۴٫۴ + ۷٫۵ = ۸۹٫۹.</para>
+    /// <para>در A5 همه در نسبت ارتفاع (۰٫۷۰۷۱) ضرب می‌شوند، چون هنر با
+    /// <c>FitUnproportionally</c> روی کل کاغذ کشیده می‌شود.</para>
+    /// </summary>
+    private readonly record struct ArtworkMetaGeometry(
+        float FirstRowTop, float RowPitch, float RowHeight, float ValueLeft, float ValueRight, float Bottom)
+    {
+        internal static ArtworkMetaGeometry For(bool isA5)
+        {
+            var scale = isA5 ? 0.7071f : 1f;
+            return new ArtworkMetaGeometry(
+                // ۲۸ = خط‌چین ۳۵٫۴ منهای نیم ارتفاع کادر (۷٫۵) تا متن دقیقاً وسط خط بنشیند؛
+                // ۲۷٫۲ = فاصلهٔ اندازه‌گیری‌شدهٔ سه خط‌چین (۳۵٫۴ → ۶۳٫۱ → ۸۹٫۷).
+                FirstRowTop: 28f * scale,
+                RowPitch: 27.2f * scale,
+                RowHeight: 15f * scale,
+                ValueLeft: 24f * scale,
+                ValueRight: 84f * scale,
+                Bottom: 95f * scale);
+        }
+    }
+
+    /// <summary>
+    /// مقدارهای شماره/تاریخ/پیوست روی خط‌های نقطه‌چینِ چاپ‌شدهٔ هنر سربرگ فروغ آریا.
+    /// برچسب‌ها («تاریخ:»، «شماره:»، «پیوست:») بخشی از خودِ تصویرند، پس فقط مقدار نوشته
+    /// می‌شود: راست‌چین روی خط‌چین، هر ردیف در کادر هم‌ارتفاع خودش.
+    ///
+    /// <para>عرض: <c>PaddingLeft(ValueLeft)</c> از عرض کل کادر کم می‌شود، پس
+    /// <c>Width(ValueRight)</c> یعنی «از x=۲۴ تا x=۸۴» — همان کادر متای قالب (و ۴pt پیش از
+    /// انتهای خط‌چین، مثل <see cref="HeaderMetaPainter"/>).</para>
+    /// </summary>
+    private void AddArtworkMetaValues(IContainer host, bool isA5, string number, string date, string attachment)
+    {
+        var geometry = ArtworkMetaGeometry.For(isA5);
+        var values = new[] { date, number, attachment };
+        host.AlignLeft().AlignTop().Column(column =>
+        {
+            var cursor = 0f;
+            for (var row = 0; row < values.Length; row++)
+            {
+                var rowTop = geometry.FirstRowTop + row * geometry.RowPitch;
+                var spacer = rowTop - cursor;
+                if (spacer > 0.1f) column.Item().Height(spacer);
+                // PaddingLeft داخل عرض می‌نشیند، پس عرض کل کادر = لبهٔ راستِ ناحیهٔ مقدار و
+                // متن دقیقاً تا x=۸۴pt راست‌چین تمام می‌شود. MinHeight (نه
+                // Height) به‌اندازهٔ کادر متای قالب: مقدار خیلی بلند یک خط اضافه می‌گیرد و
+                // کل چاپ را با «تضاد محدودیت» رد نمی‌کند.
+                column.Item().PaddingLeft(geometry.ValueLeft).Width(geometry.ValueRight)
+                    .MinHeight(geometry.RowHeight).AlignMiddle()
+                    .Text(string.IsNullOrWhiteSpace(values[row]) ? "—" : values[row])
+                    .FontFamily("Vazirmatn").FontSize(7f)
+                    .FontColor(Colors.Black).LineHeight(1f)
+                    .AlignRight().DirectionFromRightToLeft();
+                cursor = rowTop + geometry.RowHeight;
+            }
+        });
     }
 
     /// <summary>
@@ -2706,7 +3149,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>قرار دادن صفحات نامه روی سربرگ یا لوگوی شرکت (PDF یا تصویر)</summary>
-    private byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath, int letterId)
+    /// <param name="repeatHeaderTo">
+    /// ارتفاع ناحیهٔ سربرگ (pt). اگر مقدار داشته باشد، روی صفحه‌های دوم و بعد فقط همین نوارِ
+    /// بالای سربرگ تکرار می‌شود (به‌جای تکرار کل صفحهٔ اول که صفحه را شلوغ می‌کرد).
+    /// </param>
+    private byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath, int letterId,
+        float? repeatHeaderTo = null)
     {
         using var contentStream = new MemoryStream(contentPdf);
         using var contentDoc = PdfReader.Open(contentStream, PdfDocumentOpenMode.Import);
@@ -2742,14 +3190,75 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     : asset.Image != null
                         ? ArtRect(page, asset.Image.PointWidth, asset.Image.PointHeight)
                         : bounds;
-                if (asset.IsPdf && asset.Pdf != null)
+                // صفحهٔ اول: کل هنر سربرگ. صفحه‌های دوم و بعد: همان هنر با همان مقیاس، ولی
+                // بریده به «نوار بالای سربرگ» (برش، نه تغییر اندازه) — سربرگ شرکت ۱ فقط یک
+                // صفحهٔ کامل است و تکرار کاملِ آن روی هر صفحه، صفحه را شلوغ می‌کرد.
+                // PDF و تصویر هر دو یک قاعده دارند (قبلاً تصویرها روی هر صفحه کامل تکرار
+                // می‌شدند و نوار سربرگ نداشتند).
+                var bandHeight = repeatHeaderTo ?? 0f;
+                var repeatBand = index > 0 && bandHeight > 1f;
+                var artWidth = asset.IsPdf && asset.Pdf != null
+                    ? asset.Pdf.PointWidth
+                    : asset.Image?.PointWidth ?? page.Width.Point;
+
+                void DrawArtwork()
                 {
-                    asset.Pdf.PageNumber = 1;
-                    graphics.DrawImage(asset.Pdf, artBounds);
+                    if (asset.IsPdf && asset.Pdf != null)
+                    {
+                        asset.Pdf.PageNumber = 1;
+                        graphics.DrawImage(asset.Pdf, artBounds);
+                    }
+                    else if (asset.Image != null)
+                    {
+                        graphics.DrawImage(asset.Image, artBounds);
+                    }
                 }
-                else if (asset.Image != null)
+
+                if (repeatBand)
                 {
-                    graphics.DrawImage(asset.Image, artBounds);
+                    var saved = false;
+                    try
+                    {
+                        var strip = PrintAssetResolver.LetterheadBandRect(
+                            page.Width.Point, Math.Min(artWidth, page.Width.Point), bandHeight);
+                        graphics.Save();
+                        saved = true;
+                        graphics.IntersectClip(new XRect(strip.X, strip.Y, strip.Width, strip.Height));
+                        DrawArtwork();
+                    }
+                    catch (Exception bandFailure)
+                    {
+                        // اگر برش به هر دلیلی ممکن نبود، هنر کامل رسم می‌شود (رفتار قبلی)؛
+                        // صفحهٔ دوم هرگز «بی‌سربرگ» نمی‌ماند و چاپ شکست نمی‌خورد.
+                        _logger.LogWarning(bandFailure,
+                            "رسم نوار سربرگ روی صفحهٔ دوم ناموفق بود؛ هنر کامل رسم می‌شود. LetterId={LetterId}, BandHeight={BandHeight}",
+                            letterId, bandHeight);
+                        try { DrawArtwork(); }
+                        catch (Exception artFailure)
+                        {
+                            _logger.LogWarning(artFailure,
+                                "رسم هنر سربرگ روی صفحهٔ {Page} هم ناموفق بود؛ این صفحه بدون سربرگ می‌ماند. LetterId={LetterId}",
+                                index + 1, letterId);
+                        }
+                    }
+                    finally
+                    {
+                        // برش باید در هر حالتی برداشته شود، وگرنه محتوای همین صفحه هم بریده
+                        // می‌شد (و Restore بدون Save استثنا می‌دهد).
+                        if (saved)
+                        {
+                            try { graphics.Restore(); }
+                            catch (Exception restoreFailure)
+                            {
+                                _logger.LogWarning(restoreFailure,
+                                    "برداشتن برش نوار سربرگ ناموفق بود. LetterId={LetterId}, Page={Page}", letterId, index + 1);
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    DrawArtwork();
                 }
 
                 contentForm.PageNumber = index + 1;

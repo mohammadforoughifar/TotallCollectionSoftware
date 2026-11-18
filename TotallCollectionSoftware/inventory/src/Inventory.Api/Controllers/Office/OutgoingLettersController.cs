@@ -545,6 +545,13 @@ public class OutgoingLettersController : RbacControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (OutgoingLetterPrintException ex)
+        {
+            // متن پیام از خودِ سرویس چاپ می‌آید: فارسی، با شناسه و اندازهٔ نامه؛ نه پیام
+            // خام موتور چاپ. (قبلاً همین حالت به catch عمومی می‌رسید و پیام انگلیسی
+            // «DocumentLayoutException» به کاربر نشان داده می‌شد.)
+            return StatusCode(500, new { message = ex.Message });
+        }
         catch (Exception ex)
         {
             // هر خطای دیگری از موتور چاپ (فونت، PDFsharp، QuestPDF، قطع اتصال دیتابیس) قبلاً

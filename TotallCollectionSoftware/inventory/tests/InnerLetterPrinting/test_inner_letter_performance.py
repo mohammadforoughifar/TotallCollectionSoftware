@@ -88,7 +88,8 @@ class InnerLetterPerformanceTests(unittest.TestCase):
     def test_questpdf_embeds_the_prepared_image_without_resizing_it_again(self):
         """بدون UseOriginalImage، QuestPDF در هر چاپ تصویر را به ۲۸۸dpi تغییر اندازه و کدگذاری می‌کرد."""
         source = self.renderer_source()
-        self.assertIn("page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();", source)
+        self.assertIn("page.Background().Image(letterheadArt ?? homepaBackground!)", source)
+        self.assertIn(".UseOriginalImage().FitUnproportionally();", source)
         self.assertNotIn(".WithRasterDpi(", source, "کوچک‌سازی باید یک بار در لودر انجام شود، نه در هر چاپ")
 
     def test_dpi_is_configurable_and_print_timings_are_logged(self):

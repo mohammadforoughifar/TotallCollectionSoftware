@@ -201,14 +201,18 @@ class ForeignLetterheadGuardTests(unittest.TestCase):
         for tree in TREES:
             with self.subTest(tree=tree.name):
                 source = (office(tree) / "Outgoing" / "OutgoingLetterPrintService.cs").read_text(encoding="utf-8")
-                self.assertIn("RegisteredLetterheadBelongsToAnotherCompany(", source)
-                # خانواده‌های شناخته‌شده: homepa = ۳/۱۰۰۳، aria = ۱۰۰۵، forough = شرکت ۱
-                self.assertIn('name.Contains("homepa"', source)
-                self.assertIn('name.Contains("aria"', source)
-                self.assertIn('name.Contains("forough"', source)
+                resolver = (office(tree) / "PrintAssetResolver.cs").read_text(encoding="utf-8")
+                # گارد «سربرگ شرکت دیگر» حالا یک منبع مشترک دارد (هر سه چاپ از آن می‌پرسند)؛
+                # سرویس نامهٔ صادره همان را صدا می‌زند.
+                self.assertIn("PrintAssetResolver.RegisteredLetterheadBelongsToAnotherCompany(", source)
+                self.assertIn("internal static bool RegisteredLetterheadBelongsToAnotherCompany(", resolver)
+                # خانواده‌های شناخته‌شده: homepa = ۳/۱۰۰۳، aria = ۱۰۰۵، forough = ۱/۲
+                self.assertIn('name.Contains("homepa"', resolver)
+                self.assertIn('name.Contains("aria"', resolver)
+                self.assertIn('name.Contains("forough"', resolver)
                 # گارد پیش از انتخاب نهایی فایل اجرا می‌شود
                 self.assertLess(source.index("RegisteredLetterheadBelongsToAnotherCompany(selectedCompanyId"),
-                                source.index("var letterheadPath = preferTemplate"))
+                                source.index("letterheadPath = preferTemplate"))
 
     def test_company_1005_letterhead_is_recognised_as_its_own(self):
         """نام فایل Aria برای ۱۰۰۵ «بیگانه» تشخیص داده نمی‌شود."""
