@@ -1659,8 +1659,7 @@ else
     private static bool SmsDetailFailure(RepairSmsStatus status) => status is
         RepairSmsStatus.Failed or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or
         RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.ModuleDisabled or
-        RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName or
-        RepairSmsStatus.SettingsUnavailable;
+        RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName;
 
     private static string SmsDetailStatus(RepairSmsStatus status) => status switch
     {
@@ -1701,7 +1700,6 @@ else
         RepairSmsStatus.Unknown => "نتیجه نامشخص؛ پیش از هر اقدام در کاوه‌نگار بررسی شود",
         RepairSmsStatus.InvalidMobile => "موبایل مشتری ثبت نشده یا معتبر نیست؛ ارسال نشد",
         RepairSmsStatus.Disabled => "درگاه غیرفعال است؛ ارسال نشد",
-        RepairSmsStatus.SettingsUnavailable => "تنظیمات پیامک هنگام ثبت رویداد از دیتابیس خوانده نشد؛ پیامکی به درگاه فرستاده نشد",
         RepairSmsStatus.NotConfigured => "درگاه یا نام الگوی پیامکی تنظیم نشده است؛ ارسال نشد",
         RepairSmsStatus.ModuleDisabled => "مجوز پیامک تعمیرات برای این رویداد غیرفعال بود یا لغو شد؛ ارسال نشد",
         RepairSmsStatus.InvalidCompanyName => "نام شرکت با محدودیت الگوی پیامک سازگار نیست؛ ارسال نشد",
@@ -1727,7 +1725,7 @@ else
         var problem = r.SmsNotifications.LastOrDefault(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown
             or RepairSmsStatus.InvalidMobile or RepairSmsStatus.Disabled or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled
             or RepairSmsStatus.ModuleDisabled or RepairSmsStatus.InvalidCompanyName or RepairSmsStatus.InvalidRepairNumber
-            or RepairSmsStatus.InvalidCustomerName or RepairSmsStatus.SettingsUnavailable);
+            or RepairSmsStatus.InvalidCustomerName);
         var current = problem ?? r.SmsNotifications[^1];
         var shortStatus = current.Status switch
         {
@@ -1739,7 +1737,6 @@ else
             RepairSmsStatus.Unknown => "نیاز به بررسی",
             RepairSmsStatus.InvalidMobile => "موبایل نامعتبر",
             RepairSmsStatus.Disabled => "درگاه غیرفعال",
-            RepairSmsStatus.SettingsUnavailable => "خطای خواندن تنظیمات پیامک",
             RepairSmsStatus.NotConfigured => "درگاه یا الگو تنظیم نشده",
             RepairSmsStatus.ModuleDisabled => "مجوز رویداد غیرفعال یا لغوشده",
             RepairSmsStatus.InvalidCompanyName => "نام شرکت نامعتبر برای الگو",
@@ -1754,7 +1751,7 @@ else
     private static string SmsSummaryCss(RepairOrderDto r) =>
         r.SmsNotifications?.Any(x => x.Status is RepairSmsStatus.Failed or RepairSmsStatus.Unknown or RepairSmsStatus.InvalidMobile
             or RepairSmsStatus.NotConfigured or RepairSmsStatus.Cancelled or RepairSmsStatus.InvalidCompanyName
-            or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName or RepairSmsStatus.SettingsUnavailable) == true ? "text-danger" : "text-muted";
+            or RepairSmsStatus.InvalidRepairNumber or RepairSmsStatus.InvalidCustomerName) == true ? "text-danger" : "text-muted";
 
     private static string PartyTel(RepairOrderDto r)
         => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!

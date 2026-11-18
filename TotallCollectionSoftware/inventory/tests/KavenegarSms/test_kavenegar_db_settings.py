@@ -17,7 +17,7 @@ ENTITY = 'src/Inventory.Api/Entities/Core/AppSetting.cs'
 SCHEMA = 'src/Inventory.Api/Data/AppSettingsSchemaV1.cs'
 SERVICE = 'src/Inventory.Api/Services/Catalog/InventoryService.cs'
 GATEWAY = 'src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs'
-FACTORY = 'src/Inventory.Api/Services/Notification/KavenegarSmsGatewayFactory.cs'
+STORED = 'src/Inventory.Api/Services/ItAssets/KavenegarSmsStoredSettings.cs'
 DTO = 'src/Inventory.Shared/Dtos/CatalogDtos.cs'
 PAGE = 'src/Inventory.Client/Pages/Settings/Index.razor'
 
@@ -63,30 +63,22 @@ class KavenegarDatabaseSettings(unittest.TestCase):
         self.assertRegex(save, r'else if \(!string\.IsNullOrWhiteSpace\(dto\.KavenegarApiKey\)\)')
         self.assertIn('s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;', save)
 
-    def test_settings_editor_and_worker_use_one_deterministic_global_row(self):
-        ctx = read('src/Inventory.Api/Data/AppDbContext.cs')
-        self.assertIn('GlobalSettings => AppSettings.OrderBy(s => s.Id)', ctx)
-        editor = read(SERVICE).split('public async Task<AppSettings> GetSettingsAsync()', 1)[1].split('private static string? MaskKey', 1)[0]
-        self.assertEqual(editor.count('_db.GlobalSettings.'), 2)  # GET and POST
-        self.assertIn('await db.GlobalSettings.AsNoTracking()', read(FACTORY))
+    def test_gateway_prefers_the_database_and_falls_back_to_the_file(self):
+        gateway = read(GATEWAY)
+        stored = read(STORED)
+        # One resolved snapshot, database first, file second.
+        self.assertIn('_resolved ??= _stored?.Invoke() ?? _file', gateway)
+        # The synchronous surface the queues and tests rely on is unchanged.
+        for prop in ('bool IsEnabled', 'bool IsConfigured', 'bool IsLookupConfigured'):
+            self.assertIn(prop, gateway)
+        # An empty key in the database means "not configured here", so the file wins.
+        self.assertIn('string.IsNullOrWhiteSpace(row.KavenegarApiKey)) return null;', stored)
+        # A database missing the new columns must not take SMS down.
+        self.assertIn('catch', stored)
 
-    def test_db_account_replaces_all_three_fields_without_mutating_file_options(self):
-        factory = read(FACTORY)
-        self.assertIn('row is null || string.IsNullOrWhiteSpace(row.KavenegarApiKey) ? file', factory)
-        self.assertIn('file.WithAccount(row.KavenegarApiKey.Trim(), row.KavenegarSender?.Trim() ?? "", row.KavenegarSdkSendEnabled)', factory)
-        # Reading a setting must not silently convert a DB failure into "file wins".
-        failure = factory.split('catch (Exception ex) when (ex is not OperationCanceledException)', 1)[1].split('private static bool', 1)[0]
-        self.assertIn('return null;', failure)
-        self.assertNotIn('new KavenegarSmsGateway', failure)
-        self.assertNotIn('ex.Message', failure)
-        self.assertIn('log.LogWarning(', failure)
-
-    def test_staging_and_each_worker_job_resolve_before_claim(self):
-        for queue in ('ItAssets/WorkOrderSmsQueue.cs', 'Repairs/RepairSmsQueue.cs'):
-            stage, dispatch = read('src/Inventory.Api/Services/' + queue).split('public async Task<bool> ProcessOneAsync(', 1)
-            self.assertIn('await gateways.CreateAsync(', stage)
-            self.assertLess(dispatch.index('if (id is null)'), dispatch.index('await gateways.CreateAsync(ct)'))
-            self.assertLess(dispatch.index('if (gateway is null) return false;'), dispatch.index('var claimed ='))
+    def test_registration_passes_the_database_reader(self):
+        program = read('src/Inventory.Api/Program.cs')
+        self.assertIn('KavenegarSmsStoredSettings.Read(db, options.Value)', program)
 
     def test_dto_and_settings_page_expose_the_fields(self):
         dto = read(DTO)

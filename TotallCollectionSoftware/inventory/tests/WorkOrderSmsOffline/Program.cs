@@ -285,19 +285,6 @@ static class Program
             await WorkOrderSmsQueue.StageAsync(db,gateway,options,o,l,new[]{target},kind); Ids(db);
             return db.WorkOrderSmsNotifications.Single(n=>n.EventLogId==l.Id);
         }
-        var waiting = await Stage(60, 1, 1, "AssigneesAdded", 3);
-        gateway.Readable = false;
-        var beforeReadFailure = gateway.Calls;
-        Check(!await dispatcher.ProcessOneAsync() && waiting.Status == WorkOrderSmsStatus.Pending &&
-              waiting.AttemptStartedAtUtc is null && gateway.Calls == beforeReadFailure,
-            "settings read failure before dispatch leaves the referral unclaimed");
-        var notStagedForSend = await Stage(61, 1, 1, "Reply", 1);
-        Check(notStagedForSend.Status == WorkOrderSmsStatus.SettingsUnavailable && notStagedForSend.Recipient is null,
-            "a new reply with unreadable settings is not reported as switched off");
-        gateway.Readable = true;
-        Check(await dispatcher.ProcessOneAsync() && waiting.Status == WorkOrderSmsStatus.Accepted &&
-              gateway.Calls == beforeReadFailure + 1 && !await dispatcher.ProcessOneAsync(),
-            "only the previously eligible referral sends once when settings become readable");
         var rejected=await Stage(32,1,1,"Created",3); gateway.Result=new(KavenegarSmsSendState.Failed, ProviderCode:431);
         var before=gateway.Calls; await dispatcher.ProcessOneAsync();
         Check(rejected.Status==WorkOrderSmsStatus.Failed && rejected.ProviderCode==431 && rejected.Recipient is null &&
@@ -507,10 +494,8 @@ static class Program
 }
 
 sealed class FakeLogger<T>:ILogger<T> {public void LogWarning(string format,params object[] args) {}}
-sealed class FakeGateway:IKavenegarSmsGateway, IKavenegarSmsGatewayFactory
+sealed class FakeGateway:IKavenegarSmsGateway
 {
-    public bool Readable { get; set; } = true;
-    public Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct = default) => Task.FromResult<IKavenegarSmsGateway?>(Readable ? this : null);
     public bool IsEnabled {get;set;}=true; public bool IsConfigured {get;set;}=true; public bool IsLookupConfigured {get;set;}=true;
     public int Calls; public string? Recipient,Year,Serial,Company,Title,Deadline,Template; public bool Throw;
     public KavenegarSmsSendResult Result=new(KavenegarSmsSendState.Accepted,42,1,200);

@@ -6,6 +6,7 @@ using Kavenegar;
 using Kavenegar.Exceptions;
 using Kavenegar.Models;
 using Kavenegar.Models.Enums;
+using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services;
 
@@ -46,18 +47,37 @@ public interface IKavenegarSmsGateway
 
 public sealed class KavenegarSmsGateway : IKavenegarSmsGateway
 {
-    // One already-resolved account per operation. These properties never perform database I/O.
-    private KavenegarSmsOptions Options { get; }
+    private readonly KavenegarSmsOptions _file;
+    private readonly Func<KavenegarSmsOptions?>? _stored;
     private readonly Func<HttpMessageHandler> _handlerFactory;
+    private KavenegarSmsOptions? _resolved;
 
-    public KavenegarSmsGateway(KavenegarSmsOptions options) : this(options, () => SharedTransport.Handler) { }
+    public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options)
+        : this(options, () => SharedTransport.Handler)
+    {
+    }
+
+    /// <summary>
+    /// درگاهی که تنظیماتش را از دیتابیس می‌گیرد و در نبود آن به فایل برمی‌گردد.
+    /// </summary>
+    public KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<KavenegarSmsOptions?> stored)
+        : this(options, () => SharedTransport.Handler, stored)
+    {
+    }
 
     // Tests supply an in-memory handler, so they never contact the SMS provider.
-    internal KavenegarSmsGateway(KavenegarSmsOptions options, Func<HttpMessageHandler> handlerFactory)
+    internal KavenegarSmsGateway(IOptions<KavenegarSmsOptions> options, Func<HttpMessageHandler> handlerFactory,
+        Func<KavenegarSmsOptions?>? stored = null)
     {
-        Options = options;
+        _file = options.Value;
         _handlerFactory = handlerFactory;
+        _stored = stored;
     }
+
+    // Settings are read once per scope and then reused, so a queue batch cannot see the
+    // key change halfway through. A caller that saves new settings gets them on its next
+    // request, which is the same freshness the other database-backed integrations give.
+    private KavenegarSmsOptions Options => _resolved ??= _stored?.Invoke() ?? _file;
 
     public bool IsEnabled => Options.SdkSendEnabled;
     // Presence only; this does not verify the key, sender ownership or network connectivity.

@@ -11,13 +11,12 @@ public static class RepairSmsPolicy
         isNew ? RepairSmsEventType.Registration :
         previous != RepairStatus.Ready && current == RepairStatus.Ready ? RepairSmsEventType.Ready : null;
 
-    public static RepairSmsStatus InitialStatus(string? mobile, bool moduleEnabled, bool? gatewayEnabled,
+    public static RepairSmsStatus InitialStatus(string? mobile, bool moduleEnabled, bool gatewayEnabled,
         bool lookupConfigured, string? companyName, string? number,
         RepairSmsEventType kind = RepairSmsEventType.Registration, string? customerName = null) =>
         NormalizeMobile(mobile) is null ? RepairSmsStatus.InvalidMobile :
         !moduleEnabled ? RepairSmsStatus.ModuleDisabled :
-        gatewayEnabled is null ? RepairSmsStatus.SettingsUnavailable :
-        gatewayEnabled == false ? RepairSmsStatus.Disabled :
+        !gatewayEnabled ? RepairSmsStatus.Disabled :
         !lookupConfigured ? RepairSmsStatus.NotConfigured :
         !KavenegarSmsValidation.CompanyToken(companyName) ? RepairSmsStatus.InvalidCompanyName :
         NumberToken(number) is null ? RepairSmsStatus.InvalidRepairNumber :

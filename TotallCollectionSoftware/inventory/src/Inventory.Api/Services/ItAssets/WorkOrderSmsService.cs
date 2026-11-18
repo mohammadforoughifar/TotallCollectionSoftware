@@ -18,7 +18,7 @@ public interface IWorkOrderSmsService
 /// saved and before commit. There is no direct HTTP or legacy gateway sending path here.
 /// </summary>
 public sealed class WorkOrderSmsService(
-    AppDbContext db, IKavenegarSmsGatewayFactory gateways, IOptions<KavenegarSmsOptions> options,
+    AppDbContext db, IKavenegarSmsGateway gateway, IOptions<KavenegarSmsOptions> options,
     ILogger<WorkOrderSmsService> logger) : IWorkOrderSmsService
 {
     public async Task<bool> TryStageAsync(IDbContextTransaction transaction, WorkOrder order, WorkOrderLog log,
@@ -40,7 +40,7 @@ public sealed class WorkOrderSmsService(
         {
             await transaction.CreateSavepointAsync(savepoint);
             created = true;
-            await WorkOrderSmsQueue.StageAsync(db, gateways, options.Value, order, log, recipientIds, kind);
+            await WorkOrderSmsQueue.StageAsync(db, gateway, options.Value, order, log, recipientIds, kind);
             await db.SaveChangesAsync();
             return true;
         }

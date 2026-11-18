@@ -13,8 +13,7 @@ internal static class WorkOrderSmsAppearance
         WorkOrderSmsStatus.Failed or WorkOrderSmsStatus.InvalidMobile or WorkOrderSmsStatus.Disabled or
         WorkOrderSmsStatus.NotConfigured or WorkOrderSmsStatus.Cancelled or WorkOrderSmsStatus.ModuleDisabled or
         WorkOrderSmsStatus.InvalidCompanyName or WorkOrderSmsStatus.InvalidOrderNumber or
-        WorkOrderSmsStatus.NoCompanyAccess or WorkOrderSmsStatus.InvalidDeadline or WorkOrderSmsStatus.InvalidTitle or
-        WorkOrderSmsStatus.SettingsUnavailable;
+        WorkOrderSmsStatus.NoCompanyAccess or WorkOrderSmsStatus.InvalidDeadline or WorkOrderSmsStatus.InvalidTitle;
 
     // Accepted means the provider accepted the request, not that the message was delivered.
     // Keep the two descriptions distinct for the tooltip and screen readers.
@@ -45,8 +44,7 @@ internal static class WorkOrderSmsAppearance
         WorkOrderSmsStatus.Failed => "درگاه پیامک، ارسال را ناموفق اعلام کرد",
         WorkOrderSmsStatus.Unknown => "نتیجه نامشخص؛ پیش از ارسال دوباره، وضعیت را در کاوه‌نگار بررسی کنید",
         WorkOrderSmsStatus.InvalidMobile => "موبایل گیرنده ثبت نشده یا معتبر نیست؛ ارسال نشد",
-        WorkOrderSmsStatus.Disabled => "سوئیچ ارسال پیامک هنگام ثبت یا پردازش این رویداد خاموش بود؛ پیامکی به درگاه فرستاده نشد",
-        WorkOrderSmsStatus.SettingsUnavailable => "تنظیمات پیامک هنگام ثبت رویداد از دیتابیس خوانده نشد؛ پیامکی به درگاه فرستاده نشد",
+        WorkOrderSmsStatus.Disabled => "ارسال پیامک در سرور غیرفعال است؛ ارسال نشد",
         WorkOrderSmsStatus.NotConfigured => "کلید API یا نام الگوی پیامک تنظیم نشده است؛ ارسال نشد",
         WorkOrderSmsStatus.Cancelled => "اطلاعات گیرنده یا دستور کار پیش از ارسال تغییر کرده بود؛ ارسال نشد",
         WorkOrderSmsStatus.ModuleDisabled => "مجوز پیامک «دستور کار» برای این شرکت غیرفعال بود یا لغو شد؛ ارسال نشد",

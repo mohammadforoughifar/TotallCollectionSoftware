@@ -22,8 +22,7 @@ var failure = new HashSet<WorkOrderSmsStatus>
     WorkOrderSmsStatus.Failed, WorkOrderSmsStatus.InvalidMobile, WorkOrderSmsStatus.Disabled,
     WorkOrderSmsStatus.NotConfigured, WorkOrderSmsStatus.Cancelled, WorkOrderSmsStatus.ModuleDisabled,
     WorkOrderSmsStatus.InvalidCompanyName, WorkOrderSmsStatus.InvalidOrderNumber,
-    WorkOrderSmsStatus.NoCompanyAccess, WorkOrderSmsStatus.InvalidDeadline, WorkOrderSmsStatus.InvalidTitle,
-    WorkOrderSmsStatus.SettingsUnavailable
+    WorkOrderSmsStatus.NoCompanyAccess, WorkOrderSmsStatus.InvalidDeadline, WorkOrderSmsStatus.InvalidTitle
 };
 foreach (var status in Enum.GetValues<WorkOrderSmsStatus>())
 {

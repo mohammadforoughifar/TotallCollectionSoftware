@@ -29,7 +29,7 @@ public class InventoryService : IInventoryService
 
     public async Task<AppSettings> GetSettingsAsync()
     {
-        var s = await _db.GlobalSettings.AsNoTracking().FirstOrDefaultAsync();
+        var s = await _db.AppSettings.FirstOrDefaultAsync();
         return s is null
             ? new AppSettings()
             : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, BaleSafirApiAccessKey = s.BaleSafirApiAccessKey, BaleSafirBotId = s.BaleSafirBotId, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs,
@@ -44,7 +44,7 @@ public class InventoryService : IInventoryService
         if (method is not ("Average" or "FIFO" or "LIFO"))
             throw new InvalidOperationException("روش قیمت‌گذاری باید یکی از مقادیر Average، FIFO یا LIFO باشد.");
 
-        var s = await _db.GlobalSettings.FirstOrDefaultAsync();
+        var s = await _db.AppSettings.FirstOrDefaultAsync();
         if (s is null)
         {
             s = new Db.AppSetting();

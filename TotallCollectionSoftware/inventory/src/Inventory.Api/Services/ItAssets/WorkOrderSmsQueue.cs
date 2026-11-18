@@ -11,7 +11,7 @@ public static class WorkOrderSmsQueue
 {
     private sealed record Candidate(User User, string? Mobile, bool HasAccess, WorkOrderSmsStatus Status, string Key);
 
-    internal static async Task StageAsync(AppDbContext db, IKavenegarSmsGatewayFactory gateways, KavenegarSmsOptions options,
+    internal static async Task StageAsync(AppDbContext db, IKavenegarSmsGateway gateway, KavenegarSmsOptions options,
         WorkOrder order, WorkOrderLog log, IReadOnlyCollection<int> recipientIds, WorkOrderSmsEventType kind,
         CancellationToken ct = default)
     {
@@ -38,15 +38,14 @@ public static class WorkOrderSmsQueue
         var companyName = await db.SystemCompanies.AsNoTracking().Where(c => c.Id == order.CompanyId && c.IsActive)
             .Select(c => c.Name).SingleOrDefaultAsync(ct);
         var template = WorkOrderSmsPolicy.TemplateName(kind, options);
-        var gateway = revision.HasValue ? await gateways.CreateAsync(ct) : null;
-        var configured = gateway?.IsLookupConfigured == true && KavenegarSmsValidation.TemplateName(template);
+        var configured = gateway.IsLookupConfigured && KavenegarSmsValidation.TemplateName(template);
         var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).OrderBy(u => u.Id).ToListAsync(ct);
         var candidates = new List<Candidate>();
         foreach (var user in users)
         {
             var mobile = KavenegarSmsValidation.NormalizeMobile(user.Mobile);
             var access = user.IsActive && await WorkOrderSmsCompanyAccess.HasAccessAsync(db, user, order.CompanyId.Value, ct);
-            var status = WorkOrderSmsPolicy.InitialStatus(user.Mobile, access, revision.HasValue, gateway?.IsEnabled,
+            var status = WorkOrderSmsPolicy.InitialStatus(user.Mobile, access, revision.HasValue, gateway.IsEnabled,
                 configured, companyName, order.Number, order.Title, order.DueAt, kind);
             // The key is stable after the phone is erased on completion. Different users
             // with the same normalized phone get at most one message for this operation.
@@ -99,7 +98,7 @@ public static class WorkOrderSmsCompanyAccess
 }
 
 /// <summary>One atomic claim, then at most one SDK request; uncertain results are terminal.</summary>
-public sealed class WorkOrderSmsDispatcher(AppDbContext db, IKavenegarSmsGatewayFactory gateways, IOptions<KavenegarSmsOptions> options)
+public sealed class WorkOrderSmsDispatcher(AppDbContext db, IKavenegarSmsGateway gateway, IOptions<KavenegarSmsOptions> options)
 {
     public async Task MarkAbandonedUnknownAsync(DateTime now, CancellationToken ct = default)
     {
@@ -115,10 +114,6 @@ public sealed class WorkOrderSmsDispatcher(AppDbContext db, IKavenegarSmsGateway
         var id = await db.WorkOrderSmsNotifications.AsNoTracking().Where(n => n.Status == WorkOrderSmsStatus.Pending)
             .OrderBy(n => n.Id).Select(n => (int?)n.Id).FirstOrDefaultAsync(ct);
         if (id is null) return false;
-        // A settings read failure is safe to retry *before* claiming. Leave the event Pending;
-        // do not record Disabled, attempt a provider call, or retry a possibly sent message.
-        var gateway = await gateways.CreateAsync(ct);
-        if (gateway is null) return false;
         var started = DateTime.UtcNow;
         var claimed = await db.WorkOrderSmsNotifications.Where(n => n.Id == id && n.Status == WorkOrderSmsStatus.Pending)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.Status, WorkOrderSmsStatus.Sending)

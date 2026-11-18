@@ -13,7 +13,6 @@ using System.Reflection;
 namespace Inventory.Api.Services {
  public enum KavenegarSmsSendState { Disabled, NotConfigured, InvalidRequest, Accepted, Delivered, Failed, Unknown }
  public sealed record KavenegarSmsSendResult(KavenegarSmsSendState State,long? MessageId=null,int? MessageStatus=null,int? ProviderCode=null);
- public interface IKavenegarSmsGatewayFactory { Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct=default); }
  public interface IKavenegarSmsGateway {
   bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;}
   Task<KavenegarSmsSendResult> SendAsync(string recipient,string message);

@@ -253,9 +253,8 @@ Check(legacyReady.SmsNotifications.Any(n => n.EventType == RepairSmsEventType.Re
 await DeliveryChecks.RunAsync();
 Console.WriteLine("All offline repair SMS checks passed.");
 
-sealed class FakeSmsGateway : IKavenegarSmsGateway, IKavenegarSmsGatewayFactory
+sealed class FakeSmsGateway : IKavenegarSmsGateway
 {
-    public Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct = default) => Task.FromResult<IKavenegarSmsGateway?>(this);
     public bool IsEnabled { get; set; } = true;
     public bool IsConfigured { get; set; } = true;
     public bool IsLookupConfigured { get; set; } = true;

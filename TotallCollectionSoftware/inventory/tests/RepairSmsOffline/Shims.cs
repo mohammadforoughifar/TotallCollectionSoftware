@@ -21,13 +21,12 @@ namespace Inventory.Shared.Dtos {
  public class Product { }
  public enum WarrantyDecision { Unspecified, Accepted, Rejected }
  public enum RepairSmsEventType { Registration=1, Ready=2, Delivery=3 }
- public enum RepairSmsStatus { Pending=1, Sending=2, Accepted=3, Delivered=4, Failed=5, Unknown=6, InvalidMobile=7, Disabled=8, NotConfigured=9, Cancelled=10, ModuleDisabled=11, InvalidCompanyName=12, InvalidRepairNumber=13, InvalidCustomerName=14, SettingsUnavailable=15 }
+ public enum RepairSmsStatus { Pending=1, Sending=2, Accepted=3, Delivered=4, Failed=5, Unknown=6, InvalidMobile=7, Disabled=8, NotConfigured=9, Cancelled=10, ModuleDisabled=11, InvalidCompanyName=12, InvalidRepairNumber=13, InvalidCustomerName=14 }
 }
 namespace Inventory.Shared.Entities {}
 namespace Inventory.Api.Services {
  public enum KavenegarSmsSendState { Disabled, NotConfigured, InvalidRequest, Accepted, Delivered, Failed, Unknown }
  public sealed record KavenegarSmsSendResult(KavenegarSmsSendState State, long? MessageId=null, int? MessageStatus=null, int? ProviderCode=null);
- public interface IKavenegarSmsGatewayFactory { Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct=default); }
  public interface IKavenegarSmsGateway { bool IsEnabled {get;} bool IsConfigured {get;} bool IsLookupConfigured {get;} Task<KavenegarSmsSendResult> SendAsync(string recipient, string message); Task<KavenegarSmsSendResult> SendLookupAsync(string recipient, string token, string name, string template); Task<KavenegarSmsSendResult> SendLookupWithToken20Async(string recipient, string token, string companyName, string customerName, string template); Task<KavenegarSmsSendResult> SendWorkOrderLookupAsync(string recipient, string year, string serial, string companyName, string title, string? deadline, string template); }
 }
 namespace Inventory.Api.Data {
