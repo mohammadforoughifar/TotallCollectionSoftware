@@ -185,8 +185,9 @@ public static class RequestParser
                 else if (!string.IsNullOrWhiteSpace(rootName))
                     // شناسه نیامده ولی نام هست ⇒ فایل از نسخه‌ای است که شناسهٔ شرکت را همراه نکرده.
                     // پیام عمداً «نسخه» را نام می‌برد تا پشتیبان بداند راه‌حل، گرفتن فایل تازه است.
-                    result.Warnings.Add($"در فایل درخواست شناسهٔ شرکت نیامده — نام شرکت «{rootName}» خوانده شد. " +
-                                        "فایل درخواست را از نسخهٔ تازهٔ نرم‌افزار مشتری بگیرید تا شناسهٔ شرکت هم داخل فایل باشد.");
+                    result.Warnings.Add($"در فایل درخواست شناسهٔ معتبر شرکت نیامده (خالی یا «0») — نام شرکت «{rootName}» خوانده شد. " +
+                                        "شناسهٔ «0» جای‌نگهدار است و پذیرفته نمی‌شود. فایل درخواست را از نسخهٔ تازهٔ نرم‌افزار مشتری بگیرید، " +
+                                        "یا شناسهٔ واقعی شرکت را در پیش‌نویس دستی وارد کنید.");
             }
 
             // ---- شرکت‌های اعلام‌شده توسط مشتری (پیشنهاد، نه سند) ----
@@ -345,7 +346,8 @@ public static class RequestParser
     /// نمونهٔ واقعی: نسخه‌ای از مشتری شناسهٔ شرکت را به‌صورت عدد <c>0</c> می‌فرستد
     /// (<c>"companyId": 0</c>, <c>"company": {"id": 0}</c>) در حالی که نام شرکت درست است.
     /// با <see cref="GetString"/> این مقدار نادیده گرفته می‌شد و درخواست «بی‌شرکت» ثبت می‌شد؛
-    /// حالا عددِ غیرصفر به رشته تبدیل می‌شود و صفر/تهی به‌معنای «شناسه نیامده» است.
+    /// حالا عددِ غیرصفر به رشته تبدیل می‌شود و صفر/تهی (چه عدد و چه رشتهٔ "0") به‌معنای
+    /// «شناسه نیامده» است؛ چون سند لایسنس نباید به شرکتی با شناسهٔ صفر بسته شود.
     /// </para>
     /// </summary>
     private static string? GetIdString(JsonElement element, string name)
@@ -354,10 +356,18 @@ public static class RequestParser
         switch (value.ValueKind)
         {
             case JsonValueKind.String:
-                // رشتهٔ "0" عمداً معتبر شمرده می‌شود: اگر محصول شناسه را به‌صورت رشته فرستاده،
-                // یعنی شناسهٔ واقعی است؛ فقط «عددِ صفر» نشانهٔ «نیامده» است.
-                var text = value.GetString();
-                return string.IsNullOrWhiteSpace(text) ? null : text;
+                var text = value.GetString()?.Trim();
+                if (string.IsNullOrEmpty(text)) return null;
+
+                // رشتهٔ «0» هم شناسه نیست. نمونهٔ واقعی (فایل درخواست «فروغ آریا پارسیان»):
+                // نسخه‌ای از نرم‌افزار مشتری شناسهٔ شرکت را به‌صورت رشتهٔ "0" می‌فرستد.
+                // پذیرفتنش یعنی سند به «شرکت صفر» بسته می‌شود و در نرم‌افزار مشتری به شرکت
+                // واقعی نمی‌چسبد؛ پس مثل «نیامده» رفتار می‌کنیم تا پشتیبان آگاه شود.
+                if (long.TryParse(text, System.Globalization.NumberStyles.Integer,
+                        System.Globalization.CultureInfo.InvariantCulture, out var numeric) && numeric <= 0)
+                    return null;
+
+                return text;
             case JsonValueKind.Number when value.TryGetInt64(out var number):
                 return number <= 0 ? null : number.ToString(System.Globalization.CultureInfo.InvariantCulture);
             default:

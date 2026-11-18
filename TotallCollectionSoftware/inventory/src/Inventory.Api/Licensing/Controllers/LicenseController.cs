@@ -327,7 +327,7 @@ public class LicenseController : ControllerBase
 
         var installationId = await _identity.GetInstallationIdAsync(cancellationToken);
         var customerName = await _identity.GetCustomerNameAsync(cancellationToken);
-        var (companyId, companyName) = await ResolveRequestCompanyAsync(cancellationToken);
+        var (companyId, companyName, companyCode, companyNumber) = await ResolveRequestCompanyAsync(cancellationToken);
 
         return Ok(new
         {
@@ -335,6 +335,8 @@ public class LicenseController : ControllerBase
             customerName,
             companyId,
             companyName,
+            companyCode,
+            companyNumber,
             deployment = LicenseDeployment.FromConfiguration(_configuration).ToString(),
             productVersion = _options.ProductVersion ?? typeof(LicenseController).Assembly.GetName().Version?.ToString(),
             machineName = Environment.MachineName,
@@ -364,7 +366,7 @@ public class LicenseController : ControllerBase
         // قاعدهٔ محصول: هر لایسنس فقط برای یک شرکت. پس فایل درخواست باید شناسه و نام
         // همان شرکت را همراه داشته باشد؛ وگرنه پشتیبان مجبور می‌شد شناسه را دستی وارد
         // کند (و پنل پیام «در فایل درخواست این مشتری شناسهٔ شرکت نیامده است» می‌داد).
-        var (companyId, companyName) = await ResolveRequestCompanyAsync(cancellationToken);
+        var (companyId, companyName, companyCode, companyNumber) = await ResolveRequestCompanyAsync(cancellationToken);
 
         var request = new
         {
@@ -375,9 +377,15 @@ public class LicenseController : ControllerBase
             customerName,
 
             // ---- هویت شرکت: هم به‌صورت تخت و هم شیء، تا هر دو قالب خوانده شود ----
+            // companyId = شناسهٔ پایدار سند (Code یا C-{Id})؛ companyCode/companyNumber
+            // برای عیب‌یابی‌اند تا پشتیبان ببیند نرم‌افزار مشتری «چه کدی» خوانده است.
             companyId,
             companyName,
-            company = (object?)(companyId is null ? null : new { id = companyId, name = companyName }),
+            companyCode,
+            companyNumber,
+            company = (object?)(companyId is null
+                ? null
+                : new { id = companyId, code = companyCode, number = companyNumber, name = companyName }),
 
             // ---- موتور و بیلد (برای اینکه هنگام صدور بدانیم مشتری چه نسخه‌ای دارد) ----
             engineVersion = Inventory.Licensing.LicenseEngineInfo.FullVersion,
@@ -408,7 +416,7 @@ public class LicenseController : ControllerBase
     }
 
     /// <summary>
-    /// شناسه و نام شرکتی که فایل درخواست برایش تولید می‌شود.
+    /// هویت شرکتی که فایل درخواست برایش تولید می‌شود: شناسهٔ پایدار، کد، شماره و نام.
     ///
     /// <para>
     /// چرا این‌جاست؟ قاعدهٔ محصول «هر لایسنس برای یک شرکت» است و پنل پشتیبانی شرکتِ سند را
@@ -418,31 +426,68 @@ public class LicenseController : ControllerBase
     /// </para>
     ///
     /// <para>
-    /// اگر هیچ شرکت فعالی تعریف نشده باشد (نصب تازه، پیش از ساخت شرکت) فایل درخواست
+    /// <b>شرکت مرجع = شرکتی که کاربر همین حالا در آن کار می‌کند</b> (کمبوی بالای برنامه،
+    /// <c>X-Company-Id</c>)؛ نه «اولین شرکت فعال». در نصب چندشرکتی (مثل نصب‌هایی که ده‌ها
+    /// شرکت دارند) قاعدهٔ قبلی می‌توانست سند را به نام شرکت دیگری صادر کند و لایسنس
+    /// به شرکتِ درخواست‌دهنده نچسبد. اگر شرکت فعالی در دسترس نبود، به اولین شرکت فعال
+    /// برمی‌گردیم تا رفتار قبلی حفظ شود.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>هیچ‌گاه شناسهٔ «0» برنمی‌گردد:</b> کدِ «0» یعنی فیلد کد شرکت خالی/اشتباه پر شده است؛
+    /// در این حالت شناسه به <c>C-{Id}</c> تبدیل می‌شود تا لایسنس به «شرکت صفر» بسته نشود.
+    /// </para>
+    ///
+    /// <para>
+    /// اگر هیچ شرکتی تعریف نشده باشد (نصب تازه، پیش از ساخت شرکت) فایل درخواست
     /// بدون شرکت تولید می‌شود و پنل به رفتار قبلی برمی‌گردد؛ چیزی جعل نمی‌شود.
     /// </para>
     /// </summary>
-    private async Task<(string? Id, string? Name)> ResolveRequestCompanyAsync(CancellationToken cancellationToken)
+    private async Task<(string? Id, string? Name, string? Code, int? Number)> ResolveRequestCompanyAsync(
+        CancellationToken cancellationToken)
     {
         try
         {
-            var company = await _db.SystemCompanies.AsNoTracking()
+            // ---- ۱) شرکت فعالِ همین درخواست (همان شرکت انتخاب‌شده در بالای برنامه) ----
+            var activeCompanyId = Request.HttpContext.Items[Inventory.Api.Infrastructure.ActiveCompanyMiddleware.ItemKey] switch
+            {
+                int id when id > 0 => id,
+                _ => (int?)null
+            };
+
+            var company = activeCompanyId is { } chosenId
+                ? await _db.SystemCompanies.AsNoTracking()
+                    .Where(c => c.Id == chosenId)
+                    .Select(c => new { c.Id, c.Name, c.Code })
+                    .FirstOrDefaultAsync(cancellationToken)
+                : null;
+
+            // ---- ۲) پشتیبان: اولین شرکت فعال (رفتار پیشین) ----
+            company ??= await _db.SystemCompanies.AsNoTracking()
                 .Where(c => c.IsActive)
                 .OrderBy(c => c.Id)
                 .Select(c => new { c.Id, c.Name, c.Code })
                 .FirstOrDefaultAsync(cancellationToken);
 
-            if (company is null) return (null, null);
+            if (company is null) return (null, null, null, null);
 
-            var id = string.IsNullOrWhiteSpace(company.Code) ? $"C-{company.Id}" : company.Code!.Trim();
-            return (id, string.IsNullOrWhiteSpace(company.Name) ? null : company.Name.Trim());
+            var code = string.IsNullOrWhiteSpace(company.Code) ? null : company.Code!.Trim();
+
+            // کد «0» شناسه نیست؛ نشانهٔ فیلد خالی/اشتباه است. اگر همان صفر را به سند ببریم،
+            // لایسنس به شرکتی می‌چسبد که وجود ندارد (همان اشکالی که در فایل درخواست دیده شد).
+            if (string.Equals(code, "0", StringComparison.Ordinal)) code = null;
+
+            var key = code ?? $"C-{company.Id}";
+            var name = string.IsNullOrWhiteSpace(company.Name) ? null : company.Name.Trim();
+
+            return (key, name, code, company.Id);
         }
         catch (Exception ex)
         {
             // در نصب اولیه ممکن است جدول شرکت‌ها هنوز ساخته نشده باشد؛ فایل درخواست
             // نباید به همین دلیل شکست بخورد.
             _log.LogDebug(ex, "خواندن شرکت پیش‌فرض برای فایل درخواست ممکن نشد.");
-            return (null, null);
+            return (null, null, null, null);
         }
     }
 

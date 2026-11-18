@@ -20,6 +20,18 @@ public sealed record LicenseEventListDto(int Count, List<LicenseEventDto>? Items
 public sealed record ReservationListDto(int Count, List<PendingReservationDto>? Items);
 
 /// <summary>
+/// اطلاعات نصب از <c>/api/license/installation</c>.
+///
+/// <para>
+/// <c>CompanyId</c> همان شناسه‌ای است که در «فایل درخواست» مینشیند و پنل پشتیبانی شرکتِ
+/// سند را از آن می‌خواند؛ <c>CompanyCode</c> کد خام شرکت و <c>CompanyNumber</c> شناسهٔ
+/// عددی آن است. نمایش این سه، حدسِ «کد شرکت چیست» را حذف می‌کند.
+/// </para>
+/// </summary>
+public sealed record LicenseInstallationDto(string? InstallationId, string? CompanyId,
+    string? CompanyName, string? CompanyCode, int? CompanyNumber);
+
+/// <summary>
 /// کلاینت صفحهٔ لایسنس.
 ///
 /// <para>
@@ -33,6 +45,7 @@ public interface ILicensingApi
     Task<List<LicenseEventDto>> GetWarningEventsAsync(int take = 50, CancellationToken cancellationToken = default);
     Task<List<PendingReservationDto>> GetPendingReservationsAsync(CancellationToken cancellationToken = default);
     Task<(byte[] Data, string FileName)> DownloadRequestFileAsync(CancellationToken cancellationToken = default);
+    Task<LicenseInstallationDto?> GetInstallationAsync(CancellationToken cancellationToken = default);
     Task<List<(string FileName, bool Ok, string Message, ActivationResultDto? Result)>> UploadFilesAsync(
         IEnumerable<(string FileName, Stream Content)> files, CancellationToken cancellationToken = default);
     Task SettleAsync(long reservationId, bool confirm, string? note, CancellationToken cancellationToken = default);
@@ -68,6 +81,23 @@ public sealed class LicensingApi : ILicensingApi
 
     public Task<(byte[] Data, string FileName)> DownloadRequestFileAsync(CancellationToken cancellationToken = default)
         => DownloadAsync(cancellationToken);
+
+    /// <summary>شناسهٔ نصب و شرکت مرجعِ فایل درخواست (برای نمایش پیش از دانلود فایل).</summary>
+    public async Task<LicenseInstallationDto?> GetInstallationAsync(CancellationToken cancellationToken = default)
+    {
+        var element = await _api.GetAsync<JsonElement>("api/license/installation", cancellationToken);
+
+        string? Str(string name)
+            => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var v)
+               && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        int? Int(string name)
+            => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var v)
+               && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : null;
+
+        return new LicenseInstallationDto(Str("installationId"), Str("companyId"), Str("companyName"),
+            Str("companyCode"), Int("companyNumber"));
+    }
 
     private async Task<(byte[] Data, string FileName)> DownloadAsync(CancellationToken cancellationToken)
     {
