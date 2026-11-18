@@ -104,6 +104,25 @@ public class SalesVisitController : ControllerBase
         return Ok(await _svc.FinanceQueueAsync(actor));
     }
 
+    /// <summary>
+    /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا در بازهٔ زمانی.
+    /// یک سطر برای هر کالا + جمع سفارش + موجودی کل + کسری.
+    /// مدیر/مالی همهٔ درخواست‌های شرکت را می‌بیند و ویزیتور فقط درخواست‌های خودش را.
+    /// </summary>
+    [HttpGet("requests-report")]
+    public async Task<ActionResult<VisRequestsReportDto>> RequestsReport(
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] bool includeCanceled = false)
+    {
+        if (!await HasAnyAsync("Approve", "FinanceView", "View", "Export")) return Forbid();
+
+        var toDate = (to ?? DateTime.Today).Date;
+        var fromDate = (from ?? toDate.AddDays(-30)).Date;
+        if (fromDate > toDate) (fromDate, toDate) = (toDate, fromDate);
+
+        var actor = await _svc.ResolveActorAsync(User);
+        return Ok(await _svc.RequestsReportAsync(actor, fromDate, toDate, includeCanceled));
+    }
+
     /// <summary>آمار کارتابلی/داشبوردی.</summary>
     [HttpGet("stats")]
     public async Task<ActionResult<VisQueueStats>> Stats()

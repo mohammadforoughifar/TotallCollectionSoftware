@@ -1660,6 +1660,14 @@ else
             return allowed;
         }
 
+        // گزارش تجمیع درخواست‌های ویزیتوری — مخصوص مدیر فروش/مالی (تأیید) و دارندگان مجوز خروجی.
+        if (p.StartsWith("sales/requests-report"))
+        {
+            var ok = Auth.Has("SalesVisit.Approve") || Auth.Has("SalesVisit.Export");
+            if (!ok) deniedTitle = "گزارش درخواست‌های ویزیتوری";
+            return ok;
+        }
+
         // ── سامانه فروشگاهی: تیک «هر بخش» باید همان صفحه را واقعاً باز کند ──
         // پیش‌تر گاردهای ماژول‌های قدیمی (Orders./Products./Expenses./Repairs./SalesVisit.)
         // زودتر اعمال می‌شدند؛ نتیجه این بود که نقشی که فقط مجوز «بخش»های سامانه فروشگاهی

@@ -1,0 +1,320 @@
+@namespace Inventory.Client.Pages
+@page "/sales/requests-report"
+@using System.Text
+@inject ISalesVisitApi Api
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject NavigationManager Nav
+@inject IAuthState Auth
+@inject IJSRuntime JS
+
+<PageTitle>گزارش درخواست‌های ویزیتوری — تجمیع کالا</PageTitle>
+
+@* ============================================================
+   گزارش «کل درخواست‌های ویزیتوری در بازهٔ زمانی» — تجمیع‌شده بر اساس کالا
+   • هر کالا فقط یک سطر (بدون سطر تکراری)
+   • ستون «جمع سفارش» = مجموع مقدار درخواست‌شدهٔ همان کالا در بازه
+   • ستون «موجودی کل» = جمع موجودی همان کالا در همهٔ انبارهای شرکت
+   • ستون «کسری» = جمع سفارش − موجودی کل؛ فقط وقتی مثبت شود نمایش داده می‌شود
+   • ردیف پایانی: جمع کل سفارش و جمع کل کسری
+   ============================================================ *@
+
+<div class="vis-rep" dir="rtl" @ref="printRoot">
+
+    <div class="vis-rep-head">
+        <div>
+            <h1 class="h4 fw-bold mb-1"><i class="bi bi-clipboard-data text-primary ms-2"></i>گزارش درخواست‌های ویزیتوری</h1>
+            <div class="text-muted fs-8">تجمیع کل درخواست‌ها بر اساس کالا در بازهٔ زمانی — یک سطر برای هر کالا</div>
+        </div>
+        <div class="d-flex gap-2 d-print-none">
+            <button type="button" class="btn btn-outline-secondary" @onclick="Print" disabled="@(!Report?.HasData ?? true)">
+                <i class="bi bi-printer ms-1"></i> چاپ
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="ExportCsv" disabled="@(!Report?.HasData ?? true)">
+                <i class="bi bi-filetype-csv ms-1"></i> خروجی Excel/CSV
+            </button>
+            <button type="button" class="btn btn-outline-primary" @onclick="@(() => Nav.NavigateTo("/sales/requests"))">
+                <i class="bi bi-list-ul ms-1"></i> فهرست درخواست‌ها
+            </button>
+        </div>
+    </div>
+
+    @* ---------- فیلترها ---------- *@
+    <div class="card mb-3 d-print-none">
+        <div class="card-body">
+            <div class="row g-2 align-items-end">
+                <div class="col-6 col-md-2">
+                    <label class="form-label">از تاریخ</label>
+                    <DatePicker @bind-Value="from" AllowClear="true" />
+                </div>
+                <div class="col-6 col-md-2">
+                    <label class="form-label">تا تاریخ</label>
+                    <DatePicker @bind-Value="to" AllowClear="true" />
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label">بازه‌های سریع</label>
+                    <div class="d-flex flex-wrap gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => Quick(0))">امروز</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => Quick(7))">۷ روز</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => Quick(30))">۳۰ روز</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ThisMonth">ماه جاری</button>
+                    </div>
+                </div>
+                <div class="col-12 col-md-3">
+                    <div class="form-check mt-4">
+                        <input class="form-check-input" type="checkbox" id="incCanceled" @bind="includeCanceled" />
+                        <label class="form-check-label" for="incCanceled">درخواست‌های ردشده/ابطال‌شده هم حساب شوند</label>
+                    </div>
+                </div>
+                <div class="col-12 col-md-2">
+                    <button type="button" class="btn btn-primary w-100" @onclick="Load" disabled="@loading">
+                        @if (loading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                        نمایش گزارش
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center p-5" role="status">در حال تهیهٔ گزارش…</div>
+    }
+    else if (Report is null)
+    {
+        <div class="alert alert-info">برای دیدن گزارش، بازهٔ زمانی را انتخاب و «نمایش گزارش» را بزنید.</div>
+    }
+    else
+    {
+        <div class="vis-rep-applied">
+            از <b>@Report.From.ToFa()</b> تا <b>@Report.To.ToFa()</b>
+            <span class="sep">|</span> @Report.ScopeText
+            <span class="sep">|</span> @Report.CanceledText
+        </div>
+
+        <div class="vis-rep-summary">
+            <div><span>تعداد درخواست</span><strong class="num">@Fa.Digits(Report.OrderCount)</strong></div>
+            <div><span>تعداد کالا (سطر)</span><strong class="num">@Fa.Digits(Report.ProductCount)</strong></div>
+            <div><span>جمع کل سفارش</span><strong class="num">@Fa.Digits(Report.TotalOrderedQty)</strong></div>
+            <div class="@(Report.ShortageRowCount > 0 ? "warn" : "")">
+                <span>کالاهای دارای کسری</span>
+                <strong class="num">@Fa.Digits(Report.ShortageRowCount)</strong>
+            </div>
+        </div>
+
+        @if (Report.ShortageRowCount > 0)
+        {
+            <div class="alert alert-warning py-2 small">
+                <i class="bi bi-exclamation-triangle ms-1"></i>
+                <b>@Fa.Digits(Report.ShortageRowCount)</b> کالا کسری دارد — جمع کسری:
+                <b class="num">@Fa.Digits(Report.TotalShortageQty)</b> واحد.
+                کسری = جمع سفارش منهای موجودی کل شرکت.
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                <span>تجمیع درخواست‌ها بر اساس کالا</span>
+                <span class="text-muted fs-8">@Fa.Digits(Report.ProductCount) سطر</span>
+            </div>
+            @if (!Report.HasData)
+            {
+                <div class="card-body text-muted">در این بازه هیچ درخواستی با این شرایط ثبت نشده است.</div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table align-middle mb-0 vis-rep-table">
+                        <thead>
+                            <tr>
+                                <th style="width:52px">#</th>
+                                <th>کد کالا</th>
+                                <th>نام کالا</th>
+                                <th>واحد</th>
+                                <th class="text-start">جمع سفارش</th>
+                                <th class="text-start">تعداد درخواست</th>
+                                <th class="text-start">موجودی کل</th>
+                                <th class="text-start">کسری</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{ var i = 0; }
+                            @foreach (var r in Report.Rows)
+                            {
+                                i++;
+                                <tr class="@(r.HasShortage ? "row-shortage" : "")">
+                                    <td class="num text-muted">@Fa.Digits(i)</td>
+                                    <td class="num">@(string.IsNullOrWhiteSpace(r.ProductCode) ? "—" : r.ProductCode)</td>
+                                    <td class="fw-semibold">
+                                        @(string.IsNullOrWhiteSpace(r.ProductName) ? $"کالای #{r.ProductId}" : r.ProductName)
+                                        @if (r.IsService)
+                                        {
+                                            <span class="badge badge-soft-muted ms-1">خدمت</span>
+                                        }
+                                    </td>
+                                    <td>@(string.IsNullOrWhiteSpace(r.Unit) ? "—" : r.Unit)</td>
+                                    <td class="text-start num fw-bold">@Fa.Digits(r.OrderedQty)</td>
+                                    <td class="text-start num text-muted">@Fa.Digits(r.OrderCount)</td>
+                                    <td class="text-start num">@Fa.Digits(r.StockQty)</td>
+                                    <td class="text-start num @(r.HasShortage ? "text-danger fw-bold" : "text-muted")">@r.ShortageText</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th colspan="4" class="text-end">جمع کل</th>
+                                <th class="text-start num">@Fa.Digits(Report.TotalOrderedQty)</th>
+                                <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
+                                <th></th>
+                                <th class="text-start num @(Report.TotalShortageQty > 0 ? "text-danger" : "")">
+                                    @(Report.TotalShortageQty > 0 ? Fa.Digits(Report.TotalShortageQty) : "—")
+                                </th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+        </div>
+
+        <div class="vis-rep-foot">
+            گزارش در @Report.GeneratedAt.ToFaDateTime() تهیه شد. مرجع موجودی: جمع موجودی همهٔ انبارهای شرکت.
+        </div>
+    }
+</div>
+
+<style>
+    .vis-rep { max-width: 1400px; margin: auto; }
+    .vis-rep-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .vis-rep-applied { color: #475569; font-size: .85rem; padding: .35rem 0 .75rem; }
+    .vis-rep-applied .sep { color: #cbd5e1; margin: 0 .35rem; }
+    .vis-rep-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+    .vis-rep-summary > div { background: #fff; border: 1px solid #e2e8f0; border-radius: .75rem; padding: .9rem 1rem; }
+    .vis-rep-summary > div.warn { border-color: #fca5a5; background: #fef2f2; }
+    .vis-rep-summary span { display: block; color: #64748b; font-size: .8rem; }
+    .vis-rep-summary strong { display: block; color: #312e81; margin-top: .3rem; font-size: 1.2rem; }
+    .vis-rep-summary > div.warn strong { color: #b91c1c; }
+    .vis-rep-table tbody tr.row-shortage { background: #fff7ed; }
+    .vis-rep-table tbody tr.row-shortage:hover { background: #ffedd5; }
+    .vis-rep-table tfoot th { background: #f8fafc; font-weight: 800; border-top: 2px solid #e2e8f0; }
+    .vis-rep-foot { color: #94a3b8; font-size: .75rem; padding: .75rem .25rem 2rem; }
+    @@media (max-width: 768px) { .vis-rep-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @@media print {
+        .vis-rep .table-responsive { overflow: visible; }
+        .vis-rep-table { font-size: 9pt; }
+        .vis-rep-table tr { break-inside: avoid; }
+        .vis-rep-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+</style>
+
+@code {
+    private DateTime? from;
+    private DateTime? to;
+    private bool includeCanceled;
+    private bool loading;
+    private VisRequestsReportDto? Report;
+    private ElementReference printRoot;
+
+    protected override void OnInitialized()
+    {
+        Layout.SetTitle("گزارش درخواست‌های ویزیتوری");
+        // پیش‌فرض: ۳۰ روز اخیر
+        to = DateTime.Today;
+        from = DateTime.Today.AddDays(-29);
+        _ = Load();
+    }
+
+    private void Quick(int days)
+    {
+        to = DateTime.Today;
+        from = DateTime.Today.AddDays(-days);
+        _ = Load();
+    }
+
+    private void ThisMonth()
+    {
+        // ابتدای ماه شمسی جاری تا امروز
+        var today = DateTime.Today;
+        var (jy, jm, _) = PersianDate.FromGregorian(today);
+        from = PersianDate.ToGregorian(jy, jm, 1);
+        to = today;
+        _ = Load();
+    }
+
+    private async Task Load()
+    {
+        var start = (from ?? DateTime.Today.AddDays(-29)).Date;
+        var end = (to ?? DateTime.Today).Date;
+        if (start > end)
+        {
+            Toast.Error("تاریخ شروع نمی‌تواند پس از تاریخ پایان باشد.");
+            return;
+        }
+
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            Report = await Api.RequestsReportAsync(start, end, includeCanceled);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            Report = null;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Print()
+    {
+        try { await JS.InvokeVoidAsync("ltxPrint"); }
+        catch { await JS.InvokeVoidAsync("print"); }
+    }
+
+    private async Task ExportCsv()
+    {
+        if (Report is null || !Report.HasData) return;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("کد کالا;نام کالا;واحد;جمع سفارش;تعداد درخواست;موجودی کل;کسری");
+        foreach (var r in Report.Rows)
+        {
+            sb.AppendLine(string.Join(';',
+                Csv(r.ProductCode),
+                Csv(r.ProductName),
+                Csv(r.Unit ?? ""),
+                Raw(r.OrderedQty),
+                Raw(r.OrderCount),
+                Raw(r.StockQty),
+                Raw(r.ShortageQty)));
+        }
+        sb.AppendLine(string.Join(';',
+            "جمع کل", "", "",
+            Raw(Report.TotalOrderedQty),
+            Raw(Report.OrderCount),
+            "",
+            Raw(Report.TotalShortageQty)));
+
+        var name = $"gozaresh-darkhast-visit-{Report.From:yyyyMMdd}-{Report.To:yyyyMMdd}.csv";
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFileFromBase64", name, "text/csv;charset=utf-8",
+            Convert.ToBase64String(bytes));
+        Toast.Success("فایل CSV ساخته شد.");
+    }
+
+    /// <summary>عدد خام (بدون جداکننده و با ارقام لاتین) برای فایل CSV — قابل باز شدن در Excel.</summary>
+    private static string Raw(decimal v) =>
+        v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Raw(int v) =>
+        v.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string Csv(string? value)
+    {
+        var v = (value ?? "").Replace("\r", " ").Replace("\n", " ").Replace(";", "،");
+        return v;
+    }
+}

@@ -12,6 +12,9 @@ public interface ISalesVisitApi
     Task<VisOrderDto?> GetAsync(int id);
     Task<List<VisApprovalItem>> ApprovalsAsync();
     Task<List<VisOrderDto>> FinanceQueueAsync();
+
+    /// <summary>گزارش تجمیع درخواست‌ها بر اساس کالا در بازهٔ زمانی (یک سطر برای هر کالا).</summary>
+    Task<VisRequestsReportDto> RequestsReportAsync(DateTime from, DateTime to, bool includeCanceled = false);
     Task<VisQueueStats> StatsAsync();
 
     Task<VisOrderDto> SaveAsync(VisOrderCommand cmd);
@@ -62,6 +65,10 @@ public class SalesVisitApi : ISalesVisitApi
 
     public Task<List<VisOrderDto>> FinanceQueueAsync() =>
         _api.GetAsync<List<VisOrderDto>>("api/sales-visit/finance-queue");
+
+    public Task<VisRequestsReportDto> RequestsReportAsync(DateTime from, DateTime to, bool includeCanceled = false) =>
+        _api.GetAsync<VisRequestsReportDto>(
+            $"api/sales-visit/requests-report?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}&includeCanceled={(includeCanceled ? "true" : "false")}");
 
     public Task<VisQueueStats> StatsAsync() => _api.GetAsync<VisQueueStats>("api/sales-visit/stats");
 

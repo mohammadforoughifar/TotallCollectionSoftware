@@ -87,6 +87,13 @@ public interface IVisOrderService
     /// <summary>صف مالی: سفارش‌های تأییدشده / فاکتورشده.</summary>
     Task<List<VisOrderDto>> FinanceQueueAsync(VisActor actor, int take = 200);
 
+    /// <summary>
+    /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا در یک بازهٔ زمانی:
+    /// یک سطر برای هر کالا، جمع مقدار سفارش‌شده، موجودی کل شرکت و «کسری».
+    /// </summary>
+    Task<VisRequestsReportDto> RequestsReportAsync(VisActor actor, DateTime from, DateTime to,
+        bool includeCanceled = false);
+
     Task<VisQueueStats> StatsAsync(VisActor actor);
 
     Task<List<VisCustomerLite>> CustomersAsync(VisActor actor, string? search, int take = 50);
@@ -1016,6 +1023,161 @@ public class VisOrderService : IVisOrderService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا (بازهٔ زمانی).
+    /// <para>
+    /// قواعد: هر کالا فقط یک سطر؛ جمع مقدار سفارش‌شده؛ موجودی «کل شرکت» (جمع همهٔ
+    /// انبارها)؛ کسری = سفارش − موجودی و تنها وقتی مثبت شود مقدار می‌گیرد.
+    /// کالاهای خدماتی موجودی ندارند؛ برای آن‌ها ستون کسری «—» است.
+    /// </para>
+    /// <para>
+    /// جمع‌ها در حافظه محاسبه می‌شوند (نه در SQL) چون SQLite روی ستون‌های decimal
+    /// عملگر SUM را پشتیبانی نمی‌کند و در سرور SQL هم نتیجه یکسان می‌ماند.
+    /// </para>
+    /// </summary>
+    public async Task<VisRequestsReportDto> RequestsReportAsync(VisActor actor, DateTime from, DateTime to,
+        bool includeCanceled = false)
+    {
+        var start = from.Date;
+        var end = to.Date;
+        if (end < start) (start, end) = (end, start);
+        var endExclusive = end.AddDays(1);
+
+        var query = _db.VisOrders.AsNoTracking()
+            .Where(o => o.Date >= start && o.Date < endExclusive);
+
+        if (!includeCanceled)
+            query = query.Where(o => o.Status != VisOrderStatus.Canceled && o.Status != VisOrderStatus.Rejected);
+
+        // ویزیتور فقط دادهٔ خودش؛ مدیر/مالی همهٔ شرکت.
+        if (!actor.CanSeeAll)
+        {
+            var myReferrerId = actor.ReferrerId ?? 0;
+            query = query.Where(o => o.ReferrerId == myReferrerId);
+        }
+
+        var orders = await query
+            .Select(o => new
+            {
+                o.Id,
+                Lines = o.Lines.Select(l => new
+                {
+                    l.ProductId,
+                    l.ProductCode,
+                    l.ProductName,
+                    l.Unit,
+                    l.Quantity
+                }).ToList()
+            })
+            .ToListAsync();
+
+        var map = new Dictionary<int, VisRequestsReportRow>();
+        var orderSets = new Dictionary<int, HashSet<int>>();
+
+        foreach (var o in orders)
+        {
+            foreach (var l in o.Lines)
+            {
+                if (l.ProductId <= 0) continue;
+
+                if (!map.TryGetValue(l.ProductId, out var row))
+                {
+                    row = new VisRequestsReportRow
+                    {
+                        ProductId = l.ProductId,
+                        ProductCode = l.ProductCode,
+                        ProductName = l.ProductName,
+                        Unit = l.Unit
+                    };
+                    map[l.ProductId] = row;
+                    orderSets[l.ProductId] = new HashSet<int>();
+                }
+                else
+                {
+                    // snapshot قدیمی ممکن است ناقص باشد؛ اولین مقدار غیرخالی نگه داشته می‌شود.
+                    if (string.IsNullOrWhiteSpace(row.ProductName) && !string.IsNullOrWhiteSpace(l.ProductName))
+                        row.ProductName = l.ProductName;
+                    if (string.IsNullOrWhiteSpace(row.ProductCode) && !string.IsNullOrWhiteSpace(l.ProductCode))
+                        row.ProductCode = l.ProductCode;
+                    if (string.IsNullOrWhiteSpace(row.Unit) && !string.IsNullOrWhiteSpace(l.Unit))
+                        row.Unit = l.Unit;
+                }
+
+                row.OrderedQty += l.Quantity;
+                orderSets[l.ProductId].Add(o.Id);
+            }
+        }
+
+        var productIds = map.Keys.ToList();
+
+        if (productIds.Count > 0)
+        {
+            // موجودی کل شرکت برای این کالاها (فیلتر شرکت به‌صورت خودکار اعمال می‌شود).
+            var stocks = await _db.Stocks.AsNoTracking()
+                .Where(s => productIds.Contains(s.ProductId))
+                .Select(s => new { s.ProductId, s.Quantity })
+                .ToListAsync();
+            var stockByProduct = new Dictionary<int, decimal>();
+            foreach (var s in stocks)
+                stockByProduct[s.ProductId] = stockByProduct.GetValueOrDefault(s.ProductId) + s.Quantity;
+
+            var serviceIds = (await _db.Products.AsNoTracking()
+                    .Where(p => productIds.Contains(p.Id) && p.IsService)
+                    .Select(p => p.Id)
+                    .ToListAsync())
+                .ToHashSet();
+
+            // تکمیل نام/کد کالاهایی که در سطر قدیمی خالی مانده‌اند.
+            var missingNames = map.Values
+                .Where(r => string.IsNullOrWhiteSpace(r.ProductName) || string.IsNullOrWhiteSpace(r.ProductCode))
+                .Select(r => r.ProductId)
+                .ToList();
+            if (missingNames.Count > 0)
+            {
+                var infos = await _db.Products.AsNoTracking()
+                    .Where(p => missingNames.Contains(p.Id))
+                    .Select(p => new { p.Id, p.Name, p.Code })
+                    .ToListAsync();
+                foreach (var info in infos)
+                {
+                    var row = map[info.Id];
+                    if (string.IsNullOrWhiteSpace(row.ProductName)) row.ProductName = info.Name;
+                    if (string.IsNullOrWhiteSpace(row.ProductCode)) row.ProductCode = info.Code;
+                }
+            }
+
+            foreach (var row in map.Values)
+            {
+                row.OrderCount = orderSets[row.ProductId].Count;
+                row.IsService = serviceIds.Contains(row.ProductId);
+                row.StockQty = stockByProduct.GetValueOrDefault(row.ProductId);
+                var shortage = row.OrderedQty - row.StockQty;
+                row.ShortageQty = !row.IsService && shortage > 0 ? shortage : 0;
+            }
+        }
+
+        var rows = map.Values
+            .OrderByDescending(r => r.HasShortage)
+            .ThenByDescending(r => r.ShortageQty)
+            .ThenByDescending(r => r.OrderedQty)
+            .ThenBy(r => r.ProductName)
+            .ToList();
+
+        return new VisRequestsReportDto
+        {
+            From = start,
+            To = end,
+            OrderCount = orders.Count,
+            Rows = rows,
+            TotalOrderedQty = rows.Sum(r => r.OrderedQty),
+            TotalShortageQty = rows.Where(r => r.HasShortage).Sum(r => r.ShortageQty),
+            ShortageRowCount = rows.Count(r => r.HasShortage),
+            IncludesCanceled = includeCanceled,
+            ScopedToMe = !actor.CanSeeAll,
+            GeneratedAt = DateTime.Now
+        };
     }
 
     public async Task<List<VisOrderDto>> FinanceQueueAsync(VisActor actor, int take = 200)
