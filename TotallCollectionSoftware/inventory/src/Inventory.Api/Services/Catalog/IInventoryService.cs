@@ -39,8 +39,9 @@ public interface IInventoryService
     Task DeleteUnitAsync(int id);
 
     // ---------------- ورود اکسل کالا ----------------
-    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null);
-    byte[] BuildProductTemplate();
+    Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null,
+        ProductImportKind kind = ProductImportKind.Goods);
+    byte[] BuildProductTemplate(ProductImportKind kind = ProductImportKind.Goods);
 
     // ---------------- کالا ----------------
     /// <summary>فهرست کالاها؛ warehouseId = فقط کالاهای آن انبار (کالاهای بدون انبار و خدمات همیشه می‌آیند).</summary>
@@ -65,6 +66,13 @@ public interface IInventoryService
 
     // ---------------- موجودی ----------------
     Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize);
+    /// <summary>
+    /// موجودی تعدادی «تا پایان تاریخ asOf» بر اساس اسناد dated (نه جدول تجمیعی فعلی).
+    /// اسناد آینده (مثلاً خرید ۱۴۰۵/۰۸/۲۱) در موجودی فاکتور ۱۴۰۵/۰۸/۲۰ دیده نمیشوند.
+    /// </summary>
+    Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetStockQuantitiesAsOfAsync(
+        DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
+        int? excludeTransactionId = null);
     Task AdjustStockAsync(AdjustmentCommand cmd);
     /// <summary>خروج واقعی گارانتی؛ فقط داخل تراکنش سریال‌پذیر پذیرش گارانتی فراخوانی شود.</summary>
     Task<int?> ConsumeWarrantyStockAsync(int warehouseId, int partyId, string warrantyNumber, DateTime at, IReadOnlyCollection<ShopWarrantyItemDto> supplied);

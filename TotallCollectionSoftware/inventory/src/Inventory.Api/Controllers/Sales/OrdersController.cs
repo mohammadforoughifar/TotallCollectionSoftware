@@ -96,13 +96,26 @@ public class OrdersController : ApiControllerBase
     [HttpGet("profit-access")]
     public async Task<ActionResult<bool>> ProfitAccess() => Ok(await CanSeeProfitAsync());
 
-    /// <summary>موجودی تعدادی انبار برای انتخاب کالا در فاکتور، بدون افشای بهای تمام‌شده.</summary>
+    /// <summary>
+    /// موجودی تعدادی انبار برای انتخاب کالا در فاکتور، بدون افشای بهای تمام‌شده.
+    /// با asOf (تاریخ فاکتور)، فقط اسناد تا آن تاریخ شمارش میشوند؛ خرید فردا
+    /// نمیتواند موجودی فاکتور دیروز را افزایش دهد. بدون asOf رفتار قدیمی حفظ میشود.
+    /// </summary>
     [HttpGet("warehouse-stock")]
     public async Task<ActionResult<PagedResult<InvoiceStockItem>>> WarehouseStock(
-        [FromQuery] int warehouseId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10000)
+        [FromQuery] int warehouseId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10000,
+        [FromQuery] DateTime? asOf = null)
     {
         if (warehouseId <= 0) return BadRequest(new { message = "انبار معتبر انتخاب کنید." });
         var result = await _service.GetStockAsync(warehouseId, null, false, Math.Max(1, page), Math.Clamp(pageSize, 1, 10000));
+        if (asOf.HasValue)
+        {
+            // همان فهرست کالاها (و همان صفحهبندی) حفظ میشود تا عکسهای فوری
+            // صفحهدار کلاینت با هم سازگار بمانند؛ فقط «مقدار» تاریخمند میشود.
+            var asOfQuantities = await _service.GetStockQuantitiesAsOfAsync(asOf.Value, warehouseId);
+            foreach (var s in result.Items)
+                s.Quantity = asOfQuantities.TryGetValue((s.WarehouseId, s.ProductId), out var qty) ? qty : 0m;
+        }
         return Ok(new PagedResult<InvoiceStockItem>
         {
             Items = result.Items.Select(s => new InvoiceStockItem

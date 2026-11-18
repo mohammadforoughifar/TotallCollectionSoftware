@@ -145,8 +145,11 @@ class WholeRialContract(unittest.TestCase):
         catalog = read("Inventory.Client/Pages/Catalog/Products.razor")
         self.assertIn("!ShopInvoiceAmounts.IsWholePrice(form.SalePrice)", catalog)
         service = read("Inventory.Api/Services/Catalog/InventoryService.cs")
-        self.assertIn("var purchase = ReadWholePrice(row.Cell(5))", service)
-        self.assertIn("var sale = ReadWholePrice(row.Cell(6))", service)
+        # ورودی اکسل همچنان قیمت را به ریال صحیح و بدون تعمیر خاموش میخواند؛
+        # شمارهٔ ستونها اکنون از روی عنوان پیدا میشود تا فایل خدمات/کالا همراستا بماند.
+        self.assertIn("ReadWholePrice(row.Cell(c))", service)
+        self.assertIn('Whole(row, "purchase")', service)
+        self.assertIn('Whole(row, "sale")', service)
         self.assertIn('decimal.TryParse(raw.Replace(",", ""), NumberStyles.None', service)
         self.assertIn("_db.ChangeTracker.Clear()", service)
         opening = read("Inventory.Client/Pages/Shop/OpeningBalanceWizard.razor")

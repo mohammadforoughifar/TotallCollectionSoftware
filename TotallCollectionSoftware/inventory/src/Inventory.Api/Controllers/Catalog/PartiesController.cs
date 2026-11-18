@@ -136,6 +136,8 @@ public class PartiesController : ControllerBase
     {
         if (party.Id != 0 || party.Type is not (PartyType.Customer or PartyType.Supplier) || string.IsNullOrWhiteSpace(party.Name))
             return BadRequest(new { message = "اطلاعات طرف حساب جدید معتبر نیست." });
+        var identifierError = ShopIdentifierRules.ValidateParty(party);
+        if (identifierError is not null) return BadRequest(new { message = identifierError });
         var perms = await MyPermissionsAsync();
         var allowed = party.Type == PartyType.Customer
             ? perms.Contains("Shop.Sale.Manage") || perms.Contains("Shop.Repairs.Manage") || perms.Contains("Shop.GoodsIssue.Manage")
@@ -151,6 +153,10 @@ public class PartiesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult> Save([FromBody] Inventory.Shared.Dtos.Party party)
     {
+        // نگهبان سرور: هیچ طرف حسابی (مشتری یا تأمینکننده) بدون عبور از همان
+        // قواعد کلاینت وارد تراکنش ذخیره نمیشود؛ ارور اعتبارسنجی یعنی «عدم ذخیره».
+        var identifierError = ShopIdentifierRules.ValidateParty(party);
+        if (identifierError is not null) return BadRequest(new { message = identifierError });
         var perms = await MyPermissionsAsync();
         var type = party.Type;
 
