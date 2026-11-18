@@ -278,6 +278,10 @@ else
                                                             {
                                                                 <em class="zs-opt">ناموجود</em>
                                                             }
+                                                            @if (HasNoSalePrice(opt.Id))
+                                                            {
+                                                                <em class="zs-opt" data-missing-sale-price-option>بدون قیمت فروش</em>
+                                                            }
                                                         </div>
                                                     }
                                                     @if (matches.Count == 0)
@@ -332,6 +336,13 @@ else
                                                     Disabled="@(me?.CanEditVisitPrice != true)"
                                                     ReadOnly="@(me?.CanEditVisitPrice != true)"
                                                     CssClass="@($"form-control form-control-sm text-center num {(me?.CanEditVisitPrice != true ? "bg-light text-muted" : "")}")" />
+                                        @if (MissingSalePrice(l))
+                                        {
+                                            <div class="vis-cell-note text-danger" role="alert" data-missing-sale-price>
+                                                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                قیمت فروش این کالا ثبت نشده یا صفر است؛ از مسئول قیمت‌گذاری بخواهید قیمت فروش را ثبت کند.
+                                            </div>
+                                        }
                                     </div>
                                     <div class="vis-cell c-disc">
                                         <span class="vis-cell-label">تخفیف</span>
@@ -1377,6 +1388,13 @@ else
         OnLineProductPicked(l, productId);
         CloseCombo();
     }
+
+    // Zero sale prices are allowed by the catalog. Warn rather than treating the
+    // input as editable: visitors must ask a pricing manager to update the catalog.
+    private bool MissingSalePrice(VisOrderLineDto line) =>
+        me?.CanEditVisitPrice != true && line.ProductId > 0 && line.UnitPrice <= 0;
+    private bool HasNoSalePrice(int productId) =>
+        me?.CanEditVisitPrice != true && productIndex.TryGetValue(productId, out var product) && product.SalePrice <= 0;
 
     private static bool ExceedsCap(VisOrderLineDto line, decimal cap) => line.DiscountIsAmount
         ? LineDiscount(line) * 100m > line.Quantity * line.UnitPrice * cap

@@ -448,17 +448,6 @@
                     </div>
                 }
 
-                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
-                {
-                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات فروشگاه</span></NavLink>
-                }
-                @if (ShopAccess.CanSee(Auth, "Guide"))
-                {
-                    <NavLink class="nav-link" href="shop-guide" @onclick="NotifyClose">
-                        <i class="bi bi-journal-check"></i><span>راهنمای سامانه</span>
-                    </NavLink>
-                }
-
                 @* ---------- زیرمنوی گزارش‌های فروشگاهی ---------- *@
                 @if (ShowOpsReportsSub)
                 {
@@ -622,6 +611,18 @@
                         }
                     </div>
                 }
+
+                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
+                {
+                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات فروشگاه</span></NavLink>
+                }
+                @if (ShopAccess.CanSee(Auth, "Guide"))
+                {
+                    <NavLink class="nav-link" href="shop-guide" @onclick="NotifyClose">
+                        <i class="bi bi-journal-check"></i><span>راهنمای سامانه</span>
+                    </NavLink>
+                }
+
             </div>
         }
     </div>

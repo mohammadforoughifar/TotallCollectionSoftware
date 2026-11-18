@@ -16,6 +16,17 @@ class SettingsTests(unittest.TestCase):
         self.assertNotIn('type="select"',page)
         self.assertNotIn('<select',page)
         self.assertIn('SettingsClient.SaveAsync',page)
+    def test_settings_and_guide_follow_all_shop_groups(self):
+        nav = read('Inventory.Client/Layout/NavMenu.razor')
+        shop = nav[nav.index('@if (ShowOpsGroup)'):nav.index('سامانه مودیان (صورتحساب الکترونیکی)')]
+        settings = shop.index('href="shop/print-settings"')
+        guide = shop.index('href="shop-guide"')
+        for group in ['@if (ShowOpsDashSub)', 'gOpsActions', '@if (ShowOpsReportsSub)',
+                      '@if (ShowOpsBaseSub)', '@if (ShowVisGroup)']:
+            self.assertLess(shop.index(group), settings)
+        self.assertLess(settings, guide)
+        self.assertIn('ShopAccess.CanSee(Auth, "PrintSettings")', shop)
+        self.assertIn('ShopAccess.CanSee(Auth, "Guide")', shop)
     def test_api_authority(self):
         source=read('Inventory.Api/Controllers/Catalog/ShopPrintSettingsController.cs')
         self.assertIn('[ApiController, Authorize',source)

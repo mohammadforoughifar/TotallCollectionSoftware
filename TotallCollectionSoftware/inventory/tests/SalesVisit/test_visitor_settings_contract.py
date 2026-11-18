@@ -106,4 +106,20 @@ class VisitorReportAndPriceTests(unittest.TestCase):
             start = src.index('sales/requests-report')
             self.assertIn('SalesVisit.View', src[max(0, start-400):start+500])
 
+class MissingSalePriceWarningTests(unittest.TestCase):
+    def test_warning_is_shown_for_selected_zero_price_and_in_lookup(self):
+        ui = read('Inventory.Client/Pages/SalesVisit/VisitForm.razor')
+        self.assertIn('data-missing-sale-price>', ui)
+        self.assertIn('role="alert"', ui)
+        self.assertIn('قیمت فروش این کالا ثبت نشده یا صفر است', ui)
+        self.assertIn('data-missing-sale-price-option', ui)
+        self.assertIn('line.ProductId > 0 && line.UnitPrice <= 0', ui)
+        self.assertIn('product.SalePrice <= 0', ui)
+        self.assertIn('Disabled="@(me?.CanEditVisitPrice != true)"', ui)
+
+    def test_warning_does_not_add_a_zero_price_save_restriction(self):
+        ui = read('Inventory.Client/Pages/SalesVisit/VisitForm.razor')
+        save = ui[ui.index('private async Task SaveAsync(bool submit)'):ui.index('private async Task DoSaveAsync')]
+        self.assertNotIn('MissingSalePrice(', save)
+
 if __name__ == '__main__': unittest.main()
