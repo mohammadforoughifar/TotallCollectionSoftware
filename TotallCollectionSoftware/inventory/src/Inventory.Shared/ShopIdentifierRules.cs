@@ -3,6 +3,12 @@ using Inventory.Shared.Dtos;
 namespace Inventory.Shared;
 
 /// <summary>Optional Iranian shop identifiers: empty is allowed; supplied values must be complete.</summary>
+/// <remarks>
+/// قواعد یکسان برای «همهٔ فرمها»: کد پستی دقیقاً ۱۰ رقم و شمارهٔ تلفن/موبایل
+/// دقیقاً ۱۱ رقم (بدون جداکننده، با پشتیبانی از ارقام فارسی و کد کشور ‎+۹۸‎).
+/// این کلاس در لایهٔ Shared است تا هم کلاینت (قبل از ذخیره) و هم سرور
+/// (قبل از هرگونه نوشتن در دیتابیس) دقیقاً یک قانون را اعمال کنند.
+/// </remarks>
 public static class ShopIdentifierRules
 {
     public static string? Normalize(string? value)
@@ -17,16 +23,48 @@ public static class ShopIdentifierRules
         return normalized?.StartsWith("IR", StringComparison.Ordinal) == true ? normalized[2..] : normalized;
     }
 
-    public static string? NormalizePhone(string? value) => Normalize(value)?.Replace("(", "").Replace(")", "");
-
-    public static string? ValidatePhone(string? value, string fieldName = "شماره تلفن")
+    /// <summary>
+    /// نرمالسازی شمارهٔ تلفن: ارقام فارسی/عربی → لاتین، حذف جداکنندهها و
+    /// تبدیل کد کشور (‎+۹۸‎ / ‎۰۰۹۸‎ / ‎۹۸‎) به پیشوند داخلی ‎۰‎.
+    /// خالی بودن یعنی «فیلد اختیاری» و <c>null</c> برمیگرداند.
+    /// </summary>
+    public static string? NormalizePhone(string? value)
     {
-        var normalized = NormalizePhone(value);
-        return normalized is not null && (normalized.Length != 11 || !IsDigits(normalized) || normalized[0] != '0')
-            ? $"{fieldName} باید دقیقاً ۱۱ رقم با صفر آغازین باشد." : null;
+        var phone = Normalize(value);
+        if (phone is null) return null;
+        phone = phone.Replace("(", "").Replace(")", "").Replace("+", "").Replace(".", "");
+        if (phone.StartsWith("0098", StringComparison.Ordinal) && phone.Length > 4)
+            phone = "0" + phone[4..];
+        else if (phone.StartsWith("98", StringComparison.Ordinal) && phone.Length == 12)
+            phone = "0" + phone[2..];
+        return phone.Length == 0 ? null : phone;
     }
 
     public static bool IsDigits(string value) => value.All(c => c is >= '0' and <= '9');
+
+    /// <summary>کد پستی اختیاری است؛ در صورت ورود باید دقیقاً ۱۰ رقم باشد.</summary>
+    public static string? ValidatePostalCode(string? value, string label = "کد پستی")
+    {
+        var postal = Normalize(value);
+        if (postal is null) return null;
+        return postal.Length == 10 && IsDigits(postal)
+            ? null : $"{label} باید دقیقاً ۱۰ رقم باشد.";
+    }
+
+    /// <summary>تلفن/موبایل اختیاری است؛ در صورت ورود باید دقیقاً ۱۱ رقم باشد.</summary>
+    public static string? ValidatePhone(string? value, string label = "شماره تلفن")
+    {
+        var phone = NormalizePhone(value);
+        if (phone is null) return null;
+        return phone.Length == 11 && IsDigits(phone) && phone[0] == '0'
+            ? null : $"{label} باید دقیقاً ۱۱ رقم با صفر آغازین باشد.";
+    }
+
+    /// <summary>اعتبارسنجی یکجای شماره تماس و کد پستی فرمهایی که Party نیستند.</summary>
+    public static string? ValidateContact(string? phone, string? postalCode = null,
+        string phoneLabel = "شماره تلفن", string postalLabel = "کد پستی")
+        => ValidatePhone(phone, phoneLabel) ?? ValidatePostalCode(postalCode, postalLabel);
+
     public static string? ValidateBank(TrsAccount account)
     {
         account.CardNumber = Normalize(account.CardNumber);
@@ -45,6 +83,11 @@ public static class ShopIdentifierRules
             ? "شناسه صیاد باید دقیقاً ۱۶ رقم باشد." : null;
     }
 
+    /// <summary>
+    /// اعتبارسنجی طرف حساب برای «هر دو» نوع مشتری و تأمینکننده.
+    /// مقادیر معتبر نرمال (بدون جداکننده و با ارقام لاتین) روی همان شیء نوشته میشوند
+    /// تا دقیقاً همان چیزی که اعتبارسنجی شده است ذخیره شود.
+    /// </summary>
     public static string? ValidateParty(Party party)
     {
         var phoneError = ValidatePhone(party.Mobile, "شماره موبایل") ?? ValidatePhone(party.Phone, "شماره تلفن ثابت");

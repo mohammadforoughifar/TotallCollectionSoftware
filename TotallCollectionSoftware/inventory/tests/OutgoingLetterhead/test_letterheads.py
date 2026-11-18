@@ -215,7 +215,10 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("var signerTopPadding = isHomepaLetterhead", source)
         self.assertIn("var tableTopPadding = isHomepaLetterhead", source)
         self.assertIn("var maxSignatureHeight = isA5 ? 68f : 72f", source)
-        self.assertIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
+        # MaxWidth نه Width قطعی: بلوک امضا هم‌اندازهٔ ستون واقعی می‌شود. Width قطعی بزرگ‌تر
+        # از عرض در دسترس (A5: ۴۴۰pt در ۳۶۳pt) همان DocumentLayoutException را می‌داد.
+        self.assertIn(".AlignLeft().MaxWidth(signerBlockWidth * signerColumns, Unit.Point)", source)
+        self.assertNotIn(".AlignLeft().Width(signerBlockWidth * signerColumns)", source)
         self.assertNotIn('Text("امضاکنندگان")', source)
         # شمارهٔ صفحه به‌درخواست کارفرما در هیچ مسیری چاپ نمی‌شود (نه مسیر طرح، نه کلاسیک).
         self.assertNotIn("PageNumberFooter", source)
@@ -679,8 +682,10 @@ class LetterheadSourceResolutionTests(unittest.TestCase):
                 self.assertIn("var preferTemplate = PreferTemplateLetterhead", service)
                 self.assertIn("preferTemplate && templateLetterheadPath != null", service)
                 settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
-                # طرح قالب برای شرکت ۱۰۰۳ جداگانه اولویت دارد (کلید عمومی خاموش است).
-                self.assertIn('"TemplateLetterheadCompanyIds": "1003"', settings)
+                # طرح قالب برای شرکت ۱۰۰۳ و شرکت ۱ (فروغ آریا) جداگانه اولویت دارد
+                # (کلید عمومی خاموش است). برای شرکت ۱ خودِ فایل سربرگ از ForoughCompanyIds
+                # می‌آید، ولی چیدمان/هندسه از Reports/OutgoingLetters/Companies/1 خوانده می‌شود.
+                self.assertIn('"TemplateLetterheadCompanyIds": "1003,1"', settings)
                 self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", service)
 
     def test_shadowing_of_the_design_is_logged(self):
@@ -961,8 +966,11 @@ class DesignDrivenLayoutTests(unittest.TestCase):
                 # شرکت ۳ نباید در مسیر جدید باشد (چاپش مثل قبل می‌ماند)
                 self.assertNotIn("DefaultDesignDrivenCompanyIds = { 3", service)
                 settings = (tree / "Inventory.Api" / "appsettings.json").read_text(encoding="utf-8")
-                self.assertIn('"DesignDrivenCompanyIds": "1003"', settings)
+                # ۱۰۰۳ (درخواست قبلی کارفرما) + ۱ (فروغ آریا: نامهٔ صادره با چیدمان قالب خودش).
+                self.assertIn('"DesignDrivenCompanyIds": "1003,1"', settings)
+                # ۳ (هومپا) هرگز در این فهرست نیست؛ چاپش مثل قبل می‌ماند.
                 self.assertNotIn('"DesignDrivenCompanyIds": "3,1003"', settings)
+                self.assertNotIn('"DesignDrivenCompanyIds": "3"', settings)
 
     def test_diagnostics_say_whether_the_design_was_read(self):
         for tree in self.TREES:

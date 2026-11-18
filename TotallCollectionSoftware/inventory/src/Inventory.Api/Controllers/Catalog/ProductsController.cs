@@ -64,10 +64,11 @@ public class ProductsController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>ورود گروهی کالا از فایل اکسل (xlsx).</summary>
+    /// <summary>ورود گروهی «کالا» یا «خدمات» از فایل اکسل (xlsx).</summary>
     [HttpPost("import")]
     [DisableRequestSizeLimit]
-    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file, [FromServices] IEffectivePermissions permissions, [FromQuery] int? warehouseId = null)
+    public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file, [FromServices] IEffectivePermissions permissions,
+        [FromQuery] int? warehouseId = null, [FromQuery] ProductImportKind kind = ProductImportKind.Goods)
     {
         if (!await CanManagePricingAsync(permissions)) return StatusCode(403, new { message = "ورود قیمت از اکسل به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
         if (file is null || file.Length == 0)
@@ -75,7 +76,8 @@ public class ProductsController : ApiControllerBase
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "فقط فایل با فرمت xlsx پشتیبانی می‌شود." });
 
-        if (warehouseId is null or <= 0)
+        // خدمات موجودی انبار ندارند؛ انبار فقط برای ورود کالا الزامی است.
+        if (kind == ProductImportKind.Goods && warehouseId is null or <= 0)
             return BadRequest(new { message = "انتخاب انبار برای ورود اکسل الزامی است." });
 
         using var ms = new MemoryStream();
@@ -86,20 +88,21 @@ public class ProductsController : ApiControllerBase
         await _store.SaveAsync("catalog", 0, ms, file.FileName, "imports");
         ms.Position = 0;
 
-        return Ok(await _service.ImportProductsAsync(ms, warehouseId));
+        return Ok(await _service.ImportProductsAsync(ms, warehouseId, kind));
     }
 
     /// <summary>
-    /// دانلود فایل اکسل نمونه برای ورود گروهی کالا.
+    /// دانلود فایل اکسل نمونه برای ورود گروهی کالا «یا» خدمات.
     /// AllowAnonymous: این فایل دادهٔ محرمانه ندارد و لینک مستقیم مرورگر هدر JWT ندارد.
     /// </summary>
     [HttpGet("import/template")]
     [AllowAnonymous]
-    public IActionResult DownloadTemplate()
+    public IActionResult DownloadTemplate([FromQuery] ProductImportKind kind = ProductImportKind.Goods)
     {
-        var bytes = _service.BuildProductTemplate();
+        var bytes = _service.BuildProductTemplate(kind);
+        var name = kind == ProductImportKind.Services ? "Services-Template.xlsx" : "Products-Template.xlsx";
         return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            fileDownloadName: "Products-Template.xlsx");
+            fileDownloadName: name);
     }
 }

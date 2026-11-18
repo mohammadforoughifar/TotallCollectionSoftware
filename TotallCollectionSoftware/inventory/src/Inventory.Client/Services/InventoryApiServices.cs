@@ -107,11 +107,14 @@ public class ProductService : IProductService
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/products/{id}");
 
-    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId)
-        => _api.PostFileAsync<ExcelImportResult>($"api/products/import?warehouseId={warehouseId}", fileStream, fileName);
+    public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName, int warehouseId,
+        ProductImportKind kind = ProductImportKind.Goods)
+        => _api.PostFileAsync<ExcelImportResult>(
+            $"api/products/import?warehouseId={warehouseId}&kind={kind}", fileStream, fileName);
 
-    public Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync()
-        => _api.GetFileAsync("api/products/import/template");
+    public Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync(
+        ProductImportKind kind = ProductImportKind.Goods)
+        => _api.GetFileAsync($"api/products/import/template?kind={kind}");
 }
 
 /// <summary>پیاده‌سازی سرویس واحدهای شمارش.</summary>
@@ -276,8 +279,13 @@ public class OrderService : IOrderService
     public Task<List<Party>> GetInvoicePartiesAsync(TransactionType type)
         => _api.GetAsync<List<Party>>($"api/orders/invoice-parties?type={(int)type}");
 
-    public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1, int pageSize = 10000)
-        => _api.GetAsync<PagedResult<InvoiceStockItem>>($"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}");
+    public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1,
+        int pageSize = 10000, DateTime? asOf = null)
+    {
+        var q = $"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}";
+        if (asOf.HasValue) q += $"&asOf={asOf.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PagedResult<InvoiceStockItem>>(q);
+    }
 
     public Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20, bool? hasChequeIncome = null, bool openingOnly = false)
     {

@@ -38,6 +38,60 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
     private const string SettingKey = "signer-keys";
     public const int MinPasswordLength = 12;
 
+    /// <summary>
+    /// اثر انگشت <b>کلید رسمی محصول</b> برای یک شناسه (از <c>Keys/manifest.json</c> جاسازی‌شده در
+    /// همین بیلد) — یا <c>null</c> اگر آن شناسه در محصول ثبت نشده باشد.
+    ///
+    /// <para>
+    /// چرا لازم است؟ تجربهٔ واقعی: با هر publish (پوشهٔ <c>data</c> تازه ⇒ تنظیمات کلید از دست
+    /// می‌رود) پیشنهاد پیش‌فرض فرم «ساخت کلید»، شناسهٔ <c>sup-202611</c> بود و پشتیبان جفت‌کلید
+    /// <b>تازه‌ای</b> با همان شناسه می‌ساخت؛ نتیجه: کلید پنل با کلید داخل محصول یکی نبود و هر
+    /// فایل امضاشده در نصب مشتری رد می‌شد. این متد همان چیزی است که «کدام کلید رسمی است» را
+    /// بدون خط فرمان و بدون رمز نشان می‌دهد.
+    /// </para>
+    /// </summary>
+    public static (string KeyId, string Fingerprint)? OfficialProductKey(string? keyId)
+    {
+        if (string.IsNullOrWhiteSpace(keyId)) return null;
+        try
+        {
+            var ring = Inventory.Licensing.Crypto.PublicKeyRing.FromEmbedded();
+            var entry = ring.Entries.FirstOrDefault(e =>
+                string.Equals(e.KeyId, keyId.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (entry is null) return null;
+
+            var fingerprint = entry.Sha256;
+            if (string.IsNullOrWhiteSpace(fingerprint))
+                fingerprint = Inventory.Licensing.Crypto.PublicKeyRing.Fingerprint(entry.PublicKeyPem, entry.Algorithm);
+
+            return string.IsNullOrWhiteSpace(fingerprint) ? null : (entry.KeyId, fingerprint!);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// شناسه‌های کلیدی که <b>در محصول ثبت‌شده‌اند</b> (برای نمایش در فرم ساخت کلید تا کسی
+    /// دوباره با همان شناسه کلید تازه نسازد).
+    /// </summary>
+    public static IReadOnlyList<(string KeyId, string Fingerprint)> OfficialProductKeys()
+    {
+        try
+        {
+            return Inventory.Licensing.Crypto.PublicKeyRing.FromEmbedded().Entries
+                .Select(e => (e.KeyId, Fingerprint: e.Sha256 ??
+                    Inventory.Licensing.Crypto.PublicKeyRing.Fingerprint(e.PublicKeyPem, e.Algorithm) ?? ""))
+                .Where(e => e.Fingerprint.Length > 0)
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<(string, string)>();
+        }
+    }
+
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = false };
 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")]
@@ -94,6 +148,21 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
         keyId = (keyId ?? "").Trim();
         if (!KeyIdPattern().IsMatch(keyId))
             return KeyGenResult.Fail("شناسهٔ کلید نامعتبر است؛ ۲ تا ۴۰ کاراکتر از حروف/عدد/‏-/_/. و شروع با حرف یا عدد.");
+
+        // ⛔ شناسه‌ای که همین حالا در manifest محصول است، مالِ کلید رسمی است. ساختن جفت‌کلید
+        // تازه با همان شناسه، اثر انگشت را عوض می‌کند و هر فایل امضاشده در نصب مشتری رد می‌شود
+        // (همان خطای «کلید امضا با کلیدهای جاسازی‌شده یکی نیست»). پس اجازه نمی‌دهیم.
+        if (OfficialProductKey(keyId) is { } official)
+        {
+            var expected = official.Fingerprint.Length > 16 ? official.Fingerprint[..16] + "…" : official.Fingerprint;
+            return KeyGenResult.Fail(
+                $"شناسهٔ «{official.KeyId}» در همین بیلد محصول ثبت شده و اثر انگشت کلید رسمی‌اش {expected} است. " +
+                "ساختن جفت‌کلید تازه با همین شناسه یعنی کلید پنل با کلید داخل محصول یکی نیست و " +
+                "هر فایل امضاشده در نصب مشتری رد می‌شود. " +
+                "کلید خصوصیِ رسمی خود را وصل کنید (Signer:PrivateKeyPath یا «اتصال کلید موجود»)، " +
+                "یا اگر واقعاً کلید عوض شده، برای کلید تازه یک شناسهٔ تازه بدهید، «ثبت در manifest» را بزنید " +
+                "و نسخهٔ تازهٔ محصول را منتشر کنید.");
+        }
 
         if (string.IsNullOrEmpty(password) || password.Length < MinPasswordLength)
             return KeyGenResult.Fail($"برای کلید خصوصی رمز لازم است (حداقل {MinPasswordLength} کاراکتر). " +

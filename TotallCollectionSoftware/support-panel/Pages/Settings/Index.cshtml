@@ -116,6 +116,12 @@
     var signStatus = Signing.GetStatus();
     var savedKey = await Keys.LoadAsync();
     var activeKey = Keys.DescribeActiveKey();
+
+    // کلید رسمی همین شناسه در محصول (از manifest جاسازی‌شده) — برای دیدن فوری «کلید پنل = کلید محصول؟»
+    var officialKey = SignerKeyService.OfficialProductKey(activeKey.KeyId);
+    var activeFingerprint = activeKey.Fingerprint is { Length: 64 } ? activeKey.Fingerprint : null;
+    var keyMismatch = officialKey is { } official && activeFingerprint is not null &&
+                      !string.Equals(official.Fingerprint, activeFingerprint, StringComparison.OrdinalIgnoreCase);
     var smtp = await Settings.GetSmtpAsync();
     var template = await Settings.GetTemplateAsync();
     var passwordAvailable = Settings.SmtpPasswordAvailable;
@@ -127,6 +133,19 @@
 @if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
 @if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
 @if (!string.IsNullOrEmpty(ManifestMessage)) { <div class="alert @(ManifestOk ? "ok" : "error")">@ManifestMessage</div> }
+@if (keyMismatch)
+{
+    <div class="alert error" style="line-height:2">
+        <b>⚠️ کلید امضای پنل با کلید رسمی محصول یکی نیست.</b>
+        شناسهٔ فعال: <span class="mono">@activeKey.KeyId</span> ·
+        اثر انگشت پنل: <span class="mono small">@activeFingerprint</span> ·
+        اثر انگشت رسمی محصول: <span class="mono small">@officialKey!.Value.Fingerprint</span>.
+        با این وضعیت هر فایل <span class="mono">.lic</span> در نصب مشتری <b>رد می‌شود</b>.
+        دو راه: (۱) مسیر <b>کلید خصوصی رسمی</b> را وصل کنید (پایین همین صفحه یا
+        <span class="mono">Signer__PrivateKeyPath</span> در appsettings تا با هر publish از دست نرود)،
+        یا (۲) برای کلید تازه شناسهٔ تازه بدهید، در manifest ثبت و نسخهٔ تازهٔ محصول منتشر کنید.
+    </div>
+}
 
 <div class="card"><div class="card-head">کلیدهای امضا — ساخت خودکار جفت‌کلید</div><div class="card-body">
     <table class="table">
@@ -143,6 +162,24 @@
         <tr><td>Key ID</td>
             <td>@(string.IsNullOrWhiteSpace(signStatus.KeyId) ? "—" : Html.Raw("<span class=\"badge ok\">تعیین‌شده</span>"))</td>
             <td class="mono">@(signStatus.KeyId is { Length: > 0 } k ? k : "—")</td></tr>
+        <tr><td>کلید رسمی این شناسه در محصول</td>
+            <td>
+                @if (officialKey is null)
+                {
+                    @Html.Raw("<span class=\"badge err\">ثبت نشده</span>")
+                }
+                else if (keyMismatch)
+                {
+                    @Html.Raw("<span class=\"badge err\">ناهم‌خوان</span>")
+                }
+                else
+                {
+                    @Html.Raw("<span class=\"badge ok\">هم‌خوان</span>")
+                }
+            </td>
+            <td class="mono small">
+                @(officialKey is { } ok2 ? $"{ok2.KeyId} = {ok2.Fingerprint}" : "— (این شناسه در manifest محصول نیست)")
+            </td></tr>
         <tr><td>منبع کلید فعال</td><td colspan="2">
             @if (savedKey is not null && System.IO.File.Exists(savedKey.PrivateKeyPath))
             {
@@ -166,8 +203,25 @@
 
     <form method="post" asp-page-handler="Keygen" style="margin-top:1rem">
         <div class="grid">
+            @{
+                var officialIds = SignerKeyService.OfficialProductKeys();
+            }
             <div class="field"><label for="keyId">شناسهٔ کلید (Key ID)</label>
-                <input id="keyId" name="keyId" class="mono" value="sup-@DateTime.Now.ToString("yyyyMM")" /></div>
+                <input id="keyId" name="keyId" class="mono" placeholder="مثلاً sup-@DateTime.Now.AddMonths(1).ToString("yyyyMM")-b" />
+                <div class="hint" style="line-height:1.9">
+                    @if (officialIds.Count > 0)
+                    {
+                        <span>شناسه‌های <b>رسمی محصول</b> (با این شناسه‌ها کلید تازه نسازید — کلید خصوصی همان‌ها را وصل کنید):
+                            @foreach (var (officialId, officialFp) in officialIds)
+                            {
+                                <span class="mono">@officialId</span>
+                                <span class="mono small" style="direction:ltr">(@(officialFp.Length > 16 ? officialFp[..16] + "…" : officialFp))</span><span> </span>
+                            }
+                        </span>
+                    }
+                    <span>ساختن جفت‌کلید تازه، کلید امضا را عوض می‌کند؛ تا نسخهٔ تازهٔ محصول منتشر نشود، مشتری فایل را رد می‌کند.</span>
+                </div>
+            </div>
             <div class="field"><label for="keyFolder">پوشهٔ کلیدها (بیرون از پوشهٔ برنامه و مخزن)</label>
                 <input id="keyFolder" name="keyFolder" class="mono" value="@(savedKey?.Folder ?? Keys.SuggestedFolder())" /></div>
             <div class="field"><label for="keyPass">رمز کلید خصوصی</label>

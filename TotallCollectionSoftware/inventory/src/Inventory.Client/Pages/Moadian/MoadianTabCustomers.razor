@@ -147,11 +147,13 @@ else
     <div class="row g-2 mt-1">
         <div class="col-md-6">
             <label class="form-label">پست‌کد</label>
-            <input class="form-control num" dir="ltr" value="@form.PostalCode" @oninput="e => form.PostalCode = e.Value?.ToString()" />
+            <input class="form-control num" dir="ltr" value="@form.PostalCode" @oninput="e => form.PostalCode = e.Value?.ToString()"
+                   maxlength="10" title="کد پستی باید دقیقاً ۱۰ رقم باشد" />
         </div>
         <div class="col-md-6">
             <label class="form-label">تلفن</label>
-            <input class="form-control num" dir="ltr" value="@form.Phone" @oninput="e => form.Phone = e.Value?.ToString()" placeholder="0912..." />
+            <input class="form-control num" dir="ltr" value="@form.Phone" @oninput="e => form.Phone = e.Value?.ToString()" placeholder="0912..."
+                   maxlength="16" title="شماره تلفن باید دقیقاً ۱۱ رقم باشد" />
         </div>
     </div>
     <div class="mt-1">
@@ -245,6 +247,11 @@ else
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { formError = "نام مشتری الزامی است."; return; }
+        // همان قواعد سامانهٔ فروشگاهی: کد پستی ۱۰ رقم، تلفن ۱۱ رقم.
+        var contactError = ShopIdentifierRules.ValidateContact(form.Phone, form.PostalCode, "شماره تلفن", "کد پستی");
+        if (contactError is not null) { formError = contactError; return; }
+        form.Phone = ShopIdentifierRules.NormalizePhone(form.Phone);
+        form.PostalCode = ShopIdentifierRules.Normalize(form.PostalCode);
         saving = true; StateHasChanged();
         try
         {

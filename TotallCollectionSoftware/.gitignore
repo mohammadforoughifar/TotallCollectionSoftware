@@ -14,6 +14,10 @@ obj/
 .DS_Store
 Thumbs.db
 
+## Python test bytecode
+__pycache__/
+*.py[cod]
+
 ## IDE
 .idea/
 *.slnLaunch.user
@@ -56,3 +60,9 @@ sql/legacy-aria/
 **/App_Data/
 # کلید رمزنگاری پوشه‌های پیوست که در زمان اجرا ساخته می‌شود
 **/wwwroot/uploads/**/.key
+
+# ===================== بایگرد‌های ابزار تست پایتون =====================
+# تست‌های چاپ قراردادی‌اند (بدون بیلد) و با python3 اجرا می‌شوند؛ پوشهٔ کش آن‌ها
+# نباید وارد مخزن شود.
+__pycache__/
+*.pyc

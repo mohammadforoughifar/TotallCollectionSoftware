@@ -90,7 +90,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
-                    <DatePicker @bind-Value="date" OpenOnFocus="UseInvoiceWizard" />
+                    <DatePicker @bind-Value="date" @bind-Value:after="OnInvoiceDateChanged" OpenOnFocus="UseInvoiceWizard" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">توضیحات</label>
@@ -2043,6 +2043,8 @@
         try
         {
             // Independent requests start together; existing/copy warehouse stock can also load immediately.
+            // تاریخ سند باید پیش از عکس فوری موجودی مشخص باشد: موجودی «تا همین تاریخ» خوانده میشود.
+            date = IsEdit ? EditOrder!.Date : DateTime.Now;
             if (IsEdit) warehouseId = EditOrder!.WarehouseId;
             else if (CopyTemplate is not null) warehouseId = CopyTemplate.WarehouseId;
             var profitTask = Type == TransactionType.Sale ? OrderSvc.CanViewProfitAsync() : Task.FromResult(false);
@@ -2262,8 +2264,22 @@
     }
 
     private Task<bool> LoadWarehouseStocksAsync()
-        => warehouseStock.LoadAsync(warehouseId, (id, page, size) =>
-            OrderSvc.GetWarehouseStockAsync(id, page, size));
+        => warehouseStock.LoadAsync(warehouseId, date, (id, page, size, asOf) =>
+            OrderSvc.GetWarehouseStockAsync(id, page, size, asOf));
+
+    /// <summary>
+    /// تغییر تاریخ سند یعنی تغییر مبنای موجودی؛ رسید خرید بعد از تاریخ سند نباید
+    /// در فهرست کالا دیده شود. عکس فوری با تاریخ تازه دوباره گرفته میشود.
+    /// </summary>
+    private async Task OnInvoiceDateChanged()
+    {
+        if (loading) return;
+        if (warehouseId <= 0) { RebuildProductLookup(); return; }
+        var load = LoadWarehouseStocksAsync();
+        RebuildProductLookup();
+        if (!await load) return; // درخواست جدیدتر (تغییر تاریخ/انبار) جایگزین شده است
+        RebuildProductLookup();
+    }
 
     // Use the same eligibility rule when selecting a product and when validating
     // a copy; the temporary old-name entry must not make an ineligible item valid.

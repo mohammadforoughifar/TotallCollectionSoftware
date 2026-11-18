@@ -261,6 +261,16 @@
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام گروه را وارد کنید."); return; }
         form.ParentId = int.TryParse(parentIdStr, out var pid) && pid > 0 ? pid : null;
+        // گروهی که کالا دارد نباید والد شود؛ وگرنه کالاهایش روی گروه والد باقی میمانند.
+        if (form.ParentId is > 0)
+        {
+            var parent = items.FirstOrDefault(c => c.Id == form.ParentId);
+            if (parent is not null && parent.ProductCount > 0)
+            {
+                Toast.Error("گروه والد انتخابشده خودش دارای کالا است؛ ابتدا کالاها را به یک زیرگروه منتقل کنید.");
+                return;
+            }
+        }
 
         saving = true;
         try

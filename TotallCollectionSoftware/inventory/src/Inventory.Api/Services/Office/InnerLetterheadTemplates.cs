@@ -145,6 +145,83 @@ internal static class InnerLetterheadTemplates
     }
 
     /// <summary>
+    /// هنرِ سربرگ از «خودِ فایل سربرگ شرکت» در <c>wwwroot/uploads/letterheads</c> — همان
+    /// فایلی که نامهٔ صادرهٔ همان شرکت استفاده می‌کند (درخواست کارفرما: نامهٔ داخلی و
+    /// صورتجلسهٔ شرکت ۱ هم از <c>forough-letterhead.pdf</c> خوانده شوند).
+    ///
+    /// <para>فایل PDF یک تصویر <c>DCTDecode</c> (JPEG) در خود دارد؛ همان جریان بایت‌به‌بایت
+    /// استخراج می‌شود (بدون نیاز به موتور رِندِر PDF) و بعد تا DPI چاپ کوچک می‌شود. برای
+    /// فایل‌های تصویری (PNG/JPG) خودِ بایت‌ها استفاده می‌شوند.</para>
+    ///
+    /// <para>اگر فایل نبود یا تصویری در آن پیدا نشد، <c>null</c> برمی‌گردد تا مسیر قبلی
+    /// (Watermark.ImageBytes قالب) بدون تغییر کار کند.</para>
+    /// </summary>
+    internal static byte[]? TryLoadArtworkFromLetterheadFile(string? contentRoot, string? baseDirectory,
+        bool a5, int dpi, string fileName = PrintAssetResolver.ForoughLetterheadFileName)
+    {
+        var path = PrintAssetResolver.RenderableLetterhead(fileName, contentRoot, baseDirectory);
+        if (path == null) return null;
+
+        var info = new FileInfo(path);
+        if (!info.Exists) return null;
+
+        var key = $"letterhead-file|{path}|{dpi}";
+        if (ArtworkCache.TryGetValue(key, out var cached)
+            && cached.Length == info.Length && cached.WriteUtc == info.LastWriteTimeUtc)
+            return cached.Bytes;
+
+        byte[]? bytes;
+        try
+        {
+            var raw = File.ReadAllBytes(path);
+            var encoded = path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                ? ExtractEmbeddedJpeg(raw)
+                : raw;
+            if (encoded is not { Length: > 0 }) return null;
+            bytes = PrepareArtwork(encoded, a5, dpi);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (bytes == null) return null;
+        ArtworkCache[key] = new ArtworkEntry(info.Length, info.LastWriteTimeUtc, bytes);
+        return bytes;
+    }
+
+    /// <summary>
+    /// نخستین تصویر JPEG جاسازی‌شدهٔ یک PDF (جریان <c>DCTDecode</c>). در فایل‌های سربرگِ ما
+    /// تنها تصویر صفحه است، پس پیدا کردن اولین <c>FFD8FF</c> و آخرین <c>FFD9</c> کافی است.
+    /// </summary>
+    internal static byte[]? ExtractEmbeddedJpeg(byte[] pdf)
+    {
+        if (pdf is not { Length: > 4 }) return null;
+        var start = -1;
+        for (var i = 0; i < pdf.Length - 2; i++)
+        {
+            if (pdf[i] != 0xFF || pdf[i + 1] != 0xD8 || pdf[i + 2] != 0xFF) continue;
+            start = i;
+            break;
+        }
+
+        if (start < 0) return null;
+        var end = -1;
+        for (var i = pdf.Length - 2; i >= start; i--)
+        {
+            if (pdf[i] != 0xFF || pdf[i + 1] != 0xD9) continue;
+            end = i + 1;
+            break;
+        }
+
+        if (end <= start) return null;
+        var length = end - start + 1;
+        var buffer = new byte[length];
+        Array.Copy(pdf, start, buffer, 0, length);
+        return buffer;
+    }
+
+    /// <summary>
     /// تصویر سربرگ یک فایل قالب، آمادهٔ چاپ. کلید کش: مسیر فایل؛ اعتبارسنجی: اندازه و زمان
     /// تغییر فایل؛ یعنی اگر قالب را روی سرور عوض کنید، نسخهٔ تازه خودکار خوانده می‌شود.
     /// </summary>

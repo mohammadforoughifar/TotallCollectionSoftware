@@ -205,7 +205,14 @@ public class MeasureUnit
     public int ProductCount { get; set; }
 }
 
-/// <summary>نتیجه ورود گروهی کالا از اکسل</summary>
+/// <summary>نوع فایل ورودی اکسلِ اطلاعات پایه: کالا یا خدمات.</summary>
+public enum ProductImportKind
+{
+    Goods = 0,
+    Services = 1
+}
+
+/// <summary>نتیجه ورود گروهی کالا/خدمات از اکسل</summary>
 public class ExcelImportResult
 {
     /// <summary>تعداد سطرهای ثبت‌شده</summary>

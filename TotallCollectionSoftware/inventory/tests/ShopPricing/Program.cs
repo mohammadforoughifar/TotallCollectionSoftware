@@ -101,6 +101,11 @@ var roundingPreview = await pricing.PreviewAsync(new ShopPriceAdjustmentRequest 
     Percent = 10m, Increase = true, EffectiveDate = saleDate });
 Check(roundingPreview.Rows.Single().NewPrice == 1106m, "automatic percentage price rounds half rial upward");
 
+// «کاهش» گروهی باید واقعاً قیمت را پایین بیاورد؛ جهت از سمت کلاینت به درستی میرسد.
+var decreasePreview = await pricing.PreviewAsync(new ShopPriceAdjustmentRequest { CategoryId = roundingGroup.Id,
+    Percent = 10m, Increase = false, EffectiveDate = saleDate });
+Check(decreasePreview.Rows.Single().NewPrice == 905m, "group decrease lowers the price instead of increasing it");
+
 await pricing.SavePolicyAsync(new ShopPricingPolicyDto { MinimumProfitEnabled = true, MinimumMarkupPercent = 20 }, "manager");
 var count = await db.Transactions.CountAsync();
 await Rejected(async () => { await inventory.CreateOrderAsync(Sale(goods.Id, 119m, customer.Id), "clerk"); }, "markup below last purchase floor");

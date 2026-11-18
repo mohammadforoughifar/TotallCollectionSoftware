@@ -27,14 +27,18 @@ internal static class InnerLetterPdfRenderer
     /// </param>
     internal static byte[] Render(InnerLetterPrintData data, bool a5, bool withHamesh,
         byte[]? homepaBackground, bool attachment, string fontDirectory,
-        OutgoingLetterDesignLayout? meta = null, int? companyId = null)
+        OutgoingLetterDesignLayout? meta = null, int? companyId = null,
+        byte[]? letterheadArt = null)
     {
         EnsureFonts(fontDirectory);
         QuestPDF.Settings.License = LicenseType.Community;
         // نبودِ یک نویسه (ایموجی، نویسهٔ چسبانده‌شده از Word) نباید کل چاپ را قطع کند؛
         // مقدار پیش‌فرض این تنظیم true است و QuestPDF استثنا پرتاب می‌کرد.
         QuestPDF.Settings.CheckIfAllTextGlyphsAreAvailable = false;
-        var homepa = homepaBackground is { Length: > 0 };
+        // «حالت سربرگ مصور» = هنر سربرگ داریم (چه تصویر آماده‌شدهٔ قالب، چه فایل سربرگ شرکت).
+        // برای شرکت ۱، خودِ فایل forough-letterhead.pdf داده می‌شود؛ همین رشته پرچم باعث
+        // می‌شود بدنه هم با همان چیدمان «از دل طرح» (کادرهای متا/گیرنده/موضوع) چاپ شود.
+        var homepa = homepaBackground is { Length: > 0 } || letterheadArt is { Length: > 0 };
         // اندازهٔ قلم مثل نامهٔ صادرهٔ ۱۰۰۳: ۱۱pt در A4 و ۹pt در A5 (یکدستی دو چاپ).
         var fontSize = a5 ? 9f : 11f;
         var pc = new PersianCalendar();
@@ -66,9 +70,23 @@ internal static class InnerLetterPdfRenderer
         if (captionBox is null || titleBox is null || labelGap is <= 0f or > 24f) labelGap = InfoLabelGap;
         // شروع متن: از قالب MRT، وگرنه اعداد همان طرح (۱۰۰۳: پایین «نوار آبی» + ۹۷pt،
         // ۱۰۰۵: ۱۳۳pt زیر خط تماس سربرگ).
-        var contentTop = designTop > 0f ? designTop : InnerLetterPaperProfile.ContentTop(companyId, a5);
+        // هنر سربرگ (شرکت ۱: فایل forough-letterhead.pdf) از بالای صفحه با FitUnproportionally
+        // رسم می‌شود، یعنی خط‌چین‌های چاپ‌شده‌اش در همان نسبتِ پیکسلی می‌نشینند. پس هندسهٔ
+        // خارجی (نوار آبی ۱۰۰۳ / خط تماس ۱۰۰۵) برای آن درست نیست؛ شروع متن برای شرکت ۱ از
+        // خودِ قالبش (کادر «موضوع») خوانده می‌شود و اگر قالب چیزی نگوید، از ارتفاع هنر.
+        var pageHeightPoints = a5 ? 595.28f : 841.89f;
+        var artTop = letterheadArt is { Length: > 0 }
+            ? Math.Min(InnerLetterPaperProfile.ContentTop(companyId, a5), pageHeightPoints * 0.35f)
+            : 0f;
+        var contentTop = designTop > 0f
+            ? designTop
+            : Math.Max(InnerLetterPaperProfile.ContentTop(companyId, a5), artTop);
         if (metaRows.Count > 0)
             contentTop = Math.Max(contentTop, metaRows.Max(row => row.Top + row.Height) + 6f);
+        // سقف: سربرگِ ثبت‌شده در قالب نباید بیش از نیمِ صفحه را بگیرد؛ وگرنه بدنهٔ نامه
+        // جایی برای نوشتن ندارد و QuestPDF با DocumentLayoutException کل چاپ را رد می‌کند
+        // (همان شکست «ساخت PDF نامه ناموفق بود» در متن‌های بلند).
+        contentTop = ClampHeaderTop(contentTop, a5);
         var sideMargin = LetterPrintTemplate.MmToPoints(LetterPrintTemplate.SideMarginMillimeters);
 
         return Document.Create(root => root.Page(page =>
@@ -94,10 +112,16 @@ internal static class InnerLetterPdfRenderer
                 // UseOriginalImage: تصویر در InnerLetterheadTemplates یک بار آماده شده است؛
                 // اگر اینجا هم تغییر اندازه/کدگذاری شود، QuestPDF در هر چاپ یک نسخهٔ
                 // ۲۳۸۱×۳۳۶۷ را از نو می‌سازد (چند صد میلی‌ثانیه CPU و ده‌ها مگابایت حافظه).
-                page.Background().Image(homepaBackground!).UseOriginalImage().FitUnproportionally();
+                // همان قاعدهٔ «همهٔ نامه‌ها از فایل‌های wwwroot/uploads/letterheads»: اگر خودِ
+                // فایل سربرگ شرکت (forough-letterhead.pdf) داده شده باشد، همان کشیده می‌شود؛
+                // وگرنه همان تصویر آماده‌شدهٔ قالب (Watermark.ImageBytes) مثل قبل.
+                page.Background().Image(letterheadArt ?? homepaBackground!)
+                    .UseOriginalImage().FitUnproportionally();
                 // ناحیهٔ سربرگ فقط تا شروع متن رزرو می‌شود (نه یک ارتفاع ثابت ۱۶۰pt)؛ بدنه
                 // دقیقاً از پایین نوار آبی + ۹۷pt شروع می‌شود.
-                page.Header().Height(contentTop);
+                // MinHeight نه Height، و سقف‌دار: ناحیهٔ سربرگ فقط «رزرو» است؛ ارتفاع قطعی
+                // وقتی کادر متای قالب پایین‌تر از انتظار باشد تضاد محدودیت می‌سازد.
+                page.Header().MinHeight(contentTop);
                 // شماره/تاریخ/پیوست در لایهٔ سراسری صفحه و با مختصات مطلق، روی خط برچسب‌های
                 // چاپ‌شدهٔ سربرگ («موضوع:»/«تاریخ:»/«پیوست:») — روی همهٔ صفحه‌ها.
                 if (metaRows.Count > 0)
@@ -253,6 +277,14 @@ internal static class InnerLetterPdfRenderer
     /// سورس HTML پاک می‌شوند تا نه متن انگلیسی روی کاغذ بیاید و نه صفحهٔ خالی.
     /// </summary>
     internal static string PlainText(string? html) => OfficeHtmlText.ToPlainText(html);
+
+    /// <summary>
+    /// سقفِ ناحیهٔ سربرگ: حداکثر نیمِ ارتفاع کاغذ (A4: ۴۲۰pt، A5: ۲۹۷pt). کادر متای قالب
+    /// می‌تواند در حاشیهٔ پایین صفحه تعریف شده باشد؛ بدون این سقف، بدنه هیچ فضایی برای
+    /// نوشتن نمی‌یافت و چاپ با DocumentLayoutException شکست می‌خورد.
+    /// </summary>
+    private static float ClampHeaderTop(float contentTop, bool a5)
+        => Math.Clamp(contentTop, a5 ? 40f : 60f, (a5 ? 595.28f : 841.89f) / 2f);
 
     private static void EnsureFonts(string directory)
     {

@@ -90,7 +90,8 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">تلفن</label>
-                    <input class="form-control" @bind="newCompany.Phone" placeholder="تلفن" data-digits="tel" dir="ltr" inputmode="tel" />
+                    <input class="form-control" @bind="newCompany.Phone" placeholder="تلفن" data-digits="tel" dir="ltr" inputmode="tel"
+                           maxlength="16" title="شماره تلفن باید دقیقاً ۱۱ رقم باشد" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">آدرس</label>
@@ -166,6 +167,10 @@
     private async Task SaveCompany()
     {
         if (savingCompany || readingLogo) return;
+        // قاعدهٔ مشترک سامانه: شماره تلفن اختیاری است ولی در صورت ورود باید ۱۱ رقم باشد.
+        var phoneError = ShopIdentifierRules.ValidatePhone(newCompany.Phone);
+        if (phoneError is not null) { saveError = phoneError; return; }
+        newCompany.Phone = ShopIdentifierRules.NormalizePhone(newCompany.Phone);
         savingCompany = true; saveError = null;
         try
         {

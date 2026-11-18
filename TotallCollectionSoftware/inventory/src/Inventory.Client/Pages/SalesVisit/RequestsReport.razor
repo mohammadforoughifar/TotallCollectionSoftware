@@ -151,10 +151,10 @@
                                     <th>نام کالا</th>
                                     <th>واحد</th>
                                     <th class="text-start">جمع سفارش</th>
+                                    <th class="text-start">کسری</th>
                                     <th class="text-start">تعداد درخواست</th>
                                     <th class="text-start">مبلغ سفارش (ریال)</th>
                                     <th class="text-start">موجودی کل</th>
-                                    <th class="text-start">کسری</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -174,10 +174,10 @@
                                         </td>
                                         <td>@(string.IsNullOrWhiteSpace(r.Unit) ? "—" : r.Unit)</td>
                                         <td class="text-start num fw-bold">@Fa.Digits(r.OrderedQty)</td>
+                                        <td class="text-start num @(r.HasShortage ? "text-danger fw-bold" : "text-muted")">@r.ShortageText</td>
                                         <td class="text-start num text-muted">@Fa.Digits(r.OrderCount)</td>
                                         <td class="text-start num">@Fa.Money(r.Amount)</td>
                                         <td class="text-start num">@Fa.Digits(r.StockQty)</td>
-                                        <td class="text-start num @(r.HasShortage ? "text-danger fw-bold" : "text-muted")">@r.ShortageText</td>
                                     </tr>
                                 }
                             </tbody>
@@ -185,12 +185,12 @@
                                 <tr>
                                     <th colspan="4" class="text-end">جمع کل</th>
                                     <th class="text-start num">@Fa.Digits(Report.TotalOrderedQty)</th>
-                                    <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
-                                    <th class="text-start num">@Fa.Money(Report.TotalAmount)</th>
-                                    <th></th>
                                     <th class="text-start num @(Report.TotalShortageQty > 0 ? "text-danger" : "")">
                                         @(Report.TotalShortageQty > 0 ? Fa.Digits(Report.TotalShortageQty) : "—")
                                     </th>
+                                    <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
+                                    <th class="text-start num">@Fa.Money(Report.TotalAmount)</th>
+                                    <th></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -380,15 +380,15 @@
         var sb = new StringBuilder();
         if (Mode == VisReportGroup.Product)
         {
-            sb.AppendLine("کد کالا;نام کالا;واحد;جمع سفارش;تعداد درخواست;مبلغ سفارش;موجودی کل;کسری");
+            sb.AppendLine("کد کالا;نام کالا;واحد;جمع سفارش;کسری;تعداد درخواست;مبلغ سفارش;موجودی کل");
             foreach (var r in Report.Rows)
             {
                 sb.AppendLine(string.Join(';',
                     Csv(r.ProductCode), Csv(r.ProductName), Csv(r.Unit ?? ""),
-                    Raw(r.OrderedQty), Raw(r.OrderCount), Raw(r.Amount), Raw(r.StockQty), Raw(r.ShortageQty)));
+                    Raw(r.OrderedQty), Raw(r.ShortageQty), Raw(r.OrderCount), Raw(r.Amount), Raw(r.StockQty)));
             }
             sb.AppendLine(string.Join(';', "جمع کل", "", "",
-                Raw(Report.TotalOrderedQty), Raw(Report.OrderCount), Raw(Report.TotalAmount), "", Raw(Report.TotalShortageQty)));
+                Raw(Report.TotalOrderedQty), Raw(Report.TotalShortageQty), Raw(Report.OrderCount), Raw(Report.TotalAmount), ""));
         }
         else
         {
