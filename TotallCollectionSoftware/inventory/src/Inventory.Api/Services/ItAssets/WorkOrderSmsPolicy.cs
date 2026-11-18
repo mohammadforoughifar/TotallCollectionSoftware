@@ -102,11 +102,12 @@ public static class WorkOrderSmsPolicy
         kind is WorkOrderSmsEventType.Registration or WorkOrderSmsEventType.Referral;
 
     public static WorkOrderSmsStatus InitialStatus(string? mobile, bool recipientHasAccess, bool moduleEnabled,
-        bool gatewayEnabled, bool configured, string? companyName, string? number, string? title, DateTime dueAt, WorkOrderSmsEventType kind) =>
+        bool? gatewayEnabled, bool configured, string? companyName, string? number, string? title, DateTime dueAt, WorkOrderSmsEventType kind) =>
         KavenegarSmsValidation.NormalizeMobile(mobile) is null ? WorkOrderSmsStatus.InvalidMobile :
         !recipientHasAccess ? WorkOrderSmsStatus.NoCompanyAccess :
         !moduleEnabled ? WorkOrderSmsStatus.ModuleDisabled :
-        !gatewayEnabled ? WorkOrderSmsStatus.Disabled :
+        gatewayEnabled is null ? WorkOrderSmsStatus.SettingsUnavailable :
+        gatewayEnabled == false ? WorkOrderSmsStatus.Disabled :
         !configured ? WorkOrderSmsStatus.NotConfigured :
         !KavenegarSmsValidation.CompanyToken(companyName) ? WorkOrderSmsStatus.InvalidCompanyName :
         NumberTokens(number) is null ? WorkOrderSmsStatus.InvalidOrderNumber :

@@ -441,7 +441,8 @@ class Test {
      "failed message status and API response code are retained separately");
  }
 }
-class Fake : IKavenegarSmsGateway {
+class Fake : IKavenegarSmsGateway, IKavenegarSmsGatewayFactory {
+    public Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct = default) => Task.FromResult<IKavenegarSmsGateway?>(this);
  public bool IsEnabled {get;set;}=true; public bool IsConfigured {get;set;}=true; public bool IsLookupConfigured {get;set;}=true; public int Calls; public string? Recipient,Token,CompanyName,CustomerName,Template;
  public KavenegarSmsSendResult Result=new(KavenegarSmsSendState.Accepted,42,1,200);
  public bool Throw;

@@ -11,7 +11,7 @@ namespace Inventory.Api.Services.Repairs;
 /// <summary>Outbox is committed with the repair, and is never retried after a send starts.</summary>
 public static class RepairSmsQueue
 {
-    public static async Task StageAsync(AppDbContext db, IKavenegarSmsGateway gateway, KavenegarSmsOptions options,
+    public static async Task StageAsync(AppDbContext db, IKavenegarSmsGatewayFactory gateways, KavenegarSmsOptions options,
         RepairOrder repair, DbParty? party, RepairSmsEventType kind)
     {
         if (await db.RepairSmsNotifications.AnyAsync(n => n.RepairOrderId == repair.Id && n.EventType == kind)) return;
@@ -25,9 +25,10 @@ public static class RepairSmsQueue
         var companyName = await db.SystemCompanies.AsNoTracking().Where(c => c.Id == repair.CompanyId && c.IsActive)
             .Select(c => c.Name).SingleOrDefaultAsync();
         var template = RepairSmsPolicy.TemplateName(kind, options);
-        var configured = gateway.IsLookupConfigured && KavenegarSmsValidation.TemplateName(template);
+        var gateway = revision.HasValue ? await gateways.CreateAsync() : null;
+        var configured = gateway?.IsLookupConfigured == true && KavenegarSmsValidation.TemplateName(template);
         var now = DateTime.UtcNow;
-        var state = RepairSmsPolicy.InitialStatus(mobile, revision.HasValue, gateway.IsEnabled, configured,
+        var state = RepairSmsPolicy.InitialStatus(mobile, revision.HasValue, gateway?.IsEnabled, configured,
             companyName, repair.Number, kind, customerName);
         db.RepairSmsNotifications.Add(new RepairSmsNotification
         {
@@ -40,7 +41,7 @@ public static class RepairSmsQueue
 }
 
 /// <summary>One atomic claim per event, even across server processes. No network call uses a DB transaction.</summary>
-public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGateway gateway, IOptions<KavenegarSmsOptions> options)
+public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGatewayFactory gateways, IOptions<KavenegarSmsOptions> options)
 {
     // Much longer than the gateway's 120-second maximum timeout. A crashed in-flight send
     // becomes Unknown, never Pending: it may already have reached the provider.
@@ -59,6 +60,10 @@ public sealed class RepairSmsDispatcher(AppDbContext db, IKavenegarSmsGateway ga
             .Where(n => n.Status == RepairSmsStatus.Pending)
             .OrderBy(n => n.Id).Select(n => (int?)n.Id).FirstOrDefaultAsync(ct);
         if (id is null) return false;
+        // A settings read failure is safe to retry *before* claiming. Leave the event Pending;
+        // do not record Disabled, attempt a provider call, or retry a possibly sent message.
+        var gateway = await gateways.CreateAsync(ct);
+        if (gateway is null) return false;
         var started = DateTime.UtcNow;
         var claimed = await db.RepairSmsNotifications
             .Where(n => n.Id == id && n.Status == RepairSmsStatus.Pending)

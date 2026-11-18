@@ -306,8 +306,9 @@ await Rejected(() => expenses.ChangeStatusAsync(receivedLink.Id,
 Console.WriteLine("All warranty, trade-in and expense cheque integration checks passed.");
 
 
-sealed class DisabledTestSmsGateway : IKavenegarSmsGateway
+sealed class DisabledTestSmsGateway : IKavenegarSmsGateway, IKavenegarSmsGatewayFactory
 {
+    public Task<IKavenegarSmsGateway?> CreateAsync(CancellationToken ct = default) => Task.FromResult<IKavenegarSmsGateway?>(this);
     public bool IsEnabled => false;
     public bool IsConfigured => false;
     public bool IsLookupConfigured => false;

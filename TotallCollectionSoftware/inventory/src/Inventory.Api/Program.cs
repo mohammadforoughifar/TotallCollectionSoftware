@@ -296,16 +296,8 @@ builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
 builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(builder.Configuration.GetSection("KavenegarSms"));
 // SDK برای صف تعمیرات و دستور کار استفاده می‌شود؛ پیش‌فرض خاموش است و مجوز شرکت/ماژول جداگانه لازم دارد.
-// کلید/خط/سوئیچ پیامک از جدول تنظیمات خوانده می‌شود تا با هر publish پاک نشود،
-// دقیقاً مثل کلید «سفیر بله» بالاتر. تا وقتی کلیدی ذخیره نشده، appsettings.json معتبر است.
-builder.Services.AddScoped<IKavenegarSmsGateway>(sp =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<
-        Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>();
-    var db = sp.GetRequiredService<AppDbContext>();
-    return new KavenegarSmsGateway(options,
-        () => Inventory.Api.Services.ItAssets.KavenegarSmsStoredSettings.Read(db, options.Value));
-});
+// مرجع حساب برای هر رویداد، چه در درخواست و چه در کارگر پس‌زمینه، دیتابیس همین نصب است.
+builder.Services.AddScoped<IKavenegarSmsGatewayFactory, KavenegarSmsGatewayFactory>();
 builder.Services.Configure<Inventory.Api.Services.Core.UserProfileOtpOptions>(builder.Configuration.GetSection("ProfileOtp"));
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserContactOtpDelivery, Inventory.Api.Services.Core.UserContactOtpDelivery>();
 builder.Services.AddScoped<Inventory.Api.Services.Core.IUserProfileService, Inventory.Api.Services.Core.UserProfileService>();
@@ -712,25 +704,6 @@ builder.Services.AddSwaggerGen(o =>
 
 var app = builder.Build();
 
-// ---------- وضعیت پیکربندی پیامک: خاموشِ روشن، نه خطا ----------
-// اگر کلید نباشد، سرویس‌های پیامک فقط NotConfigured/Disabled برمی‌گردانند و هیچ
-// استثنایی پرتاب نمی‌شود؛ ولی بی‌صدا بودنش خطرناک است (مدیر فکر می‌کند پیامک می‌رود).
-// پس یک خط لاگ صریح در شروع برنامه ثبت می‌شود.
-{
-    var smsOptions = app.Services.GetRequiredService<
-        Microsoft.Extensions.Options.IOptions<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>>().Value;
-    if (string.IsNullOrWhiteSpace(smsOptions.ApiKey))
-        app.Logger.LogInformation(
-            "[SMS] کلید KavenegarSms:ApiKey در فایل تنظیم نشده است. اگر کلید را در «تنظیمات ← سامانهٔ پیامکی» " +
-            "وارد کرده‌اید همان استفاده می‌شود (روش پیشنهادی؛ با publish پاک نمی‌شود)؛ در غیر این صورت ارسال پیامک غیرفعال است.");
-    else
-    {
-        app.Logger.LogInformation("[SMS] کلید در فایل تنظیم شده است؛ سوئیچ SDK فایل={Enabled}. اگر کلیدی در «تنظیمات ← سامانهٔ پیامکی» ذخیره شده باشد، آن بر فایل مقدم است. ارسال Lookup به الگوی تأییدشده و مجوز شرکت و ماژول نیز نیاز دارد.", smsOptions.SdkSendEnabled);
-        if (string.IsNullOrWhiteSpace(smsOptions.Sender))
-            app.Logger.LogWarning("[SMS] KavenegarSms:Sender خالی است؛ ارسال متنی معمولی تنظیم نشده است. Lookup به این خط وابسته نیست.");
-    }
-}
-
 if (updateDatabaseOnly)
 {
     await using (app)
@@ -792,7 +765,16 @@ else if (schemaVerbose)
 
 // ساخت دیتابیس و داده اولیه (نه در زمان ابزارهای EF)
 if (!EF.IsDesignTime)
+{
     await DbInitializer.InitializeAsync(app);
+    // Report the same effective SDK configuration the worker will use, after schema initialization.
+    // Never log credentials, and never send a message to test connectivity at startup.
+    using var scope = app.Services.CreateScope();
+    var gateway = await scope.ServiceProvider.GetRequiredService<IKavenegarSmsGatewayFactory>().CreateAsync();
+    if (gateway is not null)
+        app.Logger.LogInformation("[SMS] وضعیت مؤثر کاوه‌نگار در راه‌اندازی: سوئیچ SDK={Enabled}، کلید Lookup تنظیم شده={HasKey}. مجوز شرکت و ماژول جداگانه بررسی می‌شود.",
+            gateway.IsEnabled, gateway.IsLookupConfigured);
+}
 
 // ================== آماده‌سازی لایسنس ==================
 // «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز

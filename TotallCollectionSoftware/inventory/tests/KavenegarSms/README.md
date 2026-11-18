@@ -13,3 +13,9 @@ A normal .NET 8 SDK and NuGet access are required.
 `python3 -m unittest discover -s tests/KavenegarSms -p 'test_*.py'` checks
 source/configuration invariants only. It is not a substitute for the C# test,
 restoring the real package or building the application.
+
+`dotnet run --project tests/WorkOrderSms -c Release` exercises the real settings editor,
+staging and dispatch with EF/SQLite (including reversed unordered scans), a disabled
+file config, separate request/worker contexts and a simulated send. It covers all
+three event types, a settings read outage before claim, and explicit disable/clear.
+No credentials or provider connection are required.

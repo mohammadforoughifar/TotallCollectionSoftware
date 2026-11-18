@@ -129,6 +129,9 @@ public class AppDbContext : DbContext
     public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<ShopPrintSetting> ShopPrintSettings => Set<ShopPrintSetting>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    // AppSettings is installation-wide, but old databases need not contain exactly one row.
+    // The settings form and the senders must select the same row, even after an explicit clear.
+    public IQueryable<AppSetting> GlobalSettings => AppSettings.OrderBy(s => s.Id);
 
     // ==================== داشبورد شخصی کاربر ====================
     public DbSet<UserDashboard> UserDashboards => Set<UserDashboard>();

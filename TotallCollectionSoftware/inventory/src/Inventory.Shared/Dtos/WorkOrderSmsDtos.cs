@@ -10,7 +10,7 @@ public enum WorkOrderSmsStatus
     Pending = 1, Sending = 2, Accepted = 3, Delivered = 4, Failed = 5, Unknown = 6,
     InvalidMobile = 7, Disabled = 8, NotConfigured = 9, Cancelled = 10,
     ModuleDisabled = 11, InvalidCompanyName = 12, InvalidOrderNumber = 13,
-    NoCompanyAccess = 14, InvalidDeadline = 15, InvalidTitle = 16
+    NoCompanyAccess = 14, InvalidDeadline = 15, InvalidTitle = 16, SettingsUnavailable = 17
 }
 
 /// <summary>Owner-only work-order SMS history; never exposes mobiles or credentials.</summary>

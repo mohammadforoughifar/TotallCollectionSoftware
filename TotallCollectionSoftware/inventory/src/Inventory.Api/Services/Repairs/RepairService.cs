@@ -18,14 +18,14 @@ public class RepairService : IRepairService
 {
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
-    private readonly IKavenegarSmsGateway _smsGateway;
+    private readonly IKavenegarSmsGatewayFactory _smsGateways;
     private readonly KavenegarSmsOptions _smsOptions;
 
-    public RepairService(Db.AppDbContext db, IInventoryService inventory, IKavenegarSmsGateway smsGateway, IOptions<KavenegarSmsOptions> smsOptions)
+    public RepairService(Db.AppDbContext db, IInventoryService inventory, IKavenegarSmsGatewayFactory smsGateways, IOptions<KavenegarSmsOptions> smsOptions)
     {
         _db = db;
         _inventory = inventory;
-        _smsGateway = smsGateway;
+        _smsGateways = smsGateways;
         _smsOptions = smsOptions.Value;
     }
 
@@ -368,7 +368,7 @@ public class RepairService : IRepairService
             var smsEvent = RepairSmsPolicy.EventFor(isNew, previousStatus, entity.Status);
             if (smsEvent.HasValue)
             {
-                await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, entity, party, smsEvent.Value);
+                await RepairSmsQueue.StageAsync(_db, _smsGateways, _smsOptions, entity, party, smsEvent.Value);
                 await _db.SaveChangesAsync();
             }
             var result = (await GetRepairAsync(entity.Id))!;
@@ -426,7 +426,7 @@ public class RepairService : IRepairService
             if (smsEvent.HasValue)
             {
                 var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
-                await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, r, party, smsEvent.Value);
+                await RepairSmsQueue.StageAsync(_db, _smsGateways, _smsOptions, r, party, smsEvent.Value);
                 await _db.SaveChangesAsync();
             }
             var result = (await GetRepairAsync(id))!;
@@ -548,7 +548,7 @@ public class RepairService : IRepairService
             // Stage only a new successful delivery, in the same transaction as invoice/stock.
             // Retries and historical deliveries returned or rejected above never create an event.
             var party = await _db.Parties.FirstOrDefaultAsync(p => p.Id == r.PartyId && p.CompanyId == r.CompanyId);
-            await RepairSmsQueue.StageAsync(_db, _smsGateway, _smsOptions, r, party, RepairSmsEventType.Delivery);
+            await RepairSmsQueue.StageAsync(_db, _smsGateways, _smsOptions, r, party, RepairSmsEventType.Delivery);
             await _db.SaveChangesAsync();
             var result = await ToDtoAsync(r);
             await transaction.CommitAsync();

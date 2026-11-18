@@ -23,10 +23,9 @@ class KavenegarFoundationContracts(unittest.TestCase):
 
     def test_gateway_is_registered_for_repair_and_work_order_outboxes(self):
         program = read('src/Inventory.Api/Program.cs')
-        # Registered through a factory so the key can come from the database, but still
-        # Scoped and still bound to the concrete gateway.
-        self.assertIn('AddScoped<IKavenegarSmsGateway>(', program)
-        self.assertIn('new KavenegarSmsGateway(', program)
+        # The same scoped database-backed factory is used in requests and worker scopes.
+        self.assertIn('AddScoped<IKavenegarSmsGatewayFactory, KavenegarSmsGatewayFactory>()', program)
+        self.assertNotIn('AddScoped<IKavenegarSmsGateway>', program)
         uses = []
         for path in SRC.rglob('*'):
             if path.is_file() and path.suffix in ('.cs', '.razor') and 'IKavenegarSmsGateway' in path.read_text(encoding='utf-8'):
@@ -34,6 +33,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
         self.assertEqual(set(uses), {
             'src/Inventory.Api/Program.cs',
             'src/Inventory.Api/Services/Notification/KavenegarSmsGateway.cs',
+            'src/Inventory.Api/Services/Notification/KavenegarSmsGatewayFactory.cs',
             'src/Inventory.Api/Services/Repairs/RepairService.cs',
             'src/Inventory.Api/Services/Repairs/RepairSmsQueue.cs',
             'src/Inventory.Api/Services/ItAssets/WorkOrderSmsService.cs',
@@ -86,7 +86,7 @@ class KavenegarFoundationContracts(unittest.TestCase):
     def test_sdk_fixture_uses_only_a_fake_handler(self):
         program = read('tests/KavenegarSms/Program.cs')
         self.assertIn('sealed class FakeHandler : HttpMessageHandler', program)
-        self.assertIn('new(Options.Create(options), () => fake)', program)
+        self.assertIn('new(options, () => fake)', program)
         self.assertNotIn('SocketsHttpHandler', program)
         self.assertIn('HTTP 200 must not hide a provider-level rejection', program)
         self.assertIn('automatic retry', program)

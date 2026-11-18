@@ -216,7 +216,7 @@ sealed class InvoiceHarness
 {
     private readonly FakeDb _db = new();
     private readonly FakeInventory _inventory;
-    private readonly object _smsGateway = new(), _smsOptions = new();
+    private readonly object _smsGateways = new(), _smsOptions = new();
     private InvoiceHarness(Db.RepairOrder r)
     {
         _inventory = new(_db);

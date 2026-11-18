@@ -4,7 +4,6 @@ using System.Net.Http;
 using System.Text;
 using Inventory.Api.Services;
 using Inventory.Api.Services.ItAssets;
-using Microsoft.Extensions.Options;
 
 var assertions = 0;
 void Check(bool condition, string message)
@@ -22,7 +21,7 @@ KavenegarSmsOptions Config(bool enabled = true) => new()
 };
 
 KavenegarSmsGateway Create(KavenegarSmsOptions options, FakeHandler fake) =>
-    new(Options.Create(options), () => fake);
+    new(options, () => fake);
 
 static string Response(int? providerStatus = 200, int? messageStatus = 1, long messageId = 123)
 {
@@ -320,6 +319,17 @@ Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefo
 result = await gateway.SendWorkOrderLookupAsync("09120000000", "1405", "123", "فروشگاه", workTitle, workDeadline, "WorkOrderRegistration");
 Check(result.State == KavenegarSmsSendState.Disabled && fake.Count == lookupBefore,
     "Default-off gateway also prevents the work-order lookup.");
+
+// The database account is an overlay on this installation's file options, not a mutation of them.
+var defaults = new KavenegarSmsOptions { TimeoutSeconds = 39, WorkOrderReferralTemplate = "ApprovedReferral" };
+var account = defaults.WithAccount("test-database-key", "test-line", true);
+Check(!defaults.SdkSendEnabled && defaults.ApiKey == "" && defaults.Sender == "" &&
+    account.TimeoutSeconds == 39 && account.WorkOrderReferralTemplate == "ApprovedReferral", "Preserve file defaults and custom templates.");
+gateway = Create(account, fake);
+fake.Body = Response();
+result = await gateway.SendAsync("09120000000", "تست");
+Check(result.State == KavenegarSmsSendState.Accepted && fake.Uri!.AbsolutePath.Contains("/test-database-key/") &&
+    fake.RequestBody!.Contains("sender=test-line"), "The SDK uses the database account for both key and sender.");
 
 Console.WriteLine($"Kavenegar SDK gateway: {assertions} offline assertions passed.");
 
