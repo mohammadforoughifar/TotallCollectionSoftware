@@ -1026,15 +1026,16 @@ public class VisOrderService : IVisOrderService
     }
 
     /// <summary>
-    /// گزارش تجمیع درخواست‌های ویزیتوری بر اساس کالا (بازهٔ زمانی).
+    /// گزارش تجمیع درخواست‌های ویزیتوری در یک بازهٔ زمانی — سه نمای هم‌زمان:
+    /// «بر اساس کالا» (با موجودی و کسری)، «به تفکیک ویزیتور» و «به تفکیک مشتری».
     /// <para>
-    /// قواعد: هر کالا فقط یک سطر؛ جمع مقدار سفارش‌شده؛ موجودی «کل شرکت» (جمع همهٔ
-    /// انبارها)؛ کسری = سفارش − موجودی و تنها وقتی مثبت شود مقدار می‌گیرد.
-    /// کالاهای خدماتی موجودی ندارند؛ برای آن‌ها ستون کسری «—» است.
+    /// قواعد: هر کالا فقط یک سطر؛ جمع مقدار و مبلغ سفارش؛ موجودی «کل شرکت» (جمع همهٔ
+    /// انبارها)؛ کسری = سفارش − موجودی و تنها وقتی مثبت شود مقدار می‌گیرد. کالاهای
+    /// خدماتی موجودی ندارند و ستون کسری‌شان «—» است.
     /// </para>
     /// <para>
     /// جمع‌ها در حافظه محاسبه می‌شوند (نه در SQL) چون SQLite روی ستون‌های decimal
-    /// عملگر SUM را پشتیبانی نمی‌کند و در سرور SQL هم نتیجه یکسان می‌ماند.
+    /// عملگر SUM را پشتیبانی نمی‌کند و نتیجه در SQL Server هم یکسان می‌ماند.
     /// </para>
     /// </summary>
     public async Task<VisRequestsReportDto> RequestsReportAsync(VisActor actor, DateTime from, DateTime to,
@@ -1059,22 +1060,29 @@ public class VisOrderService : IVisOrderService
         }
 
         var orders = await query
-            .Select(o => new
-            {
+            .Select(o => new ReportOrderRow(
                 o.Id,
-                Lines = o.Lines.Select(l => new
-                {
-                    l.ProductId,
-                    l.ProductCode,
-                    l.ProductName,
-                    l.Unit,
-                    l.Quantity
-                }).ToList()
-            })
+                o.ReferrerId,
+                o.ReferrerName,
+                o.PartyId,
+                o.PartyName,
+                o.TotalNet,
+                o.TotalDiscount,
+                o.Lines.Select(l => new ReportLineRow(
+                    l.ProductId, l.ProductCode, l.ProductName, l.Unit, l.Quantity, l.LineTotal)).ToList()))
             .ToListAsync();
 
+        // ---------- تجمیع بر اساس کالا ----------
         var map = new Dictionary<int, VisRequestsReportRow>();
         var orderSets = new Dictionary<int, HashSet<int>>();
+
+        // ---------- تجمیع بر اساس ویزیتور و مشتری ----------
+        var refMap = new Dictionary<int, VisRequestsGroupRow>();
+        var cusMap = new Dictionary<int, VisRequestsGroupRow>();
+        var refProducts = new Dictionary<int, HashSet<int>>();
+        var cusProducts = new Dictionary<int, HashSet<int>>();
+        var refQtyByProduct = new Dictionary<int, Dictionary<int, decimal>>();
+        var cusQtyByProduct = new Dictionary<int, Dictionary<int, decimal>>();
 
         foreach (var o in orders)
         {
@@ -1106,8 +1114,20 @@ public class VisOrderService : IVisOrderService
                 }
 
                 row.OrderedQty += l.Quantity;
+                row.Amount += l.LineTotal;
                 orderSets[l.ProductId].Add(o.Id);
             }
+
+            var orderQty = o.Lines.Where(l => l.ProductId > 0).Sum(l => l.Quantity);
+            var lineCount = o.Lines.Count(l => l.ProductId > 0);
+
+            AccumulateGroup(refMap, refProducts, refQtyByProduct, o.ReferrerId,
+                string.IsNullOrWhiteSpace(o.ReferrerName) ? $"ویزیتور #{o.ReferrerId}" : o.ReferrerName,
+                o, orderQty, lineCount);
+
+            AccumulateGroup(cusMap, cusProducts, cusQtyByProduct, o.PartyId,
+                string.IsNullOrWhiteSpace(o.PartyName) ? $"مشتری #{o.PartyId}" : o.PartyName,
+                o, orderQty, lineCount);
         }
 
         var productIds = map.Keys.ToList();
@@ -1158,11 +1178,26 @@ public class VisOrderService : IVisOrderService
             }
         }
 
+        // سهم هر ویزیتور/مشتری از کسری: به نسبت مقدار سفارش همان کالا در آن گروه.
+        // (کسری در سطح «کالا و شرکت» تعریف می‌شود؛ این تقسیم فقط برای ردیف‌بندی مدیریتی است.)
+        ApplyGroupShortage(refMap, refQtyByProduct, map);
+        ApplyGroupShortage(cusMap, cusQtyByProduct, map);
+
         var rows = map.Values
             .OrderByDescending(r => r.HasShortage)
             .ThenByDescending(r => r.ShortageQty)
             .ThenByDescending(r => r.OrderedQty)
             .ThenBy(r => r.ProductName)
+            .ToList();
+
+        var referrerRows = refMap.Values
+            .OrderByDescending(g => g.TotalAmount)
+            .ThenByDescending(g => g.TotalQty)
+            .ToList();
+
+        var customerRows = cusMap.Values
+            .OrderByDescending(g => g.TotalAmount)
+            .ThenByDescending(g => g.TotalQty)
             .ToList();
 
         return new VisRequestsReportDto
@@ -1171,13 +1206,86 @@ public class VisOrderService : IVisOrderService
             To = end,
             OrderCount = orders.Count,
             Rows = rows,
+            ReferrerRows = referrerRows,
+            CustomerRows = customerRows,
             TotalOrderedQty = rows.Sum(r => r.OrderedQty),
+            TotalAmount = rows.Sum(r => r.Amount),
+            TotalDiscount = orders.Sum(o => o.TotalDiscount),
             TotalShortageQty = rows.Where(r => r.HasShortage).Sum(r => r.ShortageQty),
             ShortageRowCount = rows.Count(r => r.HasShortage),
             IncludesCanceled = includeCanceled,
             ScopedToMe = !actor.CanSeeAll,
             GeneratedAt = DateTime.Now
         };
+    }
+
+    /// <summary>سطر خام گزارش: سرسفارش + خطوط (بدون موجودی؛ محاسبه در حافظه).</summary>
+    private sealed record ReportLineRow(int ProductId, string ProductCode, string ProductName,
+        string? Unit, decimal Quantity, decimal LineTotal);
+
+    private sealed record ReportOrderRow(int Id, int ReferrerId, string ReferrerName, int PartyId,
+        string PartyName, decimal TotalNet, decimal TotalDiscount, List<ReportLineRow> Lines);
+
+    /// <summary>افزودن یک سفارش به تجمیع «ویزیتور» یا «مشتری».</summary>
+    private static void AccumulateGroup(
+        Dictionary<int, VisRequestsGroupRow> map,
+        Dictionary<int, HashSet<int>> productSets,
+        Dictionary<int, Dictionary<int, decimal>> qtyByProduct,
+        int id, string title, ReportOrderRow order, decimal orderQty, int lineCount)
+    {
+        if (id <= 0) return;
+
+        if (!map.TryGetValue(id, out var group))
+        {
+            group = new VisRequestsGroupRow { Id = id, Title = title };
+            map[id] = group;
+            productSets[id] = new HashSet<int>();
+            qtyByProduct[id] = new Dictionary<int, decimal>();
+        }
+        else if (!string.IsNullOrWhiteSpace(title)
+                 && (string.IsNullOrWhiteSpace(group.Title)
+                     || group.Title.StartsWith("ویزیتور #", StringComparison.Ordinal)
+                     || group.Title.StartsWith("مشتری #", StringComparison.Ordinal)))
+        {
+            // نام واقعی جای نام موقت «ویزیتور #۱۲» را می‌گیرد.
+            group.Title = title;
+        }
+
+        group.OrderCount += 1;
+        group.LineCount += lineCount;
+        group.TotalQty += orderQty;
+        group.TotalAmount += order.TotalNet;
+        group.TotalDiscount += order.TotalDiscount;
+
+        foreach (var l in order.Lines)
+        {
+            if (l.ProductId <= 0) continue;
+            productSets[id].Add(l.ProductId);
+            var perProduct = qtyByProduct[id];
+            perProduct[l.ProductId] = perProduct.GetValueOrDefault(l.ProductId) + l.Quantity;
+        }
+    }
+
+    /// <summary>تقسیم کسری کالاها بین گروه‌ها به نسبت مقدار سفارش همان کالا در گروه.</summary>
+    private static void ApplyGroupShortage(
+        Dictionary<int, VisRequestsGroupRow> groups,
+        Dictionary<int, Dictionary<int, decimal>> qtyByProduct,
+        Dictionary<int, VisRequestsReportRow> productRows)
+    {
+        foreach (var group in groups.Values)
+        {
+            group.ProductCount = qtyByProduct.TryGetValue(group.Id, out var perProduct) ? perProduct.Count : 0;
+
+            if (!qtyByProduct.TryGetValue(group.Id, out var qty)) { group.ShortageQty = 0; continue; }
+
+            decimal share = 0;
+            foreach (var (productId, groupQty) in qty)
+            {
+                if (!productRows.TryGetValue(productId, out var p) || !p.HasShortage || p.OrderedQty <= 0) continue;
+                share += p.ShortageQty * (groupQty / p.OrderedQty);
+            }
+            group.ShortageQty = Math.Round(share, 3);
+        }
     }
 
     public async Task<List<VisOrderDto>> FinanceQueueAsync(VisActor actor, int take = 200)

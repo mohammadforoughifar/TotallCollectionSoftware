@@ -33,6 +33,9 @@ public class VisRequestsReportRow
     /// <summary>موجودی کل شرکت برای این کالا (جمع همهٔ انبارها).</summary>
     public decimal StockQty { get; set; }
 
+    /// <summary>مبلغ کل سفارش‌شدهٔ این کالا در بازه (پس از تخفیف سطرها).</summary>
+    public decimal Amount { get; set; }
+
     /// <summary>کسری = سفارش − موجودی؛ اگر مثبت نشد صفر می‌ماند و نمایش داده نمی‌شود.</summary>
     public decimal ShortageQty { get; set; }
 
@@ -46,6 +49,52 @@ public class VisRequestsReportRow
     /// <summary>متن آمادهٔ ستون کسری.</summary>
     [JsonIgnore]
     public string ShortageText => IsService ? "—" : (HasShortage ? Fa.Digits(ShortageQty) : "—");
+}
+
+/// <summary>نوع تجمیع گزارش — کالا (پیش‌فرض)، ویزیتور یا مشتری.</summary>
+public enum VisReportGroup
+{
+    /// <summary>یک سطر برای هر کالا + موجودی و کسری.</summary>
+    Product = 0,
+
+    /// <summary>یک سطر برای هر ویزیتور.</summary>
+    Referrer = 1,
+
+    /// <summary>یک سطر برای هر مشتری.</summary>
+    Customer = 2
+}
+
+/// <summary>
+/// یک سطر تجمیع «به تفکیک ویزیتور» یا «به تفکیک مشتری».
+/// موجودی/کسری در این دو نما معنا ندارد؛ مقدار و مبلغ و تعداد درخواست ملاک است.
+/// </summary>
+public class VisRequestsGroupRow
+{
+    /// <summary>شناسهٔ ویزیتور (ReferrerId) یا مشتری (PartyId).</summary>
+    public int Id { get; set; }
+
+    public string Title { get; set; } = "";
+
+    /// <summary>تعداد درخواست‌های متمایز.</summary>
+    public int OrderCount { get; set; }
+
+    /// <summary>تعداد سطرهای کالا در این درخواست‌ها.</summary>
+    public int LineCount { get; set; }
+
+    /// <summary>تعداد کالاهای متمایز.</summary>
+    public int ProductCount { get; set; }
+
+    /// <summary>جمع مقدار سفارش‌شده.</summary>
+    public decimal TotalQty { get; set; }
+
+    /// <summary>جمع مبلغ خالص سفارش‌ها (پس از تخفیف).</summary>
+    public decimal TotalAmount { get; set; }
+
+    /// <summary>جمع تخفیف‌های داده‌شده.</summary>
+    public decimal TotalDiscount { get; set; }
+
+    /// <summary>کسری‌های همین گروه (جمع کسری کالاهای همین ویزیتور/مشتری روی موجودی فعلی).</summary>
+    public decimal ShortageQty { get; set; }
 }
 
 /// <summary>خروجی کامل گزارش تجمیع درخواست‌های ویزیتوری.</summary>
@@ -71,6 +120,18 @@ public class VisRequestsReportDto
 
     /// <summary>تعداد سطرهای دارای کسری.</summary>
     public int ShortageRowCount { get; set; }
+
+    /// <summary>سطرهای تجمیع به تفکیک ویزیتور.</summary>
+    public List<VisRequestsGroupRow> ReferrerRows { get; set; } = new();
+
+    /// <summary>سطرهای تجمیع به تفکیک مشتری.</summary>
+    public List<VisRequestsGroupRow> CustomerRows { get; set; } = new();
+
+    /// <summary>جمع مبلغ خالص همهٔ درخواست‌های بازه (ریال).</summary>
+    public decimal TotalAmount { get; set; }
+
+    /// <summary>جمع تخفیف‌های داده‌شده در بازه (ریال).</summary>
+    public decimal TotalDiscount { get; set; }
 
     /// <summary>درخواست‌های ابطال/ردشده در این گزارش حساب شده‌اند؟</summary>
     public bool IncludesCanceled { get; set; }

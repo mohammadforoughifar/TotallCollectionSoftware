@@ -8,23 +8,22 @@
 @inject IAuthState Auth
 @inject IJSRuntime JS
 
-<PageTitle>گزارش درخواست‌های ویزیتوری — تجمیع کالا</PageTitle>
+<PageTitle>گزارش تجمیع درخواست‌های ویزیتوری</PageTitle>
 
 @* ============================================================
-   گزارش «کل درخواست‌های ویزیتوری در بازهٔ زمانی» — تجمیع‌شده بر اساس کالا
-   • هر کالا فقط یک سطر (بدون سطر تکراری)
-   • ستون «جمع سفارش» = مجموع مقدار درخواست‌شدهٔ همان کالا در بازه
-   • ستون «موجودی کل» = جمع موجودی همان کالا در همهٔ انبارهای شرکت
-   • ستون «کسری» = جمع سفارش − موجودی کل؛ فقط وقتی مثبت شود نمایش داده می‌شود
-   • ردیف پایانی: جمع کل سفارش و جمع کل کسری
+   گزارش «کل درخواست‌های ویزیتوری در بازهٔ زمانی» با سه نما:
+     ۱) بر اساس کالا — یک سطر برای هر کالا + جمع سفارش + موجودی + کسری
+     ۲) به تفکیک ویزیتور — تعداد درخواست، مقدار، مبلغ، سهم از کسری
+     ۳) به تفکیک مشتری — همان ستون‌ها برای هر مشتری
+   همهٔ نماها از یک درخواست سرور می‌آیند؛ تغییر نما دوباره به سرور نمی‌رود.
    ============================================================ *@
 
-<div class="vis-rep" dir="rtl" @ref="printRoot">
+<div class="vis-rep" dir="rtl">
 
     <div class="vis-rep-head">
         <div>
-            <h1 class="h4 fw-bold mb-1"><i class="bi bi-clipboard-data text-primary ms-2"></i>گزارش درخواست‌های ویزیتوری</h1>
-            <div class="text-muted fs-8">تجمیع کل درخواست‌ها بر اساس کالا در بازهٔ زمانی — یک سطر برای هر کالا</div>
+            <h1 class="h4 fw-bold mb-1"><i class="bi bi-clipboard-data text-primary ms-2"></i>گزارش تجمیع درخواست‌های ویزیتوری</h1>
+            <div class="text-muted fs-8">تجمیع کل درخواست‌ها در بازهٔ زمانی — بر اساس کالا، ویزیتور یا مشتری</div>
         </div>
         <div class="d-flex gap-2 d-print-none">
             <button type="button" class="btn btn-outline-secondary" @onclick="Print" disabled="@(!Report?.HasData ?? true)">
@@ -95,11 +94,13 @@
         <div class="vis-rep-summary">
             <div><span>تعداد درخواست</span><strong class="num">@Fa.Digits(Report.OrderCount)</strong></div>
             <div><span>تعداد کالا (سطر)</span><strong class="num">@Fa.Digits(Report.ProductCount)</strong></div>
-            <div><span>جمع کل سفارش</span><strong class="num">@Fa.Digits(Report.TotalOrderedQty)</strong></div>
+            <div><span>جمع کل سفارش (مقدار)</span><strong class="num">@Fa.Digits(Report.TotalOrderedQty)</strong></div>
+            <div><span>جمع کل مبلغ (ریال)</span><strong class="num">@Fa.Money(Report.TotalAmount)</strong></div>
             <div class="@(Report.ShortageRowCount > 0 ? "warn" : "")">
                 <span>کالاهای دارای کسری</span>
                 <strong class="num">@Fa.Digits(Report.ShortageRowCount)</strong>
             </div>
+            <div><span>جمع تخفیف‌ها (ریال)</span><strong class="num">@Fa.Money(Report.TotalDiscount)</strong></div>
         </div>
 
         @if (Report.ShortageRowCount > 0)
@@ -112,69 +113,166 @@
             </div>
         }
 
-        <div class="card">
-            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
-                <span>تجمیع درخواست‌ها بر اساس کالا</span>
-                <span class="text-muted fs-8">@Fa.Digits(Report.ProductCount) سطر</span>
-            </div>
-            @if (!Report.HasData)
-            {
-                <div class="card-body text-muted">در این بازه هیچ درخواستی با این شرایط ثبت نشده است.</div>
-            }
-            else
-            {
-                <div class="table-responsive">
-                    <table class="table align-middle mb-0 vis-rep-table">
-                        <thead>
-                            <tr>
-                                <th style="width:52px">#</th>
-                                <th>کد کالا</th>
-                                <th>نام کالا</th>
-                                <th>واحد</th>
-                                <th class="text-start">جمع سفارش</th>
-                                <th class="text-start">تعداد درخواست</th>
-                                <th class="text-start">موجودی کل</th>
-                                <th class="text-start">کسری</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @{ var i = 0; }
-                            @foreach (var r in Report.Rows)
-                            {
-                                i++;
-                                <tr class="@(r.HasShortage ? "row-shortage" : "")">
-                                    <td class="num text-muted">@Fa.Digits(i)</td>
-                                    <td class="num">@(string.IsNullOrWhiteSpace(r.ProductCode) ? "—" : r.ProductCode)</td>
-                                    <td class="fw-semibold">
-                                        @(string.IsNullOrWhiteSpace(r.ProductName) ? $"کالای #{r.ProductId}" : r.ProductName)
-                                        @if (r.IsService)
-                                        {
-                                            <span class="badge badge-soft-muted ms-1">خدمت</span>
-                                        }
-                                    </td>
-                                    <td>@(string.IsNullOrWhiteSpace(r.Unit) ? "—" : r.Unit)</td>
-                                    <td class="text-start num fw-bold">@Fa.Digits(r.OrderedQty)</td>
-                                    <td class="text-start num text-muted">@Fa.Digits(r.OrderCount)</td>
-                                    <td class="text-start num">@Fa.Digits(r.StockQty)</td>
-                                    <td class="text-start num @(r.HasShortage ? "text-danger fw-bold" : "text-muted")">@r.ShortageText</td>
-                                </tr>
-                            }
-                        </tbody>
-                        <tfoot>
-                            <tr>
-                                <th colspan="4" class="text-end">جمع کل</th>
-                                <th class="text-start num">@Fa.Digits(Report.TotalOrderedQty)</th>
-                                <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
-                                <th></th>
-                                <th class="text-start num @(Report.TotalShortageQty > 0 ? "text-danger" : "")">
-                                    @(Report.TotalShortageQty > 0 ? Fa.Digits(Report.TotalShortageQty) : "—")
-                                </th>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            }
+        @* ---------- انتخاب نما ---------- *@
+        <div class="vis-rep-tabs d-print-none" role="tablist">
+            <button type="button" role="tab" class="vis-rep-tab @(Mode == VisReportGroup.Product ? "active" : "")"
+                    aria-selected="@(Mode == VisReportGroup.Product)" @onclick="() => Mode = VisReportGroup.Product">
+                <i class="bi bi-box-seam"></i> بر اساس کالا
+            </button>
+            <button type="button" role="tab" class="vis-rep-tab @(Mode == VisReportGroup.Referrer ? "active" : "")"
+                    aria-selected="@(Mode == VisReportGroup.Referrer)" @onclick="() => Mode = VisReportGroup.Referrer">
+                <i class="bi bi-person-walking"></i> به تفکیک ویزیتور
+            </button>
+            <button type="button" role="tab" class="vis-rep-tab @(Mode == VisReportGroup.Customer ? "active" : "")"
+                    aria-selected="@(Mode == VisReportGroup.Customer)" @onclick="() => Mode = VisReportGroup.Customer">
+                <i class="bi bi-people"></i> به تفکیک مشتری
+            </button>
         </div>
+
+        @if (Mode == VisReportGroup.Product)
+        {
+            <div class="card">
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <span>تجمیع درخواست‌ها بر اساس کالا</span>
+                    <span class="text-muted fs-8">@Fa.Digits(Report.ProductCount) سطر</span>
+                </div>
+                @if (!Report.HasData)
+                {
+                    <div class="card-body text-muted">در این بازه هیچ درخواستی با این شرایط ثبت نشده است.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0 vis-rep-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:52px">#</th>
+                                    <th>کد کالا</th>
+                                    <th>نام کالا</th>
+                                    <th>واحد</th>
+                                    <th class="text-start">جمع سفارش</th>
+                                    <th class="text-start">تعداد درخواست</th>
+                                    <th class="text-start">مبلغ سفارش (ریال)</th>
+                                    <th class="text-start">موجودی کل</th>
+                                    <th class="text-start">کسری</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ var i = 0; }
+                                @foreach (var r in Report.Rows)
+                                {
+                                    i++;
+                                    <tr class="@(r.HasShortage ? "row-shortage" : "")">
+                                        <td class="num text-muted">@Fa.Digits(i)</td>
+                                        <td class="num">@(string.IsNullOrWhiteSpace(r.ProductCode) ? "—" : r.ProductCode)</td>
+                                        <td class="fw-semibold">
+                                            @(string.IsNullOrWhiteSpace(r.ProductName) ? $"کالای #{r.ProductId}" : r.ProductName)
+                                            @if (r.IsService)
+                                            {
+                                                <span class="badge badge-soft-muted ms-1">خدمت</span>
+                                            }
+                                        </td>
+                                        <td>@(string.IsNullOrWhiteSpace(r.Unit) ? "—" : r.Unit)</td>
+                                        <td class="text-start num fw-bold">@Fa.Digits(r.OrderedQty)</td>
+                                        <td class="text-start num text-muted">@Fa.Digits(r.OrderCount)</td>
+                                        <td class="text-start num">@Fa.Money(r.Amount)</td>
+                                        <td class="text-start num">@Fa.Digits(r.StockQty)</td>
+                                        <td class="text-start num @(r.HasShortage ? "text-danger fw-bold" : "text-muted")">@r.ShortageText</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th colspan="4" class="text-end">جمع کل</th>
+                                    <th class="text-start num">@Fa.Digits(Report.TotalOrderedQty)</th>
+                                    <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
+                                    <th class="text-start num">@Fa.Money(Report.TotalAmount)</th>
+                                    <th></th>
+                                    <th class="text-start num @(Report.TotalShortageQty > 0 ? "text-danger" : "")">
+                                        @(Report.TotalShortageQty > 0 ? Fa.Digits(Report.TotalShortageQty) : "—")
+                                    </th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            var groups = Mode == VisReportGroup.Referrer ? Report.ReferrerRows : Report.CustomerRows;
+            var title = Mode == VisReportGroup.Referrer ? "به تفکیک ویزیتور" : "به تفکیک مشتری";
+            var nameCol = Mode == VisReportGroup.Referrer ? "ویزیتور" : "مشتری";
+
+            <div class="card">
+                <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                    <span>تجمیع درخواست‌ها @title</span>
+                    <span class="text-muted fs-8">@Fa.Digits(groups.Count) سطر</span>
+                </div>
+                @if (groups.Count == 0)
+                {
+                    <div class="card-body text-muted">در این بازه داده‌ای برای این نما وجود ندارد.</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table align-middle mb-0 vis-rep-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:52px">#</th>
+                                    <th>@nameCol</th>
+                                    <th class="text-start">تعداد درخواست</th>
+                                    <th class="text-start">تعداد کالا</th>
+                                    <th class="text-start">جمع مقدار</th>
+                                    <th class="text-start">جمع مبلغ (ریال)</th>
+                                    <th class="text-start">تخفیف (ریال)</th>
+                                    <th class="text-start">سهم از کسری</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{ var gi = 0; }
+                                @foreach (var g in groups)
+                                {
+                                    gi++;
+                                    <tr class="@(g.ShortageQty > 0 ? "row-shortage" : "")">
+                                        <td class="num text-muted">@Fa.Digits(gi)</td>
+                                        <td class="fw-semibold">@g.Title</td>
+                                        <td class="text-start num">@Fa.Digits(g.OrderCount)</td>
+                                        <td class="text-start num text-muted">@Fa.Digits(g.ProductCount)</td>
+                                        <td class="text-start num fw-bold">@Fa.Digits(g.TotalQty)</td>
+                                        <td class="text-start num">@Fa.Money(g.TotalAmount)</td>
+                                        <td class="text-start num text-muted">@(g.TotalDiscount > 0 ? Fa.Money(g.TotalDiscount) : "—")</td>
+                                        <td class="text-start num @(g.ShortageQty > 0 ? "text-danger fw-bold" : "text-muted")">
+                                            @(g.ShortageQty > 0 ? Fa.Digits(g.ShortageQty) : "—")
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th colspan="2" class="text-end">جمع کل</th>
+                                    <th class="text-start num">@Fa.Digits(Report.OrderCount)</th>
+                                    <th class="text-start num">@Fa.Digits(Report.ProductCount)</th>
+                                    <th class="text-start num">@Fa.Digits(Report.TotalOrderedQty)</th>
+                                    <th class="text-start num">@Fa.Money(Report.TotalAmount)</th>
+                                    <th class="text-start num">@Fa.Money(Report.TotalDiscount)</th>
+                                    <th class="text-start num @(Report.TotalShortageQty > 0 ? "text-danger" : "")">
+                                        @(Report.TotalShortageQty > 0 ? Fa.Digits(Report.TotalShortageQty) : "—")
+                                    </th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    @if (Mode == VisReportGroup.Referrer)
+                    {
+                        <div class="card-body pt-2 pb-3 text-muted fs-8">
+                            «سهم از کسری» = سهم هر ویزیتور از کسری کالاها به نسبت مقدار سفارش او از همان کالا.
+                            کسری در سطح «کالا و شرکت» تعریف می‌شود (جمع سفارش − موجودی کل).
+                        </div>
+                    }
+                }
+            </div>
+        }
 
         <div class="vis-rep-foot">
             گزارش در @Report.GeneratedAt.ToFaDateTime() تهیه شد. مرجع موجودی: جمع موجودی همهٔ انبارهای شرکت.
@@ -183,16 +281,19 @@
 </div>
 
 <style>
-    .vis-rep { max-width: 1400px; margin: auto; }
+    .vis-rep { max-width: 1500px; margin: auto; }
     .vis-rep-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
     .vis-rep-applied { color: #475569; font-size: .85rem; padding: .35rem 0 .75rem; }
     .vis-rep-applied .sep { color: #cbd5e1; margin: 0 .35rem; }
-    .vis-rep-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+    .vis-rep-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
     .vis-rep-summary > div { background: #fff; border: 1px solid #e2e8f0; border-radius: .75rem; padding: .9rem 1rem; }
     .vis-rep-summary > div.warn { border-color: #fca5a5; background: #fef2f2; }
     .vis-rep-summary span { display: block; color: #64748b; font-size: .8rem; }
-    .vis-rep-summary strong { display: block; color: #312e81; margin-top: .3rem; font-size: 1.2rem; }
+    .vis-rep-summary strong { display: block; color: #312e81; margin-top: .3rem; font-size: 1.15rem; }
     .vis-rep-summary > div.warn strong { color: #b91c1c; }
+    .vis-rep-tabs { display: flex; gap: .4rem; flex-wrap: wrap; margin: 0 0 .9rem; }
+    .vis-rep-tab { border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 999px; padding: .45rem .95rem; font-size: .85rem; font-weight: 700; }
+    .vis-rep-tab.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
     .vis-rep-table tbody tr.row-shortage { background: #fff7ed; }
     .vis-rep-table tbody tr.row-shortage:hover { background: #ffedd5; }
     .vis-rep-table tfoot th { background: #f8fafc; font-weight: 800; border-top: 2px solid #e2e8f0; }
@@ -200,9 +301,9 @@
     @@media (max-width: 768px) { .vis-rep-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @@media print {
         .vis-rep .table-responsive { overflow: visible; }
-        .vis-rep-table { font-size: 9pt; }
+        .vis-rep-table { font-size: 8.5pt; }
         .vis-rep-table tr { break-inside: avoid; }
-        .vis-rep-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .vis-rep-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
 </style>
 
@@ -212,12 +313,11 @@
     private bool includeCanceled;
     private bool loading;
     private VisRequestsReportDto? Report;
-    private ElementReference printRoot;
+    private VisReportGroup Mode = VisReportGroup.Product;
 
     protected override void OnInitialized()
     {
         Layout.SetTitle("گزارش درخواست‌های ویزیتوری");
-        // پیش‌فرض: ۳۰ روز اخیر
         to = DateTime.Today;
         from = DateTime.Today.AddDays(-29);
         _ = Load();
@@ -232,7 +332,6 @@
 
     private void ThisMonth()
     {
-        // ابتدای ماه شمسی جاری تا امروز
         var today = DateTime.Today;
         var (jy, jm, _) = PersianDate.FromGregorian(today);
         from = PersianDate.ToGregorian(jy, jm, 1);
@@ -279,26 +378,41 @@
         if (Report is null || !Report.HasData) return;
 
         var sb = new StringBuilder();
-        sb.AppendLine("کد کالا;نام کالا;واحد;جمع سفارش;تعداد درخواست;موجودی کل;کسری");
-        foreach (var r in Report.Rows)
+        if (Mode == VisReportGroup.Product)
         {
-            sb.AppendLine(string.Join(';',
-                Csv(r.ProductCode),
-                Csv(r.ProductName),
-                Csv(r.Unit ?? ""),
-                Raw(r.OrderedQty),
-                Raw(r.OrderCount),
-                Raw(r.StockQty),
-                Raw(r.ShortageQty)));
+            sb.AppendLine("کد کالا;نام کالا;واحد;جمع سفارش;تعداد درخواست;مبلغ سفارش;موجودی کل;کسری");
+            foreach (var r in Report.Rows)
+            {
+                sb.AppendLine(string.Join(';',
+                    Csv(r.ProductCode), Csv(r.ProductName), Csv(r.Unit ?? ""),
+                    Raw(r.OrderedQty), Raw(r.OrderCount), Raw(r.Amount), Raw(r.StockQty), Raw(r.ShortageQty)));
+            }
+            sb.AppendLine(string.Join(';', "جمع کل", "", "",
+                Raw(Report.TotalOrderedQty), Raw(Report.OrderCount), Raw(Report.TotalAmount), "", Raw(Report.TotalShortageQty)));
         }
-        sb.AppendLine(string.Join(';',
-            "جمع کل", "", "",
-            Raw(Report.TotalOrderedQty),
-            Raw(Report.OrderCount),
-            "",
-            Raw(Report.TotalShortageQty)));
+        else
+        {
+            var groups = Mode == VisReportGroup.Referrer ? Report.ReferrerRows : Report.CustomerRows;
+            var nameCol = Mode == VisReportGroup.Referrer ? "ویزیتور" : "مشتری";
+            sb.AppendLine($"{nameCol};تعداد درخواست;تعداد کالا;جمع مقدار;جمع مبلغ;تخفیف;سهم از کسری");
+            foreach (var g in groups)
+            {
+                sb.AppendLine(string.Join(';',
+                    Csv(g.Title), Raw(g.OrderCount), Raw(g.ProductCount), Raw(g.TotalQty),
+                    Raw(g.TotalAmount), Raw(g.TotalDiscount), Raw(g.ShortageQty)));
+            }
+            sb.AppendLine(string.Join(';', "جمع کل",
+                Raw(Report.OrderCount), Raw(Report.ProductCount), Raw(Report.TotalOrderedQty),
+                Raw(Report.TotalAmount), Raw(Report.TotalDiscount), Raw(Report.TotalShortageQty)));
+        }
 
-        var name = $"gozaresh-darkhast-visit-{Report.From:yyyyMMdd}-{Report.To:yyyyMMdd}.csv";
+        var suffix = Mode switch
+        {
+            VisReportGroup.Referrer => "visitors",
+            VisReportGroup.Customer => "customers",
+            _ => "products"
+        };
+        var name = $"gozaresh-visit-{suffix}-{Report.From:yyyyMMdd}-{Report.To:yyyyMMdd}.csv";
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
         await JS.InvokeVoidAsync("downloadFileFromBase64", name, "text/csv;charset=utf-8",
             Convert.ToBase64String(bytes));
@@ -312,9 +426,6 @@
     private static string Raw(int v) =>
         v.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-    private static string Csv(string? value)
-    {
-        var v = (value ?? "").Replace("\r", " ").Replace("\n", " ").Replace(";", "،");
-        return v;
-    }
+    private static string Csv(string? value) =>
+        (value ?? "").Replace("\r", " ").Replace("\n", " ").Replace(";", "،");
 }
