@@ -128,6 +128,7 @@ public class AppDbContext : DbContext
     public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
     public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<ShopVisitorDiscount> ShopVisitorDiscounts => Set<ShopVisitorDiscount>();
+    public DbSet<SalesProforma> SalesProformas => Set<SalesProforma>();
     public DbSet<ShopPrintSetting> ShopPrintSettings => Set<ShopPrintSetting>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 

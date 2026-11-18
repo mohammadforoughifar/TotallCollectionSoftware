@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Core;
 using Inventory.Shared;
@@ -199,6 +200,106 @@ public class OrdersController : ApiControllerBase
             foreach (var line in cmd.Lines) line.UnitCostSnapshot = null;
         var saved = await _service.CreateOrderAsync(cmd, CurrentActor);
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions ProformaJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
+    private static SalesProformaCommand ReadProforma(Inventory.Api.Data.SalesProforma row) =>
+        System.Text.Json.JsonSerializer.Deserialize<SalesProformaCommand>(row.DocumentJson, ProformaJson)
+        ?? throw new InvalidOperationException("اطلاعات پیش‌فاکتور معتبر نیست.");
+
+    private static SalesProformaDto ProformaDto(Inventory.Api.Data.SalesProforma row) => new()
+    {
+        Id = Guid.ParseExact(row.Id, "N"), CompanyId = row.CompanyId, Number = row.Number,
+        Document = ReadProforma(row), SaleOrderId = row.SaleOrderId
+    };
+
+    [HttpGet("proformas")]
+    public async Task<ActionResult<List<SalesProformaDto>>> ListProformas([FromServices] Inventory.Api.Data.AppDbContext db)
+    {
+        if (db.ActiveCompanyId is not > 0) return Forbid();
+        var rows = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(
+            db.SalesProformas.Where(q => q.CompanyId == db.ActiveCompanyId).OrderByDescending(q => q.CreatedAt).Take(500));
+        var results = rows.Select(ProformaDto).ToList();
+        var partyIds = results.Select(x => x.Document.PartyId).Distinct().ToArray();
+        var warehouseIds = results.Select(x => x.Document.WarehouseId).Distinct().ToArray();
+        var parties = await db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var warehouses = await db.Warehouses.Where(w => warehouseIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w.Name);
+        foreach (var result in results)
+        {
+            if (parties.TryGetValue(result.Document.PartyId, out var party))
+            {
+                result.PartyName = party.Name;
+                result.PartyPhone = string.IsNullOrWhiteSpace(party.Mobile) ? party.Phone : party.Mobile;
+                result.PartyAddress = party.Address; result.PartyTaxId = party.TaxId;
+            }
+            else result.PartyName = "نامشخص";
+            result.WarehouseName = warehouses.GetValueOrDefault(result.Document.WarehouseId, "نامشخص");
+        }
+        return Ok(results);
+    }
+
+    [HttpPost("proformas")]
+    public async Task<ActionResult<SalesProformaDto>> CreateProforma([FromBody] SalesProformaCommand cmd,
+        [FromServices] Inventory.Api.Data.AppDbContext db)
+    {
+        if (db.ActiveCompanyId is not > 0) return Forbid();
+        _ = SalesProformaConversion.CreateSale(cmd, new OrderCommand()); // validate without any inventory or ledger action
+        if (cmd.Description?.Length > 500) return BadRequest(new { message = "توضیحات بیش از حد طولانی است." });
+        var warehouse = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Warehouses.Where(w => w.Id == cmd.WarehouseId && w.IsActive));
+        var party = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.Parties.Where(p => p.Id == cmd.PartyId && p.IsActive && p.Type == PartyType.Customer));
+        if (warehouse is null || party is null) return BadRequest(new { message = "مشتری یا انبار فعال یافت نشد." });
+        if (cmd.ReferrerId is > 0 && !await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(db.Referrers.Where(r => r.Id == cmd.ReferrerId)))
+            return BadRequest(new { message = "معرف یافت نشد." });
+        var ids = cmd.Lines.Select(l => l.ProductId).Distinct().ToArray();
+        var products = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToDictionaryAsync(
+            db.Products.Where(p => ids.Contains(p.Id) && p.IsActive), p => p.Id);
+        if (products.Count != ids.Length || products.Values.Any(p => !p.IsService && p.WarehouseId is > 0 && p.WarehouseId != cmd.WarehouseId))
+            return BadRequest(new { message = "کالا برای انبار یا شرکت فعال معتبر نیست." });
+        foreach (var line in cmd.Lines)
+        {
+            var product = products[line.ProductId];
+            line.ProductName = product.Name; line.Unit = product.Unit; line.IsService = product.IsService;
+        }
+        var id = Guid.NewGuid();
+        var row = new Inventory.Api.Data.SalesProforma
+        {
+            Id = id.ToString("N"), CompanyId = db.ActiveCompanyId.Value,
+            Number = "PF-" + id.ToString("N")[..12].ToUpperInvariant(), CreatedAt = DateTime.UtcNow,
+            DocumentJson = System.Text.Json.JsonSerializer.Serialize(cmd, ProformaJson)
+        };
+        db.SalesProformas.Add(row);
+        await db.SaveChangesAsync();
+        var result = ProformaDto(row);
+        result.PartyName = party.Name; result.PartyPhone = string.IsNullOrWhiteSpace(party.Mobile) ? party.Phone : party.Mobile;
+        result.PartyAddress = party.Address; result.PartyTaxId = party.TaxId; result.WarehouseName = warehouse.Name;
+        return Ok(result);
+    }
+
+    [HttpPost("proformas/{id:guid}/convert")]
+    public async Task<ActionResult<Order>> ConvertProforma(Guid id, [FromBody] OrderCommand payment,
+        [FromServices] Inventory.Api.Data.AppDbContext db)
+    {
+        if (db.ActiveCompanyId is not > 0) return Forbid();
+        await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var key = id.ToString("N");
+        var row = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.FirstOrDefaultAsync(
+            db.SalesProformas.Where(q => q.Id == key && q.CompanyId == db.ActiveCompanyId));
+        if (row is null) return NotFound();
+        if (row.SaleOrderId is > 0) return Conflict(new { message = "این پیش‌فاکتور قبلاً به فروش تبدیل شده است." });
+        var cmd = SalesProformaConversion.CreateSale(ReadProforma(row), payment);
+        var permissionError = await PricingPermissionErrorAsync(cmd);
+        if (permissionError is not null) return StatusCode(403, new { message = permissionError });
+        var trackingError = TrackingError(cmd, TransactionType.Sale, null);
+        if (trackingError is not null) return BadRequest(new { message = trackingError });
+        var revealProfit = await MayReturnSaleProfitAsync(TransactionType.Sale);
+        var order = await _service.CreateOrderAsync(cmd, CurrentActor);
+        row.SaleOrderId = order.Id;
+        await db.SaveChangesAsync();
+        await transaction.CommitAsync();
+        return Ok(revealProfit ? order : RemoveSaleProfit(order));
     }
 
     /// <summary>ویرایش سند خرید/فروش.</summary>

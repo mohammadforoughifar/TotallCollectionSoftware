@@ -1,4 +1,5 @@
 @page "/orders/{Type}"
+@inject IApiClient ApiClient
 @inject IAuthState Auth
 @inject IOrderService OrderSvc
 @inject IWarehouseService WarehouseSvc
@@ -24,11 +25,42 @@
                 <i class="bi bi-journal-check"></i> راهنما
             </a>
         }
+        @if (!isPurchase)
+        {
+            <button class="btn btn-outline-primary" @onclick="OpenNewProforma"><i class="bi bi-file-earmark-text"></i> پیش‌فاکتور جدید</button>
+        }
         <button class="btn btn-primary" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> @(isPurchase ? "خرید جدید" : "فروش جدید")
         </button>
     </div>
 </div>
+
+@if (!isPurchase)
+{
+    <div class="card mb-3">
+        <div class="card-body">
+            <h2 class="h5">پیش‌فاکتورهای فروش</h2>
+            @if (proformas.Count == 0) { <div class="text-muted">پیش‌فاکتوری ثبت نشده است.</div> }
+            else
+            {
+                <div class="table-responsive"><table class="table table-sm align-middle">
+                    <thead><tr><th>شماره</th><th>تاریخ</th><th>مشتری</th><th>مبلغ (ریال)</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                    <tbody>
+                    @foreach (var q in proformas)
+                    {
+                        <tr><td>@q.Number</td><td>@q.Document.Date.ToFa()</td><td>@q.PartyName</td>
+                            <td class="num">@q.Document.Lines.Sum(l => l.Total).MoneyExact()</td>
+                            <td>@(q.SaleOrderId is > 0 ? "تبدیل‌شده" : "پیش‌فاکتور")</td>
+                            <td><button type="button" class="btn btn-sm btn-light" @onclick="() => PrintProforma(q)" title="چاپ"><i class="bi bi-printer"></i></button>
+                                @if (q.SaleOrderId is not > 0)
+                                { <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => ConvertProforma(q)">تبدیل به فروش</button> }
+                            </td></tr>
+                    }
+                    </tbody></table></div>
+            }
+        </div>
+    </div>
+}
 
 <div class="card mb-3">
     <div class="card-body">
@@ -247,7 +279,7 @@
 
 @if (showForm)
 {
-    <OrderForm Type="@txnType" EditOrder="editingOrder" CopyTemplate="copyTemplate" OnSaved="OnFormSaved" OnCancel="CloseForm" />
+    <OrderForm Type="@txnType" EditOrder="editingOrder" CopyTemplate="copyTemplate" IsProforma="isProformaForm" ConversionQuote="conversionQuote" OnSaved="OnFormSaved" OnCancel="CloseForm" />
 }
 
 <Modal Visible="viewing is not null" Title="جزئیات سند" Size="modal-lg" OnClose="() => viewing = null">
@@ -851,12 +883,68 @@
             try { canSeeProfit = await profitTask; }
             catch { canSeeProfit = false; }
             var res = await ordersTask;
+            if (!isPurchase)
+            {
+                try { proformas = await ApiClient.GetAsync<List<SalesProformaDto>>("api/orders/proformas") ?? new(); }
+                catch (Exception ex) { proformas = new(); Toast.Error(ex.Message); }
+            }
             items = res.Items;
             total = res.TotalCount;
             pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    private List<SalesProformaDto> proformas = new();
+    private bool isProformaForm;
+    private SalesProformaDto? conversionQuote;
+
+    private void OpenNewProforma()
+    {
+        editingOrder = null; copyTemplate = null; conversionQuote = null; isProformaForm = true; showForm = true;
+    }
+
+    private static Order ProformaOrder(SalesProformaDto quote)
+    {
+        var doc = quote.Document;
+        var result = new Order { Type = TransactionType.Sale, Number = quote.Number, Date = doc.Date,
+            PartyId = doc.PartyId, PartyName = quote.PartyName, PartyPhone = quote.PartyPhone,
+            PartyAddress = quote.PartyAddress, PartyTaxId = quote.PartyTaxId, WarehouseId = doc.WarehouseId,
+            WarehouseName = quote.WarehouseName, Description = doc.Description ?? "", ReferrerId = doc.ReferrerId };
+        foreach (var l in doc.Lines)
+        {
+            var gross = ShopInvoiceAmounts.Gross(l.Quantity, l.Price);
+            var discount = ShopInvoiceAmounts.Discount(gross, l.DiscountPercent, l.DiscountAmount, l.DiscountIsAmount);
+            result.Lines.Add(new OrderLine { ProductId = l.ProductId, ProductName = l.ProductName, Unit = l.Unit,
+                IsService = l.IsService, Quantity = l.Quantity, Price = l.Price, GrossAmount = gross,
+                DiscountPercent = l.DiscountPercent, DiscountAmount = discount, DiscountIsAmount = l.DiscountIsAmount,
+                VatValue = l.VatValue, VatAmount = OrderLineAmounts.Vat(Math.Max(0, gross - discount), l.VatValue) });
+        }
+        result.TotalAmount = result.Lines.Sum(l => l.Total);
+        return result;
+    }
+
+    private void ConvertProforma(SalesProformaDto quote)
+    {
+        if (quote.SaleOrderId is > 0) return;
+        editingOrder = null; isProformaForm = false; conversionQuote = quote;
+        copyTemplate = InvoiceCopyTemplate.From(ProformaOrder(quote));
+        showForm = true;
+    }
+
+    private async Task PrintProforma(SalesProformaDto quote)
+    {
+        try
+        {
+            var paper = await JS.InvokeAsync<string?>("shopPrintPreview.choosePaper");
+            if (paper is null) return;
+            var profile = await ProfileSvc.GetAsync();
+            var settings = await PrintSettingsClient.GetAsync();
+            var html = ShopSaleInvoicePrint.BuildProforma(ProformaOrder(quote), profile, paper, settings);
+            if (!await JS.InvokeAsync<bool>("shopPrintPreview.openHtml", html)) Toast.Error("پیش‌نمایش چاپ باز نشد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private Order? editingOrder;
@@ -904,6 +992,7 @@
 
     private void OpenNew()
     {
+        isProformaForm = false; conversionQuote = null;
         editingOrder = null;
         copyTemplate = null;
         showForm = true;
@@ -911,6 +1000,7 @@
 
     private async Task OpenEdit(Order o)
     {
+        isProformaForm = false; conversionQuote = null;
         try
         {
             // دریافت سند کامل (همراه اقلام) از سرور
@@ -923,6 +1013,7 @@
 
     private async Task OpenCopy(Order source)
     {
+        isProformaForm = false; conversionQuote = null;
         if (copyingId != 0) return;
         copyingId = source.Id;
         try
@@ -946,6 +1037,7 @@
 
     private void CloseForm()
     {
+        isProformaForm = false; conversionQuote = null;
         showForm = false;
         editingOrder = null;
         copyTemplate = null;
@@ -953,6 +1045,7 @@
 
     private async Task OnFormSaved()
     {
+        isProformaForm = false; conversionQuote = null;
         showForm = false;
         editingOrder = null;
         copyTemplate = null;

@@ -89,6 +89,27 @@ test('shop shortcuts and notification stacking in Chromium', { skip, timeout: 30
     const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     t.after(() => browser.close());
 
+    for (const width of [1280, 390]) await t.test(`payment select remains next to its input at ${width}px`, async () => {
+        const page = await createPage(browser, width);
+        try {
+            await page.evaluate(() => {
+                const modal = document.querySelector('#invoice');
+                modal.classList.add('show', 'd-block');
+                const body = modal.querySelector('.modal-body');
+                body.innerHTML = `<div style="height:480px"></div><div class="input-group order-bank-select"><div class="ss"><input id="payment-account" class="form-control"><div class="ss-menu" data-order-constrained="true"><div class="ss-item">صندوق</div><div class="ss-item">بانک</div></div></div></div>`;
+                const anchor = document.querySelector('#payment-account');
+                window.orderEntry.placeSearchMenu(anchor, anchor.parentElement.querySelector('.ss-menu'));
+            });
+            const rects = await page.evaluate(() => {
+                const a = document.querySelector('#payment-account').getBoundingClientRect();
+                const m = document.querySelector('#payment-account + .ss-menu').getBoundingClientRect();
+                return { a: { top:a.top, bottom:a.bottom }, m: { top:m.top, bottom:m.bottom, left:m.left, right:m.right }, width: innerWidth };
+            });
+            assert.ok(Math.abs(rects.m.bottom - rects.a.top + 4) < 2 || Math.abs(rects.m.top - rects.a.bottom - 4) < 2, JSON.stringify(rects));
+            assert.ok(rects.m.left >= 0 && rects.m.right <= rects.width, JSON.stringify(rects));
+        } finally { await page.close(); }
+    });
+
     await t.test('F1/F2/F3/F4 are scoped and F7 copies the focused row only', async () => {
         const page = await createPage(browser);
         try {

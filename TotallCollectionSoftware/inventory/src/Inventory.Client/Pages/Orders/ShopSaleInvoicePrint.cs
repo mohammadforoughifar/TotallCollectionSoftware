@@ -12,12 +12,14 @@ public static class ShopSaleInvoicePrint
 {
     public static string Build(Order order, CompanyProfileDto? profile, string? paperSize = null, ShopPrintSettingsDto? settings = null)
     {
-        return BuildDocument(order, profile, paperSize, settings, false);
+        return BuildDocument(order, profile, paperSize, settings, false, false);
     }
+    public static string BuildProforma(Order order, CompanyProfileDto? profile, string? paperSize = null, ShopPrintSettingsDto? settings = null)
+        => BuildDocument(order, profile, paperSize, settings, false, true);
     internal static string BuildPurchase(Order order, CompanyProfileDto? profile, string? paperSize)
-        => BuildDocument(order, profile, paperSize, null, true);
+        => BuildDocument(order, profile, paperSize, null, true, false);
 
-    private static string BuildDocument(Order order, CompanyProfileDto? profile, string? paperSize, ShopPrintSettingsDto? settings, bool purchase)
+    private static string BuildDocument(Order order, CompanyProfileDto? profile, string? paperSize, ShopPrintSettingsDto? settings, bool purchase, bool proforma)
     {
         if (purchase ? !order.IsPurchase : !order.IsSale) throw new ArgumentException("نوع سند با قالب چاپ مطابقت ندارد.", nameof(order));
         var a5 = string.Equals(paperSize, "A5", StringComparison.OrdinalIgnoreCase);
@@ -52,14 +54,14 @@ public static class ShopSaleInvoicePrint
             Bank(banks, "شماره کارت", bank.Card); Bank(banks, "شماره شبا", bank.Iban);
             banks.Append("</div>");
         }
-        var notes = $"{(purchase ? "فاکتور خرید" : "فاکتور فروش")} {order.Number} مورخ {order.Date.ToFa()} {(purchase ? "از تأمین‌کننده" : "برای")} «{Plain(order.PartyName)}»؛ {lines.Count.Num()} ردیف، مجموع مقدار {lines.Sum(l => l.Quantity).Qty()} و مبلغ نهایی {order.TotalAmount.MoneyExact()} ریال.";
+        var notes = $"{(proforma ? "پیش‌فاکتور فروش" : purchase ? "فاکتور خرید" : "فاکتور فروش")} {order.Number} مورخ {order.Date.ToFa()} {(purchase ? "از تأمین‌کننده" : "برای")} «{Plain(order.PartyName)}»؛ {lines.Count.Num()} ردیف، مجموع مقدار {lines.Sum(l => l.Quantity).Qty()} و مبلغ نهایی {order.TotalAmount.MoneyExact()} ریال.";
         if (!string.IsNullOrWhiteSpace(order.Description)) notes += "\n" + order.Description.Trim();
         var values = new Dictionary<string, string>
         {
             ["__CSS__"] = Style.Replace("__PAGE_SIZE__", a5 ? "A5" : "A4").Replace("__PAGE_MARGIN__", a5 ? "6mm" : "10mm"),
             ["__PAPER_CLASS__"] = (a5 ? "a5" : "") + (purchase ? " purchase-document" : ""),
-            ["__TITLE__"] = purchase ? "فاکتور خرید" : "فاکتور فروش",
-            ["__NUMBER_LABEL__"] = purchase ? "شماره سند خرید" : "شماره فاکتور",
+            ["__TITLE__"] = proforma ? "پیش‌فاکتور فروش" : purchase ? "فاکتور خرید" : "فاکتور فروش",
+            ["__NUMBER_LABEL__"] = proforma ? "شماره پیش‌فاکتور" : purchase ? "شماره سند خرید" : "شماره فاکتور",
             // No supplier invoice number exists in Order DTO. Do not invent a value.
             ["__SUPPLIER_META__"] = purchase ? "<div><dt>شماره فاکتور تأمین‌کننده</dt><dd>-</dd></div>" : "",
             ["__PARTY_LABEL__"] = purchase ? "فروشنده / تأمین‌کننده" : "اطلاعات خریدار",
@@ -75,7 +77,7 @@ public static class ShopSaleInvoicePrint
             ["__COUNT__"] = lines.Count.Num(), ["__QUANTITY__"] = lines.Sum(l => l.Quantity).Qty(),
             ["__ITEMS__"] = items.ToString(), ["__TOTALS__"] = totals.ToString(), ["__BANKS__"] = banks.ToString(),
             ["__COMPANY_PHONE__"] = Text(profile?.Phone), ["__COMPANY_ADDRESS__"] = Text(profile?.Address),
-            ["__NOTES__"] = Text(notes), ["__PAYMENTS__"] = Payments(order, purchase), ["__SCHEDULE__"] = Schedule(order, purchase),
+            ["__NOTES__"] = Text(notes), ["__PAYMENTS__"] = proforma ? "" : Payments(order, purchase), ["__SCHEDULE__"] = proforma ? "" : Schedule(order, purchase),
             ["__CANCELLED__"] = order.IsCancelled ? "<div class=\"cancelled\">این فاکتور ابطال شده است</div>" : "",
             ["__SIGNATURES__"] = purchase
                 ? "<section class=\"signatures\" id=\"signatures\"><div><strong>امضای مسئول خرید</strong><span>نام و امضا</span></div><div><strong>امضا و مهر تأمین‌کننده</strong><span>نام، مهر و امضا</span></div></section>"

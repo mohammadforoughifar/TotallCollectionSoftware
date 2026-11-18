@@ -111,6 +111,8 @@ public static class ShopPermissionAuthorizer
             return !write && (Section(permissions, "Sale", false) || Section(permissions, "Purchase", false) ||
                 Section(permissions, "Installments", false) || Section(permissions, "OpeningBalance", false) ||
                 Section(permissions, "OrderReports", false));
+        if (name is "ListProformas" or "CreateProforma" or "ConvertProforma")
+            return Section(permissions, "Sale", write);
         if (name == "LastPurchase") return !write && Section(permissions, "Sale", false);
         if (name is "ReceiveCheque" or "ReverseChequeReceipt")
         {

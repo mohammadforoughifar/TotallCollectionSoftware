@@ -240,10 +240,33 @@ test('search menu placement stays within the modal and viewport', () => {
     const f = fixture();
     const box = { getBoundingClientRect: () => ({ left: 100, right: 500, top: 40, bottom: 600 }) };
     const anchor = { closest: () => box, getBoundingClientRect: () => ({ left: 420, right: 490, top: 510, bottom: 550, width: 70 }) };
-    const menu = { style: {} };
+    const menu = { style: {}, getBoundingClientRect: () => ({ height: 250 }) };
     f.api.placeSearchMenu(anchor, menu);
     assert.equal(menu.style.left, '262px'); assert.equal(menu.style.width, '230px');
     assert.equal(menu.style.top, '256px'); assert.equal(menu.style.maxHeight, '250px');
+});
+
+test('short payment menus stay adjacent to the input above or below', () => {
+    const f = fixture();
+    const box = { getBoundingClientRect: () => ({ left: 100, right: 500, top: 40, bottom: 600 }) };
+    let rect = { left: 300, right: 400, top: 510, bottom: 550, width: 100 };
+    const anchor = { closest: () => box, getBoundingClientRect: () => rect };
+    const menu = { style: {}, getBoundingClientRect: () => ({ height: 80 }) };
+    f.api.placeSearchMenu(anchor, menu);
+    assert.equal(menu.style.top, '426px'); // 80px list immediately above input
+    rect = { ...rect, top: 450, bottom: 490 };
+    f.api.placeSearchMenu(anchor, menu);
+    assert.equal(menu.style.top, '494px'); // fits below even if less than 180px available
+});
+
+test('long payment menu is clipped to available space and anchored above', () => {
+    const f = fixture();
+    const box = { getBoundingClientRect: () => ({ left: 100, right: 500, top: 400, bottom: 600 }) };
+    const anchor = { closest: () => box, getBoundingClientRect: () => ({ left: 150, right: 250, top: 530, bottom: 570, width: 100 }) };
+    const menu = { style: {}, getBoundingClientRect: () => ({ height: 250 }) };
+    f.api.placeSearchMenu(anchor, menu);
+    assert.equal(menu.style.top, '408px');
+    assert.equal(menu.style.maxHeight, '118px');
 });
 
 test('clicking next to an open invoice combo blurs it without blocking the click', () => {
