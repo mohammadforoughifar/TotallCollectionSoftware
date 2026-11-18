@@ -383,6 +383,16 @@
                     </div>
                 }
 
+                @if (new[] { "Purchase", "Sale", "GoodsIssue", "Repairs", "Expenses", "Installments", "OpeningBalance", "Settlement" }.Any(key => ShopAccess.CanSee(Auth, key)))
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gOpsActions ? "open" : "")" @onclick="() => gOpsActions = !gOpsActions">
+                            <span><i class="bi bi-lightning"></i>عملیات</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gOpsActions)
+                        {
+                            <div class="nav-sub-items">
                 @* خرید و فروش دو بخش مستقل‌اند (مجوز قدیمی هر دو «Orders» بود و قابل تفکیک نبود) *@
                 @if (ShopAccess.CanSee(Auth, "Purchase"))
                 {
@@ -395,10 +405,6 @@
                     <NavLink class="nav-link" href="orders/sale" @onclick="NotifyClose">
                         <i class="bi bi-cart3"></i><span>فروش</span>
                     </NavLink>
-                }
-                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
-                {
-                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات چاپ</span></NavLink>
                 }
                 @if (ShopAccess.CanSee(Auth, "GoodsIssue"))
                 {
@@ -435,6 +441,16 @@
                     <NavLink class="nav-link" href="trs/vouchers" @onclick="NotifyClose">
                         <i class="bi bi-cash-stack"></i><span>تسویه فاکتورها</span>
                     </NavLink>
+                }
+
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (ShopAccess.CanSee(Auth, "PrintSettings"))
+                {
+                    <NavLink class="nav-link" href="shop/print-settings" @onclick="NotifyClose"><i class="bi bi-gear"></i><span>تنظیمات فروشگاه</span></NavLink>
                 }
                 @if (ShopAccess.CanSee(Auth, "Guide"))
                 {
@@ -939,7 +955,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gOpsBase, gOpsReports, gOpsDash;
+    private bool gOpsBase, gOpsReports, gOpsDash, gOpsActions;
     /// <summary>سطوح «اطلاعات پایهٔ مودیان» — هر یک از این‌ها بدون سطح مشاهده هم منو را باز می‌کند.</summary>
     private static readonly string[] MoadianBasicInfoActions =
         { "Company", "FiscalYear", "Connection", "Units", "Goods", "Customers" };
@@ -1052,6 +1068,7 @@
         gDocs = false;
         gProjects = false;
         gOps = false;
+        gOpsActions = false;
         gOpsBase = false;
         gOpsDash = false;
         gOpsReports = false;

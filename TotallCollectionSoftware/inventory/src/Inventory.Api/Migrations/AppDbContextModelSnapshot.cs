@@ -17330,6 +17330,14 @@ namespace Inventory.Api.Migrations
 
                     b.Navigation("UserRoles");
                 });
+            modelBuilder.Entity("Inventory.Api.Data.ShopVisitorDiscount", b =>
+                {
+                    b.Property<int>("CompanyId").HasColumnType("int");
+                    b.Property<int>("UserId").HasColumnType("int");
+                    b.Property<decimal>("MaxDiscountPercent").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.HasKey("CompanyId", "UserId");
+                    b.ToTable("ShopVisitorDiscounts");
+                });
             // Shop pricing history is additive; older legacy snapshot omissions are intentionally not guessed here.
             modelBuilder.Entity("Inventory.Api.Data.ShopPricingPolicy", b =>
                 {

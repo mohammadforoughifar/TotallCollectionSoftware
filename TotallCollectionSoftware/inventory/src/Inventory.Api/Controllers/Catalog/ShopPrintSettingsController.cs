@@ -42,4 +42,57 @@ public class ShopPrintSettingsController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok(normalized);
     }
+
+    // Unlike print data, visitor limits are visible only to shop settings administrators/viewers.
+    private async Task<bool> CanAccessVisitorSettings(bool write)
+    {
+        if (await _permissions.IsLegacyAdminAsync(User)) return true;
+        var p = await _permissions.GetAsync(User);
+        return p.Contains("Shop.PrintSettings.Manage") || (!write && p.Contains("Shop.PrintSettings.View"));
+    }
+
+    private IQueryable<User> ActiveVisitors(int companyId)
+    {
+        // Company assignments are authoritative; legacy SystemUsers is used only when no assignments exist.
+        return _db.Users.AsNoTracking().Where(u => u.IsActive &&
+            (_db.UserCompanyAccesses.Any(a => a.UserId == u.Id && a.CompanyId == companyId) ||
+             (!_db.UserCompanyAccesses.Any(a => a.UserId == u.Id) &&
+              _db.SystemUsers.Any(s => s.Username == u.Username && s.IsActive && s.CompanyId == companyId))) &&
+            _db.UserRoles.Any(ur => ur.UserId == u.Id &&
+                _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive) &&
+                _db.RolePermissions.Any(rp => rp.RoleId == ur.RoleId &&
+                    _db.Permissions.Any(p => p.Id == rp.PermissionId && p.Module == "SalesVisit" && p.Action == "Create"))));
+    }
+
+    [HttpGet("visitors")]
+    public async Task<ActionResult<List<ShopVisitorDiscountDto>>> GetVisitors()
+    {
+        if (!await CanAccessVisitorSettings(false)) return Forbid();
+        if (_db.ActiveCompanyId is not > 0) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var companyId = _db.ActiveCompanyId.Value;
+        var users = await ActiveVisitors(companyId).OrderBy(u => u.Username).ToListAsync();
+        var caps = await _db.ShopVisitorDiscounts.AsNoTracking().Where(x => x.CompanyId == companyId).ToListAsync();
+        return Ok(users.Select(u => new ShopVisitorDiscountDto {
+            CompanyId = companyId, UserId = u.Id,
+            UserName = string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}".Trim()) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
+            MaxDiscountPercent = caps.FirstOrDefault(x => x.UserId == u.Id)?.MaxDiscountPercent ?? 0m
+        }).ToList());
+    }
+
+    [HttpPut("visitors/{userId:int}")]
+    public async Task<ActionResult<ShopVisitorDiscountDto>> SaveVisitor(int userId, ShopVisitorDiscountDto input)
+    {
+        if (!await CanAccessVisitorSettings(true)) return Forbid();
+        if (_db.ActiveCompanyId is not > 0) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        if (input is null || input.CompanyId != _db.ActiveCompanyId || input.UserId != userId || input.MaxDiscountPercent < 0 || input.MaxDiscountPercent > 100 || decimal.Round(input.MaxDiscountPercent, 2) != input.MaxDiscountPercent)
+            return BadRequest(new { message = "سقف تخفیف باید بین صفر و صد و حداکثر با دو رقم اعشار باشد." });
+        var companyId = _db.ActiveCompanyId.Value;
+        if (!await ActiveVisitors(companyId).AnyAsync(u => u.Id == userId)) return NotFound();
+        var row = await _db.ShopVisitorDiscounts.FindAsync(companyId, userId);
+        if (row is null) { row = new ShopVisitorDiscount { CompanyId = companyId, UserId = userId }; _db.ShopVisitorDiscounts.Add(row); }
+        row.MaxDiscountPercent = input.MaxDiscountPercent;
+        await _db.SaveChangesAsync();
+        return Ok(input);
+    }
+
 }

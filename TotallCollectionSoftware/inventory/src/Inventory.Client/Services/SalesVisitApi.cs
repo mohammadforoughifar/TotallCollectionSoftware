@@ -8,14 +8,14 @@ public interface ISalesVisitApi
 {
     Task<VisActorInfo> MeAsync();
     Task<List<VisOrderDto>> ListAsync(VisOrderStatus? status = null, string? search = null,
-        DateTime? from = null, DateTime? to = null);
+        DateTime? from = null, DateTime? to = null, bool mine = false);
     Task<VisOrderDto?> GetAsync(int id);
     Task<List<VisApprovalItem>> ApprovalsAsync();
     Task<List<VisOrderDto>> FinanceQueueAsync();
 
     /// <summary>گزارش تجمیع درخواست‌ها بر اساس کالا در بازهٔ زمانی (یک سطر برای هر کالا).</summary>
     Task<VisRequestsReportDto> RequestsReportAsync(DateTime from, DateTime to, bool includeCanceled = false);
-    Task<VisQueueStats> StatsAsync();
+    Task<VisQueueStats> StatsAsync(bool mine = false);
 
     Task<VisOrderDto> SaveAsync(VisOrderCommand cmd);
     Task<VisOrderDto> SubmitAsync(int id);
@@ -48,9 +48,9 @@ public class SalesVisitApi : ISalesVisitApi
     public Task<VisActorInfo> MeAsync() => _api.GetAsync<VisActorInfo>("api/sales-visit/me");
 
     public Task<List<VisOrderDto>> ListAsync(VisOrderStatus? status = null, string? search = null,
-        DateTime? from = null, DateTime? to = null)
+        DateTime? from = null, DateTime? to = null, bool mine = false)
     {
-        var url = "api/sales-visit?";
+        var url = $"api/sales-visit?mine={mine.ToString().ToLowerInvariant()}&";
         if (status is not null) url += $"status={(int)status}&";
         if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
         if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
@@ -70,7 +70,7 @@ public class SalesVisitApi : ISalesVisitApi
         _api.GetAsync<VisRequestsReportDto>(
             $"api/sales-visit/requests-report?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}&includeCanceled={(includeCanceled ? "true" : "false")}");
 
-    public Task<VisQueueStats> StatsAsync() => _api.GetAsync<VisQueueStats>("api/sales-visit/stats");
+    public Task<VisQueueStats> StatsAsync(bool mine = false) => _api.GetAsync<VisQueueStats>($"api/sales-visit/stats?mine={mine.ToString().ToLowerInvariant()}");
 
     public Task<VisOrderDto> SaveAsync(VisOrderCommand cmd) =>
         _api.PostAsync<VisOrderDto>("api/sales-visit", cmd);

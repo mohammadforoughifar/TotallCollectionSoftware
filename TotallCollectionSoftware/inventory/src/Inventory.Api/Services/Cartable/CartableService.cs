@@ -142,10 +142,10 @@ public class SalesVisitCartableSource : ICartableSource
         var canCreate = ctx.Has("SalesVisit.Create");
 
         // ---------------- ویزیتور ----------------
-        if (canCreate && ctx.ReferrerId is > 0)
+        if (canCreate && ctx.UserId > 0)
         {
             var myReturned = await _db.VisOrders.AsNoTracking()
-                .Where(o => o.ReferrerId == ctx.ReferrerId && o.Status == VisOrderStatus.Returned)
+                .Where(o => o.CreatedByUserId == ctx.UserId && o.Status == VisOrderStatus.Returned)
                 .CountAsync(ct);
             if (myReturned > 0)
                 items.Add(new CartableItemDto
@@ -163,7 +163,7 @@ public class SalesVisitCartableSource : ICartableSource
                 });
 
             var myDrafts = await _db.VisOrders.AsNoTracking()
-                .Where(o => o.ReferrerId == ctx.ReferrerId && o.Status == VisOrderStatus.Draft)
+                .Where(o => o.CreatedByUserId == ctx.UserId && o.Status == VisOrderStatus.Draft)
                 .CountAsync(ct);
             if (myDrafts > 0)
                 items.Add(new CartableItemDto

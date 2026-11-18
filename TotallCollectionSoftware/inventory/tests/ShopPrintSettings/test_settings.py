@@ -8,7 +8,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[2]
 def read(p): return (ROOT/'src'/p).read_text()
 class SettingsTests(unittest.TestCase):
     def test_menu_route_permissions(self):
-        self.assertIn('"PrintSettings", "تنظیمات چاپ"',read('Inventory.Shared/ShopSections.cs'))
+        self.assertIn('"PrintSettings", "تنظیمات فروشگاه"',read('Inventory.Shared/ShopSections.cs'))
         self.assertIn('ShopAccess.CanSee(Auth, "PrintSettings")',read('Inventory.Client/Layout/NavMenu.razor'))
         page=read('Inventory.Client/Pages/Shop/PrintSettings.razor')
         self.assertIn('@page "/shop/print-settings"',page)

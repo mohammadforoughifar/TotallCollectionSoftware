@@ -64,6 +64,7 @@ public static class DbInitializer
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopPrintSettingsSchemaV1.EnsureAsync(db);
+                    await ShopVisitorDiscountSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -156,6 +157,7 @@ public static class DbInitializer
                     await ShopReferrerCommissionSchemaV1.EnsureAsync(db);
                     await ShopPricingSchemaV1.EnsureAsync(db);
                     await ShopPrintSettingsSchemaV1.EnsureAsync(db);
+                    await ShopVisitorDiscountSchemaV1.EnsureAsync(db);
                     await ShopQuantitySchemaV1.EnsureAsync(db);
                     // ستون شرکت اعلان‌ها: نمایش اعلان فقط در شرکت فعال انتخاب‌شده
                     await NotificationCompanySchemaV1.EnsureAsync(db);
@@ -359,6 +361,7 @@ public static class DbInitializer
                 await SaleChequeCompanyOwnershipSchemaV1.EnsureAsync(db);
                 await ShopPricingSchemaV1.EnsureAsync(db);
                 await ShopPrintSettingsSchemaV1.EnsureAsync(db);
+                await ShopVisitorDiscountSchemaV1.EnsureAsync(db);
 
                 // حذف نرم فاکتور (قاعدهٔ سهمیهٔ لایسنس: حذف توسط کاربر مصرف را برنمی‌گرداند)
                 await InvoiceSoftDeleteSchemaV1.EnsureAsync(db);

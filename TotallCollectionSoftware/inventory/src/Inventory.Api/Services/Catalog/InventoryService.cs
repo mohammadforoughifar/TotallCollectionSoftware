@@ -187,8 +187,6 @@ public class InventoryService : IInventoryService
         entity.CardNumber = NullIfEmpty(dto.CardNumber);
         entity.Iban = NullIfEmpty(dto.Iban);
         entity.CanViewProducts = dto.CanViewProducts;
-        // سقف تخفیف مجاز ویزیتور در سفارش میدانی (۰ = بدون سقف)
-        entity.MaxDiscountPercent = Math.Clamp(dto.MaxDiscountPercent, 0, 100);
         entity.IsActive = dto.IsActive;
         await _db.SaveChangesAsync();
 

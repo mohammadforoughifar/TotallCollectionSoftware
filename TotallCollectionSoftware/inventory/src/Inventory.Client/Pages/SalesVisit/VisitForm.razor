@@ -380,10 +380,10 @@ else
                             <i class="bi bi-shield-check"></i> دسترسی مدیر: شما مجاز به اعمال هر مقدار تخفیف بدون محدودیت سقف هستید.
                         </div>
                     }
-                    else if (me?.MaxDiscountPercent > 0)
+                    else if (me != null)
                     {
                         <div class="form-text mt-2 text-warning-emphasis">
-                            <i class="bi bi-info-circle ms-1"></i> سقف تخفیف مجاز شما: <b>@Fa.Digits(me.MaxDiscountPercent) درصد</b> (تخفیف بالاتر نیازمند تأیید مدیر است).
+                            <i class="bi bi-info-circle ms-1"></i> سقف تخفیف مجاز شما: <b>@Fa.Digits(me.MaxDiscountPercent) درصد</b> (تخفیف بالاتر مجاز نیست).
                         </div>
                     }
                 </div>
@@ -402,7 +402,7 @@ else
             {
                 <div class="alert alert-warning py-2 px-2 mt-2 fs-8 mb-0">
                     <i class="bi bi-exclamation-triangle"></i>
-                    تخفیف یک یا چند سطر از سقف مجاز شما بیشتر است؛ سفارش با علامت «تأیید ویژه» به مدیر میرود.
+                    تخفیف یک یا چند سطر از سقف مجاز شما بیشتر است؛ امکان ثبت سفارش وجود ندارد.
                 </div>
             }
 
@@ -1378,12 +1378,15 @@ else
         CloseCombo();
     }
 
+    private static bool ExceedsCap(VisOrderLineDto line, decimal cap) => line.DiscountIsAmount
+        ? LineDiscount(line) * 100m > line.Quantity * line.UnitPrice * cap
+        : line.DiscountPercent > cap;
     private decimal Gross => model.Lines.Sum(l => l.Quantity * l.UnitPrice);
     private decimal Discount => model.Lines.Sum(LineDiscount);
     private decimal Net => Gross - Discount;
     private bool OverLimit => me?.CanApprove != true && me?.IsAdmin != true
-                              && me?.MaxDiscountPercent > 0
-                              && model.Lines.Any(l => l.DiscountPercent > me.MaxDiscountPercent);
+                              && me != null
+                              && model.Lines.Any(l => ExceedsCap(l, me.MaxDiscountPercent));
 
     protected override async Task OnInitializedAsync()
     {
@@ -1741,9 +1744,9 @@ else
         if (deliveryDate is null) { Toast.Error("تاریخ دریافت محصول را انتخاب کنید."); return; }
 
         // محدودیت سقف تخفیف برای ویزیتور (مدیر محدودیت ندارد)
-        if (me?.CanApprove != true && me?.IsAdmin != true && me?.MaxDiscountPercent > 0)
+        if (me?.CanApprove != true && me?.IsAdmin != true && me != null)
         {
-            var invalidLine = model.Lines.FirstOrDefault(l => l.DiscountPercent > me.MaxDiscountPercent);
+            var invalidLine = model.Lines.FirstOrDefault(l => ExceedsCap(l, me.MaxDiscountPercent));
             if (invalidLine is not null)
             {
                 Toast.Error($"درصد تخفیف سطر «{invalidLine.ProductName}» ({Fa.Digits(invalidLine.DiscountPercent)}٪) بیش از سقف مجاز شما ({Fa.Digits(me.MaxDiscountPercent)}٪) است.");

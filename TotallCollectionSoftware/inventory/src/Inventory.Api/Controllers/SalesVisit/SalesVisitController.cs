@@ -79,11 +79,11 @@ public class SalesVisitController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<VisOrderDto>>> GetAll(
         [FromQuery] VisOrderStatus? status, [FromQuery] int? partyId,
-        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? search)
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] string? search, [FromQuery] bool mine = false)
     {
         if (!await HasAnyAsync("View", "Create", "Approve", "FinanceView")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
-        return Ok(await _svc.GetListAsync(actor, status, partyId, from, to, search));
+        return Ok(await _svc.GetListAsync(actor, status, partyId, from, to, search, mine: mine));
     }
 
     /// <summary>صف تأیید مدیر فروش همراه هشدار کسری موجودی.</summary>
@@ -125,11 +125,11 @@ public class SalesVisitController : ControllerBase
 
     /// <summary>آمار کارتابلی/داشبوردی.</summary>
     [HttpGet("stats")]
-    public async Task<ActionResult<VisQueueStats>> Stats()
+    public async Task<ActionResult<VisQueueStats>> Stats([FromQuery] bool mine = false)
     {
         if (!await HasAnyAsync("View", "Create", "Approve", "FinanceView")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
-        return Ok(await _svc.StatsAsync(actor));
+        return Ok(await _svc.StatsAsync(actor, mine));
     }
 
     /// <summary>یک سفارش با سطرها و گردش کامل.</summary>
