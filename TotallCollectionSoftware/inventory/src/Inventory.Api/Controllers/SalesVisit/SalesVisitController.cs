@@ -94,6 +94,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.ApprovalsQueueAsync(actor));
     }
 
@@ -222,6 +223,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         // دیگر پیش‌نویس فاکتور ساخته نمی‌شود: تأیید مدیر سفارش را به «کارتابل مالی» می‌برد و
         // مالی با یک اقدام، سند فروش فروشگاه (نقد/چک/اقساط) را ثبت می‌کند.
         return Ok(await _svc.ApproveAsync(actor, id, decision?.Comment,
@@ -233,6 +235,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.ReturnAsync(actor, id, decision?.Comment ?? ""));
     }
 
@@ -241,6 +244,7 @@ public class SalesVisitController : ControllerBase
     {
         if (!await HasAnyAsync("Approve")) return Forbid();
         var actor = await _svc.ResolveActorAsync(User);
+        if (!actor.CanApprove) return Forbid();
         return Ok(await _svc.RejectAsync(actor, id, decision?.Comment ?? ""));
     }
 

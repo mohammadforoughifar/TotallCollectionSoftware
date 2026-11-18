@@ -586,7 +586,7 @@
                                    «سفارش‌های من» (sales/visits) وجود دارد و تکرار آن در منو
                                    ورودی اضافی و مسیر نگهداری دوباره ایجاد میکرد. محافظ مسیر
                                    sales/visits/new در RouteGuardsـه MainLayout همچنان پابرجاست. *@
-                                @if (Auth.Has("SalesVisit.Approve"))
+                                @if (Auth.IsAdmin || (Auth.IsSalesManager && Auth.Has("SalesVisit.Approve")))
                                 {
                                     <NavLink class="nav-link" href="sales/approvals" @onclick="NotifyClose">
                                         <i class="bi bi-patch-check"></i><span>تأیید سفارش‌ها</span>

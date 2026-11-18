@@ -144,4 +144,26 @@ class CustomerReferrerIdentityTests(unittest.TestCase):
         self.assertIn('CreatedByUserId = actor.UserId', service)
         self.assertIn('CreatedByName = actor.UserName', service)
 
+class ManagerApprovalAccessTests(unittest.TestCase):
+    def test_approval_role_and_permission_are_required_on_server(self):
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        self.assertIn('CanApprove: isAdmin || (isSalesManager && Has("Approve"))', service)
+        self.assertIn('CanFinance && !IsSalesVisitor', service)
+        controller = read('Inventory.Api/Controllers/SalesVisit/SalesVisitController.cs')
+        for name in ['Approvals()', 'Approve(int id', 'Return(int id', 'Reject(int id']:
+            section = controller[controller.index(name):]
+            self.assertIn('if (!actor.CanApprove) return Forbid();', section[:800], name)
+        for name in ['ApproveAsync', 'ReturnAsync', 'RejectAsync']:
+            section = service[service.index('public async Task<VisOrderDto> ' + name):]
+            self.assertIn('if (!actor.CanApprove)', section[:500], name)
+
+    def test_menu_guard_and_cartable_use_manager_role(self):
+        for path in ['Inventory.Client/Layout/NavMenu.razor', 'Inventory.Client/Layout/MainLayout.razor']:
+            self.assertIn('Auth.IsAdmin || (Auth.IsSalesManager && Auth.Has("SalesVisit.Approve"))', read(path))
+        auth = read('Inventory.Client/Services/AuthState.cs')
+        self.assertIn('_session?.RoleNames?.Any', auth)
+        cartable = read('Inventory.Api/Services/Cartable/CartableService.cs')
+        self.assertIn('ctx.IsAdmin || (isSalesManager && ctx.Has("SalesVisit.Approve"))', cartable)
+        self.assertIn('r.IsActive && r.Name == "SalesManager"', cartable)
+
 if __name__ == '__main__': unittest.main()

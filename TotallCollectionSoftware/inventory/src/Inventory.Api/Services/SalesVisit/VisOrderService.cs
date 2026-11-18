@@ -46,7 +46,7 @@ public sealed record VisActor(
     public bool CanEditVisitPrice => IsSalesManager && !IsSalesVisitor;
 
     /// <summary>دیدن همهٔ سفارش‌های شرکت (مدیر فروش/مالی) در مقابل فقط سفارش‌های خودش (ویزیتور).</summary>
-    public bool CanSeeAll => IsAdmin || CanApprove || CanFinance;
+    public bool CanSeeAll => IsAdmin || CanApprove || (CanFinance && !IsSalesVisitor);
 }
 
 /// <summary>سرویس سفارش ویزیتور — پیش‌سند فروش با چرخهٔ تأیید.</summary>
@@ -191,7 +191,7 @@ public class VisOrderService : IVisOrderService
             ReferrerName: referrer?.Name ?? "",
             IsAdmin: isAdmin,
             CanCreate: Has("Create"),
-            CanApprove: Has("Approve"),
+            CanApprove: isAdmin || (isSalesManager && Has("Approve")),
             CanFinance: Has("FinanceView"),
             MaxDiscountPercent: discountCap)
         {
@@ -1785,8 +1785,13 @@ public class VisOrderService : IVisOrderService
             .Select(rp => rp.RoleId).Distinct().ToListAsync();
         if (roleIds.Count == 0) return new List<int>();
 
-        return await _db.UserRoles.Where(ur => roleIds.Contains(ur.RoleId))
-            .Select(ur => ur.UserId).Distinct().ToListAsync();
+        var users = _db.UserRoles.Where(ur => roleIds.Contains(ur.RoleId))
+            .Select(ur => ur.UserId).Distinct();
+        if (action == "Approve")
+            users = users.Where(id => _db.Users.Any(u => u.Id == id && u.IsActive &&
+                (u.Role == "Admin" || _db.UserRoles.Any(ur => ur.UserId == id &&
+                    _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive && r.Name == "SalesManager")))));
+        return await users.ToListAsync();
     }
 
     /// <summary>رخدادهای ماژول ویزیتوری که هرکدام یک اعلان مشخص دارند.</summary>

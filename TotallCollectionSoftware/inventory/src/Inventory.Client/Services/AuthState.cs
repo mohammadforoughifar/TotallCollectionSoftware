@@ -18,6 +18,7 @@ public interface IAuthState
     int UserId { get; }
     string DisplayName { get; }
     string Role { get; }
+    bool IsSalesManager => false;
 
     /// <summary>شناسه معرف مرتبط با کاربر جاری (اگر کاربر معرف باشد)</summary>
     int? ReferrerId { get; }
@@ -74,6 +75,7 @@ public class AuthState : IAuthState
     public int UserId => _session?.UserId ?? 0;
     public string DisplayName => _session?.DisplayName ?? "";
     public string Role => _session?.Role ?? "";
+    public bool IsSalesManager => _session?.RoleNames?.Any(r => string.Equals(r, "SalesManager", StringComparison.OrdinalIgnoreCase)) == true;
     public int? ReferrerId => _session?.ReferrerId;
 
     // ================== بررسی دسترسی‌های RBAC ==================
