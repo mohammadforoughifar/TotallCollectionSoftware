@@ -366,8 +366,10 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("targets")]
     public async Task<IActionResult> Targets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is not > 0) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var canOthers = await HasAsync("AssignOthers");
-        var query = _db.Users.AsNoTracking().Where(u => u.Id == MyUserId ||
+        var query = WorkOrderSmsCompanyAccess.EligibleUsers(_db, companyId.Value).Where(u => u.Id == MyUserId ||
             (canOthers && u.IsActive && (IsLegacyAdmin || _db.WorkOrderAllowedAssignees
                 .Any(a => a.OwnerUserId == MyUserId && a.TargetUserId == u.Id))));
         var pagination = new Paging.Request(skip, take);
@@ -380,6 +382,17 @@ public class WorkOrdersController : ControllerBase
                 : (string.IsNullOrWhiteSpace((u.FirstName + " " + u.LastName).Trim()) ? u.Username : (u.FirstName + " " + u.LastName).Trim() + $" ({u.Username})")
         })));
 
+    }
+
+    /// <summary>وضعیت فعال‌سازی پیامک دستور کار برای شرکت فعال؛ بدون افشای تنظیمات یا کلیدها.</summary>
+    [HttpGet("sms-status")]
+    public async Task<IActionResult> CompanySmsStatus(CancellationToken ct)
+    {
+        if (!await HasAsync("Create")) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is not > 0) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var enabled = await CompanySmsServicePolicy.GetEnabledRevisionAsync(_db, companyId, SmsModuleCatalog.WorkOrders, ct) is > 0;
+        return Ok(new { enabled });
     }
 
     /// <summary>لیست مجاز یک کاربر (پیکربندی — فقط مدیر).</summary>
@@ -604,9 +617,10 @@ public class WorkOrdersController : ControllerBase
         if (dto.Weight is < 0 or > 10)
             return BadRequest(new { message = "وزن دستور باید بین ۰ تا ۱۰ باشد." });
 
-        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id) && u.IsActive).ToListAsync();
+        var users = await WorkOrderSmsCompanyAccess.EligibleUsers(_db, companyId.Value)
+            .Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
         if (users.Count != dto.AssigneeUserIds.Distinct().Count())
-            return BadRequest(new { message = "برخی گیرندگان وجود ندارند یا غیرفعال‌اند." });
+            return BadRequest(new { message = "برخی گیرندگان وجود ندارند، غیرفعال‌اند یا به شرکت فعال دسترسی ندارند." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
@@ -760,9 +774,12 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
-        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id) && u.IsActive).ToListAsync();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is not > 0 || wo.CompanyId != companyId) return BadRequest(new { message = "شرکت فعال با شرکت دستور کار مطابقت ندارد." });
+        var users = await WorkOrderSmsCompanyAccess.EligibleUsers(_db, companyId.Value)
+            .Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
         if (users.Count != dto.AssigneeUserIds.Distinct().Count())
-            return BadRequest(new { message = "برخی گیرندگان وجود ندارند یا غیرفعال شده‌اند؛ فقط کاربران فعال را انتخاب کنید." });
+            return BadRequest(new { message = "برخی گیرندگان وجود ندارند، غیرفعال‌اند یا به شرکت فعال دسترسی ندارند." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
@@ -1830,9 +1847,12 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
-        var users = await _db.Users.Where(u => ids.Contains(u.Id) && u.IsActive).ToListAsync();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is not > 0 || wo.CompanyId != companyId) return BadRequest(new { message = "شرکت فعال با شرکت دستور کار مطابقت ندارد." });
+        var users = await WorkOrderSmsCompanyAccess.EligibleUsers(_db, companyId.Value)
+            .Where(u => ids.Contains(u.Id)).ToListAsync();
         if (users.Count != ids.Count)
-            return BadRequest(new { message = "برخی افراد انتخابی وجود ندارند یا غیرفعال‌اند." });
+            return BadRequest(new { message = "برخی افراد انتخابی وجود ندارند، غیرفعال‌اند یا به شرکت فعال دسترسی ندارند." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
