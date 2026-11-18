@@ -247,13 +247,13 @@ public class VisCustomerLite
     /// <summary>مانده حساب (بدهکار) — برای نمایش اعتبار در فرم سفارش.</summary>
     public decimal Balance { get; set; }
 
-    /// <summary>نام ویزیتورِ مسئول مشتری — برای شفافیت در فهرست شرکت.</summary>
+    /// <summary>نام معرف ثبت‌شدهٔ مشتری؛ مستقل از کاربر ثبت‌کنندهٔ سفارش.</summary>
     public string? ReferrerName { get; set; }
 
     /// <summary>این مشتری در پروندهٔ همین کاربر است (اول فهرست می‌آید).</summary>
     public bool OwnedByMe { get; set; }
 
-    /// <summary>شناسهٔ ویزیتور مسئول — استفادهٔ داخلی سرور.</summary>
+    /// <summary>شناسهٔ معرف ثبت‌شدهٔ مشتری — استفادهٔ داخلی سرور.</summary>
     public int? OwnerRefId { get; set; }
 }
 

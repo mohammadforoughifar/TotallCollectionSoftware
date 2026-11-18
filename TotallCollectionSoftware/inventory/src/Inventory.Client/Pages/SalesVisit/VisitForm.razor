@@ -1535,13 +1535,13 @@ else
         }).ToList();
     }
 
-    /// <summary>زیرنویس مشتری در کمبو: تلفن + ویزیتورِ مسئول (اگر مشتریِ ویزیتور دیگری در همین شرکت باشد).</summary>
+    /// <summary>زیرنویس مشتری در کمبو: تلفن و معرف ثبت‌شدهٔ مشتری، مستقل از ثبت‌کنندهٔ سفارش.</summary>
     private static string? CustomerInfo(VisCustomerLite c)
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(c.Phone)) parts.Add($"تلفن: {c.Phone}");
         if (!string.IsNullOrWhiteSpace(c.ReferrerName))
-            parts.Add(c.OwnedByMe ? "پروندهٔ شما" : $"ویزیتور: {c.ReferrerName}");
+            parts.Add($"معرف: {c.ReferrerName}");
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 

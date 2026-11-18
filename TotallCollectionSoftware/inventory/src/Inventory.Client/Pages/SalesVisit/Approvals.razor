@@ -60,7 +60,7 @@ else
                     <div class="card-header">
                         <i class="bi bi-receipt"></i>
                         <span class="card-title">@o.Number — @o.PartyName</span>
-                        <span class="ms-2 fs-8 text-muted">ویزیتور: @o.ReferrerName — @o.Date.ToFa()</span>
+                        <span class="ms-2 fs-8 text-muted">ویزیتور: @(string.IsNullOrWhiteSpace(o.CreatedByName) ? "ثبت‌کننده نامشخص" : o.CreatedByName) — @o.Date.ToFa()</span>
                         <div class="ms-auto d-flex gap-1">
                             @if (o.DiscountOverLimit)
                             {

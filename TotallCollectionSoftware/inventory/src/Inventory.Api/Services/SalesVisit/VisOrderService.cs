@@ -1117,7 +1117,6 @@ public class VisOrderService : IVisOrderService
                 o.Id,
                 o.CreatedByUserId,
                 o.CreatedByName,
-                o.ReferrerName,
                 o.PartyId,
                 o.PartyName,
                 o.TotalNet,
@@ -1176,7 +1175,6 @@ public class VisOrderService : IVisOrderService
             var lineCount = o.Lines.Count(l => l.ProductId > 0);
 
             var visitorName = !string.IsNullOrWhiteSpace(o.CreatedByName) ? o.CreatedByName
-                : !string.IsNullOrWhiteSpace(o.ReferrerName) ? o.ReferrerName
                 : o.CreatedByUserId > 0 ? $"ویزیتور #{o.CreatedByUserId}" : "ثبت‌کننده نامشخص";
             AccumulateGroup(refMap, refProducts, refQtyByProduct, o.CreatedByUserId,
                 visitorName, o, orderQty, lineCount, includeUnknown: true);
@@ -1279,7 +1277,7 @@ public class VisOrderService : IVisOrderService
     private sealed record ReportLineRow(int ProductId, string ProductCode, string ProductName,
         string? Unit, decimal Quantity, decimal LineTotal);
 
-    private sealed record ReportOrderRow(int Id, int CreatedByUserId, string CreatedByName, string ReferrerName, int PartyId,
+    private sealed record ReportOrderRow(int Id, int CreatedByUserId, string CreatedByName, int PartyId,
         string PartyName, decimal TotalNet, decimal TotalDiscount, List<ReportLineRow> Lines);
 
     /// <summary>افزودن یک سفارش به تجمیع «ویزیتور» یا «مشتری».</summary>
@@ -1513,7 +1511,7 @@ public class VisOrderService : IVisOrderService
             })
             .ToListAsync();
 
-        // نام ویزیتورِ مسئول (برای نمایش «ویزیتور: …» زیر نام مشتری در کمبو)
+        // نام معرف مشتری برای نمایش جداگانه از کاربر ثبت‌کنندهٔ سفارش
         var refIds = rows.Where(r => r.OwnerRefId is > 0).Select(r => r.OwnerRefId!.Value).Distinct().ToList();
         var refNames = refIds.Count == 0
             ? new Dictionary<int, string>()

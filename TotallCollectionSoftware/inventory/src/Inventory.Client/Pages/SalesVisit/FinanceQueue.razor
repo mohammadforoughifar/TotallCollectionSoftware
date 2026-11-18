@@ -158,7 +158,7 @@
                                     }
                                 </td>
                                 <td>@o.PartyName</td>
-                                <td class="fs-8">@o.ReferrerName</td>
+                                <td class="fs-8">@(string.IsNullOrWhiteSpace(o.CreatedByName) ? "ثبت‌کننده نامشخص" : o.CreatedByName)</td>
                                 <td class="fs-8"><span class="vis-badge vis-secondary">@VisUi.PaymentText(o.PaymentMethod)</span></td>
                                 <td class="text-start">@Fa.Money(o.TotalNet)</td>
                                 <td><span class="@VisUi.BadgeCss(o.Status)">@VisUi.StatusText(o.Status)</span></td>

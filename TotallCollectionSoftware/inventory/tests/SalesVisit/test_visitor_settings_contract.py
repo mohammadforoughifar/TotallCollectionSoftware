@@ -122,4 +122,26 @@ class MissingSalePriceWarningTests(unittest.TestCase):
         save = ui[ui.index('private async Task SaveAsync(bool submit)'):ui.index('private async Task DoSaveAsync')]
         self.assertNotIn('MissingSalePrice(', save)
 
+class CustomerReferrerIdentityTests(unittest.TestCase):
+    def test_customer_referrer_is_not_labelled_as_visitor_or_owned_file(self):
+        ui = read('Inventory.Client/Pages/SalesVisit/VisitForm.razor')
+        customer_info = ui[ui.index('private static string? CustomerInfo'):ui.index('private async Task SearchCustomersAsync')]
+        self.assertIn('معرف: {c.ReferrerName}', customer_info)
+        self.assertNotIn('ویزیتور:', customer_info)
+        self.assertNotIn('OwnedByMe', customer_info)
+
+    def test_visitor_displays_use_original_order_creator_not_referrer(self):
+        for filename in ['VisitDetail.razor', 'VisFinanceModal.razor', 'MyVisits.razor',
+                         'FinanceQueue.razor', 'Approvals.razor', 'AllRequests.razor']:
+            ui = read('Inventory.Client/Pages/SalesVisit/' + filename)
+            self.assertIn('CreatedByName', ui, filename)
+            self.assertNotIn('.ReferrerName', ui, filename)
+            self.assertIn('ثبت‌کننده نامشخص', ui, filename)
+        service = read('Inventory.Api/Services/SalesVisit/VisOrderService.cs')
+        report = service[service.index('public async Task<VisRequestsReportDto> RequestsReportAsync'):service.index('private sealed record ReportLineRow')]
+        self.assertIn('o.CreatedByName', report)
+        self.assertNotIn('o.ReferrerName', report)
+        self.assertIn('CreatedByUserId = actor.UserId', service)
+        self.assertIn('CreatedByName = actor.UserName', service)
+
 if __name__ == '__main__': unittest.main()

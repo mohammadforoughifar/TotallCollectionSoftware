@@ -244,7 +244,7 @@
                                     <div class="stripe-cell-sub">@Fa.Digits(o.LineCount) سطر • @VisUi.PaymentText(o.PaymentMethod)</div>
                                 </td>
                                 <td class="stripe-td">
-                                    <span class="stripe-cell-user">@o.ReferrerName</span>
+                                    <span class="stripe-cell-user">@(string.IsNullOrWhiteSpace(o.CreatedByName) ? "ثبت‌کننده نامشخص" : o.CreatedByName)</span>
                                 </td>
                                 <td class="stripe-td">
                                     <span class="stripe-cell-date num">@o.Date.ToFa()</span>
