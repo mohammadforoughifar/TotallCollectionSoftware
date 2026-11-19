@@ -194,16 +194,7 @@
             }
 
             let actions = [];
-            if (event.key === 'F8') {
-                // Never guess a product: use only the focused row of the top invoice.
-                // The button is absent for services, missing products or users without
-                // permission to see purchase prices. A covering dialog gets no action.
-                const row = isInvoice && target && target.closest && target.closest('[data-order-line]');
-                if (row && modal.contains(row)) {
-                    const lastPurchase = row.querySelector('[data-order-last-purchase]');
-                    if (lastPurchase) actions = [lastPurchase];
-                }
-            } else if (event.key === 'F7' && !modal) {
+            if (event.key === 'F7' && !modal) {
                 // A list never has a default invoice: F7 only copies the row/card
                 // that actually owns keyboard focus.
                 const row = target && target.closest && target.closest('[data-order-copy-context]');
