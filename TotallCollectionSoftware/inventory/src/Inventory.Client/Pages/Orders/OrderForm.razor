@@ -425,11 +425,19 @@
 
             @if (!UseInvoiceWizard || invoiceStep == 1)
             {
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                 <span class="fw-700 fs-7"><i class="bi bi-list-ul text-primary ms-1"></i>اقلام فاکتور</span>
-                <button class="btn btn-sm btn-outline-primary" data-order-add-line data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
-                    <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
-                </button>
+                <div class="d-flex flex-wrap gap-2">
+                    @if (Type == TransactionType.Sale && CanSeeProfit)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-order-last-purchases data-hotkey="f8" title="آخرین قیمت خرید کالاهای این فاکتور (F8)" @onclick="ShowLastPurchases">
+                            <i class="bi bi-clock-history"></i> آخرین خرید کالاها (F8)
+                        </button>
+                    }
+                    <button class="btn btn-sm btn-outline-primary" data-order-add-line data-hotkey="f2" title="کلید میانبر: F2" @onclick="AddLine">
+                        <i class="bi bi-plus-lg"></i> افزودن سطر (F2)
+                    </button>
+                </div>
             </div>
             @if (Type == TransactionType.Sale)
             {
@@ -635,12 +643,6 @@
                                 }
                                 <td class="text-nowrap">
                                     <div class="order-line-actions">
-                                        @if (Type == TransactionType.Sale && CanSeeProfit && l.ProductId > 0 && !IsServiceProduct(l.ProductId))
-                                        {
-                                            <button type="button" class="last-purchase-action" data-order-last-purchase title="آخرین فاکتور خرید این کالا (F8)" aria-label="آخرین فاکتور خرید این کالا، میانبر F8" @onclick="() => ShowLastPurchase(l.ProductId)">
-                                                <span>آخرین خرید</span><kbd dir="ltr">F8</kbd>
-                                            </button>
-                                        }
                                         <button class="btn btn-sm btn-light" tabindex="-1" title="حذف سطر" aria-label="حذف سطر" @onclick="() => RemoveLine(l)">
                                             <i class="bi bi-x-lg text-danger"></i>
                                         </button>
@@ -850,106 +852,64 @@
     </Footer>
 </Modal>
 
-@if (showLastPurchaseModal)
+@if (showLastPurchasesModal)
 {
-    <Modal Visible="true" Title="آخرین فاکتور خرید و مبنای سود" Size="modal-lg" OnClose="CloseLastPurchase">
+    <Modal Visible="true" Title="آخرین خرید کالاهای این فاکتور" Size="modal-lg" OnClose="CloseLastPurchases">
         <ChildContent>
-            @if (lastPurchaseLoading)
+            <input type="search" class="form-control mb-3" placeholder="جستجوی کالا، تأمین‌کننده یا شماره سند…" aria-label="جستجو در آخرین خریدها"
+                   @bind="lastPurchaseSearch" @bind:event="oninput" />
+            @if (lastPurchaseRows.Count == 0)
             {
-                <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+                <div class="text-muted text-center py-4">کالایی در فاکتور انتخاب نشده است.</div>
             }
             else
             {
-                @if (minimumProfitBasis is { } basis)
-                {
-                    <div class="alert alert-light border py-2 mb-3" role="status">
-                        <strong>مبنای کنترل سود در تاریخ فاکتور:</strong>
-                        <span> @(basis.MinimumProfitEnabled ? $"فعال · {basis.MinimumMarkupPercent:0.##}٪" : (basis.PolicyConfigured ? "غیرفعال" : "تنظیم نشده"))</span>
-                        @if (basis.CompanyId.HasValue) { <small class="text-muted"> · شرکت @basis.CompanyId.Value.Num()</small> }
-                        @if (basis.PurchaseId.HasValue)
-                        {
-                            <div class="mt-1">خرید مبنا: <button type="button" class="btn btn-link p-0 fw-bold" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(basis.PurchaseId.Value)">@basis.PurchaseNumber <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button> · @(basis.PurchaseDate.HasValue ? basis.PurchaseDate.Value.ToFa() : "—")
-                                · مقدار <b class="num">@(basis.PurchaseQuantity.HasValue ? basis.PurchaseQuantity.Value.Qty() : "—")</b>
-                                · مبلغ کالا <b class="num">@(basis.PurchaseGross.HasValue ? basis.PurchaseGross.Value.MoneyExact() : "—")</b>
-                                · تخفیف خرید <b class="num">@(basis.PurchaseDiscount.HasValue ? basis.PurchaseDiscount.Value.MoneyExact() : "—")</b> ریال</div>
-                        }
-                        @if (basis.NetUnitCost.HasValue)
-                        {
-                            <div>بهای خالص تقریبی هر واحد: <b class="num">@basis.NetUnitCost.Value.ToString("#,##0.######", System.Globalization.CultureInfo.InvariantCulture)</b> ریال
-                                @if (basis.MinimumUnitRevenueBeforeSaleDiscountAndCommission.HasValue)
-                                { <span> · حداقل پایه یک واحد: <b class="num">@basis.MinimumUnitRevenueBeforeSaleDiscountAndCommission.Value.MoneyExact()</b> ریال</span> }
-                            </div>
-                            <small class="text-muted">حداقل پایه پیش از تخفیف فروش و پورسانت است؛ کنترل نهایی مبلغ واقعی سطر را می‌سنجد.</small>
-                        }
-                        @if (!string.IsNullOrEmpty(basis.Reason)) { <div class="text-danger">@basis.Reason</div> }
-                    </div>
-                }
-                else if (!string.IsNullOrEmpty(minimumProfitBasisError))
-                {
-                    <div class="alert alert-warning py-2">دریافت مبنای سود ناموفق بود: @minimumProfitBasisError</div>
-                }
-                @if (lastPurchase is not null)
-                {
-                <div class="fs-8 text-muted mb-2">آخرین خرید کلی در ادامه است؛ ممکن است تاریخ آن با مبنای بالا متفاوت باشد.</div>
-                <div class="d-flex flex-wrap gap-3 mb-3">
-                    <div class="flex-grow-1">
-                        <div class="fs-8 text-muted">شماره سند</div>
-                        <button type="button" class="btn btn-link p-0 fw-700 text-primary doc-number" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(lastPurchase.Id)" title="باز کردن فرم خرید">@lastPurchase.Number <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button>
-                    </div>
-                    <div class="flex-grow-1">
-                        <div class="fs-8 text-muted">تاریخ</div>
-                        <div class="fw-500">@lastPurchase.Date.ToFa()</div>
-                    </div>
-                    <div class="flex-grow-1">
-                        <div class="fs-8 text-muted">تأمین‌کننده</div>
-                        <div class="fw-500">@lastPurchase.PartyName</div>
-                    </div>
-                    <div class="flex-grow-1">
-                        <div class="fs-8 text-muted">انبار</div>
-                        <div class="fw-500">@lastPurchase.WarehouseName</div>
-                    </div>
-                </div>
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle">
-                        <thead>
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
                             <tr>
                                 <th>کالا</th>
-                                <th class="text-start">مقدار</th>
-                                <th class="text-start">قیمت خرید</th>
-                                <th class="text-start">جمع</th>
+                                <th class="text-start">آخرین قیمت خرید (ریال)</th>
+                                <th>تاریخ</th>
+                                <th>شماره سند</th>
+                                <th>تأمین‌کننده</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var l in lastPurchase.Lines)
+                            @foreach (var row in FilteredLastPurchaseRows)
                             {
-                                <tr class="@(l.ProductId == lastPurchaseProductId ? "table-warning" : "")">
+                                <tr>
+                                    <td class="fw-500">@row.ProductName</td>
+                                    <td class="text-start num fw-700">
+                                        @if (!row.Done) { <span class="spinner-border spinner-border-sm text-primary" role="status"></span> }
+                                        else if (row.Line is { } line) { @line.Price.MoneyExact() }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="num">@(row.Purchase is { } purchase ? purchase.Date.ToFa() : "—")</td>
                                     <td>
-                                        @l.ProductName
-                                        @if (l.ProductId == lastPurchaseProductId)
+                                        @if (row.Purchase is { } doc)
                                         {
-                                            <i class="bi bi-arrow-right-short text-primary"></i>
+                                            <button type="button" class="btn btn-link p-0 fw-700 text-primary doc-number" disabled="@openingPurchaseForm" @onclick="() => OpenPurchaseForm(doc.Id)" title="باز کردن فرم خرید">@doc.Number <i class="bi bi-box-arrow-up-left" aria-hidden="true"></i></button>
+                                        }
+                                        else if (row.Done)
+                                        {
+                                            <span class="text-muted">ثبت نشده</span>
                                         }
                                     </td>
-                                    <td class="text-start num">@l.Quantity.Qty()</td>
-                                    <td class="text-start num fw-700">@l.Price.MoneyExact()</td>
-                                    <td class="text-start num">@l.Total.MoneyExact()</td>
+                                    <td>@(row.Purchase?.PartyName ?? "—")</td>
                                 </tr>
                             }
                         </tbody>
                     </table>
+                    @if (lastPurchaseRows.Count > 0 && FilteredLastPurchaseRows.Count() == 0)
+                    {
+                        <div class="text-muted text-center py-3">موردی یافت نشد</div>
+                    }
                 </div>
-                <div class="d-flex justify-content-end mt-2">
-                    <span class="text-muted ms-2">مبلغ کل:</span>
-                    <span class="fw-800 fs-6 text-primary num">@lastPurchase.TotalAmount.MoneyExact()</span>
-                    <span class="fs-8 text-muted">ریال</span>
-                </div>
-                }
-                else if (!string.IsNullOrEmpty(lastPurchaseError))
-                { <div class="text-muted">@lastPurchaseError</div> }
             }
         </ChildContent>
         <Footer>
-            <button class="btn btn-light" @onclick="CloseLastPurchase">بستن (Esc)</button>
+            <button class="btn btn-light" @onclick="CloseLastPurchases">بستن (Esc)</button>
         </Footer>
     </Modal>
 }
@@ -1319,10 +1279,10 @@
     private decimal goodsTotal => TotalLines.Sum(l => l.Total);
     private decimal grandTotal => goodsTotal + saleChequeIncome;
 
-    // Sale rows can show both the last-purchase and delete buttons. In the fixed-layout
-    // table the percentage columns share the space left by this fixed-width action column.
+    // Sale rows only carry the delete button. In the fixed-layout table the percentage
+    // columns share the space left by this fixed-width action column.
     // The eight base sale weights in the colgroup add up to SaleBaseColumnWeight.
-    private const decimal SaleActionsColumnRem = 11m;
+    private const decimal SaleActionsColumnRem = 5m;
     private const int SaleBaseColumnWeight = 95;
     private const int SaleExtraColumnWeight = 11;
     private string InvoiceActionsColumnWidth => Type == TransactionType.Sale
@@ -1942,14 +1902,35 @@
         return SaleReferrerCommission.Goods(LineProfit(l), p.IsService ? serviceRate.Value : goodsRate.Value);
     }
 
-    // ---------- آخرین فاکتور خرید ----------
-    private Order? lastPurchase;
+    // ---------- آخرین خرید کالاهای فاکتور فروش ----------
     private Order? purchaseFormOrder;
     private bool openingPurchaseForm;
-    private ShopMinimumProfitBasisDto? minimumProfitBasis;
-    private string? lastPurchaseError, minimumProfitBasisError;
-    private bool showLastPurchaseModal, lastPurchaseLoading;
-    private int lastPurchaseProductId, lastPurchaseRequestVersion;
+    private bool showLastPurchasesModal, lastPurchasesLoading;
+    private int lastPurchasesVersion;
+    private string lastPurchaseSearch = "";
+    private List<LastPurchaseRow> lastPurchaseRows = new();
+
+    private sealed class LastPurchaseRow
+    {
+        public int ProductId { get; init; }
+        public string ProductName { get; init; } = "";
+        public Order? Purchase { get; set; }
+        public OrderLine? Line { get; set; }
+        public bool Done { get; set; }
+    }
+
+    private List<LastPurchaseRow> FilteredLastPurchaseRows
+    {
+        get
+        {
+            var q = (lastPurchaseSearch ?? "").Trim();
+            if (q.Length == 0) return lastPurchaseRows;
+            return lastPurchaseRows.Where(r =>
+                r.ProductName.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (r.Purchase?.PartyName ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (r.Purchase?.Number ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
 
     private bool IsServiceProduct(int productId)
     {
@@ -1960,45 +1941,45 @@
             ?? false;
     }
 
-    private async Task ShowLastPurchase(int productId)
+    private async Task ShowLastPurchases()
     {
-        var version = ++lastPurchaseRequestVersion;
-        var invoiceDate = date;
-        lastPurchaseProductId = productId;
-        showLastPurchaseModal = true;
-        lastPurchaseLoading = true;
-        lastPurchase = null;
-        minimumProfitBasis = null;
-        lastPurchaseError = minimumProfitBasisError = null;
-        Order? purchase = null;
-        ShopMinimumProfitBasisDto? basis = null;
-        string? purchaseError = null, basisError = null;
-        try { purchase = await OrderSvc.GetLastPurchaseAsync(productId); }
-        catch (Exception ex) { purchaseError = ex.Message; }
-        if (invoiceDate.HasValue)
+        var version = ++lastPurchasesVersion;
+        lastPurchaseSearch = "";
+        lastPurchaseRows = lines
+            .Where(l => l.ProductId > 0 && !IsServiceProduct(l.ProductId))
+            .GroupBy(l => l.ProductId)
+            .Select(g => new LastPurchaseRow
+            {
+                ProductId = g.Key,
+                ProductName = productLookup.FirstOrDefault(x => x.Id == g.Key)?.Name ?? ""
+            })
+            .ToList();
+        lastPurchasesLoading = true;
+        showLastPurchasesModal = true;
+        StateHasChanged();
+
+        await Task.WhenAll(lastPurchaseRows.Select(async row =>
         {
-            try { basis = await OrderSvc.GetMinimumProfitBasisAsync(productId, invoiceDate.Value, IsEdit ? EditOrder!.Id : null); }
-            catch (Exception ex) { basisError = ex.Message; }
-        }
-        else basisError = "ابتدا تاریخ فاکتور را مشخص کنید.";
-        if (version != lastPurchaseRequestVersion) return;
-        lastPurchase = purchase;
-        minimumProfitBasis = basis;
-        lastPurchaseError = purchaseError;
-        minimumProfitBasisError = basisError;
-        lastPurchaseLoading = false;
+            try { row.Purchase = await OrderSvc.GetLastPurchaseAsync(row.ProductId); }
+            catch { row.Purchase = null; } // no purchase document for this product
+            row.Line = row.Purchase?.Lines.FirstOrDefault(x => x.ProductId == row.ProductId);
+            row.Done = true;
+            if (version == lastPurchasesVersion) StateHasChanged();
+        }));
+
+        if (version == lastPurchasesVersion) lastPurchasesLoading = false;
     }
 
     private async Task OpenPurchaseForm(int purchaseId)
     {
         if (openingPurchaseForm || purchaseId <= 0) return;
         openingPurchaseForm = true;
-        var version = lastPurchaseRequestVersion;
+        var version = lastPurchasesVersion;
         try
         {
             // Use the normal API, including its current-company and purchase read permissions.
             var order = await OrderSvc.GetAsync(purchaseId);
-            if (version != lastPurchaseRequestVersion || !showLastPurchaseModal) return;
+            if (version != lastPurchasesVersion || !showLastPurchasesModal) return;
             if (order is null || order.Type != TransactionType.Purchase)
             {
                 InvoiceError("سند خرید در دسترس نیست.");
@@ -2016,16 +1997,16 @@
     {
         purchaseFormOrder = null;
         // Refresh the purchase summary/basis without replacing any sale lines or payment data.
-        if (showLastPurchaseModal) await ShowLastPurchase(lastPurchaseProductId);
+        if (showLastPurchasesModal) await ShowLastPurchases();
     }
 
-    private void CloseLastPurchase()
+    private void CloseLastPurchases()
     {
-        lastPurchaseRequestVersion++;
-        showLastPurchaseModal = false;
-        lastPurchase = null;
-        minimumProfitBasis = null;
-        lastPurchaseLoading = false;
+        lastPurchasesVersion++;
+        showLastPurchasesModal = false;
+        lastPurchasesLoading = false;
+        lastPurchaseRows = new();
+        lastPurchaseSearch = "";
     }
 
     /// <summary>سود تخمینی سطر: (قیمت فروش − بهای تمام‌شده میانگین) × مقدار. خدمات = کل مبلغ.</summary>
