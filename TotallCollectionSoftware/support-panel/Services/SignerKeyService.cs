@@ -97,13 +97,59 @@ public sealed partial class SignerKeyService(SupportDbContext db, SignerOptions 
     [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")]
     private static partial Regex KeyIdPattern();
 
-    /// <summary>پوشهٔ پیشنهادی کلیدها: بیرون از مخزن، کنار پوشهٔ کاری پنل.</summary>
+    /// <summary>
+    /// پوشهٔ پیشنهادی کلیدها: <b>گاوصندوق ثابت بیرون از پوشهٔ برنامه</b>.
+    ///
+    /// <para>
+    /// پیش از این، پوشه زیر <c>bin/&lt;Configuration&gt;/license-keys</c> پیشنهاد می‌شد — یعنی
+    /// داخل خروجی بیلد. با هر <c>dotnet clean</c>، هر دانلود تازهٔ سورس یا هر publish، آن پوشه
+    /// نیست و اپراتور ناچار می‌شد کلید تازه بسازد؛ نتیجه: شناسه/اثر انگشت تازه و ناهم‌خوانی
+    /// همیشگی با کلید نصب مشتری (همین باعث شد کلید رسمی پروژه گم شود).
+    /// </para>
+    ///
+    /// <para>ترتیب انتخاب: متغیر محیطی <c>TOTALL_LICENSE_KEYS</c> ← <c>C:\LicensingKeys</c> (ویندوز)
+    /// ← <c>~/.totall-license-keys</c>.</para>
+    /// </summary>
     public string SuggestedFolder()
     {
-        // بیرون از پوشهٔ برنامه/مخزن: آپدیت پنل نباید کلیدها را جابه‌جا یا پاک کند.
-        var baseDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var parent = Directory.GetParent(baseDir)?.FullName ?? baseDir;
-        return Path.Combine(parent, "license-keys");
+        var fromEnv = Environment.GetEnvironmentVariable("TOTALL_LICENSE_KEYS");
+        if (!string.IsNullOrWhiteSpace(fromEnv)) return fromEnv.Trim();
+
+        return OperatingSystem.IsWindows()
+            ? @"C:\LicensingKeys"
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".totall-license-keys");
+    }
+
+    /// <summary>
+    /// آیا این مسیر داخل پوشهٔ برنامه یا خروجی بیلد است؟ کلید خصوصیِ آن‌جا با اولین
+    /// <c>clean</c>/<c>publish</c> از بین می‌رود.
+    /// </summary>
+    public static bool IsInsideProgramFolder(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        try
+        {
+            var full = Path.GetFullPath(path);
+            var baseDir = Path.GetFullPath(AppContext.BaseDirectory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var buildRoot = Directory.GetParent(baseDir)?.FullName ?? baseDir;   // …/bin/Debug
+
+            static bool Inside(string candidate, string root) =>
+                candidate.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(candidate, root, StringComparison.OrdinalIgnoreCase);
+
+            if (Inside(full, baseDir) || Inside(full, buildRoot)) return true;
+
+            // هر مسیری که یکی از بخش‌هایش bin/obj باشد هم ریسک است (انتشار/کلین آن را پاک می‌کند).
+            var parts = full.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return parts.Any(p => string.Equals(p, "bin", StringComparison.OrdinalIgnoreCase) ||
+                                  string.Equals(p, "obj", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<SignerKeyRecord?> LoadAsync(CancellationToken ct = default)

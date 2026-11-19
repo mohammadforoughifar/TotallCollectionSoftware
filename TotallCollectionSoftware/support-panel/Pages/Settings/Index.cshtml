@@ -18,6 +18,9 @@
     public bool ManifestOk { get; set; }
     public List<string> KeyWarnings { get; set; } = new();
 
+    /// <summary>آیا مسیر کلید داخل پوشهٔ برنامه/بیلد است؟ (پاک‌شدن با clean/انتشار)</summary>
+    public static bool IsKeyInsideProgramFolder(string? path) => SignerKeyService.IsInsideProgramFolder(path);
+
     /// <summary>نتیجهٔ سنجش کلید امضا با کلیدهای جاسازی‌شده در محصول.</summary>
     public SignerKeyService.ProductKeyCheck? ProductCheck { get; set; }
 
@@ -122,6 +125,8 @@
     var activeFingerprint = activeKey.Fingerprint is { Length: 64 } ? activeKey.Fingerprint : null;
     var keyMismatch = officialKey is { } official && activeFingerprint is not null &&
                       !string.Equals(official.Fingerprint, activeFingerprint, StringComparison.OrdinalIgnoreCase);
+    // کلید خصوصی داخل پوشهٔ بیلد/برنامه؟ با اولین clean یا publish از بین می‌رود.
+    var keyPathInProgramFolder = IsKeyInsideProgramFolder(signStatus.PrivateKeyPath);
     var smtp = await Settings.GetSmtpAsync();
     var template = await Settings.GetTemplateAsync();
     var passwordAvailable = Settings.SmtpPasswordAvailable;
@@ -144,6 +149,31 @@
         دو راه: (۱) مسیر <b>کلید خصوصی رسمی</b> را وصل کنید (پایین همین صفحه یا
         <span class="mono">Signer__PrivateKeyPath</span> در appsettings تا با هر publish از دست نرود)،
         یا (۲) برای کلید تازه شناسهٔ تازه بدهید، در manifest ثبت و نسخهٔ تازهٔ محصول منتشر کنید.
+    </div>
+}
+
+@if (officialKey is null && activeFingerprint is not null)
+{
+    <div class="alert error" style="line-height:2">
+        <b>⛔ این کلید در هیچ بیلد محصولی ثبت نشده است.</b>
+        شناسهٔ فعال: <span class="mono">@activeKey.KeyId</span> ·
+        اثر انگشت: <span class="mono small">@activeFingerprint</span>.
+        کلیدی با این شناسه در <span class="mono">manifest.json</span> محصول نیست، پس نصب مشتری
+        <b>آن را نمی‌شناسد</b> و هر <span class="mono">.lic</span> امضاشده با آن را رد می‌کند.
+        سه راه: (۱) کلید رسمی محصول را وصل کنید، (۲) کلید ریشه بسازید و برای این مشتری
+        «مجوز اعتماد» (<span class="mono">trust.json</span>) صادر کنید، یا (۳) کلید عمومی را در
+        manifest ثبت و نسخهٔ تازهٔ محصول منتشر کنید.
+    </div>
+}
+@if (keyPathInProgramFolder)
+{
+    <div class="alert error" style="line-height:2">
+        <b>⚠️ کلید خصوصی داخل پوشهٔ برنامه/خروجی بیلد است.</b>
+        مسیر: <span class="mono small">@signStatus.PrivateKeyPath</span>.
+        با اولین <span class="mono">dotnet clean</span>، دانلود تازهٔ سورس یا انتشار نسخهٔ بعدی
+        <b>این کلید پاک می‌شود</b> و دیگر نمی‌توانید با آن امضا کنید. کلید را به گاوصندوق ثابت
+        منتقل کنید (<span class="mono">@Keys.SuggestedFolder()</span>) و مسیرش را در
+        <span class="mono">Signer:PrivateKeyPath</span> ثابت کنید.
     </div>
 }
 
