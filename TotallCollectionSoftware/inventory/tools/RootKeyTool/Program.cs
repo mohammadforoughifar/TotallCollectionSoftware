@@ -55,6 +55,15 @@ int NewKey()
     var keyId = Require("key-id");
     var outFolder = Require("out");
     var password = opt.TryGetValue("password", out var p) ? p : null;
+
+    // گذرواژه از متغیر محیطی: امن‌تر از آرگومان خط فرمان (در لیست پروسه‌ها دیده نمی‌شود).
+    if (opt.TryGetValue("password-env", out var envName) && !string.IsNullOrWhiteSpace(envName))
+    {
+        password = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrEmpty(password))
+            throw new InvalidOperationException($"متغیر محیطی «{envName}» خالی است یا وجود ندارد.");
+    }
+
     var noPassword = opt.ContainsKey("no-password");
     if (noPassword) password = null;
     else if (string.IsNullOrEmpty(password))
