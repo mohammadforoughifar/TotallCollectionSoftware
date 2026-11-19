@@ -854,10 +854,19 @@
         Layout.SetTitle(isPurchase ? "اسناد خرید" : "اسناد فروش");
     }
 
+    private string? loadedTypeKey;
+
     protected override async Task OnParametersSetAsync()
     {
         await LoadLookups();
-        page = 1;
+        // این صفحه پس از هر رندر مجدد (مثلاً بازگشت به تب) دوباره اجرا می‌شود؛
+        // شمارهٔ صفحه باید حفظ شود و فقط تغییر نوع سند (خرید/فروش) به صفحهٔ اول برگردد.
+        var typeKey = txnType.ToString();
+        if (!string.Equals(loadedTypeKey, typeKey, StringComparison.Ordinal))
+        {
+            loadedTypeKey = typeKey;
+            page = 1;
+        }
         await Load();
     }
 

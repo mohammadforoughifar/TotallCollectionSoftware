@@ -7,6 +7,9 @@
 
 <PageTitle>کارتابل تأیید سفارش‌های ویزیتور</PageTitle>
 
+@* با بازگشت به این تب داده از نو خوانده می‌شود (تب‌ها در DOM می‌مانند). *@
+<TabAutoRefresh OnRefresh="ReloadOnTabAsync" />
+
 <div class="fin-page-container fade-in">
     <!-- ================== سربرگ ================== -->
     <div class="fin-header mb-4">
@@ -716,5 +719,15 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
+    }
+
+    /// <summary>
+    /// بازگشت به این تب، داده را بدون رفرش دستی از نو می‌خواند؛ صفحه‌های تب‌ها در DOM
+    /// می‌مانند و داده‌ای که فقط در OnInitializedAsync خوانده شده بود کهنه می‌شد.
+    /// </summary>
+    private async Task ReloadOnTabAsync()
+    {
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
     }
 }

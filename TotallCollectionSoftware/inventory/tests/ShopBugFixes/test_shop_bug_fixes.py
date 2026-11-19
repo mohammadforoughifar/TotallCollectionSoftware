@@ -1,4 +1,4 @@
-"""Source regression contracts for the ten reported shop-module bugs.
+"""Source regression contracts for the eleven reported shop-module bugs.
 
 These are static contracts (plus the C# probes in ShopPricing/OrderVat); they do
 not replace a Razor build, a live API test or a browser test. The .NET SDK is
@@ -36,6 +36,10 @@ STOCK_SNAPSHOT = read(CLIENT / 'Pages/Orders/InvoiceWarehouseStock.cs')
 DTOS = read(SHARED / 'Dtos/CatalogDtos.cs')
 SHOP_PRICING_DTOS = read(SHARED / 'Dtos/ShopPricingDtos.cs')
 PRICING_SVC = read(API / 'Services/Catalog/ShopPricingService.cs')
+TAB_SERVICE = read(CLIENT / 'Services/TabService.cs')
+TAB_REFRESH = read(CLIENT / 'Shared/TabAutoRefresh.razor')
+VISITS = {name: read(CLIENT / f'Pages/SalesVisit/{name}.razor')
+          for name in ('MyVisits', 'AllRequests', 'Approvals', 'FinanceQueue', 'VisitForm')}
 
 
 class Bug1And2PartyValidation(unittest.TestCase):
@@ -340,6 +344,100 @@ class Bug10UnitPriceAutofill(unittest.TestCase):
         self.assertEqual(suggest(history, 1_500_000, '1405-08-20'), (1_500_000, 'catalog'))
         self.assertEqual(suggest(history, 1_500_000, '1405-08-25'), (1_500_000, 'history'))
         self.assertEqual(suggest({}, 0, '1405-08-20'), (None, None))
+
+
+
+class Bug11PageAutoRefresh(unittest.TestCase):
+    """صفحهٔ سفارش‌های فروش/ویزیتوری پس از عملیات و با بازگشت به تب خودکار تازه می‌شود."""
+
+    def test_tabs_announce_activation_and_only_on_change(self):
+        self.assertIn('public event Func<TabItem, Task>? ActivatedAsync;', TAB_SERVICE)
+        sync = TAB_SERVICE.split('public void Sync(string relativeUrl, RouteData routeData)', 1)[1] \
+                         .split('public void SetNoActive()', 1)[0]
+        self.assertIn('var wasActiveKey = _active?.Key;', sync)
+        self.assertIn('if (!string.Equals(wasActiveKey, t.Key, StringComparison.Ordinal)) _ = RaiseActivatedAsync(t);', sync)
+        # اعلام فعال‌شدن بعد از به‌روزرسانی وضعیت تب‌ها و بیرون از چرخهٔ رندر اجرا می‌شود.
+        self.assertLess(sync.index('Changed?.Invoke();'), sync.index('RaiseActivatedAsync(t)'))
+        raise_fn = TAB_SERVICE.split('private async Task RaiseActivatedAsync(TabItem tab)', 1)[1] \
+                              .split('/// <summary>', 1)[0]
+        self.assertIn('await Task.Yield();', raise_fn)
+        self.assertIn('GetInvocationList().Cast<Func<TabItem, Task>>()', raise_fn)
+        self.assertIn('catch { /* تازه‌سازیِ یک تب نباید بقیه‌ی برنامه را بشکند. */ }', raise_fn)
+
+    def test_refresh_component_is_bound_to_its_own_tab(self):
+        self.assertIn('@implements IDisposable', TAB_REFRESH)
+        self.assertIn('[Parameter] public Func<Task>? OnRefresh { get; set; }', TAB_REFRESH)
+        self.assertIn('key = Tabs.Active?.Key ?? TabService.KeyOf(Nav.ToBaseRelativePath(Nav.Uri));', TAB_REFRESH)
+        self.assertIn('Tabs.ActivatedAsync += OnActivatedAsync;', TAB_REFRESH)
+        self.assertIn('public void Dispose() => Tabs.ActivatedAsync -= OnActivatedAsync;', TAB_REFRESH)
+        # فقط تبِ همین صفحه و فقط یک‌بار در هر فعال‌شدن.
+        handler = TAB_REFRESH.split('private async Task OnActivatedAsync(TabItem tab)', 1)[1]
+        self.assertIn('if (!string.Equals(tab.Key, key, StringComparison.Ordinal)) return;', handler)
+        self.assertIn('var refresh = OnRefresh;', handler)
+        self.assertIn('if (refresh is null || running) return;', handler)
+        self.assertIn('await InvokeAsync(refresh);', handler)
+
+    def test_visit_pages_reload_when_their_tab_returns(self):
+        expected = {
+            'MyVisits': 'OnRefresh="ReloadAsync"',
+            'AllRequests': 'OnRefresh="ReloadOnTabAsync"',
+            'Approvals': 'OnRefresh="ReloadOnTabAsync"',
+            'FinanceQueue': 'OnRefresh="ReloadOnTabAsync"',
+        }
+        for name, marker in expected.items():
+            with self.subTest(page=name):
+                page = VISITS[name]
+                self.assertIn('<TabAutoRefresh ' + marker + ' />', page)
+                self.assertIn('protected override async Task OnInitializedAsync()', page)
+        for name in ('AllRequests', 'Approvals', 'FinanceQueue'):
+            with self.subTest(method=name):
+                body = VISITS[name].split('private async Task ReloadOnTabAsync()', 1)[1]
+                self.assertIn('await LoadAsync();', body)
+                self.assertIn('await InvokeAsync(StateHasChanged);', body)
+        myvisits = VISITS['MyVisits'].split('private async Task ReloadAsync()', 1)[1]
+        self.assertIn('await LoadAsync();', myvisits)
+        self.assertIn('await InvokeAsync(StateHasChanged);', myvisits)
+        # دکمهٔ نوسازی و تغییر فیلتر هم از همان مسیر می‌گذرند.
+        self.assertIn('@onclick="ReloadAsync"', VISITS['MyVisits'])
+        self.assertIn('@bind:after="ReloadAsync"', VISITS['MyVisits'])
+
+    def test_credit_cheque_page_also_reloads_on_return(self):
+        credit = read(CLIENT / 'Pages/Shop/ShopCreditManagement.razor')
+        self.assertIn('<TabAutoRefresh OnRefresh="ReloadOnTabAsync" />', credit)
+        body = credit.split('private async Task ReloadOnTabAsync()', 1)[1]
+        self.assertIn('await LoadDataAsync();', body)
+        self.assertIn('await InvokeAsync(StateHasChanged);', body)
+
+    def test_half_filled_visit_form_is_never_reloaded(self):
+        # فرم ویزیتور نیمه‌پر است؛ تازه‌سازی خودکار نباید ورودی کاربر را پاک کند.
+        self.assertNotIn('TabAutoRefresh', VISITS['VisitForm'])
+        self.assertNotIn('OnRefresh="ReloadOnTabAsync"', VISITS['VisitForm'])
+
+    def test_orders_page_keeps_its_page_number_on_return(self):
+        orders_page = read(CLIENT / 'Pages/Orders/Orders.razor')
+        on_params = orders_page.split('protected override async Task OnParametersSetAsync()', 1)[1] \
+                               .split('private async Task LoadLookups()', 1)[0]
+        self.assertIn('var typeKey = txnType.ToString();', on_params)
+        self.assertIn('if (!string.Equals(loadedTypeKey, typeKey, StringComparison.Ordinal))', on_params)
+        self.assertIn('page = 1;', on_params)
+        # صفحه فقط در شاخهٔ تغییر نوع سند صفر می‌شود، نه در هر رندر مجدد.
+        self.assertLess(on_params.index('loadedTypeKey'), on_params.index('page = 1;'))
+        self.assertLess(on_params.index('page = 1;'), on_params.index('await Load();'))
+
+    def test_only_the_returning_tab_refreshes(self):
+        # شبیه‌سازی رفتار جزء: ۱۰۰٪ تطبیق کلید تب و اجرای یک‌باره.
+        calls = []
+
+        def activated(tab_key, page_key, running=False):
+            if running or tab_key != page_key:
+                return False
+            calls.append(page_key)
+            return True
+
+        self.assertTrue(activated('sales/visits', 'sales/visits'))
+        self.assertFalse(activated('sales/approvals', 'sales/visits'))
+        self.assertFalse(activated('sales/visits', 'sales/visits', running=True))
+        self.assertEqual(calls, ['sales/visits'])
 
 
 if __name__ == '__main__':

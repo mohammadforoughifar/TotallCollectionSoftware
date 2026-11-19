@@ -10,6 +10,9 @@
 
 <PageTitle>مدیریت جامع چک‌ها و دفترچه اقساط</PageTitle>
 
+@* با بازگشت به این تب چک‌ها/اقساط از نو خوانده می‌شوند (تب‌ها در DOM می‌مانند). *@
+<TabAutoRefresh OnRefresh="ReloadOnTabAsync" />
+
 <div class="fin-page-container fade-in">
     <!-- ================== سربرگ لوکس ================== -->
     <div class="fin-header mb-4">
@@ -1356,6 +1359,16 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadDataAsync();
+    }
+
+    /// <summary>
+    /// بازگشت به این تب، چک‌ها و اقساط را بدون رفرش دستی از نو می‌خواند؛ صفحه‌های تب‌ها
+    /// در DOM می‌مانند، پس رندر هم پس از بارگذاری دستی صدا زده می‌شود.
+    /// </summary>
+    private async Task ReloadOnTabAsync()
+    {
+        await LoadDataAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private bool IsQuickFilterActive(string key) => key switch
