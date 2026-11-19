@@ -1,11 +1,40 @@
 // ابزار مشترک منوهای شناور (تقویم / کمبوباکس)
 // مختصات المان را در مختصات viewport برمی‌گرداند تا منو با position:fixed
 // دقیقا زیر (یا بالای) المان قرار بگیرد و دیگر زیر کارت‌ها نرود یا بریده نشود.
+// مبدأ مختصات منوهای position:fixed.
+// اگر یکی از اجدادِ المان، transform / filter / backdrop-filter / perspective / contain
+// (یا will-change روی این ویژگی‌ها) داشته باشد، همان جد «containing block» منوی fixed
+// می‌شود و مختصات منو نسبت به گوشهٔ آن جد حساب می‌شود، نه viewport. در این حالت منو
+// وسط صفحه (یا جای اشتباه دیگری) باز می‌شد. این تابع گوشهٔ بالا-چپ آن جد را برمی‌گرداند
+// تا مختصات viewport قبل از استفاده از آن کم شود. اگر چنین جدی نباشد، {0,0} است.
+window.fixedOrigin = function (el) {
+    var origin = { left: 0, top: 0 };
+    for (var node = el ? el.parentElement : null; node && node !== document.documentElement; node = node.parentElement) {
+        var cs = window.getComputedStyle(node);
+        var isContainingBlock =
+            (cs.transform && cs.transform !== 'none') ||
+            (cs.perspective && cs.perspective !== 'none') ||
+            (cs.filter && cs.filter !== 'none') ||
+            (cs.backdropFilter && cs.backdropFilter !== 'none') ||
+            (cs.webkitBackdropFilter && cs.webkitBackdropFilter !== 'none') ||
+            /paint|layout|strict|content/.test(cs.contain || '') ||
+            /transform|filter|perspective/.test(cs.willChange || '');
+        if (isContainingBlock) {
+            var nr = node.getBoundingClientRect();
+            origin.left = nr.left + node.clientLeft;
+            origin.top = nr.top + node.clientTop;
+            return origin;
+        }
+    }
+    return origin;
+};
+
 window.uiRect = function (el) {
     if (!el) {
-        return { left: 8, top: 8, right: 238, bottom: 46, width: 230, height: 38, vw: window.innerWidth, vh: window.innerHeight };
+        return { left: 8, top: 8, right: 238, bottom: 46, width: 230, height: 38, vw: window.innerWidth, vh: window.innerHeight, ox: 0, oy: 0 };
     }
     var r = el.getBoundingClientRect();
+    var o = window.fixedOrigin(el);
     return {
         left: r.left,
         top: r.top,
@@ -14,7 +43,9 @@ window.uiRect = function (el) {
         width: r.width,
         height: r.height,
         vw: window.innerWidth,
-        vh: window.innerHeight
+        vh: window.innerHeight,
+        ox: o.left,
+        oy: o.top
     };
 };
 

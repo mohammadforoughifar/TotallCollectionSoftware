@@ -199,16 +199,16 @@ else
                             </span>
                         </div>
 
-                        <div class="p-3.5">
-                            <div class="d-flex flex-wrap gap-4 mb-3 fs-8">
+                        <div class="ops-trend-body">
+                            <div class="ops-trend-legend fs-8">
                                 @if (Auth.CanSee("Orders"))
                                 {
-                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-indigo fs-9"></i> خرید</span>
-                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-emerald fs-9"></i> فروش</span>
+                                    <span class="ops-legend-item"><i class="bi bi-circle-fill text-indigo fs-9"></i> خرید</span>
+                                    <span class="ops-legend-item"><i class="bi bi-circle-fill text-emerald fs-9"></i> فروش</span>
                                 }
                                 @if (Auth.CanSee("Repairs"))
                                 {
-                                    <span class="d-flex align-items-center gap-1.5"><i class="bi bi-circle-fill text-amber fs-9"></i> درآمد تعمیرات</span>
+                                    <span class="ops-legend-item"><i class="bi bi-circle-fill text-amber fs-9"></i> درآمد تعمیرات</span>
                                 }
                             </div>
 
@@ -225,20 +225,20 @@ else
                                     @if (ActiveTrendIndex >= 0)
                                     {
                                         var selected = data.Trend[ActiveTrendIndex];
-                                        <strong>@selected.Label</strong>
+                                        <strong class="ops-readout-date">@selected.Label</strong>
                                         @if (Auth.CanSee("Orders"))
                                         {
-                                            <span class="ops-line-purchase">خرید: @selected.Purchase.Money() ریال</span>
-                                            <span class="ops-line-sale">فروش: @selected.Sale.Money() ریال</span>
+                                            <span class="ops-readout-item ops-line-purchase">خرید: @selected.Purchase.Money() ریال</span>
+                                            <span class="ops-readout-item ops-line-sale">فروش: @selected.Sale.Money() ریال</span>
                                         }
                                         @if (Auth.CanSee("Repairs"))
                                         {
-                                            <span class="ops-line-repair">تعمیرات: @selected.RepairRevenue.Money() ریال</span>
+                                            <span class="ops-readout-item ops-line-repair">تعمیرات: @selected.RepairRevenue.Money() ریال</span>
                                         }
                                     }
                                     else
                                     {
-                                        <span>برای مشاهدهٔ مبالغ، نشانگر را در نمودار حرکت دهید یا یک تاریخ را لمس کنید.</span>
+                                        <span class="ops-readout-hint">برای مشاهدهٔ مبالغ، نشانگر را در نمودار حرکت دهید یا یک تاریخ را لمس کنید.</span>
                                     }
                                 </div>
                                 <div class="ops-line-scroll" role="region" aria-label="نمودار خطی عملکرد؛ با کلید Tab تاریخ‌ها را انتخاب کنید">
