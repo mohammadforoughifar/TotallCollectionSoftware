@@ -137,6 +137,20 @@ else
                                 شرکتِ این فایل درخواست:
                                 <b>@(installation.CompanyName ?? "—")</b>
                                 <span dir="ltr" class="badge bg-secondary ms-1">@(installation.CompanyId ?? "—")</span>
+                                @if (!string.IsNullOrWhiteSpace(installation.SigningKeyFingerprint))
+                                {
+                                    <div>
+                                        کلید امضا: <span class="mono" dir="ltr">@installation.SigningKeyId</span>
+                                        <span class="mono small" dir="ltr">@installation.SigningKeyFingerprint</span>
+                                        @if (installation.SigningKeyMatchesBuild == false)
+                                        {
+                                            <span class="text-danger d-block">
+                                                این بیلد، کلید تنظیم‌شده در appsettings (<span class="mono">Licensing:SigningKeyId</span>) را ندارد؛
+                                                پیش از امضا با پشتیبانی هماهنگ کنید.
+                                            </span>
+                                        }
+                                    </div>
+                                }
                                 @if (!string.IsNullOrWhiteSpace(installation.CompanyCode))
                                 {
                                     <div>کد ثبت‌شدهٔ شرکت: <span dir="ltr">@installation.CompanyCode</span></div>

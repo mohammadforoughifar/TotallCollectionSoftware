@@ -29,7 +29,8 @@ public sealed record ReservationListDto(int Count, List<PendingReservationDto>? 
 /// </para>
 /// </summary>
 public sealed record LicenseInstallationDto(string? InstallationId, string? CompanyId,
-    string? CompanyName, string? CompanyCode, int? CompanyNumber);
+    string? CompanyName, string? CompanyCode, int? CompanyNumber,
+    string? SigningKeyId = null, string? SigningKeyFingerprint = null, bool? SigningKeyMatchesBuild = null);
 
 /// <summary>
 /// کلاینت صفحهٔ لایسنس.
@@ -95,8 +96,41 @@ public sealed class LicensingApi : ILicensingApi
             => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var v)
                && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n) ? n : null;
 
+        // ---- کلید امضایی که همین نصب می‌پذیرد (برای هم‌خوانی با پشتیبانی) ----
+        string? signingKeyId = null, signingKeyFp = null;
+        bool? signingKeyMatches = null;
+
+        if (element.ValueKind == JsonValueKind.Object)
+        {
+            if (element.TryGetProperty("supportedSigningKeys", out var keyList) &&
+                keyList.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in keyList.EnumerateArray())
+                {
+                    if (item.ValueKind != JsonValueKind.Object) continue;
+                    if (item.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String)
+                        signingKeyId ??= idEl.GetString();
+                    if (item.TryGetProperty("fingerprintSha256", out var fpEl) && fpEl.ValueKind == JsonValueKind.String)
+                        signingKeyFp ??= fpEl.GetString();
+                }
+            }
+
+            if (element.TryGetProperty("signingKeyPolicy", out var policy) && policy.ValueKind == JsonValueKind.Object)
+            {
+                if (policy.TryGetProperty("keyId", out var pid) && pid.ValueKind == JsonValueKind.String)
+                    signingKeyId ??= pid.GetString();
+                if (policy.TryGetProperty("fingerprintSha256", out var pfp) && pfp.ValueKind == JsonValueKind.String)
+                    signingKeyFp ??= pfp.GetString();
+                signingKeyMatches = policy.TryGetProperty("matchesBuild", out var mb) &&
+                                    mb.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? mb.GetBoolean()
+                    : null;
+            }
+        }
+
         return new LicenseInstallationDto(Str("installationId"), Str("companyId"), Str("companyName"),
-            Str("companyCode"), Int("companyNumber"));
+            Str("companyCode"), Int("companyNumber"),
+            signingKeyId, signingKeyFp, signingKeyMatches);
     }
 
     private async Task<(byte[] Data, string FileName)> DownloadAsync(CancellationToken cancellationToken)

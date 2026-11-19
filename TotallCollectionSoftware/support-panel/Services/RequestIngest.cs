@@ -62,6 +62,57 @@ public interface IRequestIngest
 /// </summary>
 public static class RequestParser
 {
+    /// <summary>
+    /// یک کلید امضا که <b>نصب مشتری</b> اعلام می‌کند می‌پذیرد (از فیلد <c>supportedSigningKeys</c>
+    /// در فایل درخواست). پیش از امضا با اثر انگشت کلید پنل مقایسه می‌شود؛ اگر کلید پنل در این
+    /// فهرست نباشد، فایل امضاشده در نصب مشتری رد می‌شود و بهتر است همان‌جا متوقف شویم.
+    /// </summary>
+    public sealed record SigningKeyHint(string KeyId, string FingerprintSha256);
+
+    /// <summary>
+    /// خواندن <c>supportedSigningKeys</c> از متن فایل درخواست. فایل‌های قدیمی این فیلد را ندارند
+    /// ⇒ فهرست خالی برمی‌گردد و رفتار قبلی حفظ می‌شود.
+    /// </summary>
+    public static List<SigningKeyHint> SupportedSigningKeys(string? payloadJson)
+    {
+        var result = new List<SigningKeyHint>();
+        if (string.IsNullOrWhiteSpace(payloadJson)) return result;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (!doc.RootElement.TryGetProperty("supportedSigningKeys", out var keys) ||
+                keys.ValueKind != JsonValueKind.Array)
+                return result;
+
+            foreach (var item in keys.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+
+                var id = item.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                    ? idEl.GetString()?.Trim()
+                    : item.TryGetProperty("keyId", out var idEl2) && idEl2.ValueKind == JsonValueKind.String
+                        ? idEl2.GetString()?.Trim()
+                        : null;
+
+                var fp = item.TryGetProperty("fingerprintSha256", out var fpEl) && fpEl.ValueKind == JsonValueKind.String
+                    ? fpEl.GetString()?.Trim()
+                    : item.TryGetProperty("sha256", out var fpEl2) && fpEl2.ValueKind == JsonValueKind.String
+                        ? fpEl2.GetString()?.Trim()
+                        : null;
+
+                if (string.IsNullOrWhiteSpace(fp)) continue;
+                result.Add(new SigningKeyHint(id ?? "?", fp!.ToLowerInvariant()));
+            }
+        }
+        catch (JsonException)
+        {
+            // فایل غیر JSON یا خراب — همان رفتار قبلی؛ پارسر اصلی پیام خودش را می‌دهد.
+        }
+
+        return result;
+    }
+
     public const int MaxJsonBytes = 256 * 1024;
     public const int MaxNameLength = 100;
     public const int MaxPhoneLength = 30;

@@ -259,6 +259,37 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
             };
         }
 
+        // ⛔ پیش‌بررسی «کلیدِ همین نصب مشتری».
+        // فایل درخواست از بیلدهای تازه فهرست کلیدهای مورد اعتماد همان نصب را همراه دارد
+        // (supportedSigningKeys). منبع حقیقت همان است، نه بیلد پشتیبان: اگر کلید پنل در آن
+        // فهرست نباشد، فایل امضاشده روی نصب مشتری رد می‌شود؛ پس همان‌جا متوقف می‌شویم.
+        var customerKeys = RequestParser.SupportedSigningKeys(request.PayloadJson);
+        if (customerKeys.Count > 0)
+        {
+            var signerFingerprint = precheck.SignerFingerprint
+                                    ?? keys.DescribeActiveKey().Fingerprint;
+
+            var matches = signerFingerprint is { Length: 64 } && customerKeys.Any(k =>
+                string.Equals(k.FingerprintSha256, signerFingerprint, StringComparison.OrdinalIgnoreCase));
+
+            if (!matches)
+            {
+                var customerList = string.Join("، ", customerKeys.Select(k =>
+                    k.FingerprintSha256.Length >= 12 ? $"{k.KeyId}={k.FingerprintSha256[..12]}…" : k.KeyId));
+                var signerText = signerFingerprint is { Length: 16 } ? signerFingerprint[..16] + "…" : "ناخوانا";
+
+                return new SignOutcome
+                {
+                    Error = "امضا انجام نشد: کلید امضا با کلیدهایی که همین نصب مشتری می‌پذیرد یکی نیست. " +
+                            $"کلید پنل: {signerText} | کلیدهای همین نصب: {customerList}. " +
+                            "این فایل درخواست از بیلد تازهٔ محصول آمده و فهرست کلیدهای مورد اعتمادش را همراه دارد؛ " +
+                            "یعنی نصب مشتری، امضای این کلید را قبول نمی‌کند. " +
+                            "راه‌حل: برای امضای این درخواست همان کلید رسمی را وصل کنید (تنظیمات ← کلیدهای امضا ← کلید خصوصی رسمی)، " +
+                            "یا اگر کلید را عمداً عوض کرده‌اید، کلید عمومی تازه را در محصول ثبت و نسخهٔ تازه را روی همین نصب منتشر کنید."
+                };
+            }
+        }
+
         // پیش‌بررسی رمز: اگر رمز با کلید نمی‌خواند، ابزار اجرا نمی‌شود و پیام روشن داده می‌شود.
         var formPassword = string.IsNullOrEmpty(keyPassword) ? null : keyPassword;
         var envPassword = keys.EnvironmentPassword;

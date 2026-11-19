@@ -129,6 +129,76 @@ public class LicenseController : ControllerBase
         _log = log;
     }
 
+    /// <summary>
+    /// کلیدهای امضایی که <b>همین بیلد</b> می‌شناسد (شناسه + اثر انگشت SHA-256) و وضعیت
+    /// هم‌خوانی‌شان با تنظیم <c>Licensing:SigningKeyId/FingerprintSha256</c>.
+    ///
+    /// <para>
+    /// چرا در فایل درخواست می‌آید؟ چون تنها منبع حقیقت برای «کلید درست» همین نصب مشتری است،
+    /// نه بیلدی که پشتیبان روی ماشین خودش دارد. با این فهرست، پنل پشتیبان <b>پیش از امضا</b>
+    /// می‌بیند کلیدش با کلید این نصب یکی است یا نه (ریشهٔ خطای تکرارشوندهٔ ناهم‌خوانی کلید).
+    /// کلید عمومی راز نیست؛ اثری بر اعتبار لایسنس هم ندارد.
+    /// </para>
+    /// </summary>
+    private object[] SupportedSigningKeys()
+    {
+        try
+        {
+            return _keys.Ring.Entries
+                .Select(entry => new
+                {
+                    id = entry.KeyId,
+                    algorithm = entry.Algorithm,
+                    fingerprintSha256 = entry.Sha256
+                        ?? Inventory.Licensing.Crypto.PublicKeyRing.Fingerprint(entry.PublicKeyPem, entry.Algorithm)
+                })
+                .Cast<object>()
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "خواندن کلیدهای امضای همین بیلد ممکن نشد.");
+            return Array.Empty<object>();
+        }
+    }
+
+    /// <summary>
+    /// آیا کلید رسمیِ تنظیم‌شده در appsettings واقعاً داخل همین بیلد است؟
+    /// <c>null</c> = تنظیم خالی است (فقط برای اطلاع، نه خطا).
+    /// </summary>
+    private bool? ConfiguredSigningKeyMatchesBuild()
+    {
+        var keyId = _options.SigningKeyId;
+        var expected = _options.SigningKeyFingerprintSha256;
+        if (string.IsNullOrWhiteSpace(keyId) && string.IsNullOrWhiteSpace(expected)) return null;
+
+        try
+        {
+            var entries = _keys.Ring.Entries.ToList();
+            var byId = string.IsNullOrWhiteSpace(keyId)
+                ? null
+                : entries.FirstOrDefault(e => string.Equals(e.KeyId, keyId.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (byId is null)
+            {
+                // اگر شناسه نیامده باشد، با اثر انگشت می‌سنجیم.
+                if (string.IsNullOrWhiteSpace(expected)) return false;
+                return entries.Any(e => string.Equals(
+                    e.Sha256 ?? Inventory.Licensing.Crypto.PublicKeyRing.Fingerprint(e.PublicKeyPem, e.Algorithm),
+                    expected.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+
+            var actual = byId.Sha256
+                         ?? Inventory.Licensing.Crypto.PublicKeyRing.Fingerprint(byId.PublicKeyPem, byId.Algorithm);
+            if (string.IsNullOrWhiteSpace(expected)) return true;
+            return string.Equals(actual, expected.Trim(), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     // ==================== ۱) وضعیت ====================
 
     /// <summary>
@@ -344,7 +414,15 @@ public class LicenseController : ControllerBase
             // همان ملاحظهٔ /api/health: افست صریح، نه ساعت محلیِ سرور بدون منطقه.
             serverTime = PersianPeriodKey.NowIranOffset(),
             licenseFolder = _paths.Root,
-            keyIds = _keys.Ring.KeyIds
+            keyIds = _keys.Ring.KeyIds,
+            // کلیدهای مورد اعتمادِ همین بیلد + هم‌خوانی با تنظیم appsettings
+            supportedSigningKeys = SupportedSigningKeys(),
+            signingKeyPolicy = new
+            {
+                keyId = _options.SigningKeyId,
+                fingerprintSha256 = _options.SigningKeyFingerprintSha256,
+                matchesBuild = ConfiguredSigningKeyMatchesBuild()
+            }
         });
     }
 
@@ -386,6 +464,17 @@ public class LicenseController : ControllerBase
             company = (object?)(companyId is null
                 ? null
                 : new { id = companyId, code = companyCode, number = companyNumber, name = companyName }),
+
+            // ---- کلیدهای امضایی که همین نصب می‌پذیرد ----
+            // پنل پشتیبان با همین فهرست، پیش از امضا هم‌خوانی کلید را می‌سنجد؛
+            // مقدار «0» یا نبودِ فهرست یعنی بیلد قدیمی (پنل به رفتار قبلی برمی‌گردد).
+            supportedSigningKeys = SupportedSigningKeys(),
+            signingKeyPolicy = new
+            {
+                keyId = _options.SigningKeyId,
+                fingerprintSha256 = _options.SigningKeyFingerprintSha256,
+                matchesBuild = ConfiguredSigningKeyMatchesBuild()
+            },
 
             // ---- موتور و بیلد (برای اینکه هنگام صدور بدانیم مشتری چه نسخه‌ای دارد) ----
             engineVersion = Inventory.Licensing.LicenseEngineInfo.FullVersion,
