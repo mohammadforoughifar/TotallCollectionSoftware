@@ -8,6 +8,7 @@
 @inject IToastService Toast
 @inject IShopPrintSettingsClient PrintSettingsClient
 @inject ICompanyProfileService ProfileSvc
+@inject ISettingsService SettingsSvc
 @inject IJSRuntime JS
 @using Inventory.Client.Pages.Orders
 
@@ -511,6 +512,14 @@
                                                     </span>
                                                     @productOption.StockUnit
                                                     <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey" title="موجودی تا پایان تاریخ سند">(تا @StockAsOfText)</span>
+                                                    @if (Type == TransactionType.Sale && productOption.IsSellableShort)
+                                                    {
+                                                        @* بخشی از موجودی تاریخ سند بعد از آن فروش رفته؛ ثبت بیشتر از «قابل ثبت» دوبار فروش است. *@
+                                                        <strong class="invoice-stock-alert" data-sellable-short="@option.Id" title="بعد از تاریخ سند از این کالا فروش/خروج ثبت شده است">
+                                                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                            قابل ثبت: @InvoiceProductOption.FormatStock(productOption.SellableQuantity ?? 0m)
+                                                        </strong>
+                                                    }
                                                     @if (Type == TransactionType.Sale && productOption.IsStockWarning)
                                                     {
                                                         <strong class="invoice-stock-alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> ناموجود</strong>
@@ -543,6 +552,20 @@
                                                         موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
                                                         <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey">(تا @StockAsOfText)</span>
                                                     </span>
+                                                    @if (Type == TransactionType.Sale)
+                                                    {
+                                                        var ownQty = OwnInvoiceQuantity(l.ProductId);
+                                                        var sellableHere = warehouseStock.SellableFor(l.ProductId) + ownQty;
+                                                        var atDateHere = avail + ownQty;
+                                                        if (sellableHere < atDateHere)
+                                                        {
+                                                            <span class="invoice-stock-inline-warning" data-sellable-stock="@l.ProductId" role="status"
+                                                                  title="بعد از تاریخ سند از این کالا فروش/خروج ثبت شده است؛ بیشتر از این مقدار، همان قلم را دوباره می‌فروشد">
+                                                                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                                                                قابل ثبت با احتساب فروش بعد از @StockAsOfText: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(sellableHere)</bdi></b>
+                                                            </span>
+                                                        }
+                                                    }
                                                 }
                                                 else
                                                 {
@@ -2062,6 +2085,7 @@
             var bankTask = OrderSvc.GetActiveTreasuryAccountsAsync();
             var referrerTask = Type == TransactionType.Sale ? ReferrerSvc.GetAllAsync(activeOnly: true) : null;
             var stockTask = LoadWarehouseStocksAsync();
+            var stockGuardTask = Type == TransactionType.Sale ? LoadStockGuardAsync() : Task.CompletedTask;
             try
             {
                 var savedBanks = await JS.InvokeAsync<string?>("localStorage.getItem", "invoiceCheque.customBanks");
@@ -2092,6 +2116,7 @@
                 .Where(p => p.IsActive && (Type == TransactionType.Sale || !p.IsService))
                 .ToList();
             await stockTask;
+            await stockGuardTask;   // تنظیم «اجازهٔ موجودی منفی» برای اعتبارسنجی سمت کلاینت
             RebuildProductLookup();
             if (warehouseId > 0 && !warehouseStock.IsLoaded)
                 InvoiceError("دریافت موجودی انبار ناموفق بود؛ انبار را پاک و دوباره انتخاب کنید.");
@@ -2269,6 +2294,31 @@
             loading = false;
         }
     }
+
+    /// <summary>
+    /// تنظیم «اجازهٔ موجودی منفی»: اگر مجاز باشد، سخت‌گیری سمت کلاینت معنا ندارد.
+    /// null یعنی تنظیمات در دسترس نبود؛ در این حالت تصمیم نهایی با سرور است تا
+    /// خطای کاذب جلوی فروش سالم را نگیرد.
+    /// </summary>
+    private bool? allowNegativeStock;
+
+    private async Task LoadStockGuardAsync()
+    {
+        try { allowNegativeStock = (await SettingsSvc.GetAsync())?.AllowNegativeStock ?? false; }
+        catch { allowNegativeStock = null; }
+    }
+
+    /// <summary>مقدار همان کالا در سند در حال ویرایش؛ سرور سند جاری را از موجودی کنار می‌گذارد.</summary>
+    private decimal OwnInvoiceQuantity(int productId)
+        => IsEdit && EditOrder is not null
+            ? EditOrder.Lines.Where(l => l.ProductId == productId).Sum(l => l.Quantity)
+            : 0m;
+
+    private string ProductLabel(int productId)
+        => products.FirstOrDefault(p => p.Id == productId)?.Name
+           ?? EditOrder?.Lines.FirstOrDefault(l => l.ProductId == productId)?.ProductName
+           ?? CopyTemplate?.Lines.FirstOrDefault(l => l.ProductId == productId)?.ProductName
+           ?? $"#{productId}";
 
     private Task<bool> LoadWarehouseStocksAsync()
         // موجودی فاکتور همیشه «تا تاریخ سند» است؛ نبودِ تاریخ یعنی امروز، نه تجمیع بی‌تاریخ.
@@ -2821,6 +2871,37 @@
         if (validLines.Any(l => !OrderLineAmounts.IsValidVatValue(l.VatValue)))
         {
             ShowFormError("ارزش افزوده هر سطر باید عددی غیرمنفی با حداکثر دو رقم اعشار باشد.");
+            return false;
+        }
+        if (!ValidateSellableStock(validLines)) return false;
+        return true;
+    }
+
+    /// <summary>
+    /// موجودی «تا تاریخ سند» کافی نیست: اگر همان کالا بعد از این تاریخ فروش رفته باشد،
+    /// فاکتور عقب‌تاریخ‌خورده آن را دوبار می‌فروشد و موجودی آینده منفی می‌شود. حد مجاز،
+    /// کمینهٔ موجودی از تاریخ سند به بعد است (همان قاعده‌ای که سرور هنگام ثبت اعمال
+    /// می‌کند). مقدار سند در حال ویرایش به حد مجاز برگردانده می‌شود، چون سرور آن را
+    /// از موجودی کنار می‌گذارد.
+    /// </summary>
+    private bool ValidateSellableStock(List<LineVm> validLines)
+    {
+        if (Type != TransactionType.Sale || IsProforma || warehouseId <= 0) return true;
+        if (!warehouseStock.IsLoaded || allowNegativeStock == true) return true;
+
+        foreach (var group in validLines.Where(l => !IsServiceProduct(l.ProductId)).GroupBy(l => l.ProductId))
+        {
+            var own = OwnInvoiceQuantity(group.Key);
+            var atDate = (warehouseStock.Quantities.TryGetValue(group.Key, out var dated) ? dated : 0m) + own;
+            var sellable = warehouseStock.SellableFor(group.Key) + own;
+            var requested = group.Sum(l => l.Qty);
+            if (requested <= sellable) continue;
+
+            var name = ProductLabel(group.Key);
+            var later = Math.Max(0m, atDate - sellable);
+            ShowFormError(later > 0
+                ? $"موجودی «{name}» تا {StockAsOfText} برابر {InvoiceProductOption.FormatStock(atDate)} است، ولی بعد از این تاریخ {InvoiceProductOption.FormatStock(later)} از آن فروش/خروج ثبت شده؛ حداکثر {InvoiceProductOption.FormatStock(sellable)} عدد قابل ثبت است."
+                : $"موجودی «{name}» کافی نیست (موجود: {InvoiceProductOption.FormatStock(sellable)}).");
             return false;
         }
         return true;

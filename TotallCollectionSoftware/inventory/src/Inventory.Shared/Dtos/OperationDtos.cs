@@ -435,7 +435,16 @@ public class InvoiceStockItem
 {
     public int WarehouseId { get; set; }
     public int ProductId { get; set; }
+
+    /// <summary>موجودی تا پایان تاریخ سند (مبنای نمایش در منوی کالا).</summary>
     public decimal Quantity { get; set; }
+
+    /// <summary>
+    /// مقدار قابل ثبت در همان تاریخ: کمینهٔ موجودی از آن تاریخ به بعد. اگر کالا بعد
+    /// از تاریخ سند فروش رفته باشد، این عدد از <see cref="Quantity"/> کمتر است و
+    /// ثبت مقدار بیشتر، همان قلم را دوبار می‌فروشد (موجودی آینده منفی می‌شود).
+    /// </summary>
+    public decimal SellableQuantity { get; set; }
 }
 
 /// <summary>موجودی فعلی یک کالا در یک انبار</summary>
