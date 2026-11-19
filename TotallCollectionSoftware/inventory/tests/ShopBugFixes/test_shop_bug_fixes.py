@@ -1,4 +1,4 @@
-"""Source regression contracts for the nine reported shop-module bugs.
+"""Source regression contracts for the ten reported shop-module bugs.
 
 These are static contracts (plus the C# probes in ShopPricing/OrderVat); they do
 not replace a Razor build, a live API test or a browser test. The .NET SDK is
@@ -34,6 +34,8 @@ CLIENT_SVC = read(CLIENT / 'Services/InventoryApiServices.cs')
 ORDER_FORM = read(CLIENT / 'Pages/Orders/OrderForm.razor')
 STOCK_SNAPSHOT = read(CLIENT / 'Pages/Orders/InvoiceWarehouseStock.cs')
 DTOS = read(SHARED / 'Dtos/CatalogDtos.cs')
+SHOP_PRICING_DTOS = read(SHARED / 'Dtos/ShopPricingDtos.cs')
+PRICING_SVC = read(API / 'Services/Catalog/ShopPricingService.cs')
 
 
 class Bug1And2PartyValidation(unittest.TestCase):
@@ -258,6 +260,86 @@ class Bug9DatedStock(unittest.TestCase):
         self.assertIn('the legacy no-date overload defaults to today', probe)
         self.assertIn('future receipt funded a backdated sale', probe)
         self.assertIn('a backdated sale cannot consume stock that only arrives later', probe)
+
+
+
+class Bug10UnitPriceAutofill(unittest.TestCase):
+    """قیمت واحد فاکتور فروش خودکار از تعریف کالا/قیمت فروش پر می‌شود و قابل ویرایش می‌ماند."""
+
+    def test_server_suggests_the_catalog_price_when_the_day_has_no_history(self):
+        suggestion = PRICING_SVC.split('public async Task<DatedSalePriceDto> GetPriceAsync', 1)[1] \
+                                  .split('public static void ValidatePrice', 1)[0]
+        # قیمت همان روز در تاریخچه اولویت دارد ...
+        self.assertIn('ResolveAsync(_db, new[] { productId }, date)', suggestion)
+        self.assertIn('DatedSalePriceDto.HistorySource', suggestion)
+        # ... و اگر ثبت نشده باشد، تعریف کالا پیشنهاد می‌شود تا فیلد خالی نماند.
+        self.assertIn('product.SalePrice > 0', suggestion)
+        self.assertIn('DatedSalePriceDto.CatalogSource', suggestion)
+        self.assertIn('?? throw new InvalidOperationException("کالا یافت نشد.")', suggestion)
+        # تاریخچهٔ قیمت خودش هیچ قیمت امروزی را به گذشته نسبت نمی‌دهد.
+        history = PRICING_SVC.split('public static async Task<Dictionary<int, Db.ShopSalePrice>> ResolveAsync', 1)[1] \
+                               .split('public async Task<DatedSalePriceDto> GetPriceAsync', 1)[0]
+        self.assertIn('x.EffectiveDate < end', history)
+        self.assertNotIn('product.SalePrice', history)
+
+    def test_dto_marks_the_source_of_the_suggestion(self):
+        self.assertIn('public const string HistorySource = "history";', SHOP_PRICING_DTOS)
+        self.assertIn('public const string CatalogSource = "catalog";', SHOP_PRICING_DTOS)
+        self.assertIn('public string? Source { get; set; }', SHOP_PRICING_DTOS)
+        self.assertIn('public bool IsCatalogFallback => Source == CatalogSource;', SHOP_PRICING_DTOS)
+
+    def test_form_fills_the_price_and_keeps_it_editable(self):
+        # انتخاب کالا: تاریخچه مبنای اول است، تعریف کالا پشتوانه؛ بدون تاریخ سند هم پر می‌شود.
+        self.assertIn('ApplySuggestedUnitPrice(l, p, p.SalePrice, catalogFallback: true);', ORDER_FORM)
+        self.assertIn('suggested.Price ?? (p.SalePrice > 0 ? p.SalePrice : (decimal?)null)', ORDER_FORM)
+        self.assertIn('catalogFallback: suggested.Price is null || suggested.Source == DatedSalePriceDto.CatalogSource', ORDER_FORM)
+        # پر شدن خودکار هرگز قیمت دستی را بازنویسی نمی‌کند و فیلد ویرایش‌پذیر می‌ماند.
+        self.assertIn('!string.IsNullOrWhiteSpace(l.PriceText)) return;', ORDER_FORM)
+        self.assertIn('l.PriceIsAuto = false;', ORDER_FORM)
+        self.assertIn('public bool PriceIsAuto { get; set; }', ORDER_FORM)
+        self.assertIn('قیمت این تاریخ ثبت نشده؛ از قیمت فروش تعریف کالا درج شد (قابل ویرایش).', ORDER_FORM)
+        price_input = ORDER_FORM.split('aria-label="قیمت واحد به ریال"', 1)[1].split('/>', 1)[0]
+        self.assertIn('@oninput=', price_input)
+        self.assertNotIn('disabled=', price_input)
+        self.assertNotIn('readonly=', price_input)
+
+    def test_invoice_date_change_reprices_only_auto_prices(self):
+        self.assertIn('private async Task RefreshAutoUnitPricesAsync()', ORDER_FORM)
+        refresh = ORDER_FORM.split('private async Task RefreshAutoUnitPricesAsync()', 1)[1] \
+                            .split('private bool? QuantityAllowsFraction', 1)[0]
+        self.assertIn('lines.Where(x => x.ProductId > 0 && x.PriceIsAuto)', refresh)
+        self.assertIn('!l.PriceIsAuto) continue;', refresh)
+        self.assertIn('GetDatedSalePriceAsync(productId, invoiceDate)', refresh)
+        changed = ORDER_FORM.split('private async Task OnInvoiceDateChanged()', 1)[1] \
+                            .split('private bool IsProductSelectable', 1)[0]
+        self.assertEqual(changed.count('await RefreshAutoUnitPricesAsync();'), 2)
+        # خرید رفتار قبلی (بهای خرید) را دارد و به قیمت فروش تغییر نمی‌کند.
+        purchase = ORDER_FORM.split('if (Type != TransactionType.Sale)', 1)[1].split('// قیمت واحد در فاکتور فروش', 1)[0]
+        self.assertIn('p.PurchasePrice > 0', purchase)
+
+    def test_csharp_probe_exercises_the_catalog_suggestion(self):
+        probe = (Path(__file__).resolve().parent.parent / 'ShopPricing' / 'Program.cs').read_text(encoding='utf-8')
+        self.assertIn('var catalogOnly = new Db.Product { Name = "کالای بدون تاریخچه", Code = "PRICE-C", Unit = "عدد", SalePrice = 1200 };', probe)
+        self.assertIn('catalogSuggestion.Price == 1200', probe)
+        self.assertIn('catalogSuggestion.Source == DatedSalePriceDto.CatalogSource', probe)
+        # کالای بدون قیمت فروش هنوز هیچ قیمتی نمی‌سازد.
+        self.assertIn('"no invented early selling price"', probe)
+
+    def test_reported_scenario_now_gets_a_price(self):
+        # منطق پیشنهاد: تاریخچهٔ همان روز، سپس تعریف کالا.
+        def suggest(history, catalog, day):
+            rows = [(d, price) for d, price in history.items() if d <= day]
+            if rows:
+                return max(rows)[1], 'history'
+            return (catalog, 'catalog') if catalog > 0 else (None, None)
+
+        history = {}
+        self.assertEqual(suggest(history, 1_200_000, '1405-08-20'), (1_200_000, 'catalog'))
+        history['1405-08-25'] = 1_500_000
+        # قیمت آینده به فاکتور دیروز نسبت داده نمی‌شود؛ تعریف کالا پیشنهاد می‌شود.
+        self.assertEqual(suggest(history, 1_500_000, '1405-08-20'), (1_500_000, 'catalog'))
+        self.assertEqual(suggest(history, 1_500_000, '1405-08-25'), (1_500_000, 'history'))
+        self.assertEqual(suggest({}, 0, '1405-08-20'), (None, None))
 
 
 if __name__ == '__main__':

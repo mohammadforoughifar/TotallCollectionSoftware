@@ -59,8 +59,17 @@ public class ShopPriceHistoryItem
 /// <summary>Nullable price distinguishes an unknown historical price from zero.</summary>
 public class DatedSalePriceDto
 {
+    /// <summary>قیمت از تاریخچهٔ قیمت همان روز (یا آخرین قیمت پیش از آن) آمده است.</summary>
+    public const string HistorySource = "history";
+    /// <summary>برای آن تاریخ قیمتی ثبت نشده و «قیمت فروش تعریف کالا» مبنا قرار گرفته است.</summary>
+    public const string CatalogSource = "catalog";
+
     public decimal? Price { get; set; }
     public DateTime? EffectiveDate { get; set; }
+    /// <summary>history | catalog؛ خالی یعنی هیچ قیمتی پیدا نشد.</summary>
+    public string? Source { get; set; }
+    /// <summary>قیمت از تعریف کالا آمده، نه از تاریخچه؛ کلاینت باید این را به کاربر بگوید.</summary>
+    public bool IsCatalogFallback => Source == CatalogSource;
 }
 
 /// <summary>Profit-authorized explanation of the exact purchase used at an invoice date.</summary>
