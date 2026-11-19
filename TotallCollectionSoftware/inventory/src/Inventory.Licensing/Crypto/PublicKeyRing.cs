@@ -1,3 +1,4 @@
+using System.IO;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -70,6 +71,13 @@ public sealed class PublicKeyRing
     private readonly Dictionary<string, PublicKeyEntry> _keys = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _loadErrors = new();
 
+    // کلیدهای جاسازی‌شده در اسمبلی — تنها مرجع اعتماد برای سنجش «مجوز اعتماد».
+    // عمداً از _keys جدا است: کلید نمایندگی نباید بتواند کلید نمایندگی دیگر بسازد.
+    private readonly Dictionary<string, PublicKeyEntry> _embedded = new(StringComparer.OrdinalIgnoreCase);
+
+    // شناسهٔ کلیدهایی که از فایل مجوز اعتماد آمده‌اند (نه از manifest).
+    private readonly List<string> _delegated = new();
+
     /// <summary>شناسهٔ کلیدهای قابل استفاده.</summary>
     public IReadOnlyCollection<string> KeyIds => _keys.Keys.ToList();
 
@@ -82,6 +90,17 @@ public sealed class PublicKeyRing
     /// </summary>
     public IReadOnlyList<PublicKeyEntry> Entries => _keys.Values.ToList();
 
+    /// <summary>
+    /// شناسهٔ کلیدهایی که از «مجوز اعتماد» نصب مشتری آمده‌اند (نه از manifest داخل بیلد).
+    /// برای نمایش در «وضعیت لایسنس» و عیب‌یابی پشتیبانی.
+    /// </summary>
+    public IReadOnlyList<string> DelegatedKeyIds => _delegated.ToList();
+
+    /// <summary>کلید ریشهٔ جاسازی‌شده با این شناسه (یا null).</summary>
+    public PublicKeyEntry? EmbeddedKey(string keyId) =>
+        string.IsNullOrWhiteSpace(keyId) ? null
+        : _embedded.TryGetValue(keyId.Trim(), out var entry) ? entry : null;
+
     /// <summary>ساخت حلقه از ردیف‌های آماده (برای تست و برای ابزار صدور).</summary>
     public static PublicKeyRing FromEntries(IEnumerable<PublicKeyEntry> entries)
     {
@@ -90,6 +109,7 @@ public sealed class PublicKeyRing
         {
             if (string.IsNullOrWhiteSpace(e.KeyId)) continue;
             ring._keys[e.KeyId] = e;
+            ring._embedded[e.KeyId] = e;
         }
         return ring;
     }
@@ -184,19 +204,124 @@ public sealed class PublicKeyRing
                 }
             }
 
-            ring._keys[entry.KeyId] = new PublicKeyEntry
+            var loaded = new PublicKeyEntry
             {
                 KeyId = entry.KeyId,
                 Algorithm = entry.Algorithm,
                 PublicKeyPem = pem,
                 Sha256 = entry.Sha256
             };
+            ring._keys[entry.KeyId] = loaded;
+            ring._embedded[entry.KeyId] = loaded;
         }
 
         if (ring._keys.Count == 0)
             ring._loadErrors.Add("هیچ کلید عمومی معتبری بارگذاری نشد؛ همهٔ فایل‌های لایسنس نامعتبر خواهند بود.");
 
         return ring;
+    }
+
+    /// <summary>
+    /// ساخت حلقه از manifest داخل اسمبلی <b>به‌همراه</b> کلیدهای مجازشده با «مجوز اعتماد»
+    /// در پوشهٔ نصب مشتری.
+    /// </summary>
+    /// <param name="trustedKeysFolder">
+    /// پوشهٔ <c>*.trust.json</c> (پیش‌فرض در API: <c>…\License\trusted-keys</c>).
+    /// خالی/ناموجود ⇒ فقط کلیدهای جاسازی‌شده.
+    /// </param>
+    /// <param name="installationId">شناسهٔ همین نصب؛ مجوز اعتمادِ نصب دیگر پذیرفته نمی‌شود.</param>
+    public static PublicKeyRing FromEmbeddedAndTrusted(string? trustedKeysFolder, string? installationId,
+        DateTime? nowUtc = null)
+    {
+        var ring = FromEmbedded();
+        ring.LoadTrustedKeys(trustedKeysFolder, installationId, nowUtc);
+        return ring;
+    }
+
+    /// <summary>
+    /// خواندن و پذیرش مجوزهای اعتمادِ یک پوشه. برای هر فایل، همهٔ شرط‌ها سنجیده می‌شود و
+    /// دلیل رد شدن در <see cref="LoadErrors"/> می‌نشیند تا پشتیبانی بتواند بگوید «چرا».
+    /// </summary>
+    /// <returns>تعداد کلیدهای پذیرفته‌شده.</returns>
+    public int LoadTrustedKeys(string? trustedKeysFolder, string? installationId, DateTime? nowUtc = null)
+    {
+        if (string.IsNullOrWhiteSpace(trustedKeysFolder) || !Directory.Exists(trustedKeysFolder))
+        {
+            // نبودن پوشه خطا نیست: نصب‌های بدون کلید نمایندگی باید مثل قبل کار کنند.
+            return 0;
+        }
+
+        var now = (nowUtc ?? DateTime.UtcNow).ToUniversalTime();
+        var revoked = ReadRevocations(trustedKeysFolder);
+        var accepted = 0;
+
+        foreach (var file in Directory.EnumerateFiles(trustedKeysFolder, "*.trust.json"))
+        {
+            var name = Path.GetFileName(file);
+            try
+            {
+                var doc = TrustCertificate.Parse(File.ReadAllText(file));
+                if (doc is null)
+                {
+                    _loadErrors.Add($"مجوز اعتماد «{name}» خوانده نشد (JSON نامعتبر).");
+                    continue;
+                }
+
+                if (!TrustCertificate.TryVerify(doc, EmbeddedKey, installationId, now,
+                        out var key, out var error) || key is null)
+                {
+                    _loadErrors.Add($"مجوز اعتماد «{name}» پذیرفته نشد: {error}");
+                    continue;
+                }
+
+                // کلید نمایندگی نباید کلید جاسازی‌شده را جعل کند (مثلاً کلید ریشه را بازنویسی کند).
+                if (_embedded.ContainsKey(key.KeyId))
+                {
+                    _loadErrors.Add($"مجوز اعتماد «{name}» کلید «{key.KeyId}» را تعریف می‌کند که " +
+                                    "همین حالا داخل بیلد جاسازی شده است؛ نادیده گرفته شد.");
+                    continue;
+                }
+
+                if (revoked.Contains(key.KeyId) || revoked.Contains(key.Sha256 ?? "")
+                    || revoked.Contains(name.ToLowerInvariant()))
+                {
+                    _loadErrors.Add($"کلید «{key.KeyId}» در فهرست ابطال این نصب است؛ پذیرفته نشد.");
+                    continue;
+                }
+
+                if (_keys.ContainsKey(key.KeyId))
+                {
+                    _loadErrors.Add($"کلید «{key.KeyId}» تکراری است؛ نسخهٔ دوم نادیده گرفته شد.");
+                    continue;
+                }
+
+                _keys[key.KeyId] = key;
+                _delegated.Add(key.KeyId);
+                accepted++;
+            }
+            catch (Exception ex)
+            {
+                _loadErrors.Add($"خواندن مجوز اعتماد «{name}» با خطا مواجه شد: {ex.Message}");
+            }
+        }
+
+        return accepted;
+    }
+
+    /// <summary>فهرست ابطال: فایل <c>revoked.txt</c>، هر خط یک keyId یا اثر انگشت یا نام فایل.</summary>
+    private static HashSet<string> ReadRevocations(string folder)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var path = Path.Combine(folder, "revoked.txt");
+        if (!File.Exists(path)) return set;
+
+        foreach (var line in File.ReadAllLines(path))
+        {
+            var text = line.Trim();
+            if (text.Length == 0 || text.StartsWith('#')) continue;
+            set.Add(text);
+        }
+        return set;
     }
 
     /// <summary>اثر انگشت hex کلید عمومی (روی DER).</summary>

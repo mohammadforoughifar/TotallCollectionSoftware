@@ -53,6 +53,10 @@ public sealed class SignedFileLicenseProvider : ILicenseProvider
         if (grants.Count == 0) return Array.Empty<LicenseDocument>();
 
         var installationId = await _identity.GetInstallationIdAsync(cancellationToken);
+
+        // کلیدهای نمایندگیِ همین نصب (فایل‌های *.trust.json) + کلیدهای ریشه.
+        var ring = _keys.GetRing(installationId);
+
         var context = new LicenseValidationContext
         {
             ExpectedInstallationId = installationId,
@@ -63,7 +67,7 @@ public sealed class SignedFileLicenseProvider : ILicenseProvider
         var documents = new List<LicenseDocument>();
         foreach (var grant in grants)
         {
-            var document = ReadVerified(grant);
+            var document = ReadVerified(grant, ring);
             if (document is null) continue;
 
             var issues = LicenseValidator.Validate(document, context);
@@ -83,14 +87,14 @@ public sealed class SignedFileLicenseProvider : ILicenseProvider
     }
 
     /// <summary>خواندن یک grant با بررسی مجدد امضا؛ در صورت خرابی null.</summary>
-    private LicenseDocument? ReadVerified(LicenseGrant grant)
+    private LicenseDocument? ReadVerified(LicenseGrant grant, PublicKeyRing ring)
     {
         try
         {
             var payload = Convert.FromBase64String(grant.Payload);
             var signature = Convert.FromBase64String(grant.Signature);
 
-            if (!_keys.Ring.Verify(grant.KeyId, payload, signature, grant.Algorithm, out var error))
+            if (!ring.Verify(grant.KeyId, payload, signature, grant.Algorithm, out var error))
             {
                 _log.LogError("[License] امضای سند {Serial} معتبر نیست و کنار گذاشته شد: {Error}", grant.Serial, error);
                 return null;
