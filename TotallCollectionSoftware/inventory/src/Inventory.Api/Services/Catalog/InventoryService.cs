@@ -1930,6 +1930,89 @@ public class InventoryService : IInventoryService
         return result;
     }
 
+    /// <summary>
+    /// مقدار «قابل ثبت» در تاریخ asOf: کمینهٔ موجودی از پایان همان روز به بعد.
+    /// <para>
+    /// موجودی «تا تاریخ» فقط گذشته را می‌بیند. اگر کالا بعد از تاریخ سند فروش رفته
+    /// باشد، فاکتور عقب‌تاریخ‌خورده همان مقدار را «دوباره» می‌فروشد و موجودی آینده
+    /// منفی می‌شود (یک قلم، دو بار فروش). پس پس از محاسبهٔ ماندهٔ تاریخ سند، گردش
+    /// بعد از آن روز به ترتیب تاریخ بازپخش می‌شود و کمترین مانده در طول مسیر
+    /// برگردانده می‌شود؛ هر مقدار بیشتر از این عدد، در آینده کمبود می‌سازد.
+    /// </para>
+    /// </summary>
+    public async Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetSellableQuantitiesAsync(
+        DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
+        int? excludeTransactionId = null)
+    {
+        var asOfDay = Inventory.Api.Helpers.DateQuery.Normalize(asOf);
+        var end = asOfDay.AddDays(1); // روز asOf کامل حساب می‌شود
+
+        // ماندهٔ پایان روز سند، نقطهٔ شروع بازپخش آینده است.
+        var lowest = await GetStockQuantitiesAsOfAsync(asOfDay, warehouseId, productIds, excludeTransactionId);
+
+        var filterIds = productIds is { Count: > 0 } ? productIds.ToArray() : null;
+        var allowed = filterIds?.ToHashSet();
+
+        // حرکت‌های بعد از روز سند: اسناد فروش/خرید و گردش ماژول انبارداری.
+        var moves = new List<(DateTime Date, int Source, long Id, (int WarehouseId, int ProductId) Key, decimal Delta, bool Reset)>();
+
+        var futureQuery = _db.Transactions.Include(t => t.Lines).AsNoTracking().Where(t => t.Date >= end);
+        if (warehouseId is > 0) futureQuery = futureQuery.Where(t => t.WarehouseId == warehouseId);
+        if (excludeTransactionId is > 0) futureQuery = futureQuery.Where(t => t.Id != excludeTransactionId.Value);
+        if (filterIds is not null) futureQuery = futureQuery.Where(t => t.Lines.Any(l => filterIds.Contains(l.ProductId)));
+        foreach (var t in await futureQuery.ToListAsync())
+        {
+            foreach (var l in t.Lines)
+            {
+                if (allowed is not null && !allowed.Contains(l.ProductId)) continue;
+                // Initial/Adjustment «تنظیم» موجودی است (reset)، نه افزایش/کاهش.
+                var isReset = t.Type is not (TransactionType.Purchase or TransactionType.SaleReturn
+                    or TransactionType.Sale or TransactionType.WarrantyOut);
+                var delta = t.Type switch
+                {
+                    TransactionType.Purchase or TransactionType.SaleReturn => l.Quantity,
+                    TransactionType.Sale or TransactionType.WarrantyOut => -l.Quantity,
+                    _ => l.Quantity
+                };
+                moves.Add((t.Date, 0, t.Id, (t.WarehouseId, l.ProductId), delta, isReset));
+            }
+        }
+
+        var ledgerQuery = _db.InvLedger.AsNoTracking().Where(e => e.Date >= end);
+        if (warehouseId is > 0) ledgerQuery = ledgerQuery.Where(e => e.WarehouseId == warehouseId);
+        var ledgerRows = await ledgerQuery
+            .Select(e => new { e.Id, e.WarehouseId, e.ProductId, e.Date, e.QtyIn, e.QtyOut })
+            .ToListAsync();
+        foreach (var e in ledgerRows)
+        {
+            if (allowed is not null && !allowed.Contains(e.ProductId)) continue;
+            moves.Add((e.Date, 1, e.Id, (e.WarehouseId, e.ProductId), e.QtyIn - e.QtyOut, false));
+        }
+
+        // ماندهٔ جاری از کمینه جدا نگه داشته می‌شود؛ کمینه فقط پایین‌ترین نقطهٔ مسیر است.
+        var balance = new Dictionary<(int WarehouseId, int ProductId), decimal>(lowest);
+        foreach (var m in moves.OrderBy(m => m.Date).ThenBy(m => m.Source).ThenBy(m => m.Id))
+        {
+            balance.TryGetValue(m.Key, out var running);
+            var next = m.Reset ? m.Delta : running + m.Delta;
+            balance[m.Key] = next;
+            if (!lowest.TryGetValue(m.Key, out var floor) || next < floor) lowest[m.Key] = next;
+        }
+        return lowest;
+    }
+
+    /// <summary>
+    /// پیام خطای موجودی با تفکیک «موجودی تاریخ سند» از «مصرف بعد از آن تاریخ»، تا
+    /// کاربر بفهمد چرا عدد منوی انتخاب کالا با خطای ثبت تفاوت دارد.
+    /// </summary>
+    private static string SellableStockMessage(string name, decimal atDate, decimal sellable)
+    {
+        var later = atDate - sellable;
+        if (later > 0)
+            return $"موجودی «{name}» در تاریخ سند {atDate:0.##} است، ولی بعد از این تاریخ {later:0.##} از آن فروش/خروج ثبت شده؛ حداکثر {sellable:0.##} عدد قابل ثبت است.";
+        return $"موجودی «{name}» کافی نیست (موجود: {sellable:0.##}).";
+    }
+
     public async Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize)
     {
         var query = from stock in _db.Stocks.AsNoTracking()
@@ -2074,14 +2157,20 @@ public class InventoryService : IInventoryService
                             throw new InvalidOperationException($"موجودی «{products[group.Key].Name}» برای خروج گارانتی کافی نیست.");
                     }
                 }
-                foreach (var l in cmd.Lines)
+                // موجودی «تا تاریخ سند» به‌تنهایی کافی نیست: اگر همان کالا بعد از این
+                // تاریخ فروش رفته باشد، این فاکتور عقب‌تاریخ‌خورده همان قلم را دوبار
+                // می‌فروشد. ملاک، کمینهٔ موجودی از تاریخ سند به بعد است.
+                var sellableStock = await GetSellableQuantitiesAsync(date, cmd.WarehouseId, productIds);
+                foreach (var group in cmd.Lines.GroupBy(l => l.ProductId))
                 {
-                    if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
-                    var available = asOfStock.TryGetValue((cmd.WarehouseId, l.ProductId), out var aq) ? aq : 0m;
-                    if (available < l.Quantity)
+                    if (products.TryGetValue(group.Key, out var prod) && prod.IsService) continue;
+                    var quantity = group.Sum(l => l.Quantity);
+                    var atDate = asOfStock.TryGetValue((cmd.WarehouseId, group.Key), out var aq) ? aq : 0m;
+                    var sellable = sellableStock.TryGetValue((cmd.WarehouseId, group.Key), out var sq) ? sq : 0m;
+                    if (sellable < quantity)
                     {
-                        var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";
-                        throw new InvalidOperationException($"موجودی «{name}» کافی نیست (موجود: {available:0.##}).");
+                        var name = products.TryGetValue(group.Key, out var pp) ? pp.Name : "";
+                        throw new InvalidOperationException(SellableStockMessage(name, atDate, sellable));
                     }
                 }
             }
@@ -2572,16 +2661,18 @@ public class InventoryService : IInventoryService
                 var updateAsOf = cmd.Date == default ? txn.Date : cmd.Date;
                 var updateIds = cmd.Lines.Select(l => l.ProductId).Distinct().ToList();
                 var updateStock = await GetStockQuantitiesAsOfAsync(updateAsOf, cmd.WarehouseId, updateIds, txn.Id);
-                foreach (var group in cmd.Lines
-                    .Where(l => !products.TryGetValue(l.ProductId, out var p) || !p.IsService)
-                    .GroupBy(l => l.ProductId))
+                // همان قاعدهٔ ثبت: کمینهٔ موجودی از تاریخ سند به بعد ملاک است تا فروش
+                // بعد از آن تاریخ دوبار حساب نشود.
+                var updateSellable = await GetSellableQuantitiesAsync(updateAsOf, cmd.WarehouseId, updateIds, txn.Id);
+                foreach (var group in cmd.Lines.GroupBy(l => l.ProductId))
                 {
-                    var available = updateStock.TryGetValue((cmd.WarehouseId, group.Key), out var q) ? q : 0m;
-                    if (available < group.Sum(l => l.Quantity))
+                    if (products.TryGetValue(group.Key, out var sp) && sp.IsService) continue;
+                    var atDate = updateStock.TryGetValue((cmd.WarehouseId, group.Key), out var q) ? q : 0m;
+                    var sellable = updateSellable.TryGetValue((cmd.WarehouseId, group.Key), out var sq) ? sq : 0m;
+                    if (sellable < group.Sum(l => l.Quantity))
                     {
                         var name = products.TryGetValue(group.Key, out var np) ? np.Name : "";
-                        throw new InvalidOperationException(
-                            $"موجودی «{name}» در تاریخ سند کافی نیست (موجود: {available:0.##}).");
+                        throw new InvalidOperationException(SellableStockMessage(name, atDate, sellable));
                     }
                 }
             }
@@ -3778,14 +3869,18 @@ public class InventoryService : IInventoryService
                 // ویرایش فاکتور فروش هم موجودی را در «تاریخ همان فاکتور» بررسی میکند؛
                 // سند در حال ویرایش از شمارش حذف میشود تا دوبار مصرف نشود.
                 var asOfStock = await GetStockQuantitiesAsOfAsync(editDate, cmd.WarehouseId, productIds, saleId);
-                foreach (var l in cmd.Lines)
+                // ویرایش هم باید فروش‌های بعد از تاریخ سند را در نظر بگیرد؛ وگرنه
+                // عقب‌بردن تاریخ یا زیادکردن مقدار، همان قلم را دوبار می‌فروشد.
+                var sellableStock = await GetSellableQuantitiesAsync(editDate, cmd.WarehouseId, productIds, saleId);
+                foreach (var group in cmd.Lines.GroupBy(l => l.ProductId))
                 {
-                    if (products.TryGetValue(l.ProductId, out var prod) && prod.IsService) continue;
-                    var available = asOfStock.TryGetValue((cmd.WarehouseId, l.ProductId), out var eq) ? eq : 0m;
-                    if (available < l.Quantity)
+                    if (products.TryGetValue(group.Key, out var prod) && prod.IsService) continue;
+                    var atDate = asOfStock.TryGetValue((cmd.WarehouseId, group.Key), out var eq) ? eq : 0m;
+                    var sellable = sellableStock.TryGetValue((cmd.WarehouseId, group.Key), out var sq) ? sq : 0m;
+                    if (sellable < group.Sum(l => l.Quantity))
                     {
-                        var name = products.TryGetValue(l.ProductId, out var pp) ? pp.Name : "";
-                        throw new InvalidOperationException($"موجودی «{name}» کافی نیست (موجود: {available:0.##}).");
+                        var name = products.TryGetValue(group.Key, out var pp) ? pp.Name : "";
+                        throw new InvalidOperationException(SellableStockMessage(name, atDate, sellable));
                     }
                 }
             }

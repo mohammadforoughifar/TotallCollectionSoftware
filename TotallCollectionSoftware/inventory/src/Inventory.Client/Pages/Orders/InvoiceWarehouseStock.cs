@@ -18,7 +18,19 @@ public sealed class InvoiceWarehouseStock
     public DateTime? AsOf { get; private set; }
     public bool IsLoading { get; private set; }
     public bool IsLoaded { get; private set; }
+    /// <summary>موجودی تا پایان تاریخ سند (مبنای نمایش).</summary>
     public IReadOnlyDictionary<int, decimal> Quantities { get; private set; } = new Dictionary<int, decimal>();
+
+    /// <summary>
+    /// مقدار قابل ثبت در همان تاریخ: کمینهٔ موجودی از آن تاریخ به بعد. کمتر از
+    /// <see cref="Quantities"/> یعنی بخشی از موجودی بعد از تاریخ سند فروش رفته و
+    /// فاکتور عقب‌تاریخ‌خورده همان قلم را دوباره می‌فروشد.
+    /// </summary>
+    public IReadOnlyDictionary<int, decimal> Sellables { get; private set; } = new Dictionary<int, decimal>();
+
+    /// <summary>مقدار قابل ثبت در تاریخ عکس فوری برای یک کالا (۰ اگر در این انبار موجودی ندارد).</summary>
+    public decimal SellableFor(int productId)
+        => Sellables.TryGetValue(productId, out var value) ? value : 0m;
 
     /// <summary>سازگاری با فراخوانیهای قدیمی: عکس فوری «تا امروز».</summary>
     public Task<bool> LoadAsync(int warehouseId, Func<int, int, int, Task<PagedResult<InvoiceStockItem>>> getPage)
@@ -35,11 +47,13 @@ public sealed class InvoiceWarehouseStock
         IsLoaded = false;
         IsLoading = warehouseId > 0;
         Quantities = new Dictionary<int, decimal>();
+        Sellables = new Dictionary<int, decimal>();
         if (warehouseId <= 0) return true;
 
         try
         {
             var quantities = new Dictionary<int, decimal>();
+            var sellables = new Dictionary<int, decimal>();
             var page = 1;
             int? expectedTotal = null;
             long received = 0;
@@ -57,6 +71,8 @@ public sealed class InvoiceWarehouseStock
                 {
                     if (item.WarehouseId != warehouseId || !quantities.TryAdd(item.ProductId, item.Quantity))
                         throw new InvalidOperationException("Stock pages do not form a consistent warehouse snapshot.");
+                    if (!sellables.TryAdd(item.ProductId, item.SellableQuantity))
+                        throw new InvalidOperationException("Stock pages do not form a consistent sellable snapshot.");
                 }
                 received += result.Items.Count;
                 if (received > expectedTotal.Value) throw new InvalidOperationException("Stock page count is inconsistent.");
@@ -65,6 +81,7 @@ public sealed class InvoiceWarehouseStock
                 page++;
             }
             Quantities = quantities;
+            Sellables = sellables;
             IsLoaded = true;
         }
         catch
@@ -87,17 +104,31 @@ public sealed class InvoiceProductOption : LookupItem
     public string? StockUnit { get; private init; }
     public bool IsStockWarning => StockQuantity is <= 0m;
 
+    /// <summary>مقدار قابل ثبت در تاریخ سند (با احتساب فروش بعد از آن تاریخ).</summary>
+    public decimal? SellableQuantity { get; private init; }
+
+    /// <summary>بخشی از موجودی تاریخ سند که بعد از آن تاریخ فروش رفته است.</summary>
+    public decimal SoldAfterDate => StockQuantity.HasValue && SellableQuantity.HasValue
+        ? Math.Max(0m, StockQuantity.Value - SellableQuantity.Value) : 0m;
+
+    public bool IsSellableShort => SoldAfterDate > 0m;
+
     public static InvoiceProductOption Create(int id, string name, string? unit, bool isService, InvoiceWarehouseStock stock)
     {
         decimal? quantity = null;
+        decimal? sellable = null;
         if (!isService && stock.WarehouseId > 0 && stock.IsLoaded)
+        {
             quantity = stock.Quantities.TryGetValue(id, out var value) ? value : 0m;
+            sellable = stock.SellableFor(id);
+        }
 
         return new InvoiceProductOption
         {
             Id = id,
             Name = name,
             StockQuantity = quantity,
+            SellableQuantity = sellable,
             StockUnit = unit,
             InfoText = isService ? "خدمات"
                 : stock.WarehouseId <= 0 ? "ابتدا انبار را انتخاب کنید"

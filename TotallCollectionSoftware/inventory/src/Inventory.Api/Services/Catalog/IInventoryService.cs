@@ -74,6 +74,15 @@ public interface IInventoryService
     Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetStockQuantitiesAsOfAsync(
         DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
         int? excludeTransactionId = null);
+    /// <summary>
+    /// مقدار «قابل ثبت» در تاریخ asOf: کمینهٔ موجودی از پایان همان روز به بعد.
+    /// موجودی «تا تاریخ» فقط گذشته را می‌بیند؛ اگر همان کالا بعد از این تاریخ فروش
+    /// رفته باشد، فروش عقب‌تاریخ‌خورده آن را دوباره می‌فروشد و موجودی آینده منفی
+    /// می‌شود. پس اعتبارسنجی فاکتور به این مقدار نیاز دارد، نه به موجودی تاریخ سند.
+    /// </summary>
+    Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetSellableQuantitiesAsync(
+        DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
+        int? excludeTransactionId = null);
     Task AdjustStockAsync(AdjustmentCommand cmd);
     /// <summary>خروج واقعی گارانتی؛ فقط داخل تراکنش سریال‌پذیر پذیرش گارانتی فراخوانی شود.</summary>
     Task<int?> ConsumeWarrantyStockAsync(int warehouseId, int partyId, string warrantyNumber, DateTime at, IReadOnlyCollection<ShopWarrantyItemDto> supplied);

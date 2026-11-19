@@ -257,7 +257,7 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
           (await controller.WarehouseStock(0)).Result is BadRequestObjectResult,
         "invoice stock endpoint never returns all warehouses for an invalid or empty selection");
     Check(typeof(InvoiceStockItem).GetProperties().Select(p => p.Name).ToHashSet()
-          .SetEquals(new[] { "WarehouseId", "ProductId", "Quantity" }),
+          .SetEquals(new[] { "WarehouseId", "ProductId", "Quantity", "SellableQuantity" }),
         "invoice stock endpoint cannot expose cost, price or profit fields");
     var hidden = (Order)((OkObjectResult)(await controller.GetById(sold.Id)).Result!).Value!;
     Check(hidden.TotalProfit is null && hidden.NetProfit is null && hidden.Lines.Single().Profit is null &&

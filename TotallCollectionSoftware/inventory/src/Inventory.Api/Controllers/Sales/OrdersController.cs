@@ -122,13 +122,18 @@ public class OrdersController : ApiControllerBase
         // همان فهرست کالاها (و همان صفحه‌بندی) حفظ می‌شود تا عکس‌های فوری
         // صفحه‌دار کلاینت با هم سازگار بمانند؛ فقط «مقدار» تاریخ‌مند می‌شود.
         var asOfQuantities = await _service.GetStockQuantitiesAsOfAsync(asOfDate, warehouseId);
+        // «قابل ثبت»: کمینهٔ موجودی از تاریخ سند به بعد؛ فروش بعد از آن تاریخ نباید
+        // با فاکتور عقب‌تاریخ‌خورده دوباره فروخته شود.
+        var sellableQuantities = await _service.GetSellableQuantitiesAsync(asOfDate, warehouseId);
         foreach (var s in result.Items)
             s.Quantity = asOfQuantities.TryGetValue((s.WarehouseId, s.ProductId), out var qty) ? qty : 0m;
         return Ok(new PagedResult<InvoiceStockItem>
         {
             Items = result.Items.Select(s => new InvoiceStockItem
             {
-                WarehouseId = s.WarehouseId, ProductId = s.ProductId, Quantity = s.Quantity
+                WarehouseId = s.WarehouseId, ProductId = s.ProductId, Quantity = s.Quantity,
+                SellableQuantity = sellableQuantities.TryGetValue((s.WarehouseId, s.ProductId), out var sellable)
+                    ? sellable : 0m
             }).ToList(),
             TotalCount = result.TotalCount, Page = result.Page, PageSize = result.PageSize
         });
