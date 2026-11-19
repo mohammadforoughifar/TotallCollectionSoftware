@@ -9,7 +9,8 @@
 
 @* =====================================================================
    حواله تحویل کالا — سند «فقط مقدار» (بدون هیچ مبلغ/ریالی)
-   • نام کالا آزاد تایپ می‌شود (بدون انتخاب از فهرست کالاها)
+   • دو روش افزودن قلم: (۱) انتخاب کالا از فهرست انبار — ستون «از انبار» یا دکمه
+     «افزودن از انبار» — و (۲) تایپ آزاد نام کالا (بدون شناسهٔ کالا)
    • Enter = جابه‌جایی بین سطرها | F2 = سطر تازه | F1 = ذخیره
    • مشتری از فهرست + دکمه «مشتری جدید» با همان فرم تعریف مشتری (/parties)
    • چاپ A4 یا A5 با انتخاب هنگام چاپ
@@ -204,9 +205,15 @@
                 </div>
                 @if (!viewing)
                 {
-                    <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" data-hotkey="f2" @onclick="AddEmptyLine">
-                        <i class="bi bi-plus-lg"></i> سطر تازه (F2)
-                    </button>
+                    <div class="d-flex gap-2 flex-wrap">
+                        @* افزودن قلم از فهرست انبار — روش اول و پیدا‌ترین راه ورود کالا *@
+                        <button type="button" id="btn-add-from-stock" class="btn btn-sm btn-outline-primary" @onclick="OpenStockPicker">
+                            <i class="bi bi-box-arrow-in-down"></i> افزودن از انبار
+                        </button>
+                        <button type="button" id="btn-add-line" class="btn btn-sm btn-primary" data-hotkey="f2" @onclick="AddEmptyLine">
+                            <i class="bi bi-plus-lg"></i> سطر تازه (F2)
+                        </button>
+                    </div>
                 }
             </div>
 
@@ -239,6 +246,7 @@
                                         <SearchSelect Items="productLookup"
                                                       CssClass="gi-cell gi-picker"
                                                       ConstrainToModal="true"
+                                                      ShowAllOnFocus="true"
                                                       Value="line.ProductId"
                                                       ValueChanged="id => OnProductPickedAsync(idx, line, id)"
                                                       Placeholder="از انبار انتخاب کنید…" />
@@ -286,6 +294,7 @@
                 <div class="gi-hints">
                     <span><kbd>Enter</kbd> سطر بعدی</span>
                     <span><kbd>F2</kbd> سطر تازه</span>
+                    <span>«افزودن از انبار» برای انتخاب کالا از موجودی</span>
                     <span><kbd>F1</kbd> ذخیره</span>
                     <span><kbd>Esc</kbd> انصراف</span>
                 </div>
@@ -312,6 +321,60 @@
    همان کامپوننت فرم «طرف حسابها» (/parties) — هیچ فرم موازی/خلاصهای در این صفحه
    تعریف نمیشود تا فیلدها، اعتبارسنجی و قواعد معرف در همهجا یکسان باشند.
    ============================================================= *@
+@* ==================== انتخاب کالا از انبار (چند انتخابی) ====================
+   فهرست کالاهای انباری با موجودی؛ هر کلیک یک سطر به اقلام اضافه می‌کند و پنجره
+   باز می‌ماند تا چند کالا سریع اضافه شود. تایپ آزاد نام هم مستقل از این پنجره
+   در ستون «نام کالا (دستی)» کار می‌کند.
+   ========================================================================== *@
+<Modal Visible="showStockPicker" Title="افزودن کالا از انبار" Size="modal-lg" OnClose="CloseStockPicker">
+    <ChildContent>
+        <div class="gi-picker-search">
+            <input id="gi-stock-search" class="form-control" @bind="stockSearch" @bind:event="oninput"
+                   placeholder="جستجوی نام یا کد کالا…" />
+            <button type="button" id="btn-reload-stock" class="btn btn-light" @onclick="() => LoadProductOptionsAsync(true)">
+                <i class="bi bi-arrow-clockwise"></i> بازخوانی
+            </button>
+        </div>
+        <div class="fs-8 text-muted mb-2">
+            روی هر کالا بزنید تا یک سطر با مقدار ۱ به اقلام اضافه شود؛ پنجره باز می‌ماند تا چند کالا اضافه کنید.
+        </div>
+        @if (productOptionsLoading)
+        {
+            <div class="text-center py-4 text-muted">
+                <span class="spinner-border spinner-border-sm ms-1"></span> در حال دریافت فهرست انبار…
+            </div>
+        }
+        else if (productOptions.Count == 0)
+        {
+            <div class="alert alert-warning mb-0">
+                فهرست کالاهای انبار خالی است (یا دریافت نشد). «بازخوانی» را بزنید یا نام کالا را دستی در سطر وارد کنید.
+            </div>
+        }
+        else
+        {
+            <div class="gi-picker-list">
+                @foreach (var option in FilteredStockOptions)
+                {
+                    <button type="button" class="gi-picker-item" @onclick="() => AddFromStock(option)">
+                        <span class="gi-picker-name">@option.Name</span>
+                        <span class="gi-picker-meta">
+                            @option.Code · موجودی: @Fa.Digits(option.TotalStock.ToString("#,##0.###")) @option.Unit
+                            @if (!option.IsActive) { <text> · غیرفعال</text> }
+                        </span>
+                    </button>
+                }
+                @if (FilteredStockOptions.Count == 0)
+                {
+                    <div class="text-muted py-3 text-center">کالایی با این عبارت پیدا نشد.</div>
+                }
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="CloseStockPicker">بستن</button>
+    </Footer>
+</Modal>
+
 <PartyFormModal ShopQuickCreate="true" Visible="showNewParty"
                 Type="PartyType.Customer"
                 AllowReferrerPicker="true"
@@ -332,6 +395,20 @@
     .gi-lines .gi-picker { min-width: 200px; }
     .gi-lines .gi-stock-hint { display: block; margin-top: 2px; font-size: .72rem; color: #64748b; }
     .gi-lines .gi-stock-hint.is-over { color: #dc2626; font-weight: 600; }
+    /* ---------- پنجرهٔ انتخاب کالا از انبار ---------- */
+    .gi-picker-search { display: flex; gap: .5rem; margin-bottom: .5rem; }
+    .gi-picker-list {
+        max-height: 52vh; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 10px;
+        background: #fff; padding: .25rem;
+    }
+    .gi-picker-item {
+        display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+        width: 100%; text-align: right; border: 0; background: transparent;
+        padding: .5rem .65rem; border-radius: 8px; cursor: pointer;
+    }
+    .gi-picker-item:hover, .gi-picker-item:focus-visible { background: #eef2ff; }
+    .gi-picker-item .gi-picker-name { font-weight: 600; color: #1e293b; }
+    .gi-picker-item .gi-picker-meta { font-size: .74rem; color: #64748b; }
     .gi-hints kbd {
         background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-bottom-width: 2px;
         border-radius: 5px; padding: 1px 6px; font-size: .72rem; font-family: inherit;
@@ -518,6 +595,62 @@
         form.PartyId = v;
         var name = partyLookup.FirstOrDefault(p => p.Id == v)?.Name;
         if (!string.IsNullOrEmpty(name)) form.PartyName = name;
+    }
+
+    // ---------- انتخاب کالا از انبار (پنجرهٔ چند‌انتخابی) ----------
+
+    private bool showStockPicker;
+    private string? stockSearch;
+
+    /// <summary>سقف ردیف‌های قابل نمایش در پنجرهٔ انتخاب (بقیه با جستجو پیدا می‌شوند).</summary>
+    private const int StockPickerPageSize = 60;
+
+    private List<GoodsIssueProductOptionDto> FilteredStockOptions
+    {
+        get
+        {
+            IEnumerable<GoodsIssueProductOptionDto> q = productOptions;
+            var term = stockSearch?.Trim();
+            if (!string.IsNullOrEmpty(term))
+                q = q.Where(p => p.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                              || (p.Code ?? "").Contains(term, StringComparison.OrdinalIgnoreCase));
+            return q.OrderBy(p => p.Name).ThenBy(p => p.Id).Take(StockPickerPageSize).ToList();
+        }
+    }
+
+    private async Task OpenStockPicker()
+    {
+        if (viewing) return;
+        showStockPicker = true;
+        stockSearch = null;
+        await LoadProductOptionsAsync();
+    }
+
+    private void CloseStockPicker()
+    {
+        showStockPicker = false;
+        stockSearch = null;
+    }
+
+    /// <summary>
+    /// افزودن کالای انتخاب‌شده به اقلام بیجک: سطر نیمه‌خالی آخر (بدون نام/شناسه) پر
+    /// می‌شود تا سطر خالی اضافه نماند؛ در غیر این صورت سطر تازه ساخته می‌شود.
+    /// مقدار پیش‌فرض ۱ است (کاربر معمولاً یک کارتن/عدد می‌دهد و در صورت نیاز عوض می‌کند).
+    /// </summary>
+    private void AddFromStock(GoodsIssueProductOptionDto option)
+    {
+        if (viewing) return;
+        var line = form.Lines.FirstOrDefault(l => l.ProductId == 0
+            && string.IsNullOrWhiteSpace(l.ProductName) && l.Quantity <= 0);
+        if (line is null)
+        {
+            line = new GoodsIssueLineDto();
+            form.Lines.Add(line);
+        }
+        line.ProductId = option.Id;
+        line.ProductName = option.Name;
+        line.Quantity = 1;
+        Toast.Info($"«{option.Name}» به اقلام اضافه شد.");
     }
 
     // ---------- سطرها ----------
