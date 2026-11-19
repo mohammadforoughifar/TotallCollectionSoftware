@@ -5,7 +5,9 @@ namespace Inventory.Client.Extensions;
 /// <summary>
 /// مستطیل یک المان در مختصات viewport — از تابع JS «uiRect» (wwwroot/js/ui.js) دریافت می‌شود.
 /// </summary>
-public sealed record UiRect(double Left, double Top, double Right, double Bottom, double Width, double Height, double Vw, double Vh);
+/// <param name="Ox">گوشهٔ بالا-چپ «containing block» منوی fixed (جد دارای transform/filter)؛ صفر یعنی viewport</param>
+/// <param name="Oy">مانند Ox برای محور عمودی</param>
+public sealed record UiRect(double Left, double Top, double Right, double Bottom, double Width, double Height, double Vw, double Vh, double Ox = 0, double Oy = 0);
 
 /// <summary>
 /// محاسبه موقعیت منوهای شناور (تقویم DatePicker و منوی کمبوباکس‌ها).
@@ -42,7 +44,9 @@ public static class Popover
         if (top + maxMenuHeight > r.Vh - 8)
             top = Math.Max(8, r.Top - maxMenuHeight - 4);
 
-        return (Math.Round(top), Math.Round(left), Math.Round(w));
+        // مختصات viewport به مختصات containing block منوی fixed تبدیل می‌شود
+        // (وگرنه منو وقتی جد دارای transform باشد، جابه‌جا باز می‌شود).
+        return (Math.Round(top - r.Oy), Math.Round(left - r.Ox), Math.Round(w));
     }
 
     /// <summary>استایل inline منوی شناور (position:fixed + مختصات + z)</summary>

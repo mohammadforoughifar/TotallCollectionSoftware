@@ -52,7 +52,9 @@
         if (rightEdge <= leftEdge || bottomEdge <= topEdge) return;
         if (a.bottom < topEdge || a.top > bottomEdge) { menu.style.visibility = 'hidden'; return; }
         const width = Math.min(Math.max(a.width, 230), rightEdge - leftEdge);
-        const left = Math.max(leftEdge, Math.min(a.left, rightEdge - width));
+        // position:fixed is relative to the nearest transformed/filtered ancestor, not the viewport.
+        const origin = window.fixedOrigin ? window.fixedOrigin(menu) : { left: 0, top: 0 };
+        const left = Math.max(leftEdge, Math.min(a.left, rightEdge - width)) - origin.left;
         const below = Math.max(0, bottomEdge - a.bottom - 4);
         const above = Math.max(0, a.top - topEdge - 4);
         // Measure the rendered menu at its final width before choosing a side.
@@ -63,7 +65,7 @@
         const placeBelow = below >= naturalHeight || below >= above;
         const height = Math.max(0, Math.min(naturalHeight, placeBelow ? below : above));
         menu.style.left = Math.round(left) + 'px';
-        menu.style.top = Math.round(placeBelow ? a.bottom + 4 : a.top - height - 4) + 'px';
+        menu.style.top = Math.round((placeBelow ? a.bottom + 4 : a.top - height - 4) - origin.top) + 'px';
         menu.style.maxHeight = Math.round(Math.max(0, Math.min(250, placeBelow ? below : above))) + 'px';
         menu.style.visibility = height > 0 ? 'visible' : 'hidden';
     }
