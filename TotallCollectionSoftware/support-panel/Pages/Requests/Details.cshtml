@@ -2,6 +2,9 @@
 @inject SupportDbContext Db
 @inject RequestService Requests
 @inject SupportAuthService Auth
+@inject CustomerTrustService Trust
+@inject SignerKeyService Keys
+@inject SignerOptions Options
 @{
     ViewData["Title"] = "جزئیات درخواست";
 }
@@ -55,6 +58,70 @@
         return Redirect($"/Requests/Details?id={Id}");
     }
 
+    /// <summary>
+    /// ساخت کلید امضای همین مشتری + صدور مجوز اعتماد با کلید ریشه.
+    /// خروجی: کلید خصوصی در گاوصندوق می‌ماند؛ فقط کلید عمومی + trust.json برای مشتری می‌رود.
+    /// </summary>
+    public async Task<IActionResult> OnPostIssueTrustAsync()
+    {
+        Id = ResolveId();
+        var actor = await ActorAsync();
+        if (actor is null) return Redirect("/Login");
+
+        var request = await Db.Requests.Include(r => r.Customer).FirstOrDefaultAsync(r => r.Id == Id);
+        if (request is null)
+        {
+            TempData["error"] = "درخواست پیدا نشد.";
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        var keyPassword = Request.Form["customerKeyPassword"].ToString();
+        var rootPassword = Request.Form["rootKeyPassword"].ToString();
+        var preferredKeyId = Request.Form["customerKeyId"].ToString();
+        var validDays = int.TryParse(Request.Form["validDays"], out var days) ? days : 0;
+
+        var (key, error) = await Trust.EnsureCustomerKeyAsync(request.InstallationId, preferredKeyId, keyPassword, actor);
+        if (key is null)
+        {
+            TempData["error"] = "کلید مشتری ساخته نشد: " + error;
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        var result = await Trust.IssueTrustAsync(request.InstallationId, key, rootPassword, validDays,
+            note: $"درخواست {request.RequestNo} — {request.Customer?.Name ?? request.CompanyName}");
+
+        TempData[result.Ok ? "ok" : "error"] = result.Ok
+            ? result.Message + (key.Created ? " (جفت‌کلید مشتری تازه ساخته و به‌عنوان کلید فعال پنل تنظیم شد.)" : "")
+            : result.Message;
+
+        return Redirect($"/Requests/Details?id={Id}");
+    }
+
+    /// <summary>ساخت و دانلود بستهٔ تحویل: lic + trust.json + راهنما.</summary>
+    public async Task<IActionResult> OnGetBundleAsync()
+    {
+        Id = ResolveId();
+        var request = await Db.Requests.AsNoTracking().Include(r => r.Licenses).FirstOrDefaultAsync(r => r.Id == Id);
+        if (request is null) return NotFound();
+
+        var license = request.Licenses.OrderByDescending(l => l.Id).FirstOrDefault();
+        if (license is null)
+        {
+            TempData["error"] = "برای این درخواست هنوز لایسنسی صادر نشده است.";
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        var fullPath = System.IO.Path.Combine(Options.EffectiveWorkFolder(), license.FilePath ?? "");
+        var (ok, message, path) = await Trust.BuildBundleAsync(request.InstallationId, fullPath, request.RequestNo);
+        if (!ok || path is null)
+        {
+            TempData["error"] = message;
+            return Redirect($"/Requests/Details?id={Id}");
+        }
+
+        return PhysicalFile(path, "application/zip", System.IO.Path.GetFileName(path));
+    }
+
     public async Task<IActionResult> OnPostLinkCustomerAsync()
     {
         Id = ResolveId();
@@ -100,6 +167,13 @@
         or RequestStatus.Issued or RequestStatus.Delivered or RequestStatus.Closed;
     var role = User.Role();
     var canSign = role is SupportRole.Signer or SupportRole.Admin;
+
+    // وضعیت «کلید مشتری + مجوز اعتماد» برای همین درخواست (طرح A).
+    var activeKey = Keys.DescribeActiveKey();
+    var trustStatus = request is null
+        ? null
+        : Trust.Status(request.InstallationId, activeKey);
+    var suggestedCustomerKeyId = request is null ? "cust-key" : CustomerTrustService.SuggestedCustomerKeyId(request.InstallationId);
     var canApprove = request is not null && request.Status == RequestStatus.Reviewing && hasIdentity
         && Workflow.CanTransition(request.Status, RequestStatus.Approved, role, hasIdentity).Ok;
 }
@@ -369,6 +443,99 @@ else
             <div class="field"><label for="note-text">یادداشت تازه</label><input id="note-text" name="note" /></div>
             <button type="submit" class="btn small ghost">افزودن یادداشت</button>
         </form>
+    </div></div>
+
+    <div class="card"><div class="card-head">کلید امضای این مشتری و مجوز اعتماد (طرح A)</div><div class="card-body">
+        @if (trustStatus is not null)
+        {
+            <table class="table" style="margin-bottom:.6rem">
+                <tr><th style="width:28%">کلید فعال پنل</th>
+                    <td>
+                        @if (activeKey.Exists)
+                        {
+                            <span class="mono">@activeKey.KeyId</span>
+                            <span class="mono small" dir="ltr">@(activeKey.Fingerprint is { Length: 16 } f ? f[..16] + "…" : "—")</span>
+                        }
+                        else
+                        {
+                            <span class="badge err">کلیدی فعال نیست</span>
+                        }
+                    </td></tr>
+                <tr><th>کلید ریشه (امضاکنندهٔ مجوز)</th>
+                    <td>
+                        @if (trustStatus.RootConfigured)
+                        {
+                            <span class="mono">@trustStatus.RootKeyId</span>
+                            <div class="hint mono small">@trustStatus.RootKeyPath</div>
+                        }
+                        else
+                        {
+                            <span class="badge err">تنظیم نشده</span>
+                            <div class="hint">
+                                در appsettings پنل بگذارید: <span class="mono">Signer:RootKeyId</span> و
+                                <span class="mono">Signer:RootPrivateKeyPath</span>؛ ساخت کلید ریشه:
+                                <span class="mono">RootKeyTool new --key-id &lt;id&gt; --out C:\LicensingKeys --repo .</span>
+                            </div>
+                        }
+                    </td></tr>
+                <tr><th>وضعیت مجوز برای این نصب</th>
+                    <td>
+                        <span class="badge @(trustStatus.HasTrustForActiveKey ? "ok" : "review")">
+                            @(trustStatus.HasTrustForActiveKey ? "مجوز معتبر" : "مجوز ندارد")
+                        </span>
+                        <div class="hint">@trustStatus.Message</div>
+                        @if (trustStatus.TrustFiles.Count > 0)
+                        {
+                            <ul style="margin:.3rem 0 0;padding-inline-start:1rem">
+                                @foreach (var tf in trustStatus.TrustFiles)
+                                {
+                                    <li class="mono small">@System.IO.Path.GetFileName(tf)</li>
+                                }
+                            </ul>
+                        }
+                    </td></tr>
+            </table>
+
+            @if (canSign)
+            {
+                <form method="post" asp-page-handler="IssueTrust" class="grid" style="align-items:end">
+                    <input type="hidden" name="id" value="@request.Id" />
+                    <div class="field">
+                        <label for="cust-key-id">شناسهٔ کلید مشتری</label>
+                        <input id="cust-key-id" name="customerKeyId" value="@suggestedCustomerKeyId" />
+                    </div>
+                    <div class="field">
+                        <label for="cust-key-pass">گذرواژهٔ کلید مشتری</label>
+                        <input id="cust-key-pass" type="password" name="customerKeyPassword" autocomplete="new-password" required />
+                    </div>
+                    <div class="field">
+                        <label for="root-key-pass">گذرواژهٔ کلید ریشه</label>
+                        <input id="root-key-pass" type="password" name="rootKeyPassword" autocomplete="new-password" />
+                    </div>
+                    <div class="field">
+                        <label for="valid-days">اعتبار مجوز (روز، ۰ = بی‌پایان)</label>
+                        <input id="valid-days" name="validDays" value="730" />
+                    </div>
+                    <div class="field">
+                        <label>&nbsp;</label>
+                        <button type="submit" class="btn small">ساخت کلید مشتری و صدور مجوز اعتماد</button>
+                    </div>
+                </form>
+                <div class="hint" style="line-height:1.9;margin-top:.4rem">
+                    کلید خصوصیِ مشتری در گاوصندوق پشتیبانی می‌ماند و <b>برای مشتری فرستاده نمی‌شود</b>؛
+                    تنها کلید عمومی + <span class="mono">trust.json</span> امضاشده با کلید ریشه تحویل داده می‌شود.
+                    بعد از این کار، همان کلید به‌عنوان کلید فعال پنل تنظیم می‌شود و امضا مجاز است.
+                </div>
+            }
+
+            <div style="margin-top:.6rem;display:flex;gap:.5rem;flex-wrap:wrap">
+                <a class="btn small ghost" href="/Requests/Sign?id=@request.Id">رفتن به امضا</a>
+                @if (request.Licenses.Count > 0 && trustStatus.TrustFiles.Count > 0)
+                {
+                    <a class="btn small" href="?id=@request.Id&amp;handler=Bundle">دانلود بستهٔ تحویل (zip)</a>
+                }
+            </div>
+        }
     </div></div>
 
     @if (request.Licenses.Count > 0)

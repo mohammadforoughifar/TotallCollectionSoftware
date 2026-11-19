@@ -16,6 +16,21 @@ public sealed class SignerOptions
     public string DatabaseConnection { get; set; } = "";
     public int TimeoutSeconds { get; set; } = 60;
     public string KeyPasswordEnvironmentVariable { get; set; } = "LICENSETOOL_KEY_PASSWORD";
+
+    /// <summary>
+    /// شناسهٔ <b>کلید ریشه</b> — کلیدی که «مجوز اعتماد» کلید هر مشتری را امضا می‌کند.
+    /// کلید عمومی همین شناسه باید داخل بیلد محصول جاسازی شده باشد (manifest/Keys).
+    /// </summary>
+    public string RootKeyId { get; set; } = "";
+
+    /// <summary>
+    /// مسیر کلید خصوصی ریشه — <b>بیرون از پوشهٔ برنامه</b> (مثل <c>C:\LicensingKeys\sup-202612.private.pem</c>).
+    /// خالی ⇒ صدور مجوز اعتماد غیرفعال است و پیام روشن داده می‌شود.
+    /// </summary>
+    public string RootPrivateKeyPath { get; set; } = "";
+
+    /// <summary>نام متغیر محیطی گذرواژهٔ کلید ریشه (رمز هرگز در appsettings نوشته نمی‌شود).</summary>
+    public string RootKeyPasswordEnvironmentVariable { get; set; } = "LICENSING_ROOT_KEY_PASSWORD";
     public string SmtpPasswordEnvironmentVariable { get; set; } = "LICENSESIGNER_SMTP_PASSWORD";
     public string Token { get; set; } = "";
 

@@ -32,7 +32,7 @@ public sealed record SigningStatus(bool Ready, string Reason, string? ToolPath, 
 /// </summary>
 public sealed class SigningRunner(SupportDbContext db, SignerOptions options, LicenseToolRunner runner,
     DraftService drafts, LicenseInspector inspector, AuditChainService audit, RequestService requests,
-    SignerKeyService keys, ILogger<SigningRunner> log)
+    SignerKeyService keys, CustomerTrustService trust, ILogger<SigningRunner> log)
 {
     public string LicenseFolder => Path.Combine(options.EffectiveWorkFolder(), "licenses");
 
@@ -263,6 +263,7 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
         // فایل درخواست از بیلدهای تازه فهرست کلیدهای مورد اعتماد همان نصب را همراه دارد
         // (supportedSigningKeys). منبع حقیقت همان است، نه بیلد پشتیبان: اگر کلید پنل در آن
         // فهرست نباشد، فایل امضاشده روی نصب مشتری رد می‌شود؛ پس همان‌جا متوقف می‌شویم.
+        string? delegatedNote = null;
         var customerKeys = RequestParser.SupportedSigningKeys(request.PayloadJson);
         if (customerKeys.Count > 0)
         {
@@ -272,7 +273,18 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
             var matches = signerFingerprint is { Length: 64 } && customerKeys.Any(k =>
                 string.Equals(k.FingerprintSha256, signerFingerprint, StringComparison.OrdinalIgnoreCase));
 
-            if (!matches)
+            // استثنای طرح A: کلید «نمایندگی» لازم نیست در فهرست جاسازی‌شدهٔ همان بیلد باشد،
+            // به شرط اینکه با کلید ریشه برای *همین* شناسهٔ نصب مجوز اعتماد داشته باشد؛
+            // در این حالت نصب مشتری با گذاشتن trust.json در …\License\trusted-keys آن را می‌پذیرد.
+            var activeKey = keys.DescribeActiveKey();
+            var delegated = !matches && trust.HasValidTrust(request.InstallationId, activeKey.KeyId, signerFingerprint);
+            if (delegated)
+            {
+                delegatedNote = $"امضا با کلید نمایندگی «{activeKey.KeyId}» انجام می‌شود؛ مجوز اعتمادش برای این نصب " +
+                                "صادر شده است. بستهٔ تحویل باید همراه فایل لایسنس، فایل trust.json را هم داشته باشد.";
+            }
+
+            if (!matches && !delegated)
             {
                 var customerList = string.Join("، ", customerKeys.Select(k =>
                     k.FingerprintSha256.Length >= 12 ? $"{k.KeyId}={k.FingerprintSha256[..12]}…" : k.KeyId));
@@ -284,11 +296,15 @@ public sealed class SigningRunner(SupportDbContext db, SignerOptions options, Li
                             $"کلید پنل: {signerText} | کلیدهای همین نصب: {customerList}. " +
                             "این فایل درخواست از بیلد تازهٔ محصول آمده و فهرست کلیدهای مورد اعتمادش را همراه دارد؛ " +
                             "یعنی نصب مشتری، امضای این کلید را قبول نمی‌کند. " +
-                            "راه‌حل: برای امضای این درخواست همان کلید رسمی را وصل کنید (تنظیمات ← کلیدهای امضا ← کلید خصوصی رسمی)، " +
-                            "یا اگر کلید را عمداً عوض کرده‌اید، کلید عمومی تازه را در محصول ثبت و نسخهٔ تازه را روی همین نصب منتشر کنید."
+                            "راه‌حل ۱: همان کلید رسمی را وصل کنید (تنظیمات ← کلیدهای امضا ← کلید خصوصی رسمی). " +
+                            "راه‌حل ۲: در همین صفحه «کلید مشتری و مجوز اعتماد» را بسازید؛ آن‌گاه این کلید نمایندگی " +
+                            "برای همین نصب مجاز می‌شود و trust.json همراه لایسنس تحویل می‌رود. " +
+                            "راه‌حل ۳: کلید عمومی تازه را در محصول ثبت و نسخهٔ تازه را روی همین نصب منتشر کنید."
                 };
             }
         }
+
+        if (delegatedNote is not null) prepared.Warnings.Add(delegatedNote);
 
         // پیش‌بررسی رمز: اگر رمز با کلید نمی‌خواند، ابزار اجرا نمی‌شود و پیام روشن داده می‌شود.
         var formPassword = string.IsNullOrEmpty(keyPassword) ? null : keyPassword;

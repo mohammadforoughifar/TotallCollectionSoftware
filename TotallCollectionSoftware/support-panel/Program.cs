@@ -107,6 +107,7 @@ builder.Services.AddSingleton<LicenseInspector>();
 builder.Services.AddScoped<SigningRunner>();
 builder.Services.AddScoped<SupportSettingsService>();
 builder.Services.AddScoped<SignerKeyService>();
+builder.Services.AddScoped<CustomerTrustService>();
 builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<SeedService>();
