@@ -127,8 +127,9 @@ class ClientContracts(unittest.TestCase):
 
     def test_guide_documents_both_ways(self):
         self.assertIn('دو روش افزودن قلم', GUIDE)
-        self.assertIn('از فهرست کالاهای انبار انتخاب کنید', GUIDE)
-        self.assertIn('نام کالا را دستی تایپ کنید', GUIDE)
+        self.assertIn('دکمهٔ «افزودن از انبار»', GUIDE)     # روش اول: پنجرهٔ فهرست انبار
+        self.assertIn('ستون «از انبار»', GUIDE)           # همان انتخاب، سطری
+        self.assertIn('نام کالا را دستی تایپ کنید', GUIDE)  # روش دوم: دستی
 
 
 class BehaviourMirror(unittest.TestCase):
@@ -176,6 +177,49 @@ class BehaviourMirror(unittest.TestCase):
         self.assertEqual((line.product_id, line.name), (0, 'پیچ گوشتی'))
         self.pick(line, 999)                          # کالای ناموجود
         self.assertEqual(line.product_id, 0)
+
+
+class BulkStockPicker(unittest.TestCase):
+    """دکمهٔ «افزودن از انبار»: فهرست کالاهای انبار در یک پنجره + افزودن چند قلم."""
+
+    def test_page_exposes_an_explicit_add_from_stock_button(self):
+        self.assertIn('id="btn-add-from-stock"', PAGE)
+        self.assertIn('افزودن از انبار', PAGE)
+        self.assertIn('@onclick="OpenStockPicker"', PAGE)
+
+    def test_picker_modal_lists_products_with_stock(self):
+        modal = section(PAGE, 'Visible="showStockPicker"', '<PartyFormModal')
+        self.assertIn('افزودن کالا از انبار', modal)
+        self.assertIn('@foreach (var option in FilteredStockOptions)', modal)
+        self.assertIn('موجودی:', modal)
+        self.assertIn('@onclick="() => AddFromStock(option)"', modal)
+        self.assertIn('id="gi-stock-search"', modal)          # جستجوی درون‌پنجره‌ای
+        self.assertIn('id="btn-reload-stock"', modal)         # بازیابی وقتی API پاسخ نداد
+        self.assertIn('LoadProductOptionsAsync(true)', modal)
+
+    def test_picker_adds_a_line_and_keeps_manual_entry(self):
+        body = section(PAGE, 'private void AddFromStock(', '// ---------- سطرها ----------')
+        self.assertIn('l.ProductId == 0', body)               # سطر خالی قبلی پر می‌شود
+        self.assertIn('line.ProductId = option.Id;', body)
+        self.assertIn('line.ProductName = option.Name;', body)
+        self.assertIn('line.Quantity = 1;', body)
+        self.assertIn('Toast.Info(', body)
+        # ورود دستی دست‌نخورده می‌ماند: ستون نام آزاد و انتخاب‌گر سطری هر دو باقی‌اند
+        self.assertIn('نام کالا <span class="fw-400 text-muted fs-8">(دستی)</span>', PAGE)
+        self.assertIn('<SearchSelect Items="productLookup"', PAGE)
+        self.assertIn('ShowAllOnFocus="true"', PAGE)
+
+    def test_filter_is_case_insensitive_on_name_and_code(self):
+        body = section(PAGE, 'private List<GoodsIssueProductOptionDto> FilteredStockOptions',
+                       'private async Task OpenStockPicker()')
+        self.assertIn('p.Name.Contains(term, StringComparison.OrdinalIgnoreCase)', body)
+        self.assertIn('p.Code ?? ""', body)
+        self.assertIn('Take(StockPickerPageSize)', body)
+
+    def test_picker_never_opens_in_read_only_view(self):
+        body = section(PAGE, 'private async Task OpenStockPicker()', 'private void CloseStockPicker()')
+        self.assertIn('if (viewing) return;', body)
+        self.assertIn('showStockPicker = true;', body)
 
 
 if __name__ == '__main__':
