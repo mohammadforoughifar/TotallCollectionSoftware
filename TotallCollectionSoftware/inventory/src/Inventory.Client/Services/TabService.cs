@@ -83,12 +83,12 @@ public sealed class TabService
     /// <summary>نگاشتِ مسیر به (عنوان، آیکون) — برگرفته از آیتم‌های منوی برنامه</summary>
     private static readonly (string Prefix, string Title, string Icon)[] Known =
     {
-        // سامانه مودیان — ترتیب مهم است: خاص قبل از عمومی
-        ("moadian/basic-info",          "سامانه مودیان — اطلاعات پایه", "bi-archive"),
-        ("moadian/invoices/new",        "سامانه مودیان — صورتحساب جدید", "bi-journal-plus"),
-        ("moadian/invoices",            "سامانه مودیان — صورتحساب‌ها",   "bi-journal-text"),
-        ("moadian/guide",               "سامانه مودیان — راهنما",        "bi-journal-check"),
-        ("moadian",                     "سامانه مودیان — نمای کلی",     "bi-speedometer2"),
+        // مودیان تیسا — ترتیب مهم است: خاص قبل از عمومی
+        ("moadian/basic-info",          "مودیان تیسا — اطلاعات پایه", "bi-archive"),
+        ("moadian/invoices/new",        "مودیان تیسا — صورتحساب جدید", "bi-journal-plus"),
+        ("moadian/invoices",            "مودیان تیسا — صورتحساب‌ها",   "bi-journal-text"),
+        ("moadian/guide",               "مودیان تیسا — راهنما",        "bi-journal-check"),
+        ("moadian",                     "مودیان تیسا — نمای کلی",     "bi-speedometer2"),
         ("reports/kardex",              "کاردکس کالا",          "bi-bar-chart-line"),
         ("reports/reorder",             "نقطه سفارش",           "bi-exclamation-triangle"),
         ("outgoing-letters/dabirkhane", "دبیرخانه نامه صادره",  "bi-mailbox"),
@@ -102,7 +102,7 @@ public sealed class TabService
         ("settings/letter-structure",   "ساختار شماره نامه",    "bi-sort-numeric-down"),
         ("settings/audit-log",          "لاگ حسابرسی",          "bi-clock-history"),
         ("settings",                    "تنظیمات",              "bi-gear-fill"),
-        ("work-orders",                 "دستور کار",            "bi-card-checklist"),
+        ("work-orders",                 "دستورکار رایکا",            "bi-card-checklist"),
         ("dashboard-cctv",              "داشبورد مدیریت",       "bi-graph-up-arrow"),
         ("dashboard-hardware",          "داشبورد سخت‌افزار",    "bi-motherboard"),
         ("my-dashboards",               "داشبورد من",           "bi-grid-1x2-fill"),

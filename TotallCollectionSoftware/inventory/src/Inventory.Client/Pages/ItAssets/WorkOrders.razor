@@ -13,7 +13,7 @@
 @inject RealtimeService Rt
 @implements IDisposable
 
-<PageTitle>دستور کار</PageTitle>
+<PageTitle>دستورکار رایکا</PageTitle>
 
 @if (_embedMode)
 {
@@ -28,7 +28,7 @@
 
 <div class="page-head wo-page-head">
     <div>
-        <h1>دستور کار و وظایف</h1>
+        <h1>دستورکار رایکا</h1>
     </div>
     @if (access.CanCreate && tab != "guide")
     {
@@ -3503,7 +3503,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetTitle("دستور کار");
+        Layout.SetTitle("دستورکار رایکا");
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
         apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";

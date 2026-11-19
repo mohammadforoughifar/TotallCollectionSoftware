@@ -24,19 +24,19 @@
         </NavLink>
     }
 
-    @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
+    @* ============ پیام رسان میها (ماژول مستقل) ============ *@
     @if (Auth.CanSee("Chat"))
     {
         <div class="nav-group group-chat">
             <button type="button" class="nav-section-title nav-toggle @(gChat ? "open" : "")" @onclick="() => gChat = !gChat">
-                <span><i class="bi bi-chat-dots"></i>پیام‌رسان سازمانی</span>
+                <span><i class="bi bi-chat-dots"></i>پیام رسان میها</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gChat)
             {
                 <div class="nav-group-items">
                     <NavLink class="nav-link" href="chat" @onclick="NotifyClose">
-                        <i class="bi bi-chat-dots-fill text-primary"></i><span>پیام‌رسان</span>
+                        <i class="bi bi-chat-dots-fill text-primary"></i><span>پیام رسان میها</span>
                     </NavLink>
                 </div>
             }
@@ -131,7 +131,7 @@
     {
         <div class="nav-group group-wo">
             <button type="button" class="nav-section-title nav-toggle @(gWo ? "open" : "")" @onclick="() => gWo = !gWo">
-                <span><i class="bi bi-card-checklist"></i> دستور کار</span>
+                <span><i class="bi bi-card-checklist"></i> دستورکار رایکا</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gWo)
@@ -272,12 +272,12 @@
         </div>
     }
 
-    @* ============ اتوماسیون اداری ============ *@
+    @* ============ اتوماسیون اداری توکا ============ *@
     @if (Auth.CanSee("InnerLetters") || Auth.CanSee("OutgoingLetters") || Auth.CanSee("Email"))
     {
         <div class="nav-group group-letters">
             <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
-                <span><i class="bi bi-envelope-paper"></i>اتوماسیون اداری</span>
+                <span><i class="bi bi-envelope-paper"></i>اتوماسیون اداری توکا</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gLetters)
@@ -307,7 +307,7 @@
                         @if (Auth.Has("OutgoingLetters.Dabirkhane"))
                         {
                             <NavLink class="nav-link" href="outgoing-letters/dabirkhane" @onclick="NotifyClose">
-                                <i class="bi bi-mailbox"></i><span>دبیرخانه یکپارچه اتوماسیون اداری</span>
+                                <i class="bi bi-mailbox"></i><span>دبیرخانه یکپارچه اتوماسیون اداری توکا</span>
                             </NavLink>
                         }
                     }
@@ -344,18 +344,18 @@
         </div>
     }
 
-    @* ============ سامانه فروشگاهی — گروه فقط با حداقل یک مجوز مشاهده ============ *@
+    @* ============ فروشگاهی کایر — گروه فقط با حداقل یک مجوز مشاهده ============ *@
     @if (ShowOpsGroup)
     {
     <div class="nav-group group-ops">
         <button type="button" class="nav-section-title nav-toggle @(gOps ? "open" : "")" @onclick="() => gOps = !gOps">
-            <span><i class="bi bi-box-seam"></i>سامانه فروشگاهی</span>
+            <span><i class="bi bi-box-seam"></i>فروشگاهی کایر</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gOps)
         {
             <div class="nav-group-items">
-                @* ---------- زیرمنوی داشبورد (داخل سامانه فروشگاهی) ---------- *@
+                @* ---------- زیرمنوی داشبورد (داخل فروشگاهی کایر) ---------- *@
                 @if (ShowOpsDashSub)
                 {
                     <div class="nav-sub">
@@ -510,7 +510,7 @@
                     </div>
                 }
 
-                @* ---------- زیرمنوی اطلاعات پایه (داخل سامانه فروشگاهی) ---------- *@
+                @* ---------- زیرمنوی اطلاعات پایه (داخل فروشگاهی کایر) ---------- *@
                 @if (ShowOpsBaseSub)
                 {
                     <div class="nav-sub">
@@ -604,7 +604,7 @@
                                         <i class="bi bi-collection"></i><span>همهٔ درخواست‌ها</span>
                                     </NavLink>
                                 }
-                                @* «گزارش تجمیع سفارش‌ها» به زیرمنوی «گزارش» سامانه فروشگاهی منتقل شد
+                                @* «گزارش تجمیع سفارش‌ها» به زیرمنوی «گزارش» فروشگاهی کایر منتقل شد
                                    (کنار کاردکس و گزارش‌های سفارش) تا همهٔ گزارش‌های فروشگاهی یک‌جا باشند. *@
                                 @if (Auth.Has("SalesVisit.FinanceView"))
                                 {
@@ -640,7 +640,7 @@
     {
         <div class="nav-group group-moadian">
             <button type="button" class="nav-section-title nav-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">
-                <span><i class="bi bi-receipt"></i>سامانه مودیان</span>
+                <span><i class="bi bi-receipt"></i>مودیان تیسا</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gMoadian)
@@ -974,7 +974,7 @@
         || MoadianBasicInfoActions.Any(a => Auth.Has($"Moadian.{a}"));
 
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal, gMoadian;
-    private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل سامانه فروشگاهی
+    private bool gVis;   // زیرمنوی «فروش و ویزیتوری» داخل فروشگاهی کایر
     private bool _hasMindFlowAccess;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
@@ -1023,7 +1023,7 @@
 
     private string PartiesMenuIcon => CanSeeSuppliersMenu && !CanSeeCustomersMenu ? "bi-truck" : "bi-people";
 
-    // ================== سامانه فروشگاهی: هر زیرمنو/گروه از «بخش‌های» همان سامانه ساخته می‌شود ==================
+    // ================== فروشگاهی کایر: هر زیرمنو/گروه از «بخش‌های» همان سامانه ساخته می‌شود ==================
     // منبع واحد: Inventory.Shared/ShopSections.cs — همان فهرستی که مجوزها و نگهبان مسیر
     // از آن ساخته می‌شوند. با این کار «تنظیمات ← نقش‌ها» و منو هرگز از هم جدا نمی‌شوند.
     private bool ShowOpsBaseSub => ShopAccess.CanSeeAny(Auth, "Products", "Categories", "Units", "Warehouses",
@@ -1039,7 +1039,7 @@
     /// بررسی می‌شد و نقش‌هایی که فقط مجوز ماژول داشتند گروه را نمی‌دیدند.
     /// </summary>
     private bool ShowVisGroup => ShopAccess.CanSee(Auth, "SalesVisit") || Auth.CanSee("SalesVisit");
-    // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «سامانه فروشگاهی» به آن وابسته نباشد
+    // ویزیتور میدانی فقط مجوز SalesVisit دارد؛ اگر گروه «فروشگاهی کایر» به آن وابسته نباشد
     // منوی او کاملاً خالی می‌ماند.
     private bool ShowOpsGroup => ShowOpsDashSub || ShowOpsReportsSub || ShowOpsBaseSub || ShowVisGroup
                                  || ShopAccess.CanSeeAny(Auth, "Purchase", "Sale", "GoodsIssue", "Repairs", "Expenses",
@@ -1053,7 +1053,7 @@
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex")
                                   || Auth.Has("ReportPages.Reorder")
                                   || ShopAccess.CanSee(Auth, "PartyStatements");
-    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «سامانه فروشگاهی» رفتند.
+    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «فروشگاهی کایر» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || CanSeeSmsSettings || Auth.CanSee("SystemUsers");

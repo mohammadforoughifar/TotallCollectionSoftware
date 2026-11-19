@@ -496,19 +496,19 @@
 
     private static readonly List<PermCategory> ModuleCategories = new()
     {
-        // دستهٔ «هر بخش سامانه فروشگاهی» — هر آیتم منوی سامانه فروشگاهی یک مجوز مستقل دارد
+        // دستهٔ «هر بخش فروشگاهی کایر» — هر آیتم منوی فروشگاهی کایر یک مجوز مستقل دارد
         // (Shop.{Section}.View و برای بخش‌های عملیاتی Shop.{Section}.Manage).
         // این فهرست از Inventory.Shared/ShopSections.cs ساخته می‌شود؛ همان فهرستی که منو را
         // می‌سازد، پس همیشه با منو یکی است.
-        new() { Title = "سامانه فروشگاهی — دسترسی هر بخش (خرید، فروش، بیجک، تعمیرات، تسویه، اطلاعات پایه و گزارش‌ها)", Icon = "bi-shop", Modules = new[] { ShopSections.Module } },
+        new() { Title = "فروشگاهی کایر — دسترسی هر بخش (خرید، فروش، بیجک، تعمیرات، تسویه، اطلاعات پایه و گزارش‌ها)", Icon = "bi-shop", Modules = new[] { ShopSections.Module } },
 
-        new() { Title = "سامانه فروشگاهی — فروش، مالی و مودیان", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties", "Customers", "Suppliers", "SalesVisit", "Moadian", "ShopGuide" } },
+        new() { Title = "فروشگاهی کایر — فروش، مالی و مودیان", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties", "Customers", "Suppliers", "SalesVisit", "Moadian", "ShopGuide" } },
 
         new() { Title = "معرف‌ها و پنل معرف", Icon = "bi-person-badge", Modules = new[] { "Referrers", "ReferrerWallets", "ReferrerPanel" } },
         new() { Title = "اطلاعات پایه و انبار", Icon = "bi-box-seam", Modules = new[] { "Products", "Stock", "Warehouses", "SystemCompanies", "SystemDepartments" } },
-        new() { Title = "ERP — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
+        new() { Title = "ERP فیکا — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
         new() { Title = "آرشیو اسناد و مدارک", Icon = "bi-folder2-open", Modules = new[] { "DocArchive" } },
-        new() { Title = "پیام‌رسان سازمانی", Icon = "bi-chat-dots", Modules = new[] { "Chat" } },
+        new() { Title = "پیام رسان میها", Icon = "bi-chat-dots", Modules = new[] { "Chat" } },
         new() { Title = "داشبوردها و صفحات شخصی", Icon = "bi-speedometer2", Modules = new[] { "Dashboards", "MyCartable", "MyArchive", "MyDashboards" } },
         new() { Title = "گزارش‌ها", Icon = "bi-journal-text", Modules = new[] { "ReportPages", "Reports", "ReportStudio" } },
         new() { Title = "تجهیزات و تعمیرات", Icon = "bi-tools", Modules = new[] { "Repairs", "CctvCameras", "CctvNvrs" } },
@@ -520,9 +520,9 @@
         // (View/Create/Update/Delete). پیش‌تر این ماژول در فهرست تنظیمات نبود و مجوزهایش
         // فقط در گروه «سایر» با نام لاتین دیده می‌شد؛ یعنی مدیر نمی‌توانست آگاهانه و در
         // جای درست، دسترسی بخش پروژه را به نقش بدهد.
-        new() { Title = "دستور کار، پروژه‌ها و نگار ذهنی", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects", "MindFlow" } },
+        new() { Title = "دستورکار رایکا — پروژه‌ها و نگار ذهنی", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects", "MindFlow" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
-        new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
+        new() { Title = "اتوماسیون اداری توکا", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
         new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } },
         new() { Title = "هوش مصنوعی", Icon = "bi-stars", Modules = new[] { "AiAssistant" } }
     };
@@ -530,7 +530,7 @@
     // ==================== ترجمه فارسی ====================
     private static readonly Dictionary<string, string> ModuleNames = new()
     {
-        [ShopSections.Module] = "سامانه فروشگاهی — دسترسی هر بخش (یک تیک برای هر بخش)",
+        [ShopSections.Module] = "فروشگاهی کایر — دسترسی هر بخش (یک تیک برای هر بخش)",
         ["Products"] = "کالاها",
         ["Stock"] = "موجودی انبار",
         ["Orders"] = "فروش / فاکتورها",
@@ -545,14 +545,14 @@
         ["Customers"] = "مشتریان (تعریف مشتری)",
         ["Suppliers"] = "تأمین‌کنندگان",
         ["SalesVisit"] = "فروش و ویزیتوری (سفارش میدانی)",
-        ["Moadian"] = "سامانه مودیان (صورتحساب الکترونیکی)",
-        ["ShopGuide"] = "راهنمای سامانه فروشگاهی (فقط مشاهده)",
+        ["Moadian"] = "مودیان تیسا (صورتحساب الکترونیکی)",
+        ["ShopGuide"] = "راهنمای فروشگاهی کایر (فقط مشاهده)",
         ["Expenses"] = "هزینه‌ها",
         ["Reports"] = "گزارشات (عمومی)",
         ["SystemUsers"] = "کاربران",
         ["SystemCompanies"] = "کمپانی‌ها",
         ["ItRequests"] = "درخواست خدمت IT",
-        ["WorkOrders"] = "دستور کار",
+        ["WorkOrders"] = "دستورکار رایکا",
         ["WorkProjects"] = "پروژه‌های کاری (بخش پروژهٔ دستور کار)",
         ["MindFlow"] = "نگار ذهنی (نقشهٔ ذهنی پروژه‌ها و نگاشت‌های مستقل) 🧠",
         ["SystemDepartments"] = "واحدها",
@@ -577,11 +577,11 @@
         ["TypeFactors"] = "انواع فاکتور",
         ["ProjectAttach"] = "پیوست‌های پروژه",
         ["ProjectCartable"] = "کارتابل پروژه",
-        ["InnerLetters"] = "نامه داخلی (اتوماسیون اداری)",
-        ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری)",
+        ["InnerLetters"] = "نامه داخلی (اتوماسیون اداری توکا)",
+        ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری توکا)",
         ["IncomingLetters"] = "نامه وارده (دبیرخانه)",
         ["Email"] = "ایمیل سازمانی (پست الکترونیک) ✉",
-        ["LetterStructures"] = "ساختار شماره نامه (اتوماسیون اداری)",
+        ["LetterStructures"] = "ساختار شماره نامه (اتوماسیون اداری توکا)",
         ["MeetingMinutes"] = "صورتجلسه",
         // ==================== ماژول‌های ERP ====================
         ["InvDocs"] = "اسناد انبار (رسید و حواله)",
@@ -599,7 +599,7 @@
         ["StkBarcodes"] = "بارکد و برچسب کالا",
         // ==================== آرشیو اسناد و پیام‌رسان ====================
         ["DocArchive"] = "آرشیو اسناد و مدارک",
-        ["Chat"] = "پیام‌رسان سازمانی",
+        ["Chat"] = "پیام رسان میها",
         ["HrMain"] = "اطلاعات پایه سازمانی",
         ["HrCore"] = "کارگزینی (پرسنل، قراردادها، احکام)",
         ["HrPay"] = "حقوق و دستمزد (سامانه قبلی)",
@@ -645,7 +645,7 @@
         ["ViewFactor"] = "رویت ستون‌های فاکتور (شماره/نوع) 👁",
         ["ViewCode"] = "رویت ستون کد در انواع سند انبار 👁",
         ["Manager"] = "تایید / رد توسط مدیر",
-        // اتوماسیون اداری
+        // اتوماسیون اداری توکا
         ["Erja"] = "ارجاع نامه به دیگران",
         ["Sign"] = "امضا کننده نامه صادره ✍",
         ["Dabirkhane"] = "دبیرخانه نامه صادره 📮",

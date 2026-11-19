@@ -94,10 +94,10 @@ else
                     <span>@PersianDate.ToLong(DateTime.Now)</span>
                 </div>
                 <div class="topbar-actions d-flex align-items-center gap-2 me-2">
-                    @* ================== دکمه پیام‌رسان سازمانی (Chat) ================== *@
+                    @* ================== دکمه پیام رسان میها (Chat) ================== *@
                     @if (Auth.CanSee("Chat"))
                     {
-                        <a href="chat" class="btn btn-sm btn-light ntf-bell" title="پیام‌رسان سازمانی">
+                        <a href="chat" class="btn btn-sm btn-light ntf-bell" title="پیام رسان میها">
                             <i class="bi bi-chat-dots-fill text-primary"></i>
                             @if (chatUnreadCount > 0)
                             {
@@ -1133,7 +1133,7 @@ else
         Rt.DataChanged += OnRtDataChanged;
         await Rt.EnsureStartedAsync(Http.BaseAddress?.ToString() ?? "", uid, Auth.Role);
 
-        // شمارنده‌ی نامه‌های نخوانده (اتوماسیون اداری)
+        // شمارنده‌ی نامه‌های نخوانده (اتوماسیون اداری توکا)
         await RefreshLettersUnreadAsync();
 
         // وضعیت نوتیفیکیشن گوشی/تبلت (Web Push)
@@ -1143,7 +1143,7 @@ else
         await LoadMsgStatusAsync();
     }
 
-    // ==================== اتوماسیون اداری: شمارنده نامه‌های نخوانده ====================
+    // ==================== اتوماسیون اداری توکا: شمارنده نامه‌های نخوانده ====================
     private int lettersUnread;
 
     private void OnRtDataChanged(string scope)
@@ -1539,7 +1539,7 @@ else
         ("cartable",            "MyCartable.View",         "کارتابل من"),
         ("my-archive",          "MyArchive.View",          "بایگانی شخصی"),
         ("my-dashboards",       "MyDashboards.View",       "داشبورد من"),
-        ("chat",                "Chat.View",               "پیام‌رسان سازمانی"),
+        ("chat",                "Chat.View",               "پیام رسان میها"),
         ("personal-settings",   "PersonalSettings.Read",   "پروفایل و تنظیمات شخصی"),
         ("dashboard-cctv",      "Dashboards.Management",   "داشبورد مدیریت"),
         ("dashboard-hardware",  "Dashboards.Hardware",     "داشبورد سخت‌افزار"),
@@ -1572,8 +1572,8 @@ else
         ("system-department",   "SystemDepartments.",      "واحدها"),
         ("users",               "SystemUsers.",            "کاربران"),
         ("settings",            "Settings.",               "تنظیمات"),
-        ("moadian",             "Moadian.View",            "سامانه مودیان"),
-        ("shop-guide",          "ShopGuide.View",          "راهنمای سامانه فروشگاهی"),
+        ("moadian",             "Moadian.View",            "مودیان تیسا"),
+        ("shop-guide",          "ShopGuide.View",          "راهنمای فروشگاهی کایر"),
         ("my-wallet",           "ReferrerPanel.MyWallet",  "کیف پول من"),
         ("my-products",         "ReferrerPanel.MyProducts","کالاهای موجود"),
         ("my-card",             "ReferrerPanel.MyCard",    "کارت ویزیت من"),
@@ -1584,11 +1584,11 @@ else
         ("settings/it-client-companies", "Settings.ItClientCompanies.", "شرکت‌های راه‌دور"),
         ("settings/it-remote",  "Settings.ItRemoteSettings.", "اتصال به واحد IT مرکزی"),
         ("work-projects",       "WorkProjects.View",        "پروژه‌های کاری"),
-        ("work-orders",         "WorkOrders.View",         "دستور کار"),
+        ("work-orders",         "WorkOrders.View",         "دستورکار رایکا"),
         ("work-calendar",       "Attendance.ManageShifts", "تقویم کاری"),
         ("letters",             "InnerLetters.",           "کارتابل نامه‌های داخلی"),
         ("incoming-letters",    "IncomingLetters.",        "کارتابل نامه وارده"),
-        ("outgoing-letters/dabirkhane", "OutgoingLetters.Dabirkhane", "دبیرخانه یکپارچه اتوماسیون اداری"),
+        ("outgoing-letters/dabirkhane", "OutgoingLetters.Dabirkhane", "دبیرخانه یکپارچه اتوماسیون اداری توکا"),
         ("outgoing-letters",    "OutgoingLetters.",        "کارتابل نامه صادره"),
         ("office/email",        "Email.",                  "ایمیل سازمانی"),
         ("cctv-nvrs",           "CctvNvrs.",               "دستگاه‌های NVR"),
@@ -1668,9 +1668,9 @@ else
             return ok;
         }
 
-        // ── سامانه فروشگاهی: تیک «هر بخش» باید همان صفحه را واقعاً باز کند ──
+        // ── فروشگاهی کایر: تیک «هر بخش» باید همان صفحه را واقعاً باز کند ──
         // پیش‌تر گاردهای ماژول‌های قدیمی (Orders./Products./Expenses./Repairs./SalesVisit.)
-        // زودتر اعمال می‌شدند؛ نتیجه این بود که نقشی که فقط مجوز «بخش»های سامانه فروشگاهی
+        // زودتر اعمال می‌شدند؛ نتیجه این بود که نقشی که فقط مجوز «بخش»های فروشگاهی کایر
         // داشت (مثلاً «فروش و ویزیتوری») به صفحه نمی‌رسید و تیک‌ها بی‌اثر به نظر می‌رسیدند.
         var shopSection = Inventory.Shared.ShopSections.ForRoute(p);
         if (shopSection is not null)
