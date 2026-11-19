@@ -629,6 +629,9 @@ public class GoodsIssueService : IGoodsIssueService
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/goods-issues/{id}");
+
+    public Task<List<GoodsIssueProductOptionDto>> GetProductOptionsAsync()
+        => _api.GetAsync<List<GoodsIssueProductOptionDto>>("api/goods-issues/product-options");
 }
 
 public class ShopPricingClient : IShopPricingClient

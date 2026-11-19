@@ -25,6 +25,14 @@ public class GoodsIssuesController : ApiControllerBase
         [FromQuery] DateTime? to = null, [FromQuery] string? search = null)
         => Ok(await _service.GetAsync(partyId, from, to, search));
 
+    /// <summary>
+    /// کالاهای انباری برای انتخاب در سطرهای بیجک (با موجودی).
+    /// سطر دستی (نام آزاد بدون شناسهٔ کالا) هم مجاز است؛ این فهرست فقط انتخاب را ساده می‌کند.
+    /// </summary>
+    [HttpGet("product-options")]
+    public async Task<ActionResult<List<GoodsIssueProductOptionDto>>> ProductOptions()
+        => Ok(await _service.GetProductOptionsAsync());
+
     /// <summary>یک حواله با سطرهایش.</summary>
     [HttpGet("{id:int}")]
     public async Task<ActionResult<GoodsIssueDto>> Get(int id)

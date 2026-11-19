@@ -196,11 +196,11 @@
                 </div>
             </div>
 
-            @* --- اقلام حواله: کالای آزاد + فقط مقدار --- *@
+            @* --- اقلام حواله: انتخاب از انبار یا نام آزاد + فقط مقدار --- *@
             <div class="gi-lines-head">
                 <div class="fw-700">
                     <i class="bi bi-boxes text-primary ms-1"></i>اقلام حواله
-                    <span class="fs-8 fw-400 text-muted">— نام آزاد، بدون قیمت</span>
+                    <span class="fs-8 fw-400 text-muted">— از انبار یا نام آزاد، بدون قیمت</span>
                 </div>
                 @if (!viewing)
                 {
@@ -215,7 +215,8 @@
                     <thead>
                         <tr>
                             <th style="width:46px">#</th>
-                            <th>نام کالا</th>
+                            <th style="width:230px">از انبار</th>
+                            <th>نام کالا <span class="fw-400 text-muted fs-8">(دستی)</span></th>
                             <th style="width:150px">مقدار</th>
                             <th style="width:56px" class="text-end">حذف</th>
                         </tr>
@@ -227,11 +228,34 @@
                             var line = form.Lines[i];
                             <tr>
                                 <td class="gi-row-no">@(idx + 1)</td>
+                                <td data-label="از انبار">
+                                    @if (viewing)
+                                    {
+                                        <span class="text-muted fs-8">@(line.ProductId > 0 ? "انتخاب از انبار" : "نام دستی")</span>
+                                    }
+                                    else
+                                    {
+                                        @* انتخاب کالا از موجودی انبار؛ خالی گذاشتنش یعنی «نام دستی» *@
+                                        <SearchSelect Items="productLookup"
+                                                      CssClass="gi-cell gi-picker"
+                                                      ConstrainToModal="true"
+                                                      Value="line.ProductId"
+                                                      ValueChanged="id => OnProductPickedAsync(idx, line, id)"
+                                                      Placeholder="از انبار انتخاب کنید…" />
+                                    }
+                                </td>
                                 <td>
                                     <input id="gi-name-@idx" class="form-control form-control-sm gi-cell" value="@line.ProductName"
                                            @oninput="e => SetName(line, e.Value?.ToString())"
                                            @onkeydown="e => OnNameKey(e, idx)"
                                            disabled="@viewing" placeholder="نام کالا…" />
+                                    @if (line.ProductId > 0 && SelectedProduct(line) is { } chosen)
+                                    {
+                                        <small class="gi-stock-hint @(OverStock(line) ? "is-over" : "")">
+                                            موجودی انبار: @Fa.Digits(chosen.TotalStock.ToString("#,##0.###")) @chosen.Unit
+                                            @if (OverStock(line)) { <text> — بیش از موجودی</text> }
+                                        </small>
+                                    }
                                 </td>
                                 <td>
                                     <input id="gi-qty-@idx" type="number" min="0" step="any" class="form-control form-control-sm gi-cell num"
@@ -249,7 +273,7 @@
                     </tbody>
                     <tfoot>
                         <tr>
-                            <th colspan="2" class="text-end">جمع کل مقدار</th>
+                            <th colspan="3" class="text-end">جمع کل مقدار</th>
                             <th class="num gi-total">@form.TotalQuantity.Qty()</th>
                             <th></th>
                         </tr>
@@ -305,6 +329,9 @@
     .gi-lines tfoot th { background: #f8fafc; border-top: 2px solid #e2e8f0; }
     .gi-lines .gi-total { color: #4f46e5; font-size: 1.05rem; }
     .gi-hints { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: .6rem; font-size: .78rem; color: #64748b; }
+    .gi-lines .gi-picker { min-width: 200px; }
+    .gi-lines .gi-stock-hint { display: block; margin-top: 2px; font-size: .72rem; color: #64748b; }
+    .gi-lines .gi-stock-hint.is-over { color: #dc2626; font-weight: 600; }
     .gi-hints kbd {
         background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; border-bottom-width: 2px;
         border-radius: 5px; padding: 1px 6px; font-size: .72rem; font-family: inherit;
@@ -317,6 +344,11 @@
     private List<GoodsIssueDto> items = new();
     private List<LookupItem> partyLookup = new();
     private bool loading = true;
+
+    // ---------- انتخاب کالا از انبار (در کنار ورود نام دستی) ----------
+    private List<GoodsIssueProductOptionDto> productOptions = new();
+    private List<LookupItem> productLookup = new();
+    private bool productOptionsLoading;
 
     private int filterPartyId;
     private DateTime? from, to;
@@ -359,8 +391,49 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
-
+        await LoadProductOptionsAsync();
     }
+
+    /// <summary>
+    /// فهرست کالاهای انباری با موجودی برای انتخاب‌گر سطرها. شکست این فراخوانی ورود
+    /// دستی نام کالا را نمی‌بندد؛ فقط انتخاب از انبار در دسترس نیست.
+    /// </summary>
+    private async Task LoadProductOptionsAsync(bool force = false)
+    {
+        if (productOptionsLoading || (productLookup.Count > 0 && !force)) return;
+        productOptionsLoading = true;
+        try
+        {
+            productOptions = await IssueSvc.GetProductOptionsAsync() ?? new();
+            productLookup = productOptions.Select(p => new LookupItem
+            {
+                Id = p.Id,
+                Name = p.DisplayName,
+                InfoText = ProductInfoText(p)
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            productOptions = new();
+            productLookup = new();
+            Toast.Error("فهرست کالاهای انبار دریافت نشد؛ کالا را دستی وارد کنید. " + ex.Message);
+        }
+        finally { productOptionsLoading = false; }
+    }
+
+    private static string ProductInfoText(GoodsIssueProductOptionDto p)
+    {
+        var text = $"موجودی: {Fa.Digits(p.TotalStock.ToString("#,##0.###"))} {p.Unit}";
+        if (!string.IsNullOrWhiteSpace(p.WarehouseName)) text += $" · انبار: {p.WarehouseName}";
+        if (!p.IsActive) text += " · غیرفعال";
+        return text;
+    }
+
+    private GoodsIssueProductOptionDto? SelectedProduct(GoodsIssueLineDto line) =>
+        line.ProductId > 0 ? productOptions.FirstOrDefault(x => x.Id == line.ProductId) : null;
+
+    /// <summary>مقدار سطر از موجودی انبار بیشتر است (فقط هشدار نمایشی؛ بیجک موجودی را کم نمی‌کند).</summary>
+    private bool OverStock(GoodsIssueLineDto line) => SelectedProduct(line) is { } p && line.Quantity > p.TotalStock;
 
     private async Task Load()
     {
@@ -388,7 +461,7 @@
 
     // ============================ فرم ============================
 
-    private void OpenNew()
+    private async Task OpenNew()
     {
         form = new GoodsIssueDto { Date = DateTime.Today };
         date = DateTime.Today;
@@ -396,6 +469,8 @@
         form.Lines.Add(new GoodsIssueLineDto());
         viewing = false;
         showForm = true;
+        // فهرست انبار برای انتخاب‌گر؛ نبودنش ورود دستی را نمی‌بندد
+        await LoadProductOptionsAsync();
     }
 
     private async Task OpenEdit(GoodsIssueDto g)
@@ -410,6 +485,7 @@
             form = full;
             date = full.Date;
             if (form.Lines.Count == 0) form.Lines.Add(new GoodsIssueLineDto());
+            await LoadProductOptionsAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); showForm = false; }
         finally { loading = false; }
@@ -473,7 +549,37 @@
         if (form.Lines.Count == 0) form.Lines.Add(new GoodsIssueLineDto());
     }
 
-    private void SetName(GoodsIssueLineDto line, string? text) => line.ProductName = text ?? "";
+    /// <summary>
+    /// نام کالا دستی تایپ می‌شود. اگر متن دیگر با «کالای انتخاب‌شده از انبار» یکی نیست،
+    /// سطر به «نام آزاد» برمی‌گردد و شناسهٔ کالا پاک می‌شود تا سند گمراه‌کننده نباشد.
+    /// </summary>
+    private void SetName(GoodsIssueLineDto line, string? text)
+    {
+        line.ProductName = text ?? "";
+        if (line.ProductId <= 0) return;
+        var chosen = SelectedProduct(line);
+        if (chosen is null || !string.Equals(line.ProductName.Trim(), chosen.Name, StringComparison.Ordinal))
+            line.ProductId = 0;
+    }
+
+    /// <summary>
+    /// انتخاب کالا از موجودی انبار: نام و شناسهٔ کالا در سطر می‌نشیند، مقدار خالی یک
+    /// می‌شود و فوکوس به مقدار همان سطر می‌رود. هیچ اثری روی موجودی ندارد.
+    /// </summary>
+    private async Task OnProductPickedAsync(int idx, GoodsIssueLineDto line, int productId)
+    {
+        if (viewing) return;
+        var chosen = productId > 0 ? productOptions.FirstOrDefault(x => x.Id == productId) : null;
+        if (chosen is null)
+        {
+            line.ProductId = 0;   // پاک‌کردن انتخاب → همان نام دستی باقی می‌ماند
+            return;
+        }
+        line.ProductId = chosen.Id;
+        line.ProductName = chosen.Name;
+        if (line.Quantity <= 0) line.Quantity = 1;
+        await JS.InvokeVoidAsync("focusById", $"gi-qty-{idx}", true);
+    }
 
     /// <summary>Enter روی نام کالا → برو به مقدار همان سطر.</summary>
     private async Task OnNameKey(KeyboardEventArgs e, int idx)
