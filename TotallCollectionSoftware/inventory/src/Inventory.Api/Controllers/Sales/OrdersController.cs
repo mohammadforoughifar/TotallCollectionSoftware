@@ -4,6 +4,7 @@ using Inventory.Api.Services.Core;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Inventory.Api.Helpers;
 using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
@@ -99,24 +100,30 @@ public class OrdersController : ApiControllerBase
 
     /// <summary>
     /// موجودی تعدادی انبار برای انتخاب کالا در فاکتور، بدون افشای بهای تمام‌شده.
-    /// با asOf (تاریخ فاکتور)، فقط اسناد تا آن تاریخ شمارش میشوند؛ خرید فردا
-    /// نمیتواند موجودی فاکتور دیروز را افزایش دهد. بدون asOf رفتار قدیمی حفظ میشود.
+    /// <para>
+    /// مبنای موجودی همیشه «تاریخ سند» است (asOf): خرید فردا نمی‌تواند موجودی فاکتور
+    /// دیروز را افزایش دهد. asOf به‌صورت رشته خوانده و مستقل از فرهنگ سیستم تجزیه
+    /// می‌شود تا روی سروری با تنظیمات فارسی، تاریخ میلادی به سال شمسی تفسیر نشود و
+    /// فیلتر تاریخ بی‌اثر نگردد. نبودِ asOf یعنی «امروز»، نه تجمیع بی‌تاریخ.
+    /// </para>
     /// </summary>
     [HttpGet("warehouse-stock")]
     public async Task<ActionResult<PagedResult<InvoiceStockItem>>> WarehouseStock(
         [FromQuery] int warehouseId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10000,
-        [FromQuery] DateTime? asOf = null)
+        [FromQuery] string? asOf = null)
     {
         if (warehouseId <= 0) return BadRequest(new { message = "انبار معتبر انتخاب کنید." });
+        var parsedAsOf = DateQuery.Parse(asOf);
+        if (!string.IsNullOrWhiteSpace(asOf) && parsedAsOf is null)
+            return BadRequest(new { message = "تاریخ مبنای موجودی معتبر نیست." });
+        var asOfDate = parsedAsOf ?? DateTime.Today;
+
         var result = await _service.GetStockAsync(warehouseId, null, false, Math.Max(1, page), Math.Clamp(pageSize, 1, 10000));
-        if (asOf.HasValue)
-        {
-            // همان فهرست کالاها (و همان صفحهبندی) حفظ میشود تا عکسهای فوری
-            // صفحهدار کلاینت با هم سازگار بمانند؛ فقط «مقدار» تاریخمند میشود.
-            var asOfQuantities = await _service.GetStockQuantitiesAsOfAsync(asOf.Value, warehouseId);
-            foreach (var s in result.Items)
-                s.Quantity = asOfQuantities.TryGetValue((s.WarehouseId, s.ProductId), out var qty) ? qty : 0m;
-        }
+        // همان فهرست کالاها (و همان صفحه‌بندی) حفظ می‌شود تا عکس‌های فوری
+        // صفحه‌دار کلاینت با هم سازگار بمانند؛ فقط «مقدار» تاریخ‌مند می‌شود.
+        var asOfQuantities = await _service.GetStockQuantitiesAsOfAsync(asOfDate, warehouseId);
+        foreach (var s in result.Items)
+            s.Quantity = asOfQuantities.TryGetValue((s.WarehouseId, s.ProductId), out var qty) ? qty : 0m;
         return Ok(new PagedResult<InvoiceStockItem>
         {
             Items = result.Items.Select(s => new InvoiceStockItem

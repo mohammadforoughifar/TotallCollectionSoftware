@@ -189,19 +189,54 @@ class Bug9DatedStock(unittest.TestCase):
         self.assertIn('public async Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetStockQuantitiesAsOfAsync(', SERVICE)
         self.assertIn('t.Date < end', SERVICE)
         self.assertIn('excludeTransactionId', SERVICE)
-        self.assertIn('[FromQuery] DateTime? asOf = null', ORDERS_CTRL)
-        self.assertIn('GetStockQuantitiesAsOfAsync(asOf.Value, warehouseId)', ORDERS_CTRL)
+        # تاریخ مبنا به‌صورت رشته خوانده می‌شود تا فرهنگ سیستم آن را به شمسی تفسیر نکند.
+        self.assertIn('[FromQuery] string? asOf = null', ORDERS_CTRL)
+        self.assertIn('DateQuery.Parse(asOf)', ORDERS_CTRL)
+        self.assertIn('GetStockQuantitiesAsOfAsync(asOfDate, warehouseId)', ORDERS_CTRL)
+        # نبودِ asOf یعنی امروز، نه موجودی تجمیعی بی‌تاریخ.
+        self.assertIn('var asOfDate = parsedAsOf ?? DateTime.Today;', ORDERS_CTRL)
+        self.assertNotIn('if (asOf.HasValue)', ORDERS_CTRL)
         self.assertIn('GetStockAsync(warehouseId, null, false,', ORDERS_CTRL)
-        self.assertIn('&asOf={asOf.Value:yyyy-MM-dd}', CLIENT_SVC)
+        self.assertIn('(asOf ?? DateTime.Today).Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)', CLIENT_SVC)
+        self.assertIn('&asOf={day}', CLIENT_SVC)
         self.assertIn('DateTime? asOf = null', I_CLIENT)
 
     def test_client_snapshot_is_keyed_by_invoice_date(self):
         self.assertIn('public DateTime? AsOf { get; private set; }', STOCK_SNAPSHOT)
-        self.assertIn('AsOf = asOf?.Date;', STOCK_SNAPSHOT)
+        self.assertIn('AsOf = (asOf ?? DateTime.Today).Date;', STOCK_SNAPSHOT)
         self.assertIn('getPage(warehouseId, page, PageSize, AsOf)', STOCK_SNAPSHOT)
         self.assertIn('@bind-Value:after="OnInvoiceDateChanged"', ORDER_FORM)
-        self.assertIn('warehouseStock.LoadAsync(warehouseId, date,', ORDER_FORM)
+        self.assertIn('warehouseStock.LoadAsync(warehouseId, date ?? DateTime.Today,', ORDER_FORM)
         self.assertIn('date = IsEdit ? EditOrder!.Date : DateTime.Now;', ORDER_FORM)
+
+    def test_date_parser_is_culture_independent(self):
+        helper = read(API / 'Helpers/DateQuery.cs')
+        # خواندن میلادی مستقل از فرهنگ + تبدیل تاریخ شمسیِ احتمالی
+        self.assertIn('CultureInfo.InvariantCulture', helper)
+        self.assertIn('"yyyy-MM-dd"', helper)
+        self.assertIn('Fa.ToEn(text)', helper)
+        self.assertIn('PersianDate.ToGregorian(day.Year, day.Month, day.Day)', helper)
+        self.assertIn('MaxPersianYear = 1500', helper)
+        # ورودی نامعتبر نباید بی‌سروصدا «موجودی جاری» بسازد
+        self.assertIn('return null;', helper)
+        self.assertIn('تاریخ مبنای موجودی معتبر نیست', ORDERS_CTRL)
+
+    def test_warehousing_movements_are_dated_too(self):
+        # رسید/حوالهٔ انبارداری هم نباید از آینده در فاکتور دیروز دیده شود.
+        self.assertIn('_db.InvLedger.AsNoTracking()', SERVICE)
+        self.assertIn('UpToDate = g.Sum(e => e.Date < end ? e.QtyIn - e.QtyOut : 0m)', SERVICE)
+        self.assertIn('Math.Abs(ledgerQty.Total - s.Quantity) < 0.0005m', SERVICE)
+
+    def test_invoice_menu_shows_the_as_of_day(self):
+        self.assertIn('data-stock-asof="@StockAsOfKey"', ORDER_FORM)
+        self.assertIn('(تا @StockAsOfText)', ORDER_FORM)
+        self.assertIn("private string StockAsOfKey => StockAsOf.ToString(\"yyyy-MM-dd\", System.Globalization.CultureInfo.InvariantCulture);", ORDER_FORM)
+        self.assertIn('private string StockAsOfText => PersianDate.ToShortFa(StockAsOf);', ORDER_FORM)
+        self.assertIn('StockAsOf => warehouseStock.AsOf ?? date?.Date ?? DateTime.Today', ORDER_FORM)
+        css = (CLIENT / 'Pages/Orders/OrderForm.razor.css').read_text(encoding='utf-8')
+        self.assertIn('.invoice-stock-asof', css)
+        index = (CLIENT / 'wwwroot/index.html').read_text(encoding='utf-8')
+        self.assertIn('Inventory.Client.styles.css?v=15', index)
 
     def test_create_edit_and_warranty_checks_use_document_date(self):
         self.assertIn('GetStockQuantitiesAsOfAsync(date, cmd.WarehouseId, productIds)', SERVICE)
@@ -211,9 +246,16 @@ class Bug9DatedStock(unittest.TestCase):
 
     def test_csharp_probe_exercises_future_receipt_and_dated_overload(self):
         probe = (Path(__file__).resolve().parent.parent / 'OrderVat' / 'Program.cs').read_text(encoding='utf-8')
-        self.assertIn('controller.WarehouseStock(wh.Id, 1, 1, DateTime.Today)', probe)
+        # سناریوی گزارش: خرید فردا، سند فروش دیروز.
+        self.assertIn('controller.WarehouseStock(wh.Id, 1, 1,\n        yesterday.ToString("yyyy-MM-dd"', probe)
+        self.assertIn('a backdated invoice cannot see a receipt dated after its own date', probe)
+        self.assertIn('controller.WarehouseStock(wh.Id, 1, 1,\n        DateTime.Today.ToString("yyyy-MM-dd"', probe)
+        self.assertIn('invoice stock is dated by default', probe)
+        self.assertIn('a persian-formatted asOf is converted', probe)
+        self.assertIn('an unparseable asOf is rejected', probe)
         self.assertIn('datedStock.LoadAsync(6, past, (id, page, size, asOf)', probe)
         self.assertIn('the snapshot remembers its as-of date', probe)
+        self.assertIn('the legacy no-date overload defaults to today', probe)
         self.assertIn('future receipt funded a backdated sale', probe)
         self.assertIn('a backdated sale cannot consume stock that only arrives later', probe)
 

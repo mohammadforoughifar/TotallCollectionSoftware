@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -282,8 +283,11 @@ public class OrderService : IOrderService
     public Task<PagedResult<InvoiceStockItem>> GetWarehouseStockAsync(int warehouseId, int page = 1,
         int pageSize = 10000, DateTime? asOf = null)
     {
-        var q = $"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}";
-        if (asOf.HasValue) q += $"&asOf={asOf.Value:yyyy-MM-dd}";
+        // تاریخ سند همیشه با تقویم میلادی و ارقام لاتین فرستاده می‌شود؛ قالب‌بندی
+        // وابسته به فرهنگ مرورگر ممکن بود تاریخ شمسی بفرستد و فیلتر موجودی را
+        // بی‌اثر کند. نبودِ تاریخ یعنی امروز (نه موجودی تجمیعی بی‌تاریخ).
+        var day = (asOf ?? DateTime.Today).Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var q = $"api/orders/warehouse-stock?warehouseId={warehouseId}&page={page}&pageSize={pageSize}&asOf={day}";
         return _api.GetAsync<PagedResult<InvoiceStockItem>>(q);
     }
 

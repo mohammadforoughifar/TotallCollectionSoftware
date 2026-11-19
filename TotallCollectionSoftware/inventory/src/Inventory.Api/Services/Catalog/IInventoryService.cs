@@ -69,6 +69,7 @@ public interface IInventoryService
     /// <summary>
     /// موجودی تعدادی «تا پایان تاریخ asOf» بر اساس اسناد dated (نه جدول تجمیعی فعلی).
     /// اسناد آینده (مثلاً خرید ۱۴۰۵/۰۸/۲۱) در موجودی فاکتور ۱۴۰۵/۰۸/۲۰ دیده نمیشوند.
+    /// گردش ماژول انبارداری هم از دفتر گردشِ تاریخ‌دار تا همین روز بازپخش می‌شود.
     /// </summary>
     Task<Dictionary<(int WarehouseId, int ProductId), decimal>> GetStockQuantitiesAsOfAsync(
         DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,

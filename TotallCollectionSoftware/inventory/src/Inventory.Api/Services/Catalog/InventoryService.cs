@@ -1852,7 +1852,8 @@ public class InventoryService : IInventoryService
         DateTime asOf, int? warehouseId = null, IReadOnlyCollection<int>? productIds = null,
         int? excludeTransactionId = null)
     {
-        var end = asOf.Date.AddDays(1); // تمام اسناد «روز asOf» هم شامل شوند
+        var asOfDay = Inventory.Api.Helpers.DateQuery.Normalize(asOf);
+        var end = asOfDay.AddDays(1); // تمام اسناد «روز asOf» هم شامل شوند
         var query = _db.Transactions.Include(t => t.Lines).AsNoTracking()
             .Where(t => t.Date < end);
         if (warehouseId is > 0) query = query.Where(t => t.WarehouseId == warehouseId);
@@ -1881,7 +1882,38 @@ public class InventoryService : IInventoryService
             }
         }
 
-        // گردش ماژول انبارداری تاریخ سند ندارد؛ دقیقاً مانند RecalcStockAsync به مانده اضافه میشود.
+        // گردش ماژول انبارداری: جدول InvStocks فقط تجمیع کل زمان است و رسید آینده را هم
+        // در موجودی فاکتور دیروز نشان می‌دهد؛ پس مانده تا تاریخ از دفتر گردش انبار
+        // (که تاریخ سند را دارد) بازپخش می‌شود. اگر دفتر با ماندهٔ ثبت‌شده هم‌خوان نباشد
+        // (ماندهٔ دستی/قدیمی بدون گردش) همان تجمیع قبلی حفظ می‌شود تا موجودی واقعی کم نشود.
+        var ledgerQuery = _db.InvLedger.AsNoTracking().AsQueryable();
+        if (warehouseId is > 0) ledgerQuery = ledgerQuery.Where(e => e.WarehouseId == warehouseId);
+        var ledger = new Dictionary<(int WarehouseId, int ProductId), (decimal Total, decimal UpToDate)>();
+        if (_db.Database.IsSqlite())
+        {
+            // SQLite تجمیع decimal را پشتیبانی نمی‌کند؛ فقط در تست‌ها/پروب‌ها رخ می‌دهد.
+            var rows = await ledgerQuery
+                .Select(e => new { e.WarehouseId, e.ProductId, e.Date, e.QtyIn, e.QtyOut })
+                .ToListAsync();
+            foreach (var group in rows.GroupBy(r => (r.WarehouseId, r.ProductId)))
+                ledger[group.Key] = (group.Sum(r => r.QtyIn - r.QtyOut),
+                    group.Sum(r => r.Date < end ? r.QtyIn - r.QtyOut : 0m));
+        }
+        else
+        {
+            var aggregates = await ledgerQuery
+                .GroupBy(e => new { e.WarehouseId, e.ProductId })
+                .Select(g => new
+                {
+                    g.Key,
+                    Total = g.Sum(e => e.QtyIn - e.QtyOut),
+                    UpToDate = g.Sum(e => e.Date < end ? e.QtyIn - e.QtyOut : 0m)
+                })
+                .ToListAsync();
+            foreach (var row in aggregates)
+                ledger[(row.Key.WarehouseId, row.Key.ProductId)] = (row.Total, row.UpToDate);
+        }
+
         var invQuery = _db.InvStocks.AsNoTracking().AsQueryable();
         if (warehouseId is > 0) invQuery = invQuery.Where(s => s.WarehouseId == warehouseId);
         foreach (var s in await invQuery.ToListAsync())
@@ -1889,7 +1921,11 @@ public class InventoryService : IInventoryService
             if (allowed is not null && !allowed.Contains(s.ProductId)) continue;
             var key = (s.WarehouseId, s.ProductId);
             result.TryGetValue(key, out var qty);
-            result[key] = qty + s.Quantity;
+            var warehousingQty = s.Quantity;
+            if (ledger.TryGetValue(key, out var ledgerQty) &&
+                Math.Abs(ledgerQty.Total - s.Quantity) < 0.0005m)
+                warehousingQty = ledgerQty.UpToDate;
+            result[key] = qty + warehousingQty;
         }
         return result;
     }

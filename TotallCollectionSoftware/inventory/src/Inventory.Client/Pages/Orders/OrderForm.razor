@@ -510,6 +510,7 @@
                                                         <bdi dir="ltr">@InvoiceProductOption.FormatStock(quantity)</bdi>
                                                     </span>
                                                     @productOption.StockUnit
+                                                    <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey" title="موجودی تا پایان تاریخ سند">(تا @StockAsOfText)</span>
                                                     @if (Type == TransactionType.Sale && productOption.IsStockWarning)
                                                     {
                                                         <strong class="invoice-stock-alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> ناموجود</strong>
@@ -540,6 +541,7 @@
                                                             <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> <strong>ناموجود</strong> <text>—</text>
                                                         }
                                                         موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
+                                                        <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey">(تا @StockAsOfText)</span>
                                                     </span>
                                                 }
                                                 else
@@ -2264,8 +2266,18 @@
     }
 
     private Task<bool> LoadWarehouseStocksAsync()
-        => warehouseStock.LoadAsync(warehouseId, date, (id, page, size, asOf) =>
+        // موجودی فاکتور همیشه «تا تاریخ سند» است؛ نبودِ تاریخ یعنی امروز، نه تجمیع بی‌تاریخ.
+        => warehouseStock.LoadAsync(warehouseId, date ?? DateTime.Today, (id, page, size, asOf) =>
             OrderSvc.GetWarehouseStockAsync(id, page, size, asOf));
+
+    /// <summary>روزی که موجودی نمایش‌داده‌شده تا پایان آن شمارش شده است (تاریخ سند).</summary>
+    private DateTime StockAsOf => warehouseStock.AsOf ?? date?.Date ?? DateTime.Today;
+
+    /// <summary>کلید میلادی مبنا برای تست/دیباگ — با تاریخ سندی که کاربر انتخاب کرده هم‌خوان است.</summary>
+    private string StockAsOfKey => StockAsOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>نمایش شمسی همان مبنا، تا کاربر ببیند موجودی به کدام روز مربوط است.</summary>
+    private string StockAsOfText => PersianDate.ToShortFa(StockAsOf);
 
     /// <summary>
     /// تغییر تاریخ سند یعنی تغییر مبنای موجودی؛ رسید خرید بعد از تاریخ سند نباید

@@ -11,15 +11,18 @@ public sealed class InvoiceWarehouseStock
     private int version;
 
     public int WarehouseId { get; private set; }
-    /// <summary>تاریخی که عکس فوری موجودی برای آن گرفته شده است (null = موجودی جاری).</summary>
+    /// <summary>
+    /// تاریخی که عکس فوری موجودی برای آن گرفته شده است (مبنای عکس فوری).
+    /// موجودی فاکتور همیشه تاریخ‌دار است؛ پیش از انتخاب انبار مقدارش null است.
+    /// </summary>
     public DateTime? AsOf { get; private set; }
     public bool IsLoading { get; private set; }
     public bool IsLoaded { get; private set; }
     public IReadOnlyDictionary<int, decimal> Quantities { get; private set; } = new Dictionary<int, decimal>();
 
-    /// <summary>سازگاری با فراخوانیهای قدیمی: عکس فوری بدون تاریخ (موجودی جاری).</summary>
+    /// <summary>سازگاری با فراخوانیهای قدیمی: عکس فوری «تا امروز».</summary>
     public Task<bool> LoadAsync(int warehouseId, Func<int, int, int, Task<PagedResult<InvoiceStockItem>>> getPage)
-        => LoadAsync(warehouseId, null, (id, page, size, _) => getPage(id, page, size));
+        => LoadAsync(warehouseId, DateTime.Today, (id, page, size, _) => getPage(id, page, size));
 
     /// <returns>False if a newer warehouse/date request superseded this one.</returns>
     public async Task<bool> LoadAsync(int warehouseId, DateTime? asOf,
@@ -27,7 +30,8 @@ public sealed class InvoiceWarehouseStock
     {
         var requestVersion = ++version;
         WarehouseId = warehouseId;
-        AsOf = asOf?.Date;
+        // عکس فوری موجودی هرگز «بی‌تاریخ» نیست: نبودِ تاریخ یعنی امروز، نه تجمیع کل زمان.
+        AsOf = (asOf ?? DateTime.Today).Date;
         IsLoaded = false;
         IsLoading = warehouseId > 0;
         Quantities = new Dictionary<int, decimal>();
