@@ -8,6 +8,9 @@
 
 <PageTitle>سفارش‌های ویزیتوری و فروش میدانی</PageTitle>
 
+@* با بازگشت به این تب داده از نو خوانده می‌شود (تب‌ها در DOM می‌مانند). *@
+<TabAutoRefresh OnRefresh="ReloadAsync" />
+
 <div class="fin-page-container fade-in">
     <!-- ================== سربرگ ================== -->
     <div class="fin-header mb-4">
@@ -626,7 +629,15 @@
         finally { loading = false; }
     }
 
-    private Task ReloadAsync() => LoadAsync();
+    /// <summary>
+    /// تازه‌سازی از دکمهٔ نوسازی، تغییر فیلتر و بازگشت به تب — بدون رفرش دستی؛
+    /// چون صفحه در DOM می‌ماند، رندر هم باید دستی صدا زده شود.
+    /// </summary>
+    private async Task ReloadAsync()
+    {
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
 
     private async Task SearchChanged()
     {

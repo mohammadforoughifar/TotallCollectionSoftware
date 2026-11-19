@@ -1,0 +1,47 @@
+@* ============================================================
+   تازه‌سازی خودکارِ دادهٔ صفحه با بازگشت به تب
+   • صفحه‌های تب‌ها در DOM می‌مانند (TabPages) و از نو ساخته
+     نمی‌شوند؛ هر صفحه‌ای که داده را فقط در OnInitializedAsync
+     می‌خواند، بعد از عملیات در تب/صفحهٔ دیگر کهنه می‌ماند و
+     کاربر مجبور به رفرش دستی (F5) می‌شد.
+   • این جزء فقط برای تبِ خودش (بر اساس کلید مسیر) و فقط در لحظهٔ
+     فعال‌شدن، OnRefresh را صدا می‌زند.
+   • استفاده:  <TabAutoRefresh OnRefresh="ReloadOnTabAsync" />
+   ============================================================ *@
+@implements IDisposable
+@inject TabService Tabs
+@inject NavigationManager Nav
+
+@code {
+    /// <summary>تابعی که دادهٔ همین صفحه را از نو می‌خواند و خودش را دوباره رندر می‌کند.</summary>
+    [Parameter] public Func<Task>? OnRefresh { get; set; }
+
+    /// <summary>شرط اختیاری؛ اگر false برگرداند تازه‌سازی انجام نمی‌شود (مثلاً فرم نیمه‌پر).</summary>
+    [Parameter] public Func<bool>? When { get; set; }
+
+    private string key = "";
+    private bool running;
+
+    protected override void OnInitialized()
+    {
+        // در لحظهٔ ساخته‌شدنِ صفحه همان تب فعال است؛ مسیر جاری هم همان تب است.
+        key = Tabs.Active?.Key ?? TabService.KeyOf(Nav.ToBaseRelativePath(Nav.Uri));
+        Tabs.ActivatedAsync += OnActivatedAsync;
+    }
+
+    private async Task OnActivatedAsync(TabItem tab)
+    {
+        var refresh = OnRefresh;
+        var when = When;
+        if (refresh is null || running) return;
+        if (!string.Equals(tab.Key, key, StringComparison.Ordinal)) return;
+        if (when is not null && !when()) return;
+
+        running = true;
+        try { await InvokeAsync(refresh); }
+        catch { /* تازه‌سازی نباید صفحه را از کار بیندازد. */ }
+        finally { running = false; }
+    }
+
+    public void Dispose() => Tabs.ActivatedAsync -= OnActivatedAsync;
+}

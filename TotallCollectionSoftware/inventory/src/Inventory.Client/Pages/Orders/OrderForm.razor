@@ -510,6 +510,7 @@
                                                         <bdi dir="ltr">@InvoiceProductOption.FormatStock(quantity)</bdi>
                                                     </span>
                                                     @productOption.StockUnit
+                                                    <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey" title="موجودی تا پایان تاریخ سند">(تا @StockAsOfText)</span>
                                                     @if (Type == TransactionType.Sale && productOption.IsStockWarning)
                                                     {
                                                         <strong class="invoice-stock-alert"><i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> ناموجود</strong>
@@ -540,6 +541,7 @@
                                                             <i class="bi bi-exclamation-octagon-fill" aria-hidden="true"></i> <strong>ناموجود</strong> <text>—</text>
                                                         }
                                                         موجودی انبار: <b class="num"><bdi dir="ltr">@InvoiceProductOption.FormatStock(avail)</bdi></b>
+                                                        <span class="invoice-stock-asof" data-stock-asof="@StockAsOfKey">(تا @StockAsOfText)</span>
                                                     </span>
                                                 }
                                                 else
@@ -558,7 +560,7 @@
                                 </td>
                                 <td data-label="قیمت واحد (ریال)">
                                     <input class="form-control num order-line-control" aria-label="قیمت واحد به ریال" inputmode="numeric" dir="ltr" title="قیمت به ریال صحیح و بدون اعشار"
-                                           value="@l.PriceText" @oninput="@(e => { l.PriceRequestVersion++; l.PriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()); l.PriceNotice = null; RecalcDiscount(l); })" />
+                                           value="@l.PriceText" @oninput="@(e => { l.PriceRequestVersion++; l.PriceIsAuto = false; l.PriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()); l.PriceNotice = null; RecalcDiscount(l); })" />
                                     @if (!string.IsNullOrEmpty(l.PriceNotice)) { <small class="dated-price-note">@l.PriceNotice</small> }
                                 </td>
                                 @if (Type == TransactionType.Purchase && canManagePricing)
@@ -1257,6 +1259,11 @@
         public string NewSalePriceText { get; set; } = "";
         public string? PriceNotice { get; set; }
         public int PriceRequestVersion { get; set; }
+        /// <summary>
+        /// قیمت واحد خودکار (از تاریخچه یا تعریف کالا) پر شده و کاربر ویرایشش نکرده است؛
+        /// فقط همین سطرها با تغییر تاریخ سند دوباره پیشنهاد می‌شوند.
+        /// </summary>
+        public bool PriceIsAuto { get; set; }
         public string Unit { get; set; } = "";
         public string DiscountText { get; set; } = "";
         public decimal DiscountPercent { get; set; }
@@ -2264,8 +2271,18 @@
     }
 
     private Task<bool> LoadWarehouseStocksAsync()
-        => warehouseStock.LoadAsync(warehouseId, date, (id, page, size, asOf) =>
+        // موجودی فاکتور همیشه «تا تاریخ سند» است؛ نبودِ تاریخ یعنی امروز، نه تجمیع بی‌تاریخ.
+        => warehouseStock.LoadAsync(warehouseId, date ?? DateTime.Today, (id, page, size, asOf) =>
             OrderSvc.GetWarehouseStockAsync(id, page, size, asOf));
+
+    /// <summary>روزی که موجودی نمایش‌داده‌شده تا پایان آن شمارش شده است (تاریخ سند).</summary>
+    private DateTime StockAsOf => warehouseStock.AsOf ?? date?.Date ?? DateTime.Today;
+
+    /// <summary>کلید میلادی مبنا برای تست/دیباگ — با تاریخ سندی که کاربر انتخاب کرده هم‌خوان است.</summary>
+    private string StockAsOfKey => StockAsOf.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>نمایش شمسی همان مبنا، تا کاربر ببیند موجودی به کدام روز مربوط است.</summary>
+    private string StockAsOfText => PersianDate.ToShortFa(StockAsOf);
 
     /// <summary>
     /// تغییر تاریخ سند یعنی تغییر مبنای موجودی؛ رسید خرید بعد از تاریخ سند نباید
@@ -2274,11 +2291,19 @@
     private async Task OnInvoiceDateChanged()
     {
         if (loading) return;
-        if (warehouseId <= 0) { RebuildProductLookup(); return; }
+        if (warehouseId <= 0)
+        {
+            // بدون انبار هم تاریخ سند مبنای قیمت است؛ قیمت خودکار باید تازه شود.
+            RebuildProductLookup();
+            await RefreshAutoUnitPricesAsync();
+            return;
+        }
         var load = LoadWarehouseStocksAsync();
         RebuildProductLookup();
         if (!await load) return; // درخواست جدیدتر (تغییر تاریخ/انبار) جایگزین شده است
         RebuildProductLookup();
+        // تغییر تاریخ مبنای موجودی است و مبنای قیمت هم؛ قیمت‌های خودکار تازه می‌شوند.
+        await RefreshAutoUnitPricesAsync();
     }
 
     // Use the same eligibility rule when selecting a product and when validating
@@ -2345,6 +2370,7 @@
                 l.ProductId = 0;
                 l.Unit = "";
                 l.PriceText = "";
+                l.PriceIsAuto = false;
                 l.DiscountText = "";
                 l.DiscountAmount = 0;
                 l.DiscountPercent = 0;
@@ -2458,6 +2484,7 @@
         l.PriceText = "";
         l.NewSalePriceText = "";
         l.PriceNotice = null;
+        l.PriceIsAuto = false;
         var p = products.FirstOrDefault(x => x.Id == id);
         if (p is null) { l.VatText = "0"; RecalcDiscount(l); return; }
         l.Unit = p.Unit;
@@ -2468,21 +2495,81 @@
             RecalcDiscount(l);
             return;
         }
+        // قیمت واحد در فاکتور فروش همیشه خودکار پیشنهاد می‌شود (تاریخچهٔ قیمت، و اگر
+        // نبود، قیمت فروش تعریف کالا) و فیلد برای ویرایش دستی باز می‌ماند.
         var invoiceDate = date?.Date;
-        if (!invoiceDate.HasValue) { l.PriceNotice = "ابتدا تاریخ فاکتور را مشخص کنید."; return; }
+        if (!invoiceDate.HasValue)
+        {
+            ApplySuggestedUnitPrice(l, p, p.SalePrice, catalogFallback: true);
+            return;
+        }
         try
         {
             var suggested = await OrderSvc.GetDatedSalePriceAsync(id, invoiceDate.Value);
             // An async response must never overwrite a newer selection, date or manual entry.
             if (l.PriceRequestVersion != requestVersion || l.ProductId != id || date?.Date != invoiceDate || !string.IsNullOrWhiteSpace(l.PriceText)) return;
-            if (suggested.Price.HasValue) l.PriceText = PurchaseSalePriceInput.Format(ExactDecimal(suggested.Price.Value));
-            else l.PriceNotice = "قیمت این تاریخ ثبت نشده؛ دستی وارد کنید.";
-            RecalcDiscount(l);
+            var price = suggested.Price ?? (p.SalePrice > 0 ? p.SalePrice : (decimal?)null);
+            ApplySuggestedUnitPrice(l, p, price,
+                catalogFallback: suggested.Price is null || suggested.Source == DatedSalePriceDto.CatalogSource);
         }
         catch
         {
             if (l.PriceRequestVersion == requestVersion && l.ProductId == id && string.IsNullOrWhiteSpace(l.PriceText))
-                l.PriceNotice = "دریافت قیمت تاریخی ناموفق بود؛ دستی وارد کنید.";
+                ApplySuggestedUnitPrice(l, p, p.SalePrice, catalogFallback: true);
+        }
+    }
+
+    /// <summary>
+    /// قیمت واحد پیشنهادی را در سطر می‌گذارد و منبعش را شفاف می‌گوید؛ مقدار دستی
+    /// کاربر هرگز بازنویسی نمی‌شود (فراخوان‌ها قبل از این بررسی می‌کنند).
+    /// </summary>
+    private void ApplySuggestedUnitPrice(LineVm l, Product? p, decimal? price, bool catalogFallback)
+    {
+        l.PriceNotice = null;
+        if (price is not > 0)
+        {
+            // صفر یک قیمت معتبر برای فروش نیست؛ فیلد خالی می‌ماند تا کاربر وارد کند.
+            l.PriceIsAuto = false;
+            if (string.IsNullOrWhiteSpace(l.PriceText))
+                l.PriceNotice = p is null
+                    ? "قیمت فروش این کالا تعریف نشده؛ قیمت را دستی وارد کنید."
+                    : $"برای «{p.Name}» قیمت فروش تعریف نشده؛ قیمت را دستی وارد کنید.";
+            RecalcDiscount(l);
+            return;
+        }
+        l.PriceText = PurchaseSalePriceInput.Format(ExactDecimal(price.Value));
+        l.PriceIsAuto = true;
+        if (catalogFallback)
+            l.PriceNotice = "قیمت این تاریخ ثبت نشده؛ از قیمت فروش تعریف کالا درج شد (قابل ویرایش).";
+        RecalcDiscount(l);
+    }
+
+    /// <summary>
+    /// با تغییر تاریخ سند، فقط قیمت سطرهایی دوباره پیشنهاد می‌شود که خودکار پر شده‌اند و
+    /// کاربر ویرایششان نکرده است؛ قیمت دستی دست‌نخورده می‌ماند.
+    /// </summary>
+    private async Task RefreshAutoUnitPricesAsync()
+    {
+        if (Type != TransactionType.Sale || !date.HasValue) return;
+        var invoiceDate = date.Value.Date;
+        foreach (var l in lines.Where(x => x.ProductId > 0 && x.PriceIsAuto).ToList())
+        {
+            var productId = l.ProductId;
+            var p = products.FirstOrDefault(x => x.Id == productId);
+            var requestVersion = ++l.PriceRequestVersion;
+            try
+            {
+                var suggested = await OrderSvc.GetDatedSalePriceAsync(productId, invoiceDate);
+                if (l.PriceRequestVersion != requestVersion || l.ProductId != productId || date?.Date != invoiceDate || !l.PriceIsAuto) continue;
+                var price = suggested.Price ?? (p is { SalePrice: > 0 } ? p.SalePrice : (decimal?)null);
+                ApplySuggestedUnitPrice(l, p, price,
+                    catalogFallback: suggested.Price is null || suggested.Source == DatedSalePriceDto.CatalogSource);
+            }
+            catch
+            {
+                if (l.PriceRequestVersion == requestVersion && l.ProductId == productId && l.PriceIsAuto && p is { SalePrice: > 0 })
+                    ApplySuggestedUnitPrice(l, p, p.SalePrice, catalogFallback: true);
+            }
         }
     }
 

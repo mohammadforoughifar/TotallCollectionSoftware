@@ -98,13 +98,29 @@ public class ShopPricingService
         return rows.GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.First());
     }
 
+    /// <summary>
+    /// قیمت پیشنهادی فاکتور برای یک کالا در تاریخ سند.
+    /// <para>
+    /// اول تاریخچهٔ قیمت همان روز بررسی می‌شود. اگر برای آن روز قیمتی ثبت نشده باشد
+    /// (مثلاً کالاهای قدیمی که پیش از راه‌اندازی تاریخچهٔ قیمت ثبت شده‌اند)، «قیمت فروش
+    /// تعریف کالا» پیشنهاد می‌شود تا فیلد قیمت واحد در فاکتور خالی نماند؛ این پیشنهاد
+    /// با <see cref="DatedSalePriceDto.Source"/> = catalog علامت می‌خورد و کاربر می‌تواند
+    /// آن را ویرایش کند. تاریخچهٔ قیمت (ResolveAsync) همچنان هیچ قیمت امروزی را به
+    /// تاریخ گذشته نسبت نمی‌دهد؛ این تصمیم فقط در سطح «پیشنهاد» است.
+    /// </para>
+    /// </summary>
     public async Task<DatedSalePriceDto> GetPriceAsync(int productId, DateTime date)
     {
         if (date == default || date.Date == DateTime.MaxValue.Date) throw new InvalidOperationException("تاریخ قیمت معتبر نیست.");
-        if (!await _db.Products.AnyAsync(p => p.Id == productId)) throw new InvalidOperationException("کالا یافت نشد.");
+        var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId)
+            ?? throw new InvalidOperationException("کالا یافت نشد.");
         var prices = await ResolveAsync(_db, new[] { productId }, date);
-        return prices.TryGetValue(productId, out var value)
-            ? new() { Price = value.Price, EffectiveDate = value.EffectiveDate } : new();
+        if (prices.TryGetValue(productId, out var value))
+            return new() { Price = value.Price, EffectiveDate = value.EffectiveDate, Source = DatedSalePriceDto.HistorySource };
+        // بدون تاریخچه: تعریف کالا مبنای پیشنهاد است، نه صفر و نه فیلد خالی.
+        return product.SalePrice > 0
+            ? new() { Price = product.SalePrice, Source = DatedSalePriceDto.CatalogSource }
+            : new();
     }
 
     public static void ValidatePrice(decimal price)

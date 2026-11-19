@@ -123,8 +123,8 @@ await datedStock.LoadAsync(6, (id, _, _) => Task.FromResult(new PagedResult<Invo
 {
     TotalCount = 1, Items = new() { new() { WarehouseId = id, ProductId = 1, Quantity = 8m } }
 }));
-Check(datedStock.AsOf is null && datedStock.Quantities[1] == 8m,
-    "the legacy no-date overload still produces a current-stock snapshot");
+Check(datedStock.AsOf == DateTime.Today && datedStock.Quantities[1] == 8m,
+    "the legacy no-date overload defaults to today; stock is never undated");
 
 foreach (var section in ShopSections.All)
 {
@@ -308,12 +308,29 @@ await using (var connection = new SqliteConnection("Data Source=:memory:"))
         Type = TransactionType.Purchase, Date = DateTime.Today.AddDays(3), PaymentMethod = PaymentMethod.Cash,
         CashAmount = 10000, Lines = new() { new() { ProductId = product.Id, Quantity = 10, Price = 1000 } } };
     await service.CreateOrderAsync(tomorrowPurchase);
+    // بدون asOf هم مبنای موجودی «امروز» است، نه تجمیع بی‌تاریخ Stocks.
     var currentStock = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1)).Result!).Value!;
-    var datedStockPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1, DateTime.Today)).Result!).Value!;
-    Check(currentStock.Items.Single().Quantity == 11.25m && datedStockPage.Items.Single().Quantity == 1.25m,
-        "the invoice stock endpoint excludes future receipts when asOf is given");
+    var datedStockPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1,
+        DateTime.Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))).Result!).Value!;
+    Check(currentStock.Items.Single().Quantity == 1.25m && datedStockPage.Items.Single().Quantity == 1.25m,
+        "invoice stock is dated by default and excludes future receipts even without asOf");
     Check((await service.GetStockQuantitiesAsOfAsync(DateTime.Today, wh.Id, new[] { product.Id }))[(wh.Id, product.Id)] == 1.25m,
         "dated stock service replays only documents up to the requested date");
+
+    // گزارش کاربر: خرید ۱۰ عدد برای فردا، سند فروش برای دیروز باید صفر ببیند.
+    var yesterday = DateTime.Today.AddDays(-1);
+    var yesterdayPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1,
+        yesterday.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture))).Result!).Value!;
+    Check(yesterdayPage.Items.Single().Quantity == 0m,
+        "a backdated invoice cannot see a receipt dated after its own date");
+    // همان تاریخ اگر شمسی برسد (کلاینت با فرهنگ فارسی) هم باید میلادی خوانده شود.
+    var (jy, jm, jd) = Inventory.Shared.PersianDate.FromGregorian(yesterday);
+    var jalaliPage = (PagedResult<InvoiceStockItem>)((OkObjectResult)(await controller.WarehouseStock(wh.Id, 1, 1,
+        Inventory.Shared.PersianDate.ToShort(yesterday))).Result!).Value!;
+    Check(jalaliPage.Items.Single().Quantity == 0m && jy > 1300 && jm is >= 1 and <= 12 && jd is >= 1 and <= 31,
+        "a persian-formatted asOf is converted instead of silencing the date filter");
+    Check((await controller.WarehouseStock(wh.Id, 1, 1, "not-a-date")).Result is BadRequestObjectResult,
+        "an unparseable asOf is rejected instead of silently showing current stock");
     var historicalSale = new OrderCommand { WarehouseId = wh.Id, PartyId = party.Id, Type = TransactionType.Sale,
         Date = DateTime.Today, PaymentMethod = PaymentMethod.Cash, CashAmount = 4950,
         Lines = new() { new() { ProductId = product.Id, Quantity = 5, Price = 1000, DiscountPercent = 10, VatValue = 10 } } };

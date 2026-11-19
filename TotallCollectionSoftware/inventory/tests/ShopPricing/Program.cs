@@ -77,6 +77,13 @@ OrderCommand Sale(int productId, decimal price, int partyId, decimal discount = 
 var purchase = await inventory.CreateOrderAsync(Purchase(150), "pricing-test");
 Check((await pricing.GetPriceAsync(goods.Id, purchaseDate.AddDays(-1))).Price is null, "no invented early selling price");
 Check((await pricing.GetPriceAsync(goods.Id, purchaseDate)).Price == 150, "purchase price takes effect on purchase date");
+// کالای بدون تاریخچه: تعریف کالا مبنای پیشنهاد است تا فیلد قیمت در فاکتور خالی نماند.
+var catalogOnly = new Db.Product { Name = "کالای بدون تاریخچه", Code = "PRICE-C", Unit = "عدد", SalePrice = 1200 };
+db.Products.Add(catalogOnly);
+await db.SaveChangesAsync();
+var catalogSuggestion = await pricing.GetPriceAsync(catalogOnly.Id, purchaseDate);
+Check(catalogSuggestion.Price == 1200, "a product without price history is suggested at its catalog sale price");
+Check(catalogSuggestion.Source == DatedSalePriceDto.CatalogSource, "the suggestion says the price came from the catalog");
 var oldSale = await inventory.CreateOrderAsync(Sale(goods.Id, 110, customer.Id), "pricing-test");
 var adjustment = new ShopPriceAdjustmentRequest { CategoryId = category.Id, Percent = 10, Increase = true, EffectiveDate = saleDate.AddDays(1) };
 var preview = await pricing.PreviewAsync(adjustment);

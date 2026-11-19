@@ -77,23 +77,26 @@ class InvoiceStockMenuContract(unittest.TestCase):
         self.assertNotIn('Profit', dto)
         self.assertIn('api/orders/warehouse-stock?warehouseId=', CLIENT)
         self.assertIn('OrderSvc.GetWarehouseStockAsync(id, page, size, asOf)', FORM)
+        self.assertIn('warehouseStock.LoadAsync(warehouseId, date ?? DateTime.Today,', FORM)
         self.assertNotIn('StockSvc.GetStockAsync', FORM)
 
     def test_warehouse_stock_snapshot_is_dated(self):
         # خرید فردا نباید موجودی فاکتور دیروز را زیاد کند (رفع باگ موجودی بیتاریخ).
         endpoint = CONTROLLER.split('public async Task<ActionResult<PagedResult<InvoiceStockItem>>> WarehouseStock(', 1)[1].split('پیشنهاد قیمت', 1)[0]
-        self.assertIn('[FromQuery] DateTime? asOf = null', endpoint)
-        self.assertIn('if (asOf.HasValue)', endpoint)
-        self.assertIn('GetStockQuantitiesAsOfAsync(asOf.Value, warehouseId)', endpoint)
+        self.assertIn('[FromQuery] string? asOf = null', endpoint)
+        self.assertIn('DateQuery.Parse(asOf)', endpoint)
+        self.assertIn('var asOfDate = parsedAsOf ?? DateTime.Today;', endpoint)
+        self.assertIn('GetStockQuantitiesAsOfAsync(asOfDate, warehouseId)', endpoint)
         service = (ROOT / 'src/Inventory.Api/Services/Catalog/InventoryService.cs').read_text(encoding='utf-8')
         self.assertIn('t.Date < end', service)
         self.assertIn('excludeTransactionId', service)
         self.assertIn('GetStockQuantitiesAsOfAsync(date, cmd.WarehouseId, productIds)', service)
         self.assertIn('GetStockQuantitiesAsOfAsync(updateAsOf, cmd.WarehouseId, updateIds, txn.Id)', service)
-        self.assertIn('AsOf = asOf?.Date;', STOCK)
+        self.assertIn('AsOf = (asOf ?? DateTime.Today).Date;', STOCK)
         self.assertIn('@bind-Value:after="OnInvoiceDateChanged"', FORM)
-        self.assertIn('warehouseStock.LoadAsync(warehouseId, date,', FORM)
-        self.assertIn('&asOf={asOf.Value:yyyy-MM-dd}', CLIENT)
+        self.assertIn('warehouseStock.LoadAsync(warehouseId, date ?? DateTime.Today,', FORM)
+        self.assertIn('&asOf={day}', CLIENT)
+        self.assertIn('CultureInfo.InvariantCulture', CLIENT)
 
     def test_services_and_old_invoice_options_do_not_gain_fake_stock(self):
         self.assertIn('isService ? "خدمات"', STOCK)

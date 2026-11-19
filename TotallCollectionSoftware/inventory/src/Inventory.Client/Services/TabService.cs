@@ -63,6 +63,13 @@ public sealed class TabService
     /// <summary>هر تغییری در فهرست تب‌ها — نوار تب و نگه‌دارنده‌ی صفحات مشترک‌اند</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// تب تازه فعال شد (کلیک روی تب یا پیمایش به آن). چون صفحه‌های تب‌ها در DOM
+    /// می‌مانند و از نو ساخته نمی‌شوند، صفحه‌ای که فقط در OnInitializedAsync داده
+    /// می‌خواند کهنه می‌ماند؛ با این رویداد خودش را تازه می‌کند (بدون رفرش دستی).
+    /// </summary>
+    public event Func<TabItem, Task>? ActivatedAsync;
+
     public TabService(IJSRuntime js, NavigationManager nav, LayoutState layout)
     {
         _js = js;
@@ -343,11 +350,29 @@ public sealed class TabService
 
         t.RouteData = routeData;
 
+        var wasActiveKey = _active?.Key;
         foreach (var x in _tabs) x.IsActive = ReferenceEquals(x, t);
         _active = t;
 
         Changed?.Invoke();
+        if (!string.Equals(wasActiveKey, t.Key, StringComparison.Ordinal)) _ = RaiseActivatedAsync(t);
         _ = SaveAsync();
+    }
+
+    /// <summary>
+    /// اعلام فعال‌شدن تب به شنونده‌ها. خارج از چرخه‌ی رندرِ همین پیمایش اجرا می‌شود
+    /// و خطای یک صفحه بقیه را از تازه‌سازی باز نمی‌دارد.
+    /// </summary>
+    private async Task RaiseActivatedAsync(TabItem tab)
+    {
+        var handlers = ActivatedAsync;
+        if (handlers is null) return;
+        await Task.Yield();
+        foreach (var handler in handlers.GetInvocationList().Cast<Func<TabItem, Task>>())
+        {
+            try { await handler(tab); }
+            catch { /* تازه‌سازیِ یک تب نباید بقیه‌ی برنامه را بشکند. */ }
+        }
     }
 
     /// <summary>

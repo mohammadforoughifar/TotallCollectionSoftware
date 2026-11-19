@@ -243,6 +243,9 @@ public interface IGoodsIssueService
     Task<GoodsIssueDto?> GetAsync(int id);
     Task<GoodsIssueDto> SaveAsync(GoodsIssueCommand cmd);
     Task DeleteAsync(int id);
+
+    /// <summary>کالاهای انباری با موجودی — برای انتخاب در سطر بیجک (ورود دستی هم مجاز است).</summary>
+    Task<List<GoodsIssueProductOptionDto>> GetProductOptionsAsync();
 }
 
 /// <summary>Shop-scoped policy, dated batch preview and audit history.</summary>
