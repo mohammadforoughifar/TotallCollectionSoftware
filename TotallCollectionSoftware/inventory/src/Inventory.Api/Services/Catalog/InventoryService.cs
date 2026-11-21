@@ -18,18 +18,25 @@ public class InventoryService : IInventoryService
 {
     private readonly Db.AppDbContext _db;
     private readonly ILogger<InventoryService> _log;
+    private readonly Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache? _smsCache;
+    private readonly Inventory.Api.Services.ItAssets.KavenegarSmsOptions? _smsFile;
 
-    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log, IConfiguration? configuration = null)
+    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log, IConfiguration? configuration = null,
+        Inventory.Api.Services.ItAssets.KavenegarSmsSettingsCache? smsCache = null,
+        Microsoft.Extensions.Options.IOptions<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>? smsFile = null)
     {
         _db = db;
         _log = log;
+        _smsCache = smsCache;
+        _smsFile = smsFile?.Value;
     }
 
     // =============================== تنظیمات ===============================
 
     public async Task<AppSettings> GetSettingsAsync()
     {
-        var s = await _db.AppSettings.FirstOrDefaultAsync();
+        // ترتیب صریح تا صفحه و کش پیامک همیشه روی یک ردیف توافق داشته باشند.
+        var s = await _db.AppSettings.OrderBy(x => x.Id).FirstOrDefaultAsync();
         return s is null
             ? new AppSettings()
             : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, BaleSafirApiAccessKey = s.BaleSafirApiAccessKey, BaleSafirBotId = s.BaleSafirBotId, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs,
@@ -44,7 +51,7 @@ public class InventoryService : IInventoryService
         if (method is not ("Average" or "FIFO" or "LIFO"))
             throw new InvalidOperationException("روش قیمت‌گذاری باید یکی از مقادیر Average، FIFO یا LIFO باشد.");
 
-        var s = await _db.AppSettings.FirstOrDefaultAsync();
+        var s = await _db.AppSettings.OrderBy(x => x.Id).FirstOrDefaultAsync();
         if (s is null)
         {
             s = new Db.AppSetting();
@@ -71,9 +78,23 @@ public class InventoryService : IInventoryService
         // و پاک کردن فقط با درخواست صریح مدیر انجام می‌شود.
         if (dto.ClearKavenegarApiKey) s.KavenegarApiKey = null;
         else if (!string.IsNullOrWhiteSpace(dto.KavenegarApiKey)) s.KavenegarApiKey = dto.KavenegarApiKey.Trim();
-        s.KavenegarSender = string.IsNullOrWhiteSpace(dto.KavenegarSender) ? null : dto.KavenegarSender.Trim();
-        s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;
+        // این DTO سراسری است و صفحه‌های دیگری (مثلاً تنظیمات انبارداری) هم همین را ذخیره
+        // می‌کنند. اگر درخواستی اصلاً به بخش پیامک کاری نداشته باشد، نباید خط فرستنده را
+        // پاک کند یا سوئیچ ارسال را خاموش کند؛ نوشتن بی‌قیدوشرط این دو، ارسال را بی‌دلیل قطع می‌کرد.
+        var touchesSms = dto.ClearKavenegarApiKey
+            || !string.IsNullOrWhiteSpace(dto.KavenegarApiKey)
+            || dto.KavenegarSender is not null
+            || dto.KavenegarSdkSendEnabled;
+        if (touchesSms)
+        {
+            s.KavenegarSender = string.IsNullOrWhiteSpace(dto.KavenegarSender) ? null : dto.KavenegarSender.Trim();
+            s.KavenegarSdkSendEnabled = dto.KavenegarSdkSendEnabled;
+        }
         await _db.SaveChangesAsync();
+        // اعمال فوری روی کش تا تغییر بدون ری‌استارت و بدون انتظار برای تازه‌سازی دوره‌ای
+        // بلافاصله در ارسال‌های بعدی دیده شود.
+        if (_smsCache is not null && _smsFile is not null)
+            _smsCache.Apply(s.KavenegarApiKey, s.KavenegarSender, s.KavenegarSdkSendEnabled, _smsFile);
         return await GetSettingsAsync();
     }
 
