@@ -1,9 +1,9 @@
-namespace Inventory.Api.Licensing;
+﻿namespace Inventory.Api.Infrastructure;
 
 /// <summary>
 /// مسیرهای ProgramData که برنامه در راه‌اندازی لازم دارد.
 /// </summary>
-public sealed record ProgramDataPaths(string Root, string Security, string License, string Projects, string Logs);
+public sealed record ProgramDataPaths(string Root, string Security, string Projects, string Logs);
 
 /// <summary>
 /// ساخت و بررسی پوشه‌های ProgramData در راه‌اندازی.
@@ -30,8 +30,7 @@ public static class ProgramDataLayout
     /// مسیرها را از پیکربندی/محیط حل می‌کند (بدون ساخت).
     /// </summary>
     /// <param name="configuredDataRoot">مقدار <c>Totall:DataRoot</c> در پیکربندی، اگر بود.</param>
-    /// <param name="configuredLicenseFolder">مقدار <c>Licensing:StorageFolder</c>، اگر بود.</param>
-    public static ProgramDataPaths Resolve(string? configuredDataRoot, string? configuredLicenseFolder)
+    public static ProgramDataPaths Resolve(string? configuredDataRoot)
     {
         var root = FirstNonEmpty(
                        configuredDataRoot,
@@ -41,17 +40,9 @@ public static class ProgramDataLayout
                            Environment.SpecialFolderOption.Create),
                        "Totall");
 
-        // پوشهٔ لایسنس سنتی جای دیگری است؛ برای سازگاری با نسخه‌های نصب‌شده تغییر نمی‌کند.
-        var license = FirstNonEmpty(configuredLicenseFolder)
-                      ?? Path.Combine(
-                          Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData,
-                              Environment.SpecialFolderOption.Create),
-                          "TotallCollection", "License");
-
         return new ProgramDataPaths(
             Root: root,
             Security: Path.Combine(root, "security"),
-            License: license,
             Projects: Path.Combine(root, "projects"),
             Logs: Path.Combine(root, "logs"));
     }
@@ -64,7 +55,7 @@ public static class ProgramDataLayout
     /// </exception>
     public static ProgramDataPaths Ensure(ProgramDataPaths paths)
     {
-        foreach (var dir in new[] { paths.Security, paths.License, paths.Projects, paths.Logs })
+        foreach (var dir in new[] { paths.Security, paths.Projects, paths.Logs })
         {
             try
             {
@@ -95,7 +86,7 @@ public static class ProgramDataLayout
         [راه‌اندازی متوقف شد] {what}: {dir}
         علت: {ex.GetType().Name}: {ex.Message}
 
-        این پوشه محل نگه‌داری کلید امضای JWT، کلید رمزنگاری پیوست‌ها، فایل لایسنس و لاگ‌هاست.
+        این پوشه محل نگه‌داری کلید امضای JWT، کلید رمزنگاری پیوست‌ها و لاگ‌هاست.
         برنامه عمداً به مسیر جایگزین (کنار پوشهٔ انتشار) نمی‌افتد؛ چون با اولین به‌روزرسانی
         پاک می‌شود و باعث خروج همهٔ کاربران و از دست رفتن دسترسی به پیوست‌های رمزنگاری‌شده می‌گردد.
 

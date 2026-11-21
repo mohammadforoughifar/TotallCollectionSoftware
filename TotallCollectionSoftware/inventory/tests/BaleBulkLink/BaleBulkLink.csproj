@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <!--
     هارنس آزمون «اتصال انبوهٔ کاربران به بله».
@@ -92,11 +92,6 @@
     <Compile Include="$(ApiSrc)Services\Notification\PushKeyStore.cs" Link="Api\PushKeyStore.cs" />
     <Compile Include="$(ApiSrc)Services\Notification\PushQueue.cs" Link="Api\PushQueue.cs" />
     <Compile Include="$(ApiSrc)Services\Notification\NotificationCategory.cs" Link="Api\NotificationCategory.cs" />
-    <Compile Include="$(ApiSrc)Licensing\Infrastructure\AllowInReadOnlyAttribute.cs" Link="Api\AllowInReadOnlyAttribute.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="$(MSBuildThisFileDirectory)..\..\src\Inventory.Licensing\Inventory.Licensing.csproj" />
   </ItemGroup>
 
 </Project>

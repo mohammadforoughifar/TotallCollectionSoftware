@@ -3,7 +3,6 @@ using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -146,7 +145,6 @@ public class DocFavoritesController : RbacControllerBase
     }
 
     /// <summary>وضعیت ستاره برای چند مدرک (برای نمایش آیکون در لیست).</summary>
-    [AllowInReadOnly]
     [HttpPost("favorites/status")]
     public async Task<IActionResult> Status([FromBody] List<int> documentIds)
     {

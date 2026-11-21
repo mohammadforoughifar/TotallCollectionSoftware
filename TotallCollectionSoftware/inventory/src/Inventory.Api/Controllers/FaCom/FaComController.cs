@@ -4,7 +4,6 @@ using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Paging = Inventory.Api.Services.Paging;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.FaCom;
 
@@ -74,7 +73,6 @@ public class FaComController : RbacControllerBase
         catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
     }
 
-    [AllowInReadOnly]
     [HttpPost("announcements/check-due")]
     public async Task<IActionResult> CheckDue()
     {
@@ -255,7 +253,6 @@ public class FaComController : RbacControllerBase
 
     // ------------------- تولدها -------------------
 
-    [AllowInReadOnly]
     [HttpPost("birthdays/check")]
     public async Task<IActionResult> CheckBirthdays()
     {
@@ -265,7 +262,6 @@ public class FaComController : RbacControllerBase
 
     // ------------------- سالگرد همکاری -------------------
 
-    [AllowInReadOnly]
     [HttpPost("anniversaries/check")]
     public async Task<IActionResult> CheckAnniversaries()
     {

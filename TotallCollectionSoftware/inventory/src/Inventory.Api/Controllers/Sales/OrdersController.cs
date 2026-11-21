@@ -5,7 +5,6 @@ using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Helpers;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -426,7 +425,6 @@ public class OrdersController : ApiControllerBase
     }
 
     /// <summary>پیش‌نمایش برگشت کالای فاکتور دارای تاخیر تادیه چک بدون تغییر داده.</summary>
-    [AllowInReadOnly]
     [HttpPost("{id:int}/cheque-return-preview")]
     [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
     public async Task<ActionResult<SaleChequeReturnPreviewDto>> PreviewChequeReturn(int id, [FromBody] SaleChequeReturnPreviewRequest req)

@@ -1,4 +1,4 @@
-using Inventory.Licensing.Periods;
+using System.Globalization;
 
 namespace Inventory.Api.Services.Core;
 
@@ -6,60 +6,53 @@ namespace Inventory.Api.Services.Core;
 /// ساعت «ثبت سیستمی» برای ستون‌های <c>CreatedAt</c> جدول‌های کسب‌وکاری.
 ///
 /// <para>
-/// <b>تصمیم (بند ۲ بازبینی): یکدست «ساعت دیوارِ تهران».</b> هر چهار ستون
-/// (<c>FacInvoices.CreatedAt</c>، <c>IncomingLetters.CreatedAt</c>،
-/// <c>OutgoingLetters.CreatedAt</c>، <c>InnerLetters.CreatedAt</c>) و همچنین مرزهای
-/// ماهِ سهمیه، همه بر پایهٔ <b>ساعت دیوارِ تهران</b> نوشته و مقایسه می‌شوند.
+/// همهٔ این ستون‌ها با <b>ساعت دیوارِ تهران</b> (<c>DateTimeKind.Unspecified</c>) نوشته
+/// و مقایسه می‌شوند؛ مستقل از این‌که سرور روی چه منطقهٔ زمانی تنظیم شده باشد.
 /// </para>
 ///
 /// <para>
-/// <b>چرا این و نه UTC؟</b> سه دلیل:
-/// </para>
-/// <list type="number">
-///   <item><b>قاعدهٔ کسب‌وکار در تقویم شمسی است.</b> «۲۰۰۰ نامه در ماه» یعنی ماه شمسی
-///   به وقت تهران؛ همان چیزی که در <see cref="PersianPeriodKey.RangeOf"/> ساخته می‌شود.
-///   اگر ستون UTC باشد، هر مقایسه باید در دو جا تبدیل شود و هر جای فراموش‌شده یک باگ
-///   خاموش می‌سازد.</item>
-///   <item><b>دادهٔ موجود قابل تفسیر است.</b> ردیف‌هایی که تا امروز نوشته شده‌اند با
-///   <c>DateTime.Now</c> (ساعت محلی سرور) نوشته شده‌اند. روی سرورهای ایرانی (مورد
-///   واقعی مشتری) ساعت محلی همان تهران است، پس این ردیف‌ها از قبل «تهران» هستند و
-///   نیازی به تبدیل ندارند. اگر UTC را انتخاب می‌کردیم، این ردیف‌ها باید با حدسِ
-///   «سرورِ قبلی چه منطقه‌ای بود» جابه‌جا می‌شدند — یعنی یک تغییر دادهٔ حدسی روی
-///   اطلاعات مالی مشتری. حالا هیچ ردیفی دست نمی‌خورد.</item>
-///   <item><b>مستقل از تنظیم سرور.</b> مقدار از <see cref="PersianPeriodKey.NowIran"/>
-///   می‌آید که صریحاً منطقهٔ <c>Asia/Tehran</c> را اعمال می‌کند (و اگر tzdata نبود،
-///   افست ثابت +03:30). یعنی چه سرور UTC باشد چه آمستردام چه تهران، عدد یکسان است.</item>
-/// </list>
-///
-/// <para>
-/// ⚠️ پس این ستون‌ها <b>«لحظهٔ مطلق UTC» نیستند</b> و نباید با <c>DateTime.UtcNow</c>
-/// مقایسه شوند. هر مقایسه‌ای باید از بازه‌های <see cref="PersianPeriodKey"/> بیاید.
-/// تست مرز ماه در چهار منطقهٔ زمانی همین را قفل می‌کند.
+/// ⚠️ پس این ستون‌ها «لحظهٔ مطلق UTC» نیستند و نباید با <c>DateTime.UtcNow</c> مقایسه شوند.
 /// </para>
 /// </summary>
 public static class TehranClock
 {
+    /// <summary>منطقهٔ زمانی تهران — با tzdata، و اگر نبود با افست ثابت +03:30.</summary>
+    private static readonly TimeZoneInfo TehranZone = ResolveTehranZone();
+
+    private static TimeZoneInfo ResolveTehranZone()
+    {
+        foreach (var id in new[] { "Asia/Tehran", "Iran Standard Time" })
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+
+        return TimeZoneInfo.CreateCustomTimeZone(
+            "Tehran(+03:30)", TimeSpan.FromMinutes(210), "Tehran", "Tehran");
+    }
+
     /// <summary>
     /// «اکنون» به وقت دیوارِ تهران (<c>DateTimeKind.Unspecified</c>) — همان فرمتی که
     /// ستون‌های <c>CreatedAt</c> ذخیره می‌کنند.
     /// </summary>
-    public static DateTime Now() => DateTime.SpecifyKind(PersianPeriodKey.NowIran(), DateTimeKind.Unspecified);
+    public static DateTime Now() => DateTime.SpecifyKind(
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, TehranZone), DateTimeKind.Unspecified);
 
     /// <summary>
     /// مقدار <c>CreatedAt</c> برای ردیفی که از سیستم دیگری <b>وارد</b> می‌شود (ایمپورت).
-    ///
-    /// <para>
-    /// قاعدهٔ ایمپورت: تاریخ اصلی سند، نه «الان». اگر ورود انبوه، <c>CreatedAt</c> را
-    /// با «الان» بنویسد، هزار نامهٔ سال ۱۴۰۰ همه در ماه جاری شمرده می‌شوند و سقف
-    /// ماهانهٔ مشتری را در همان روز اول پر می‌کنند.
-    /// </para>
+    /// قاعدهٔ ایمپورت: تاریخ اصلی سند، نه «الان».
     /// </summary>
-    /// <param name="originalDate">تاریخ سند در سیستم مبدأ (همان دیوارِ تهران).</param>
     public static DateTime ForImported(DateTime originalDate)
         => DateTime.SpecifyKind(originalDate, DateTimeKind.Unspecified);
 
     /// <summary>آیا مقدار، در ماه شمسیِ همین لحظه می‌افتد؟ (برای گزارش و تست)</summary>
     public static bool IsCurrentPersianMonth(DateTime? createdAt)
-        => createdAt is { } t && PersianPeriodKey.For(Inventory.Licensing.Model.QuotaPeriod.Monthly, t)
-            == PersianPeriodKey.Now(Inventory.Licensing.Model.QuotaPeriod.Monthly);
+    {
+        if (createdAt is not { } value) return false;
+
+        var pc = new PersianCalendar();
+        var now = Now();
+        return pc.GetYear(value) == pc.GetYear(now) && pc.GetMonth(value) == pc.GetMonth(now);
+    }
 }

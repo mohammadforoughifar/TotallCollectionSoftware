@@ -5,7 +5,6 @@ using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -264,7 +263,6 @@ public class NotificationsController : ControllerBase
     }
 
     /// <summary>ارسال پیام آزمایشی بله/ایتا به کاربر جاری — نتیجه‌ی هر پیام‌رسان برگردانده می‌شود.</summary>
-    [AllowInReadOnly]
     [HttpPost("test-messenger")]
     public async Task<IActionResult> TestMessenger()
     {
@@ -519,7 +517,6 @@ public class NotificationsController : ControllerBase
     }
 
     /// <summary>ارسال پیام آزمایشی push به کاربر جاری (برای تست تنظیمات).</summary>
-    [AllowInReadOnly]
     [HttpPost("test-push")]
     public async Task<IActionResult> TestPush([FromBody] PushUnsubscribeInput? input)
     {
@@ -538,7 +535,6 @@ public class NotificationsController : ControllerBase
         return Accepted(new { message = "اعلان در صف ارسال قرار گرفت؛ دریافت آن را در نوار اعلان گوشی بررسی کنید." });
     }
 
-    [AllowInReadOnly]
     [HttpPost("push-status")]
     public async Task<IActionResult> PushStatus([FromBody] PushUnsubscribeInput? input)
     {

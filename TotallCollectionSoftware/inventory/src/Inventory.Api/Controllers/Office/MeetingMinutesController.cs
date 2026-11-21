@@ -1,4 +1,4 @@
-using Inventory.Api.Data;
+﻿using Inventory.Api.Data;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office;
 using Inventory.Api.Services.Office.Email;
@@ -314,15 +314,7 @@ public class MeetingMinutesController : RbacControllerBase
             // ثبت مستقیم در کارتابل شمرده شود (وگرنه با «تبدیل صورتجلسه به نامه»
             // می‌شد سقف را دور زد).
             var created = 0;
-            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
-                Inventory.Licensing.Modules.ModuleCodes.Letters,
-                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
-                async () => created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername),
-                entityType: "InnerLetter");
-
-            if (!guard.Allowed)
-                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
-
+            created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername);
             return Ok(new { letterId = created });
         }
         catch (Exception ex)
@@ -364,15 +356,7 @@ public class MeetingMinutesController : RbacControllerBase
             // سهمیهٔ «ثبت نامهٔ صادره» — همان قاعدهٔ نامهٔ داخلی (بدون این گارد،
             // تبدیل صورتجلسه به نامهٔ صادره سقف را دور می‌زد).
             var created = 0;
-            var guard = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
-                Inventory.Licensing.Modules.ModuleCodes.Letters,
-                Inventory.Licensing.Metrics.MetricCodes.LetterOutgoingCreate,
-                async () => created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername),
-                entityType: "OutgoingLetter");
-
-            if (!guard.Allowed)
-                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = guard.Message });
-
+            created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername);
             return Ok(new { letterId = created });
         }
         catch (Exception ex)

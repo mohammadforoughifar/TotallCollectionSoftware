@@ -1,4 +1,4 @@
-@inject IAuthState Auth
+﻿@inject IAuthState Auth
 @inject HttpClient Http
 @inject NavigationManager NavManager
 @implements IDisposable
@@ -923,13 +923,6 @@
                     <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">
                         <i class="bi bi-clipboard-data"></i><span>لاگ عملیات</span>
                     </NavLink>
-                    @* گام ۵: وضعیت لایسنس — فقط مدیر *@
-                    @if (Auth.IsAdmin)
-                    {
-                        <NavLink class="nav-link" href="settings/license" @onclick="NotifyClose">
-                            <i class="bi bi-patch-check"></i><span>وضعیت لایسنس</span>
-                        </NavLink>
-                    }
                 }
                 @if (CanSeeSmsSettings)
                 {

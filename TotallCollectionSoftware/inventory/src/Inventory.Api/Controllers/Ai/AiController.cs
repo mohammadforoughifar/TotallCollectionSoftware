@@ -3,7 +3,6 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -90,7 +89,6 @@ public class AiController : RbacControllerBase
     /// در عوض، در همین حالت (۱) هیچ تماس با مدل زبانی بیرونی زده نمی‌شود — موتور محلی
     /// جواب می‌دهد ⇒ هزینهٔ API صفر، و (۲) همهٔ ابزارهای نوشتاری خاموش‌اند.
     /// </remarks>
-    [AllowInReadOnly]
     [HttpPost("chat")]
     public async Task<IActionResult> Chat([FromBody] AiChatRequest req, CancellationToken ct)
     {
@@ -130,7 +128,6 @@ public class AiController : RbacControllerBase
     /// حذف گفتگوی خودِ کاربر — دادهٔ کسب‌وکار نیست و اگر بسته باشد، کاربر نمی‌تواند
     /// حافظهٔ گفتگویی را که در حالت بدون لایسنس ساخته پاک کند.
     /// </remarks>
-    [AllowInReadOnly]
     [HttpDelete("conversations/{id:int}")]
     public async Task<IActionResult> DeleteConversation(int id)
     {

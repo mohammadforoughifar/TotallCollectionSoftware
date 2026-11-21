@@ -4,7 +4,6 @@ using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -57,7 +56,6 @@ public sealed class CompanyContextController : ControllerBase
         return Ok(new { activeCompanyId = active, companies });
     }
 
-    [AllowInReadOnly]
     [HttpPut("users/{userId:int}")]
     public async Task<IActionResult> SetUserCompanies(int userId, [FromBody] CompanyAssignmentDto dto)
     {

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Remote;
@@ -26,7 +26,6 @@ public sealed class RemoteHub : Hub
     {
         // مرحله ۳ (بند ۶): پیش از هر چیز، نشست صندلی. اگر sid بسته/ناشناخته باشد
         // اتصال رد می‌شود؛ وگرنه کاربرِ بیرون‌انداخته‌شده کانال بلادرنگ را باز نگه می‌داشت.
-        await Inventory.Api.Licensing.Infrastructure.SeatHubGuard.ValidateAsync(this);
         var uid = UserId;
         if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == uid && u.IsActive))
             throw new HubException("حساب کاربری فعال نیست.");

@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -126,7 +125,6 @@ public class ItRemoteController : ControllerBase
     private static string Mask(string key) => key.Length <= 10 ? key[..4] : key[..10] + "…" + key[^4..];
 
     /// <summary>تست اتصال به سرور مرکزی با کلیدِ ذخیره‌شده (یک درخواست نمایشی ساخته نمی‌شود).</summary>
-    [AllowInReadOnly]
     [HttpPost("connection/test")]
     public async Task<IActionResult> TestConnection()
     {

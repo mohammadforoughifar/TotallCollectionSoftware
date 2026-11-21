@@ -4,7 +4,6 @@ using Inventory.Api.Infrastructure;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Core;
 
@@ -39,7 +38,6 @@ public sealed class UserProfileController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    [AllowInReadOnly]
     [HttpPost("mobile/verify")]
     public async Task<IActionResult> VerifyMobileOtp(
         [FromBody] UserContactOtpVerifyDto request,
@@ -60,7 +58,6 @@ public sealed class UserProfileController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    [AllowInReadOnly]
     [HttpPost("email/verify")]
     public async Task<IActionResult> VerifyEmailOtp(
         [FromBody] UserContactOtpVerifyDto request,

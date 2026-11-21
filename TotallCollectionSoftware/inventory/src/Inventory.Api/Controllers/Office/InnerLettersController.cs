@@ -1,4 +1,4 @@
-using Inventory.Api.Data;
+﻿using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office;
@@ -142,15 +142,7 @@ public class InnerLettersController : RbacControllerBase
         int created = 0;
         try
         {
-            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
-            // هم‌خوان با نامهٔ وارده/صادره: اگر ثبت رکورد شکست بخورد، مصرف سهمیه هم برمی‌گردد.
-            var quota = await Inventory.Api.Licensing.Services.QuotaGuard.ExecuteAsync(Licenses, Db,
-                Inventory.Licensing.Modules.ModuleCodes.Letters,
-                Inventory.Licensing.Metrics.MetricCodes.LetterInnerCreate,
-                async () => created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync()),
-                entityType: "InnerLetter");
-            if (!quota.Allowed)
-                return StatusCode(403, new { code = "LICENSE_QUOTA_EXCEEDED", message = quota.Message });
+            created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
             var id = created;
             return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
         }

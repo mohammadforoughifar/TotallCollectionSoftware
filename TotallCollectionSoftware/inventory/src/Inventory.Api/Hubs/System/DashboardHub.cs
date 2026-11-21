@@ -1,4 +1,4 @@
-using Inventory.Api.Services.Core;
+﻿using Inventory.Api.Services.Core;
 using Microsoft.AspNetCore.SignalR;
 
 namespace Inventory.Api.Hubs;
@@ -35,7 +35,6 @@ public class DashboardHub : Hub
     {
         // مرحله ۳ (بند ۶): پیش از هر چیز، نشست صندلی. اگر sid بسته/ناشناخته باشد
         // اتصال رد می‌شود؛ وگرنه کاربرِ بیرون‌انداخته‌شده کانال بلادرنگ را باز نگه می‌داشت.
-        await Inventory.Api.Licensing.Infrastructure.SeatHubGuard.ValidateAsync(this);
         var canSeeManagement = await HasAsync("Management");
         var canSeeHardware = await HasAsync("Hardware");
         if (!canSeeManagement && !canSeeHardware)

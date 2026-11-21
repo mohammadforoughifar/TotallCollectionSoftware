@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Inventory.Api.Services;
 using Inventory.Shared;
 using Microsoft.Data.SqlClient;
@@ -113,11 +113,6 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
-                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
-                await LicenseSchemaV1.EnsureAsync(db);
-                // ستون CreatedAt روی جدول‌های کسب‌وکاری که سقف ماهانه دارند + ایندکس.
-                // مبنای شمارش، زمان ثبت سیستمی است، نه تاریخ قابل‌ویرایش کاربر.
-                await QuotaCountingSchemaV1.EnsureAsync(db, app.Logger);
                 }
                 else
                 {
@@ -207,11 +202,6 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 await BackupSchemaV1.EnsureAsync(db);
                 await RemoteSchemaV1.EnsureAsync(db);
-                // جداول لایسنس — افزایشی؛ EnsureCreated دیتابیس موجود را ارتقا نمی‌دهد.
-                await LicenseSchemaV1.EnsureAsync(db);
-                // ستون CreatedAt روی جدول‌های کسب‌وکاری که سقف ماهانه دارند + ایندکس.
-                // مبنای شمارش، زمان ثبت سیستمی است، نه تاریخ قابل‌ویرایش کاربر.
-                await QuotaCountingSchemaV1.EnsureAsync(db, app.Logger);
                 }
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.

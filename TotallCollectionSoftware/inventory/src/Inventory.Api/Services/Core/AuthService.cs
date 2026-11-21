@@ -1,4 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -21,24 +21,17 @@ public class AuthService : IAuthService
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
     private readonly ISigningKeys _keys;
-    private readonly Licensing.Services.SeatService? _seats;
 
     /// <summary>
     /// کلید امضا دیگر در کد نیست: از <see cref="ISigningKeys"/> می‌آید — یا «Jwt:Key»
     /// پیکربندی، یا کلید تصادفیِ مخصوص همین نصب که در ProgramData ساخته می‌شود.
     /// (بازبینی چهارم، بند ۶ و بند ۱ دستور بعدی: هیچ رشتهٔ کلید ثابتی در کد نماند.)
     /// </summary>
-    /// <param name="seats">
-    /// سرویس صندلی (مرحله ۳). اختیاری است تا تست‌ها و مسیرهای بدون لایسنس (مثل
-    /// ساخت کاربر در استارتاپ) بدون آن هم کار کنند؛ ولی در میزبان واقعی همیشه تزریق می‌شود.
-    /// </param>
-    public AuthService(Db.AppDbContext db, IInventoryService inventory, ISigningKeys keys,
-        Licensing.Services.SeatService? seats = null)
+    public AuthService(Db.AppDbContext db, IInventoryService inventory, ISigningKeys keys)
     {
         _db = db;
         _inventory = inventory;
         _keys = keys;
-        _seats = seats;
     }
 
     // ---------------- رمزنگاری ----------------
@@ -185,24 +178,6 @@ public class AuthService : IAuthService
                 claims.Add(new Claim(ClaimTypes.Role, "accounting"));
         }
 
-        // ---------- صندلی (مرحله ۳) ----------
-        // ترتیب عمدی است: صندلی *قبل* از صدور توکن گرفته می‌شود، وگرنه توکن بی‌صندلی
-        // صادر می‌شد و Gate آن را با ۴۰۳ برمی‌گرداند — یعنی کاربر «موفق» می‌شد و بعد
-        // بیرون می‌افتاد. خطای صندلی با SeatException بالا می‌رود و کنترلر آن را به
-        // پاسخ ۴۰۳ با کد ماشین‌خوان تبدیل می‌کند.
-        string? sid = null;
-        if (_seats is not null)
-        {
-            var machine = SafeMachineName();
-            var ip = "(server)";
-            var grant = await _seats.BeginLoginAsync(user.Id, user.Username, machine, ip);
-            if (!grant.Allowed)
-                throw new Licensing.Infrastructure.SeatException(grant.Code, grant.Message);
-
-            sid = grant.SessionId;
-            if (!string.IsNullOrEmpty(sid))
-                claims.Add(new Claim("sid", sid));
-        }
 
         var key = new SymmetricSecurityKey(_keys.JwtKey);
         var token = new JwtSecurityToken(
@@ -550,11 +525,6 @@ public class AuthService : IAuthService
         entity.ReferrerId = dto.Role == "Admin" ? null : (dto.ReferrerId is > 0 ? dto.ReferrerId : null);
         entity.IsActive = dto.IsActive;
 
-        // مرحله ۳ (بند ۱.۱): ساخت/فعال‌سازی کاربرِ غیرمعافِ اضافی، سقف «کاربر نام‌دار» را
-        // رد نمی‌کند. غیرفعال‌کردن هرگز مسدود نمی‌شود. گارد اینجاست (نه در کنترلر) تا
-        // همهٔ مسیرهایی که کاربر می‌سازند پوشش بگیرند.
-        if (_seats is not null && dto.IsActive)
-            await _seats.EnsureUserSlotAvailableAsync(entity.Id == 0 ? null : entity.Id, entity.Username, true);
         if (!string.IsNullOrWhiteSpace(dto.Password))
         {
             if (dto.Password.Length < 4)

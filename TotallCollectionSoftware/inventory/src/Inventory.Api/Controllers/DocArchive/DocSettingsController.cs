@@ -2,7 +2,6 @@ using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -74,7 +73,6 @@ public class DocSettingsController : RbacControllerBase
     /// کد مدارکی که با الگوی فعلی (پیشوند + رقم) سازگار نیستند، با کدهای خودکار جدید جایگزین می‌شود;
     /// کدهای سازگار دست‌نخورده می‌مانند و هر جایگزینی در رخ‌نامه همان مدرک ثبت می‌شود.
     /// </summary>
-    [AllowInReadOnly]
     [HttpPost("code-numbering/run-once")]
     public async Task<IActionResult> RunOnce()
     {

@@ -1,4 +1,4 @@
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
 @using Microsoft.AspNetCore.SignalR.Client
 @inject LayoutState Layout
 @inject IReportService ReportSvc
@@ -22,9 +22,6 @@ else
 {
     <div class="app-shell @(collapsed ? "sidebar-collapsed" : "") @(mobileOpen ? "sidebar-open" : "") @(isMobile ? "app-mobile" : "")">
         <div class="sidebar-backdrop" @onclick="CloseMobile"></div>
-
-        @* گام ۵: بنر لایسنس (فقط‌خواندنی/ساعت/جابه‌جایی نصب) — بالای همهٔ صفحه‌ها *@
-        <LicenseBanner />
 
         <aside class="app-sidebar">
             <div class="sidebar-brand">

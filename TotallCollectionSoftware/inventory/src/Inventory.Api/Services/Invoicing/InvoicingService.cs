@@ -1,11 +1,8 @@
-using System.Globalization;
-using Inventory.Api.Licensing.Infrastructure;
-using Inventory.Api.Licensing.Services;
+﻿using System.Globalization;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Accounting;
 using Inventory.Api.Services.Treasury;
-using Inventory.Licensing.Abstractions;
-using Inventory.Licensing.Periods;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -27,16 +24,14 @@ public class InvoicingService : IInvoicingService
     private readonly Db.AppDbContext _db;
     private readonly IWarehousingService _wh;
     private readonly IAccountingService _acc;
-    private readonly ILicenseService _licenses;
     private readonly ILogger<InvoicingService> _log;
 
     public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc,
-        ILicenseService licenses, ILogger<InvoicingService> log)
+        ILogger<InvoicingService> log)
     {
         _db = db;
         _wh = wh;
         _acc = acc;
-        _licenses = licenses;
         _log = log;
     }
 
@@ -420,35 +415,8 @@ public class InvoicingService : IInvoicingService
 
         Recalculate(entity);
 
-        // ---------- سهمیهٔ «صدور فاکتور» (مرحله ۲) ----------
-        // مصرف سهمیه و ثبت فاکتور در یک تراکنش‌اند: اگر ثبت شکست بخورد، شمارنده هم برمی‌گردد.
-        // فقط برای فاکتور تازه (نه ویرایش) تا ویرایش پیش‌نویس سهمیه مصرف نکند.
-        if (dto.Id == 0)
-        {
-            var guard = await QuotaGuard.ExecuteAsync(_licenses, _db,
-                Inventory.Licensing.Modules.ModuleCodes.Invoicing,
-                Inventory.Licensing.Metrics.MetricCodes.InvoiceCreate,
-                () => _db.SaveChangesAsync(),
-                entityType: "FacInvoice",
-                // شناسهٔ فاکتور تا لحظهٔ SaveChanges ساخته نمی‌شود؛ دفتر مصرف بعد از ثبت
-                // و با همین شناسه نوشته می‌شود (همه داخل یک تراکنش).
-                entityIdFactory: () => entity.Id.ToString(CultureInfo.InvariantCulture));
-
-            if (!guard.Allowed)
-                throw new LicenseQuotaException(guard.Message, "invoice.create");
-
-            // هشدار: «۸۰٪» و «سقف پر شد» دو پیام جدا دارند (نباید ادغام شوند).
-            if (guard.Quota?.IsAtLimit == true)
-                _log.LogWarning("[License] سقف سهمیهٔ صدور فاکتور پر شد: {Used}/{Limit} — ثبت بعدی رد می‌شود",
-                    guard.Quota.Used, guard.Quota.Limit);
-            else if (guard.Quota?.IsNearLimit == true)
-                _log.LogWarning("[License] سهمیهٔ صدور فاکتور به ۸۰٪ سقف رسید: {Used}/{Limit}",
-                    guard.Quota.Used, guard.Quota.Limit);
-        }
-        else
-        {
-            await _db.SaveChangesAsync();
-        }
+        // ثبت فاکتور و اقلامش در یک تراکنش.
+        await _db.SaveChangesAsync();
 
         return (await GetInvoiceAsync(entity.Id))!;
     }
@@ -607,7 +575,7 @@ public class InvoicingService : IInvoicingService
 
         // حذف نرم — اقلام دست نمی‌خورند (فاکتور حذف‌شده با اقلامش برای ممیزی می‌ماند).
         e.IsDeleted = true;
-        e.DeletedAt = PersianPeriodKey.NowIran();
+        e.DeletedAt = TehranClock.Now();
         e.DeletedBy = user;
         await _db.SaveChangesAsync();
     }

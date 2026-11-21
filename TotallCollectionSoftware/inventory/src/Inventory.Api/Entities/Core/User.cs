@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
 public class User
@@ -49,15 +49,12 @@ public class User
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     /// <summary>
-    /// این حساب از «صندلی کاربر» معاف است.
-    ///
-    /// <para>
-    /// معافیت به نقش داده نمی‌شود (نه Admin و نه هیچ نقش دیگری)؛ مدیر سیستم حداکثر
-    /// تعدادی حساب مشخص را معاف می‌کند که سقفش از فایل امضاشدهٔ لایسنس
-    /// (<c>users.exempt</c>) می‌آید. تعداد معاف‌ها بیشتر از سقف لایسنس پذیرفته نمی‌شود.
-    /// </para>
+    /// ستون قدیمی معافیت «صندلی لایسنس». موتور لایسنس حذف شده و این مقدار دیگر
+    /// هیچ اثری ندارد؛ فقط برای سازگاری با دیتابیس نصب‌های موجود نگه داشته شده
+    /// (نام ستون همان <c>LicenseSeatExempt</c> است تا مایگریشنی لازم نشود).
     /// </summary>
-    public bool LicenseSeatExempt { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.Column("LicenseSeatExempt")]
+    public bool SessionSeatExempt { get; set; }
 
     /// <summary>مسیر نسبی عکس داخل uploads/ (فقط اطلاعات — فایل روی دیسک است). null = عکس پیش‌فرض</summary>
     [MaxLength(200)]

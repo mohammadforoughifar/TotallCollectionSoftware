@@ -3,7 +3,6 @@ using Inventory.Api.Services.Backup;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Backup;
 
@@ -15,7 +14,6 @@ public sealed class BackupSessionController : ControllerBase
     private readonly IBackupSessionService _sessions;
     public BackupSessionController(IBackupSessionService sessions) => _sessions = sessions;
 
-    [AllowInReadOnly]
     [HttpPost("heartbeat")]
     public async Task<IActionResult> Heartbeat([FromBody] BackupSessionHeartbeatDto dto)
     {
@@ -25,7 +23,6 @@ public sealed class BackupSessionController : ControllerBase
         return Ok(new { ok = true });
     }
 
-    [AllowInReadOnly]
     [HttpPost("close")]
     public async Task<IActionResult> Close([FromBody] BackupSessionHeartbeatDto dto)
     {

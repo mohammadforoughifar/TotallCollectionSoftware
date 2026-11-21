@@ -5,7 +5,6 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Paging = Inventory.Api.Services.Paging;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.FaLms;
 
@@ -149,7 +148,6 @@ public class FaLmsController : RbacControllerBase
         return Ok(await Paging.ResultAsync(async pagination => await _svc.WeakScoresAsync(periodId, threshold, pagination: pagination), skip, take));
     }
 
-    [AllowInReadOnly]
     [HttpPost("perf/suggest")]
     public async Task<IActionResult> Suggest([FromBody] FaLmsSuggestDto dto)
     {

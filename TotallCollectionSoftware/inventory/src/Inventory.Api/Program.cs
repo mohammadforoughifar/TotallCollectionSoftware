@@ -1,11 +1,10 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Controllers;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
-using Inventory.Api.Licensing;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -17,10 +16,6 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
-using Inventory.Licensing;
-using Inventory.Licensing.Abstractions;
-using Inventory.Licensing.Entitlement;
-using Inventory.Licensing.Periods;
 
 Console.OutputEncoding = new System.Text.UTF8Encoding(false);
 Console.InputEncoding = System.Text.Encoding.UTF8;
@@ -43,12 +38,10 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 // چرا این‌جا و پیش از هر چیز؟ چون کلید امضای JWT، کلید پیوست‌ها، فایل لایسنس و
 // لاگ‌ها همه در همین پوشه‌ها زندگی می‌کنند؛ اگر ساخت/نوشتن ممکن نباشد، ادامهٔ
 // راه‌اندازی یعنی کار کردن با مسیر موقت و از دست دادن داده در اولین انتشار.
-var programData = Inventory.Api.Licensing.ProgramDataLayout.Resolve(
-    builder.Configuration["Totall:DataRoot"],
-    builder.Configuration["Licensing:StorageFolder"]);
+var programData = ProgramDataLayout.Resolve(builder.Configuration["Totall:DataRoot"]);
 try
 {
-    Inventory.Api.Licensing.ProgramDataLayout.Ensure(programData);
+    ProgramDataLayout.Ensure(programData);
 }
 catch (InvalidOperationException layoutError)
 {
@@ -509,12 +502,6 @@ builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
 builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o.MaxRequestBodySize = null);
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
-// ================== لایسنس ==================
-// ترتیب: اول مایگریشن (در DbInitializer)، بعد بررسی لایسنس (InitializeLicensingAsync) —
-// و شکست بررسی لایسنس، مانع بالا آمدن برنامه نمی‌شود.
-builder.Services.AddLicensing(builder.Configuration);
-builder.Services.AddScoped<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
-
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
@@ -540,10 +527,6 @@ builder.Services.AddSignalR(o =>
 {
     o.MaximumReceiveMessageSize = 4 * 1024 * 1024; // فریم‌های JPEG ریموت دسکتاپ
 
-    // گارد لایسنس روی کانال بلادرنگ. دروازهٔ HTTP فقط /api/* را می‌بیند و هاب‌ها روی
-    // /hubs/* هستند؛ بدون این فیلتر، پنج هاب (داشبورد، اعلان، چت، ریموت، ایجنت ریموت)
-    // هیچ بررسی لایسنسی نداشتند. فهرست کامل و دلایل، در خودِ HubLicenseFilter است.
-    o.AddFilter<Inventory.Api.Licensing.Infrastructure.HubLicenseFilter>();
 }).AddJsonProtocol(o =>
 {
     o.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
@@ -794,12 +777,6 @@ else if (schemaVerbose)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
 
-// ================== آماده‌سازی لایسنس ==================
-// «اول Migration، بعد بررسی لایسنس» — این‌جا بعد از DbInitializer است و هرگز
-// استثنا پرتاب نمی‌کند؛ در بدترین حالت برنامه با وضعیت «لایسنس نامعتبر» بالا می‌آید.
-if (!EF.IsDesignTime)
-    await app.InitializeLicensingAsync();
-
 // اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
 await app.InitializeRadisHrAsync(EF.IsDesignTime);
 schemaInitializing = false;
@@ -863,14 +840,6 @@ if (app.Environment.IsDevelopment() && !runningUnderIis)
 
 app.UseAuthentication();
 
-// ================== دروازهٔ لایسنس ==================
-// چرا این‌جا؟ (۱) بعد از احراز هویت تا پاسخ وابسته به کاربر باشد؛
-// (۲) قبل از ActiveCompanyMiddleware تا وقتی لایسنس نامعتبر است، کوئری شرکت فعال هم زده نشود.
-// با لایسنس نامعتبر برنامه Crash نمی‌کند: صفحهٔ ورود و صفحهٔ بارگذاری لایسنس باز می‌مانند.
-app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.LicenseGateMiddleware>();
-// مرحله ۳: دروازهٔ صندلی — بعد از دروازهٔ لایسنس (وضعیت نصب) و قبل از همهٔ کنترلرها.
-app.UseMiddleware<Inventory.Api.Licensing.Infrastructure.SeatGateMiddleware>();
-
 // ================== تعیین شرکت فعال (چند شرکتی) ==================
 // هدر X-Company-Id از کمبوی بالای برنامه می‌آید؛ اعتبارسنجی دسترسی و ذخیره در HttpContext.Items.
 // از این‌جا به بعد، AppDbContext همهٔ کوئری‌های دادهٔ فروشگاهی را به همان شرکت محدود می‌کند.
@@ -910,9 +879,7 @@ app.MapGet("/radis-hr", () => Results.Redirect("/bon-hr"));
 // کاربرد: تست سریع «آیا مرورگر به API وصل می‌شود؟» — http://192.168.30.104:8181/api/health
 // کلاینت Blazor هم در زمان بالا آمدن همین مسیر را آزمایش می‌کند و آدرس درست API را انتخاب می‌کند
 // (اگر آدرس اشتباهی ذخیره شده باشد، خودکار به آدرس درست برمی‌گردد).
-app.MapGet("/api/health", (HttpContext ctx,
-    // ?nullable: حتی اگر سرویس لایسنس در این هاست ثبت نشده باشد، health نباید بشکند.
-    ILicenseService? licenseService) => Results.Json(new
+app.MapGet("/api/health", (HttpContext ctx) => Results.Json(new
 {
     ok = true,
     app = "TotallCollectionSoftware",
@@ -927,27 +894,11 @@ app.MapGet("/api/health", (HttpContext ctx,
     // رشتهٔ بدون افست برای هر مصرف‌کنندهٔ بیرونیِ آینده قابل اشتباه با UTC است.
     // اکنون: ISO-8601 با افست صریح (+03:30). هیچ چیزی که این فیلد را می‌خواند وجود
     // ندارد، پس تغییر شکننده نیست؛ serverTimeUtc هم اضافه شد تا مقایسه ساده باشد.
-    serverTime = PersianPeriodKey.NowIranOffset().ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
+    // وقت دیوارِ تهران با افست صریح (+03:30، بدون تغییر تابستانی) — بی‌نیاز از tzdata.
+    serverTime = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromMinutes(210))
+        .ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture),
     serverTimeUtc = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture),
-    serverTimeZone = "Asia/Tehran (+03:30)",
-
-    // ==================== موتور لایسنس ====================
-    // چرا در health؟ چون اسکریپت‌های انتشار/به‌روزرسانی (و هر ناظر خارجی) باید بتوانند
-    // بفهمند این خروجی موتور لایسنس دارد یا نه. نسخهٔ سورس قدیمی ریشه (src/) این فیلد
-    // را ندارد؛ پس «ناخواسته منتشر شدن نسخهٔ بدون لایسنس» از همین‌جا گرفته می‌شود.
-    // این مسیر در allowlist دروازه است، پس در حالت «بدون لایسنس» هم پاسخ می‌دهد.
-    licensing = new
-    {
-        engine = LicenseEngineInfo.FullVersion,
-        assembly = LicenseEngineInfo.AssemblyName,
-        stage = LicenseEngineInfo.Stage,
-        schema = LicenseEngineInfo.SchemaVersion,
-        // وضعیت کلی لایسنس این نصب (Missing/Invalid/Valid) — برای پایش.
-        status = licenseService?.GetOverallStatus().ToString() ?? "Unknown",
-        // آیا سامانه در حالت فقط‌خواندنی است؟ (بدون لایسنس معتبر: خواندن آزاد، نوشتن ۴۰۳)
-        readOnly = licenseService is null
-                   || licenseService.GetOverallStatus() is LicenseOverallStatus.Missing or LicenseOverallStatus.Invalid
-    }
+    serverTimeZone = "Asia/Tehran (+03:30)"
 })).AllowAnonymous();
 
 // هاب بلادرنگ داشبورد

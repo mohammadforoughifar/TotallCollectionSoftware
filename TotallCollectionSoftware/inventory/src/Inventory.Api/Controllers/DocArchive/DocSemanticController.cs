@@ -2,7 +2,6 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -14,7 +13,6 @@ public class DocSemanticController : RbacControllerBase
     private const string Mod = "DocArchive";
     public DocSemanticController(AppDbContext db, DocArchiveSemanticService svc) : base(db) { _svc = svc; }
 
-    [AllowInReadOnly]
     [HttpPost("semantic-search")]
     public async Task<IActionResult> SemanticSearch([FromBody] DocSemanticSearchRequest req, CancellationToken ct)
     {
@@ -35,7 +33,6 @@ public class DocSemanticController : RbacControllerBase
         return Ok(new { indexed = idx, failed = fail, total, message = $"{idx} مدرک ایندکس شد، {fail} ناموفق." });
     }
 
-    [AllowInReadOnly]
     [HttpPost("suggest")]
     public async Task<IActionResult> Suggest([FromBody] DocAutoSuggestRequest req, [FromServices] DocArchiveAutoSuggestService suggestSvc, CancellationToken ct)
     {

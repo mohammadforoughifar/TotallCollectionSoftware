@@ -4,7 +4,6 @@ using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers;
 
@@ -93,7 +92,6 @@ public class HttpsController : ControllerBase
     }
 
     /// <summary>ساخت/بازسازی گواهی‌ها (فقط مدیر). newCa=true یعنی مرجع جدید هم ساخته شود (نصب‌های قبلی باید تکرار شوند).</summary>
-    [AllowInReadOnly]
     [HttpPost("regenerate")]
     public async Task<IActionResult> Regenerate([FromBody] RegenInput? input)
     {
@@ -113,7 +111,6 @@ public class HttpsController : ControllerBase
     }
 
     /// <summary>خروجی گواهی سرور (Base64) برای درون‌ریزی در IIS یا هر وب‌سرور دیگر (فقط مدیر).</summary>
-    [AllowInReadOnly]
     [HttpPost("pfx")]
     public async Task<IActionResult> ExportPfx()
     {

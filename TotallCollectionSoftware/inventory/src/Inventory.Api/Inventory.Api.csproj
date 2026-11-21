@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -20,8 +20,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- موتور لایسنس — مستقل از EF؛ ابزار صدور و LicenseCheck.exe هم از همین استفاده می‌کنند -->
-    <ProjectReference Include="../Inventory.Licensing/Inventory.Licensing.csproj" />
     <ProjectReference Include="../Inventory.Shared/Inventory.Shared.csproj">
       <Name>Inventory.Shared</Name>
       <ReferenceOutputAssembly>true</ReferenceOutputAssembly>

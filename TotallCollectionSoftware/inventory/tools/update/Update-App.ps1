@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     به‌روزرسانی امن نصب TotallCollection (گام ۶).
 
@@ -56,9 +56,9 @@ param(
     [switch]$SkipBackup,
 
     # دروازهٔ لایسنس: Health | Sql | File | Off
-    [ValidateSet('Health', 'Sql', 'File', 'Off')][string]$LicenseGate = "Health",
+    [ValidateSet('Health', 'Sql', 'File', 'Off')][string]$LicenseGate = "Off",
 
-    # مسیر فایل لایسنس/پوشهٔ grants برای دروازهٔ File (پیش‌فرض: <DataRoot>\License\grants)
+    # مسیر پوشهٔ grants برای دروازهٔ File — موتور لایسنس حذف شده؛ پیش‌فرض «Off» است.
     [string]$LicenseGrantsPath = "",
 
     # دیتابیس: SqlServer (پیش‌فرض) یا File (برای تست؛ SQLite)
@@ -366,7 +366,7 @@ if ($LicenseGate -ne "Off") {
     }
 }
 else {
-    Write-Log "دروازهٔ لایسنس رد شد (Off) — فقط برای محیط آزمایش." 'WARN'
+    Write-Log "دروازهٔ لایسنس خاموش است (نسخهٔ بدون لایسنس)." 'INFO'
 }
 
 # ============================================================

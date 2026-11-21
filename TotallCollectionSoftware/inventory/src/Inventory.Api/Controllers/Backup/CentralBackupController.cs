@@ -4,7 +4,6 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Inventory.Api.Licensing.Infrastructure;
 
 namespace Inventory.Api.Controllers.Backup;
 
@@ -41,7 +40,6 @@ public sealed class CentralBackupController : ControllerBase
         return Ok(new { ok = true, companyCode = company.Code, companyName = company.Name, message = "اتصال بک‌آپ مرکزی برقرار است." });
     }
 
-    [AllowInReadOnly]
     [HttpPost("upload")]
     [AllowAnonymous]
     [RequestSizeLimit(10L * 1024 * 1024 * 1024)]
@@ -72,7 +70,6 @@ public sealed class CentralBackupController : ControllerBase
         }).ToList());
     }
 
-    [AllowInReadOnly]
     [HttpPost("companies")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> SaveCompany([FromBody] CentralBackupCompanyDto dto)
@@ -106,7 +103,6 @@ public sealed class CentralBackupController : ControllerBase
         return Ok(new { c.Id, c.Code, c.ApiKeyHint, apiKey = plainKey });
     }
 
-    [AllowInReadOnly]
     [HttpPost("companies/{id:int}/rotate-key")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> RotateKey(int id)
@@ -121,7 +117,6 @@ public sealed class CentralBackupController : ControllerBase
         return Ok(new { apiKey = plain, c.ApiKeyHint });
     }
 
-    [AllowInReadOnly]
     [HttpDelete("companies/{id:int}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteCompany(int id)
@@ -172,7 +167,6 @@ public sealed class CentralBackupController : ControllerBase
         return File(stream, "application/octet-stream", r.FileName);
     }
 
-    [AllowInReadOnly]
     [HttpDelete("receipts/{id:int}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DeleteReceipt(int id)
