@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Inventory.Client</RootNamespace>
+    <AssemblyName>UserCompanyPickerUiProbe</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <NoWarn>CS0414</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <Using Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.30" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.30" />
+    <ProjectReference Include="../../../src/Inventory.Shared/Inventory.Shared.csproj" />
+    <Compile Include="../../../src/Inventory.Client/**/*.cs"
+             Exclude="../../../src/Inventory.Client/bin/**;../../../src/Inventory.Client/obj/**;../../../src/Inventory.Client/Program.cs;../../../src/Inventory.Client/**/*.razor.cs"
+             Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Real production Razor, not a duplicate implementation. -->
+    <RazorComponent Include="../../../src/Inventory.Client/_Imports.razor" Link="_Imports.razor" />
+    <RazorComponent Include="../../../src/Inventory.Client/Shared/**/*.razor" Link="Shared/%(RecursiveDir)%(Filename)%(Extension)" />
+    <RazorComponent Include="../../../src/Inventory.Client/Layout/**/*.razor" Link="Layout/%(RecursiveDir)%(Filename)%(Extension)" />
+    <RazorComponent Include="../../../src/Inventory.Client/Pages/System/Users.razor" Link="Pages/System/Users.razor" />
+  </ItemGroup>
+</Project>

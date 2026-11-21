@@ -1,0 +1,198 @@
+@* کمبوی چک‌باکس‌دار: فیلتر فقط نمایش را عوض می‌کند، نه انتخاب‌های قبلی را.
+   ss / ss-menu قرارداد Escape و منوی شناور سامانه را حفظ می‌کنند. *@
+@inject IJSRuntime JS
+
+<div class="ss check-combo" dir="rtl" @onkeydown="OnKeyDown">
+    <button id="@Id" type="button" class="form-select check-combo-toggle"
+            aria-label="@Label" aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")"
+            aria-controls="@(Id + "-menu")" disabled="@Disabled" @ref="trigger" @onclick="ToggleMenu">
+        @if (Values.Count == 0)
+        {
+            <span class="text-muted">@Placeholder</span>
+        }
+        else
+        {
+            <span>@Values.Count.FaDigits() مورد انتخاب شده</span>
+        }
+    </button>
+
+    @if (Values.Count > 0)
+    {
+        <div class="check-combo-chips" aria-label="موارد انتخاب‌شده">
+            @foreach (var id in Values.Distinct())
+            {
+                var name = Items.FirstOrDefault(i => i.Id == id)?.Name ?? $"شناسهٔ {id.FaDigits()}";
+                <span class="check-combo-chip" @key="id">
+                    <span>@name</span>
+                    <button type="button" class="check-combo-remove" disabled="@Disabled"
+                            title="@($"حذف {name}")" aria-label="@($"حذف {name}")"
+                            @onclick="() => SetChecked(id, false)">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </span>
+            }
+        </div>
+    }
+
+    @if (open && !Disabled)
+    {
+        <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
+        <div id="@(Id + "-menu")" class="ss-menu check-combo-menu" style="@MenuStyle"
+             role="dialog" aria-label="@Label" @onclick:stopPropagation="true">
+            <div class="check-combo-search">
+                <input type="search" class="form-control form-control-sm" autocomplete="off"
+                       aria-label="@SearchPlaceholder" placeholder="@SearchPlaceholder"
+                       @ref="searchInput" @bind="query" @bind:event="oninput" />
+            </div>
+            <div class="check-combo-options" role="group" aria-label="گزینه‌ها">
+                @if (Items.Count == 0)
+                {
+                    <div class="ss-empty" role="status">@EmptyText</div>
+                }
+                else if (FilteredItems.Count == 0)
+                {
+                    <div class="ss-empty" role="status">موردی با این جستجو پیدا نشد.</div>
+                }
+                else
+                {
+                    @foreach (var item in FilteredItems)
+                    {
+                        <label class="check-combo-option @(Values.Contains(item.Id) ? "selected" : "")" @key="item.Id">
+                            <input type="checkbox" class="form-check-input" checked="@Values.Contains(item.Id)"
+                                   @onchange="e => SetChecked(item.Id, e.Value is true)" />
+                            <span class="check-combo-name">@item.Name</span>
+                            <small class="text-muted num" dir="ltr">#@item.Id</small>
+                        </label>
+                    }
+                }
+            </div>
+            <div class="check-combo-footer">
+                <span class="text-muted fs-8" role="status">@Values.Count.FaDigits() مورد انتخاب شده</span>
+                <button type="button" class="btn btn-sm btn-light" @onclick="CloseAndFocus">بستن فهرست</button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = "check-combo-" + Guid.NewGuid().ToString("N");
+    [Parameter] public string Label { get; set; } = "انتخاب موارد";
+    [Parameter] public List<LookupItem> Items { get; set; } = new();
+    [Parameter] public IReadOnlyCollection<int> Values { get; set; } = Array.Empty<int>();
+    [Parameter] public EventCallback<List<int>> ValuesChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "جستجو و انتخاب…";
+    [Parameter] public string SearchPlaceholder { get; set; } = "جستجو با نام یا شناسه…";
+    [Parameter] public string EmptyText { get; set; } = "موردی برای انتخاب وجود ندارد.";
+    [Parameter] public bool Disabled { get; set; }
+
+    private bool open, focusSearch;
+    private string query = "";
+    private ElementReference trigger, searchInput;
+    private double menuTop = 8, menuLeft = 8, menuWidth = 280;
+    private string MenuStyle => Popover.FixedStyle(menuTop, menuLeft, menuWidth, 320);
+
+    private static string NormalizeSearch(string? text) =>
+        Fa.ToEn(text).Trim().Replace('ي', 'ی').Replace('ى', 'ی').Replace('ك', 'ک');
+
+    private List<LookupItem> FilteredItems
+    {
+        get
+        {
+            var search = NormalizeSearch(query);
+            return Items.Where(i => search.Length == 0
+                || NormalizeSearch(i.Name).Contains(search, StringComparison.OrdinalIgnoreCase)
+                || i.Id.ToString(System.Globalization.CultureInfo.InvariantCulture).Contains(search))
+                .ToList();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Disabled) CloseMenu();
+    }
+
+    private async Task ToggleMenu()
+    {
+        if (Disabled) return;
+        if (open) { CloseMenu(); return; }
+        try
+        {
+            var rect = await JS.InvokeAsync<UiRect>("uiRect", trigger);
+            if (rect is not null) (menuTop, menuLeft, menuWidth) = Popover.Below(rect, 0, 320);
+        }
+        catch (JSException) { }
+        if (Disabled) return;
+        query = "";
+        open = true;
+        focusSearch = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (open && focusSearch)
+        {
+            focusSearch = false;
+            try { await searchInput.FocusAsync(preventScroll: true); }
+            catch (JSException) { }
+        }
+    }
+
+    private void CloseMenu() { open = false; query = ""; focusSearch = false; }
+
+    private async Task CloseAndFocus()
+    {
+        CloseMenu();
+        try { await trigger.FocusAsync(preventScroll: true); }
+        catch (JSException) { }
+    }
+
+    private Task OnKeyDown(KeyboardEventArgs e) =>
+        open && e.Key == "Escape" ? CloseAndFocus() : Task.CompletedTask;
+
+    private async Task SetChecked(int id, bool selected)
+    {
+        if (Disabled || (selected && !Items.Any(i => i.Id == id))) return;
+        // کپیِ همه انتخاب‌ها، نه فقط نتیجهٔ جستجو؛ ترتیب و شناسه‌های ناموجود هم حفظ می‌شوند.
+        var next = Values.Distinct().ToList();
+        if (selected)
+        {
+            if (next.Contains(id)) return;
+            next.Add(id);
+        }
+        else if (!next.Remove(id)) return;
+        await ValuesChanged.InvokeAsync(next);
+    }
+}
+
+<style>
+    .check-combo-toggle { min-height:42px; text-align:start; cursor:pointer; white-space:normal; }
+    .check-combo-toggle:disabled { cursor:default; }
+    .check-combo-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.5rem; }
+    .check-combo-chip {
+        display:inline-flex; align-items:center; gap:.4rem; max-width:100%;
+        padding:.2rem .6rem; border:1px solid #dbe7ff; border-radius:999px;
+        background:#eef4ff; color:#1d4ed8; font-size:.8rem;
+    }
+    .check-combo-chip > span { min-width:0; overflow-wrap:anywhere; }
+    .check-combo-remove { border:0; background:transparent; color:inherit; padding:.15rem; flex-shrink:0; }
+    .check-combo-remove:not(:disabled):hover { color:#dc3545; }
+    .check-combo-menu {
+        display:flex; flex-direction:column; overflow:hidden;
+        max-height:min(320px, calc(100dvh - 16px)) !important;
+    }
+    .check-combo-search { padding:.6rem; border-bottom:1px solid #e2e8f0; flex-shrink:0; }
+    .check-combo-options { overflow-y:auto; overscroll-behavior:contain; min-height:0; }
+    .check-combo-option {
+        display:flex; align-items:center; gap:.6rem; margin:0; padding:.6rem .8rem;
+        min-height:42px; cursor:pointer; font-size:.88rem;
+    }
+    .check-combo-option:hover, .check-combo-option:focus-within { background:#f1f5f9; }
+    .check-combo-option.selected { background:#eef4ff; }
+    .check-combo-option .form-check-input { margin:0; float:none; flex-shrink:0; cursor:pointer; }
+    .check-combo-name { min-width:0; flex:1; overflow-wrap:anywhere; }
+    .check-combo-option small { flex-shrink:0; }
+    .check-combo-footer {
+        display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+        padding:.4rem .6rem; border-top:1px solid #e2e8f0; flex-shrink:0;
+    }
+</style>

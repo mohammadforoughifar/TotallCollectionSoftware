@@ -413,17 +413,27 @@ else
             @if (Auth.IsAdmin)
             {
                 <div class="col-12">
-                    <label class="form-label d-block"><i class="bi bi-building text-primary"></i> شرکت‌های مجاز کاربر</label>
-                    <div class="border rounded p-2" style="max-height:150px;overflow:auto">
-                        @if (companyOptions.Count == 0) { <span class="text-muted fs-8">شرکتی برای انتخاب وجود ندارد.</span> }
-                        @foreach (var company in companyOptions)
-                        {
-                            <label class="form-check form-check-inline mb-1">
-                                <input class="form-check-input" type="checkbox" checked="@selectedCompanyIds.Contains(company.Id)" @onchange="e => ToggleCompany(company.Id, (bool)e.Value!)" />
-                                <span class="form-check-label">@company.Name</span>
-                            </label>
-                        }
-                    </div>
+                    <label class="form-label d-block" for="user-company-picker"><i class="bi bi-building text-primary"></i> کمپانی‌های مجاز کاربر</label>
+                    <CheckComboBox @key="companyPickerVersion" Id="user-company-picker" Label="کمپانی‌های مجاز کاربر"
+                                   Items="CompanyPickerItems" Values="selectedCompanyIds" ValuesChanged="OnCompaniesChanged"
+                                   Placeholder="جستجو و انتخاب کمپانی‌ها…" SearchPlaceholder="جستجوی نام یا شناسهٔ کمپانی…"
+                                   EmptyText="کمپانی‌ای برای انتخاب وجود ندارد." Disabled="@(saving || CompanySelectionUnavailable)" />
+                    @if (companyAccessLoading)
+                    {
+                        <div class="form-text" role="status"><span class="spinner-border spinner-border-sm"></span> در حال دریافت کمپانی‌های کاربر…</div>
+                    }
+                    else if (companyAccessError is not null)
+                    {
+                        <div class="alert alert-warning py-2 mt-2 mb-0 fs-8" role="alert">
+                            @companyAccessError
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2" disabled="@saving"
+                                    @onclick="() => LoadCompanyAccess(form.Id)">تلاش دوباره</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="form-text fs-8">می‌توانید چند کمپانی را تیک بزنید؛ جستجو انتخاب‌های قبلی را حذف نمی‌کند.</div>
+                    }
                 </div>
             }
             <div class="col-md-6">
@@ -597,7 +607,7 @@ else
         </ChildContent>
         <Footer>
             <button class="btn btn-light" @onclick="CloseModal">انصراف (Esc)</button>
-            <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@(saving || CompanySelectionUnavailable)">
                 @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                 ذخیره (F1)
             </button>
@@ -624,6 +634,20 @@ else
             return matchSearch && matchCompany;
         });
     private HashSet<int> selectedCompanyIds = new();
+    private int companyPickerVersion;
+    private bool companyAccessLoading;
+    private string? companyAccessError;
+    private bool CompanySelectionUnavailable => Auth.IsAdmin && (companyAccessLoading || companyAccessError is not null);
+    private List<LookupItem> CompanyPickerItems => companyOptions.OrderBy(c => c.Name)
+        .Select(c => new LookupItem { Id = c.Id, Name = c.Name }).ToList();
+
+    private void ResetCompanyPicker()
+    {
+        companyPickerVersion++;
+        selectedCompanyIds = new();
+        companyAccessLoading = false;
+        companyAccessError = null;
+    }
 
     // ---------- واحدهای سازمانی (تعریف‌شده به‌ازای هر شرکت) ----------
     private List<OrgOption> organizations = new();
@@ -866,18 +890,37 @@ else
 
     private async Task LoadCompanyAccess(int userId)
     {
+        if (companyAccessLoading) return;
+        var version = companyPickerVersion;
+        companyAccessLoading = true;
+        companyAccessError = null;
         try
         {
-            var ids = await Http.GetFromJsonAsync<List<int>>($"/api/company-context/users/{userId}") ?? new();
+            var ids = await Http.GetFromJsonAsync<List<int>>($"/api/company-context/users/{userId}")
+                ?? throw new InvalidOperationException("فهرست کمپانی‌ها دریافت نشد.");
+            if (version != companyPickerVersion || form.Id != userId || !showModal) return;
             selectedCompanyIds = ids.ToHashSet();
-            await InvokeAsync(StateHasChanged);
         }
-        catch { selectedCompanyIds = new(); }
+        catch
+        {
+            if (version != companyPickerVersion || form.Id != userId || !showModal) return;
+            // خطای خواندن نباید هنگام ذخیره به «حذف همهٔ دسترسی‌های قبلی» تبدیل شود.
+            companyAccessError = "کمپانی‌های کاربر دریافت نشدند؛ پیش از ذخیره دوباره تلاش کنید.";
+        }
+        finally
+        {
+            if (version == companyPickerVersion)
+            {
+                companyAccessLoading = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
-    private void ToggleCompany(int id, bool selected)
+    private void OnCompaniesChanged(List<int> ids)
     {
-        if (selected) selectedCompanyIds.Add(id); else selectedCompanyIds.Remove(id);
+        if (!Auth.IsAdmin || saving || CompanySelectionUnavailable) return;
+        selectedCompanyIds = ids.ToHashSet();
     }
 
     private async Task LoadWoAllowed(int userId)
@@ -1049,7 +1092,7 @@ else
         };
         referrerIdStr = "0";
         selectedRoleIds = new();
-        selectedCompanyIds = new();
+        ResetCompanyPicker();
         positionInputs = new List<string> { "" };
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
@@ -1060,6 +1103,7 @@ else
 
     private async Task OpenEdit(UserDto u)
     {
+        ResetCompanyPicker();
         form = new UserDto
         {
             Id = u.Id,
@@ -1086,22 +1130,34 @@ else
         saveError = "";
         woSearch = "";
         _ = LoadWoAllowed(u.Id);
-        _ = LoadCompanyAccess(u.Id);
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
         luStoredSignaturePreview = null;
         showModal = true;
+        var companyTask = LoadCompanyAccess(u.Id);
         StateHasChanged();
         if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath))
             await LoadStoredSignaturePreviewAsync(form.Id);
+        await companyTask;
     }
 
-    private void CloseModal() => showModal = false;
+    private void CloseModal()
+    {
+        showModal = false;
+        companyPickerVersion++;
+        companyAccessLoading = false;
+    }
 
     private string saveError = "";
 
     private async Task Save()
     {
+        if (saving) return;
         saveError = "";
+        if (CompanySelectionUnavailable)
+        {
+            saveError = companyAccessLoading ? "تا دریافت کمپانی‌های کاربر صبر کنید." : companyAccessError!;
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(form.Username))
         { saveError = "نام کاربری را وارد کنید."; return; }
@@ -1130,6 +1186,8 @@ else
         form.FirstName = form.FirstName?.Trim();
         form.LastName = form.LastName?.Trim();
         form.Mobile = string.IsNullOrWhiteSpace(form.Mobile) ? null : Fa.ToEn(form.Mobile).Trim();
+        // انتخاب‌های همین ثبت، حتی اگر فرم در فاصلهٔ پاسخ سرور بسته یا عوض شود.
+        var companyIds = selectedCompanyIds.ToList();
         saving = true;
         EnsureAuthHeader();
         try
@@ -1137,7 +1195,7 @@ else
             var saved = await AuthApi.SaveUserAsync(form);
             if (Auth.IsAdmin)
             {
-                var cr = await Http.PutAsJsonAsync($"/api/company-context/users/{saved.Id}", new { companyIds = selectedCompanyIds.ToList() });
+                var cr = await Http.PutAsJsonAsync($"/api/company-context/users/{saved.Id}", new { companyIds });
                 if (!cr.IsSuccessStatusCode) Toast.Error("کاربر ذخیره شد ولی تخصیص شرکت‌ها ذخیره نشد.");
             }
             if (luPhotoBytes != null)
