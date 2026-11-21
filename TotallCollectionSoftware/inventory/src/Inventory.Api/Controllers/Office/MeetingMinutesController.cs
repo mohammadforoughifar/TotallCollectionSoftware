@@ -310,11 +310,7 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            // سهمیهٔ «ثبت نامه» — این مسیر هم یک نامهٔ واقعی می‌سازد و باید مثل
-            // ثبت مستقیم در کارتابل شمرده شود (وگرنه با «تبدیل صورتجلسه به نامه»
-            // می‌شد سقف را دور زد).
-            var created = 0;
-            created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername);
+            var created = await _innerLetters.AddInnerLetterAsync(add, MyUserId, MyUsername);
             return Ok(new { letterId = created });
         }
         catch (Exception ex)
@@ -353,10 +349,7 @@ public class MeetingMinutesController : RbacControllerBase
         };
         try
         {
-            // سهمیهٔ «ثبت نامهٔ صادره» — همان قاعدهٔ نامهٔ داخلی (بدون این گارد،
-            // تبدیل صورتجلسه به نامهٔ صادره سقف را دور می‌زد).
-            var created = 0;
-            created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername);
+            var created = await _outgoingLetters.AddOutgoingLetterAsync(add, MyUserId, MyUsername);
             return Ok(new { letterId = created });
         }
         catch (Exception ex)

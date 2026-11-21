@@ -139,12 +139,10 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddInnerLetterDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-        int created = 0;
         try
         {
-            created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
-            var id = created;
-            return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
+            var created = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { id = created, message = "نامه با موفقیت ارسال شد." });
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }

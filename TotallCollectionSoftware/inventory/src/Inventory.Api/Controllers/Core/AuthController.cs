@@ -35,23 +35,15 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
-        try
-        {
-            var result = await _auth.LoginAsync(request);
-            return result is null
-                ? Unauthorized(new { message = "نام کاربری یا رمز عبور اشتباه است." })
-                : Ok(result);
-        }
+        var result = await _auth.LoginAsync(request);
+        return result is null
+            ? Unauthorized(new { message = "نام کاربری یا رمز عبور اشتباه است." })
+            : Ok(result);
     }
 
     /// <summary>
-    /// خروج از سیستم — نشست سرور را می‌بندد و صندلی را همان لحظه آزاد می‌کند (مرحله ۳).
-    ///
-    /// <para>
-    /// چرا POST و نه فقط پاک‌کردن توکن در مرورگر؟ چون بدون بستن ردیف نشست، صندلی تا
-    /// پایان پنجرهٔ بی‌فعالیتی اشغال می‌ماند. اگر توکن منقضی/نامعتبر باشد هم نباید خطا
-    /// بدهد: خروج باید همیشه «موفق» باشد.
-    /// </para>
+    /// خروج از سیستم — کلاینت توکن را دور می‌ریزد و سرور همیشه پاسخ «موفق» می‌دهد
+    /// (اگر توکن منقضی/نامعتبر باشد هم نباید خطا بدهد).
     /// </summary>
     [HttpPost("logout")]
     [AllowAnonymous]

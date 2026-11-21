@@ -148,8 +148,7 @@ public class IncomingLettersController : RbacControllerBase
         {
             // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
             // متریک تجمیعی letter.create هم خودکار شمرده می‌شود.
-            var created = 0;
-            created = await _letters.AddAsync(dto, MyUserId);
+            var created = await _letters.AddAsync(dto, MyUserId);
             return Ok(new { id = created, message = "نامه وارده با موفقیت ثبت شد." });
         }
         catch (Exception ex)

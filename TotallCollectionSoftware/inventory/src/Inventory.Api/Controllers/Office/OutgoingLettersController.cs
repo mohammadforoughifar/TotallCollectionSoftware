@@ -151,9 +151,7 @@ public class OutgoingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
         try
         {
-            // سهمیهٔ «ثبت نامه» — مصرف و ثبت در یک تراکنش (مرحله ۲).
-            var created = 0;
-            created = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            var created = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
             return Ok(new { id = created, message = "نامه صادره با موفقیت ثبت شد." });
         }
         catch (Exception ex)
