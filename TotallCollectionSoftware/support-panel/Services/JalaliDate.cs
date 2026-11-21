@@ -1,6 +1,6 @@
-using System.Globalization;
+﻿using System.Globalization;
 
-namespace LicenseSigner.Services;
+namespace SupportPanel.Services;
 
 /// <summary>
 /// تاریخ شمسی بدون وابستگی به ICU (برنامه با InvariantGlobalization اجرا می‌شود و

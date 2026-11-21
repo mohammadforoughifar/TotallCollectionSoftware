@@ -1,7 +1,7 @@
-using LicenseSigner.Data;
+﻿using SupportPanel.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace LicenseSigner.Services;
+namespace SupportPanel.Services;
 
 /// <summary>یک فایل پشتیبان در پوشهٔ کاری.</summary>
 public sealed record BackupFile(string FileName, long SizeBytes, DateTime CreatedAt);
@@ -10,7 +10,7 @@ public sealed record BackupFile(string FileName, long SizeBytes, DateTime Create
 /// پشتیبان‌گیری ساده از پایگاه‌دادهٔ پنل (SQLite: کپی فایل با checkpoint). فقط محلی، بدون
 /// ارسال به بیرون. کلید خصوصی هرگز در این پشتیبان نیست (بیرون از DB نگه داشته می‌شود).
 /// </summary>
-public sealed class BackupService(SupportDbContext db, SignerOptions options, ILogger<BackupService> log)
+public sealed class BackupService(SupportDbContext db, PanelOptions options, ILogger<BackupService> log)
 {
     public string BackupFolder
     {

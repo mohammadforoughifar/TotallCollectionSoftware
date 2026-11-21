@@ -1,4 +1,4 @@
-@page "/Audit"
+﻿@page "/Audit"
 @attribute [Authorize(Roles = "Admin,Signer")]
 @inject SupportDbContext Db
 @inject AuditChainService Audit
@@ -45,7 +45,7 @@ else if (Result is { Ok: false })
         <div class="field"><label for="entity">موجودیت</label>
             <select id="entity" name="entity">
                 <option value="">— همه —</option>
-                @foreach (var entity in new[] { "LicenseRequest", "IssuedLicense", "Customer", "SupportUser", "Setting", "Backup" })
+                @foreach (var entity in new[] { "Customer", "SupportUser", "Setting", "Backup" })
                 {
                     <option value="@entity" selected="@(entityFilter == entity)">@entity</option>
                 }

@@ -1,33 +1,20 @@
 #!/usr/bin/env bash
-# آماده‌سازی یک‌بارهٔ مینی‌پروژهٔ پشتیبان:
-#   ۱) ساخت ابزار امضا (LicenseTool) در حالت Release
-#   ۲) کپی presets.json کنار فایل اجرایی ابزار (ابزار آن را فقط کنار خودش می‌جوید)
-#   ۳) ساخت پنل
+# آماده‌سازی یک‌بارهٔ پنل پشتیبانی (بدون موتور لایسنس/ابزار امضا).
 set -euo pipefail
 cd "$(dirname "$0")"
 
-INVENTORY="$(cd ../inventory && pwd)"
-TOOL_DIR="$INVENTORY/tools/LicenseTool"
-
-echo "== ۱/۳ ساخت LicenseTool =="
-dotnet build "$TOOL_DIR/LicenseTool.csproj" -c Release -v:q
-
-echo "== ۲/۳ کپی presets.json کنار ابزار =="
-cp -f "$TOOL_DIR/presets.json" "$TOOL_DIR/bin/Release/net8.0/presets.json"
-
-echo "== ۳/۳ ساخت پنل =="
+echo "== ساخت پنل =="
 dotnet build SupportPanel.csproj -c Release -v:q
 
 cat <<'MSG'
 
 آماده است. گام بعد:
 
-  ۱) اگر جفت‌کلید ندارید بسازید (بیرون مخزن؛ گذرواژهٔ کلید را خودتان می‌دهید):
-     LICENSETOOL_KEY_PASSWORD='<رمز-کلید>' dotnet ../inventory/tools/LicenseTool/bin/Release/net8.0/LicenseTool.dll \
-        keygen --key-id <key-id> --out-dir <پوشهٔ-کلیدها>
+  ۱) (اختیاری) رمز SMTP را در متغیر محیطی بگذارید:
+     export SUPPORTPANEL_SMTP_PASSWORD='<رمز>'
 
-  ۲) همین دو مسیر را در appsettings.json (یا env) بگذارید:
-     Signer:PrivateKeyPath   Signer:PublicKeyPath   Signer:KeyId
+  ۲) اجرا:  ./run.sh        (یا در ویندوز: run.cmd)
 
-  ۳) اجرا:  ./run.sh        (یا در ویندوز: run.cmd)
+  در اولین اجرا کاربر «admin» ساخته می‌شود و گذرواژه‌اش فقط یک‌بار روی کنسول چاپ
+  می‌شود؛ در اولین ورود تعویض آن اجباری است.
 MSG

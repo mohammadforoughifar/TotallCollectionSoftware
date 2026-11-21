@@ -1,8 +1,8 @@
-using System.Text.Json;
-using LicenseSigner.Data;
+﻿using System.Text.Json;
+using SupportPanel.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace LicenseSigner.Services;
+namespace SupportPanel.Services;
 
 /// <summary>تنظیم SMTP — رمز عمداً داخل این کلاس نیست.</summary>
 public sealed record SmtpSettings(string Host, int Port, string User, string From, string FromName, bool UseStartTls,
@@ -11,17 +11,17 @@ public sealed record SmtpSettings(string Host, int Port, string User, string Fro
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(From);
 }
 
-/// <summary>قالب ایمیل تحویل.</summary>
+/// <summary>قالب ایمیل پاسخ پشتیبانی.</summary>
 public sealed record MailTemplateValue(string Subject, string Body);
 
 /// <summary>
 /// تنظیمات پنل در جدول <see cref="Setting"/>. <b>رمز SMTP در DB ذخیره نمی‌شود</b>؛ فقط
 /// موجود بودنش از متغیر محیطی گزارش می‌شود.
 /// </summary>
-public sealed class SupportSettingsService(SupportDbContext db, SignerOptions options)
+public sealed class SupportSettingsService(SupportDbContext db, PanelOptions options)
 {
     private const string SmtpKey = "smtp";
-    private const string TemplateKey = "delivery-template";
+    private const string TemplateKey = "support-template";
 
     public bool SmtpPasswordAvailable =>
         !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(options.SmtpPasswordEnvironmentVariable));
@@ -30,16 +30,16 @@ public sealed class SupportSettingsService(SupportDbContext db, SignerOptions op
     {
         var row = await db.Settings.AsNoTracking().FirstOrDefaultAsync(s => s.Key == SmtpKey, ct);
         if (row is null || string.IsNullOrWhiteSpace(row.Value))
-            return new SmtpSettings("", 587, "", "", "پشتیبانی لایسنس", true, 30);
+            return new SmtpSettings("", 587, "", "", "پشتیبانی نرم‌افزار", true, 30);
 
         try
         {
             var value = JsonSerializer.Deserialize<SmtpSettings>(row.Value);
-            return value ?? new SmtpSettings("", 587, "", "", "پشتیبانی لایسنس", true, 30);
+            return value ?? new SmtpSettings("", 587, "", "", "پشتیبانی نرم‌افزار", true, 30);
         }
         catch (JsonException)
         {
-            return new SmtpSettings("", 587, "", "", "پشتیبانی لایسنس", true, 30);
+            return new SmtpSettings("", 587, "", "", "پشتیبانی نرم‌افزار", true, 30);
         }
     }
 
@@ -64,8 +64,8 @@ public sealed class SupportSettingsService(SupportDbContext db, SignerOptions op
     {
         var row = await db.MailTemplates.AsNoTracking().FirstOrDefaultAsync(t => t.Key == TemplateKey, ct);
         return row is null
-            ? new MailTemplateValue("لایسنس نرم‌افزار — سریال {{Serial}}",
-                "با سلام،\nفایل لایسنس پیوست است. شناسهٔ نصب: {{InstallationId}}\nبرای فعال‌سازی، فایل را از بخش «لایسنس» نرم‌افزار بارگذاری کنید.")
+            ? new MailTemplateValue("پاسخ پشتیبانی — {{CustomerName}}",
+                "با سلام،\nدرخواست شما بررسی شد.\n\nبا احترام، پشتیبانی نرم‌افزار")
             : new MailTemplateValue(row.Subject, row.Body);
     }
 

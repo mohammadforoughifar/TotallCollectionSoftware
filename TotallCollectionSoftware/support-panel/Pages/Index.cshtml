@@ -1,66 +1,74 @@
 @page "/"
 @inject SupportDbContext Db
-@inject SigningRunner Signing
 @{
     ViewData["Title"] = "داشبورد";
-    var now = DateTime.UtcNow;
-    var soon = now.AddDays(60);
-    var pending = await Db.Requests.CountAsync(r => r.Status == RequestStatus.New || r.Status == RequestStatus.Reviewing);
-    var approved = await Db.Requests.CountAsync(r => r.Status == RequestStatus.Approved);
-    var delivered = await Db.Requests.CountAsync(r => r.Status == RequestStatus.Delivered || r.Status == RequestStatus.Closed);
-    var expiring = await Db.IssuedLicenses.CountAsync(l => l.Status == LicenseStatus.Current
-        && (l.ValidUntil != null && l.ValidUntil <= soon || l.UpdatesUntil != null && l.UpdatesUntil <= soon));
-    var work = await Db.Requests.AsNoTracking().Include(r => r.Customer)
-        .Where(r => r.Status == RequestStatus.New || r.Status == RequestStatus.Reviewing || r.Status == RequestStatus.NeedsInfo)
-        .OrderByDescending(r => r.Id).Take(8).ToListAsync();
-    var status = Signing.GetStatus();
+    var customers = await Db.Customers.CountAsync();
+    var activeCustomers = await Db.Customers.CountAsync(c => c.IsActive && c.MergedIntoId == null);
+    var contacts = await Db.Contacts.CountAsync();
+    var users = await Db.Users.CountAsync(u => u.IsActive);
+    var recentCustomers = await Db.Customers.AsNoTracking()
+        .OrderByDescending(c => c.Id).Take(8).ToListAsync();
+    var recentAudit = await Db.AuditLogs.AsNoTracking()
+        .OrderByDescending(a => a.Id).Take(8).ToListAsync();
 }
 <div class="page-head">
     <div><h1>داشبورد</h1><p class="lead">@JalaliDate.FullNow() (تهران)</p></div>
     <div class="ms-auto">
-        <a class="btn ghost" href="/Requests/Ingest">ثبت درخواست</a>
-        <a class="btn" href="/Requests">صف درخواست‌ها</a>
+        <a class="btn ghost" href="/Customers/Edit">مشتری تازه</a>
+        <a class="btn" href="/Customers">فهرست مشتریان</a>
     </div>
 </div>
 
 <div class="grid">
     <div class="card"><div class="card-body">
-        <div class="hint">در انتظار بررسی</div><div class="stat">@Ui.N(pending)</div></div></div>
+        <div class="hint">مشتریان</div><div class="stat">@Ui.N(customers)</div></div></div>
     <div class="card"><div class="card-body">
-        <div class="hint">تأییدشده و آمادهٔ امضا</div><div class="stat">@Ui.N(approved)</div></div></div>
+        <div class="hint">مشتریان فعال</div><div class="stat">@Ui.N(activeCustomers)</div></div></div>
     <div class="card"><div class="card-body">
-        <div class="hint">تحویل‌شده / بسته</div><div class="stat">@Ui.N(delivered)</div></div></div>
+        <div class="hint">شخص‌های تماس</div><div class="stat">@Ui.N(contacts)</div></div></div>
     <div class="card"><div class="card-body">
-        <div class="hint">تمدید نزدیک (۶۰ روز)</div><div class="stat">@Ui.N(expiring)</div></div></div>
+        <div class="hint">کاربران پنل</div><div class="stat">@Ui.N(users)</div></div></div>
 </div>
 
-@if (!status.Ready)
-{
-    <div class="alert warn">امضا آماده نیست: @status.Reason</div>
-}
-else
-{
-    <div class="alert ok">ابزار امضا و کلیدها در دسترس‌اند (Key ID: <span class="mono">@(string.IsNullOrWhiteSpace(status.PresetsPath) ? "—" : System.IO.Path.GetFileName(status.PresetsPath))</span>).
-        <a href="/Requests">رفتن به صف</a></div>
-}
-
 <div class="card">
-    <div class="card-head">کارهای باز</div>
+    <div class="card-head">مشتریان تازه</div>
     <table>
-        <thead><tr><th>درخواست</th><th>مشتری</th><th>وضعیت</th><th>ثبت</th><th></th></tr></thead>
+        <thead><tr><th>کد</th><th>نام</th><th>تلفن</th><th>ثبت</th><th></th></tr></thead>
         <tbody>
-        @if (work.Count == 0)
+        @if (recentCustomers.Count == 0)
         {
-            <tr><td colspan="5" class="muted">کاری باز نیست.</td></tr>
+            <tr><td colspan="5" class="muted">هنوز مشتری‌ای ثبت نشده است.</td></tr>
         }
-        @foreach (var row in work)
+        @foreach (var row in recentCustomers)
         {
             <tr>
-                <td class="mono">@row.RequestNo</td>
-                <td>@(row.Customer?.Name ?? "—")</td>
-                <td><span class="badge @Ui.Badge(row.Status)">@Ui.Status(row.Status)</span></td>
-                <td>@JalaliDate.Full(row.CreatedAt)</td>
-                <td><a href="/Requests/Details?id=@row.Id">بازکردن</a></td>
+                <td class="mono">@row.Code</td>
+                <td>@row.Name</td>
+                <td class="mono">@(row.Phone ?? "—")</td>
+                <td>@JalaliDate.Short(row.CreatedAt)</td>
+                <td><a href="/Customers/Edit?id=@row.Id">بازکردن</a></td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <div class="card-head">آخرین رخدادهای ممیزی</div>
+    <table>
+        <thead><tr><th>زمان</th><th>کاربر</th><th>کار</th><th>موجودیت</th></tr></thead>
+        <tbody>
+        @if (recentAudit.Count == 0)
+        {
+            <tr><td colspan="4" class="muted">رخدادی ثبت نشده است.</td></tr>
+        }
+        @foreach (var row in recentAudit)
+        {
+            <tr>
+                <td>@JalaliDate.Full(row.At)</td>
+                <td>@row.UserName</td>
+                <td class="mono">@row.Action</td>
+                <td class="mono">@row.Entity@(string.IsNullOrEmpty(row.EntityId) ? "" : "#" + row.EntityId)</td>
             </tr>
         }
         </tbody>

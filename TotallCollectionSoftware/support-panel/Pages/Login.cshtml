@@ -1,9 +1,9 @@
-@page "/Login"
+﻿@page "/Login"
 @attribute [AllowAnonymous]
 @inject SupportAuthService Auth
 @inject AuditChainService Audit
 @inject SupportDbContext Db
-@inject SignerOptions Options
+@inject PanelOptions Options
 @{
     ViewData["Title"] = "ورود";
 }
@@ -31,7 +31,7 @@
     }
 
     /// <summary>
-    /// ورود سریع دمو — فقط در حالت پیش‌نمایش (Signer:PreviewMode). در حالت عادی ۴۰۴ می‌دهد.
+    /// ورود سریع دمو — فقط در حالت پیش‌نمایش (Panel__PreviewMode). در حالت عادی ۴۰۴ می‌دهد.
     /// کاربر «demo» بدون گذرواژهٔ نمایش‌داده‌شده ساخته/بازیابی می‌شود تا بازدیدکنندهٔ
     /// پیش‌نمایش لازم نباشد رازی را جایی بخواند.
     /// </summary>

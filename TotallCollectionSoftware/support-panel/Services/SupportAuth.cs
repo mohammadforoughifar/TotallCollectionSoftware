@@ -1,12 +1,12 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using LicenseSigner.Data;
+using SupportPanel.Data;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.EntityFrameworkCore;
 
-namespace LicenseSigner.Services;
+namespace SupportPanel.Services;
 
 /// <summary>
 /// احراز هویت پنل: PBKDF2-SHA256 (۲۱۰٬۰۰۰ دور)، قفل ۵ تلاش/۱۵ دقیقه،

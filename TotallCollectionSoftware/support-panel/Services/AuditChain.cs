@@ -1,9 +1,9 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
-using LicenseSigner.Data;
+using SupportPanel.Data;
 using Microsoft.EntityFrameworkCore;
 
-namespace LicenseSigner.Services;
+namespace SupportPanel.Services;
 
 /// <summary>نتیجهٔ بازبینی زنجیره.</summary>
 public sealed record AuditVerification(bool Ok, int RowCount, long? BrokenAtId, string Message);

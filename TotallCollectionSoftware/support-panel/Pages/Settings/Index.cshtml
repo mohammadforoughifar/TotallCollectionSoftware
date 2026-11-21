@@ -1,94 +1,15 @@
-@page "/Settings"
+﻿@page "/Settings"
 @attribute [Authorize(Roles = "Admin")]
 @inject SupportDbContext Db
 @inject SupportSettingsService Settings
 @inject AuditChainService Audit
-@inject SigningRunner Signing
-@inject SignerKeyService Keys
-@inject SignerOptions Options
+@inject PanelOptions Options
 @{
     ViewData["Title"] = "تنظیمات";
 }
 @functions {
     public string Error { get; set; } = "";
     public string OkMessage { get; set; } = "";
-    public KeyGenResult? KeyResult { get; set; }
-    public KeyPasswordCheck? PasswordCheck { get; set; }
-    public string ManifestMessage { get; set; } = "";
-    public bool ManifestOk { get; set; }
-    public List<string> KeyWarnings { get; set; } = new();
-
-    /// <summary>آیا مسیر کلید داخل پوشهٔ برنامه/بیلد است؟ (پاک‌شدن با clean/انتشار)</summary>
-    public static bool IsKeyInsideProgramFolder(string? path) => SignerKeyService.IsInsideProgramFolder(path);
-
-    /// <summary>نتیجهٔ سنجش کلید امضا با کلیدهای جاسازی‌شده در محصول.</summary>
-    public SignerKeyService.ProductKeyCheck? ProductCheck { get; set; }
-
-    /// <summary>نتیجهٔ بررسی یک فایل لایسنس با کلیدهای محصول (شبیه‌سازی نصب مشتری).</summary>
-    public (bool Ok, string Headline, List<string> Details)? LicenseCheck { get; set; }
-
-    public async Task<IActionResult> OnPostKeygenAsync()
-    {
-        var keyId = Request.Form["keyId"].ToString();
-        var folder = Request.Form["keyFolder"].ToString();
-        var password = Request.Form["keyPass"].ToString();
-        var confirm = Request.Form["keyPass2"].ToString();
-        var overwrite = Request.Form["overwrite"].ToString() == "on";
-
-        if (password != confirm)
-        {
-            Error = "رمز و تکرار رمز یکسان نیستند.";
-            return Page();
-        }
-
-        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
-        KeyResult = await Keys.CreateAsync(keyId, folder, password, overwrite, actor);
-        if (!KeyResult.Ok) Error = KeyResult.Message;
-        else
-        {
-            OkMessage = KeyResult.Message;
-            KeyWarnings = KeyResult.Warnings;
-        }
-        return Page();
-    }
-
-    public async Task<IActionResult> OnPostRegisterKey()
-    {
-        var folder = Request.Form["keysFolder"].ToString();
-        var allowReplace = Request.Form["allowReplace"].ToString() == "on";
-        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
-        var (ok, message) = await Keys.RegisterInManifestAsync(folder, actor, allowReplace: allowReplace);
-        ManifestOk = ok; ManifestMessage = message;
-        return Page();
-    }
-
-    /// <summary>«آیا کلید امضا با کلید داخل محصول می‌خواند؟» — همان علت خطای LICENSE_REJECTED.</summary>
-    public IActionResult OnPostCheckProductKey()
-    {
-        ProductCheck = Keys.CheckAgainstProductKeys(Request.Form["productPass"].ToString());
-        return Page();
-    }
-
-    /// <summary>بررسی فایل لایسنس با کلیدهای محصول — دقیقاً همان کاری که نصب مشتری می‌کند.</summary>
-    public IActionResult OnPostCheckLicenseProduct()
-    {
-        LicenseCheck = Keys.CheckLicenseAgainstProductKeys(Request.Form["licenseFile"].ToString());
-        return Page();
-    }
-
-    public IActionResult OnPostCheckKeyPass()
-    {
-        PasswordCheck = Keys.CheckPassword(Request.Form["checkPass"].ToString());
-        return Page();
-    }
-
-    public async Task<IActionResult> OnPostKeyDisconnectAsync()
-    {
-        var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
-        await Keys.DisconnectAsync(actor);
-        OkMessage = "اتصال از کلید ثبت‌شده قطع شد (فایل کلیدها پاک نشد).";
-        return Page();
-    }
 
     public async Task<IActionResult> OnPostSmtpAsync()
     {
@@ -102,7 +23,8 @@
         var timeout = int.TryParse(Request.Form["timeout"], out var parsedTimeout) ? Math.Clamp(parsedTimeout, 5, 120) : current.TimeoutSeconds;
 
         var actor = await Db.Users.FirstAsync(u => u.Id == User.UserId());
-        await Settings.SaveSmtpAsync(new SmtpSettings(host, port, user, from, fromName.Length == 0 ? "پشتیبانی لایسنس" : fromName, startTls, timeout), actor, Audit);
+        await Settings.SaveSmtpAsync(new SmtpSettings(host, port, user, from,
+            fromName.Length == 0 ? "پشتیبانی نرم‌افزار" : fromName, startTls, timeout), actor, Audit);
         OkMessage = "تنظیمات SMTP ذخیره شد (رمز در DB ذخیره نمی‌شود).";
         return Page();
     }
@@ -116,349 +38,45 @@
     }
 }
 @{
-    var signStatus = Signing.GetStatus();
-    var savedKey = await Keys.LoadAsync();
-    var activeKey = Keys.DescribeActiveKey();
-
-    // کلید رسمی همین شناسه در محصول (از manifest جاسازی‌شده) — برای دیدن فوری «کلید پنل = کلید محصول؟»
-    var officialKey = SignerKeyService.OfficialProductKey(activeKey.KeyId);
-    var activeFingerprint = activeKey.Fingerprint is { Length: 64 } ? activeKey.Fingerprint : null;
-    var keyMismatch = officialKey is { } official && activeFingerprint is not null &&
-                      !string.Equals(official.Fingerprint, activeFingerprint, StringComparison.OrdinalIgnoreCase);
-    // کلید خصوصی داخل پوشهٔ بیلد/برنامه؟ با اولین clean یا publish از بین می‌رود.
-    var keyPathInProgramFolder = IsKeyInsideProgramFolder(signStatus.PrivateKeyPath);
     var smtp = await Settings.GetSmtpAsync();
     var template = await Settings.GetTemplateAsync();
     var passwordAvailable = Settings.SmtpPasswordAvailable;
 }
 <div class="page-head"><div><h1>تنظیمات</h1>
-    <p class="lead">SMTP (اختیاری)، قالب ایمیل تحویل و کاربران پنل</p></div>
+    <p class="lead">SMTP (اختیاری)، قالب ایمیل پاسخ و کاربران پنل</p></div>
     <div class="ms-auto"><a class="btn ghost" href="/Settings/Users">کاربران</a></div>
 </div>
 @if (!string.IsNullOrEmpty(OkMessage)) { <div class="alert ok">@OkMessage</div> }
 @if (!string.IsNullOrEmpty(Error)) { <div class="alert error">@Error</div> }
-@if (!string.IsNullOrEmpty(ManifestMessage)) { <div class="alert @(ManifestOk ? "ok" : "error")">@ManifestMessage</div> }
-@if (keyMismatch)
-{
-    <div class="alert error" style="line-height:2">
-        <b>⚠️ کلید امضای پنل با کلید رسمی محصول یکی نیست.</b>
-        شناسهٔ فعال: <span class="mono">@activeKey.KeyId</span> ·
-        اثر انگشت پنل: <span class="mono small">@activeFingerprint</span> ·
-        اثر انگشت رسمی محصول: <span class="mono small">@officialKey!.Value.Fingerprint</span>.
-        با این وضعیت هر فایل <span class="mono">.lic</span> در نصب مشتری <b>رد می‌شود</b>.
-        دو راه: (۱) مسیر <b>کلید خصوصی رسمی</b> را وصل کنید (پایین همین صفحه یا
-        <span class="mono">Signer__PrivateKeyPath</span> در appsettings تا با هر publish از دست نرود)،
-        یا (۲) برای کلید تازه شناسهٔ تازه بدهید، در manifest ثبت و نسخهٔ تازهٔ محصول منتشر کنید.
-    </div>
-}
-
-@if (officialKey is null && activeFingerprint is not null)
-{
-    <div class="alert error" style="line-height:2">
-        <b>⛔ این کلید در هیچ بیلد محصولی ثبت نشده است.</b>
-        شناسهٔ فعال: <span class="mono">@activeKey.KeyId</span> ·
-        اثر انگشت: <span class="mono small">@activeFingerprint</span>.
-        کلیدی با این شناسه در <span class="mono">manifest.json</span> محصول نیست، پس نصب مشتری
-        <b>آن را نمی‌شناسد</b> و هر <span class="mono">.lic</span> امضاشده با آن را رد می‌کند.
-        سه راه: (۱) کلید رسمی محصول را وصل کنید، (۲) کلید ریشه بسازید و برای این مشتری
-        «مجوز اعتماد» (<span class="mono">trust.json</span>) صادر کنید، یا (۳) کلید عمومی را در
-        manifest ثبت و نسخهٔ تازهٔ محصول منتشر کنید.
-    </div>
-}
-@if (keyPathInProgramFolder)
-{
-    <div class="alert error" style="line-height:2">
-        <b>⚠️ کلید خصوصی داخل پوشهٔ برنامه/خروجی بیلد است.</b>
-        مسیر: <span class="mono small">@signStatus.PrivateKeyPath</span>.
-        با اولین <span class="mono">dotnet clean</span>، دانلود تازهٔ سورس یا انتشار نسخهٔ بعدی
-        <b>این کلید پاک می‌شود</b> و دیگر نمی‌توانید با آن امضا کنید. کلید را به گاوصندوق ثابت
-        منتقل کنید (<span class="mono">@Keys.SuggestedFolder()</span>) و مسیرش را در
-        <span class="mono">Signer:PrivateKeyPath</span> ثابت کنید.
-    </div>
-}
-
-<div class="card"><div class="card-head">کلیدهای امضا — ساخت خودکار جفت‌کلید</div><div class="card-body">
-    <table class="table">
-        <tr><th style="width:34%">مورد</th><th style="width:16%">وضعیت</th><th>مقدار فعلی</th></tr>
-        <tr><td>ابزار LicenseTool</td>
-            <td>@(signStatus.ToolPath is null ? Html.Raw("<span class=\"badge err\">پیدا نشد</span>") : Html.Raw("<span class=\"badge ok\">آماده</span>"))</td>
-            <td class="mono">@(signStatus.ToolPath ?? "—")</td></tr>
-        <tr><td>کلید خصوصی</td>
-            <td>@(signStatus.PrivateKeyFound ? Html.Raw("<span class=\"badge ok\">یافت شد</span>") : Html.Raw("<span class=\"badge err\">پیدا نشد</span>"))</td>
-            <td class="mono">@(signStatus.PrivateKeyPath is { Length: > 0 } p ? p : "—")</td></tr>
-        <tr><td>کلید عمومی</td>
-            <td>@(signStatus.PublicKeyFound ? Html.Raw("<span class=\"badge ok\">یافت شد</span>") : Html.Raw("<span class=\"badge err\">پیدا نشد</span>"))</td>
-            <td class="mono">@(signStatus.PublicKeyPath is { Length: > 0 } pu ? pu : "—")</td></tr>
-        <tr><td>Key ID</td>
-            <td>@(string.IsNullOrWhiteSpace(signStatus.KeyId) ? "—" : Html.Raw("<span class=\"badge ok\">تعیین‌شده</span>"))</td>
-            <td class="mono">@(signStatus.KeyId is { Length: > 0 } k ? k : "—")</td></tr>
-        <tr><td>کلید رسمی این شناسه در محصول</td>
-            <td>
-                @if (officialKey is null)
-                {
-                    @Html.Raw("<span class=\"badge err\">ثبت نشده</span>")
-                }
-                else if (keyMismatch)
-                {
-                    @Html.Raw("<span class=\"badge err\">ناهم‌خوان</span>")
-                }
-                else
-                {
-                    @Html.Raw("<span class=\"badge ok\">هم‌خوان</span>")
-                }
-            </td>
-            <td class="mono small">
-                @(officialKey is { } ok2 ? $"{ok2.KeyId} = {ok2.Fingerprint}" : "— (این شناسه در manifest محصول نیست)")
-            </td></tr>
-        <tr><td>منبع کلید فعال</td><td colspan="2">
-            @if (savedKey is not null && System.IO.File.Exists(savedKey.PrivateKeyPath))
-            {
-                <span>ساخته‌شده از همین صفحه — شناسهٔ <span class="mono">@activeKey.KeyId</span>،
-                    اثر انگشت <span class="mono small">@(savedKey.Fingerprint is { Length: > 16 } fp ? fp[..16] + "…" : savedKey.Fingerprint)</span></span>
-            }
-            else
-            {
-                <span>پیکربندی محیطی (<span class="mono">Signer__PrivateKeyPath</span>) — هیچ کلیدی از این صفحه ساخته نشده است.</span>
-            }
-            @if (signStatus.Ready)
-            {
-                <div class="hint" style="margin:.35rem 0 0">وضعیت کلی: <b>آمادهٔ امضا</b> — گذرواژهٔ کلید هنگام امضا در فرم وارد می‌شود.</div>
-            }
-            else
-            {
-                <div class="hint" style="margin:.35rem 0 0">وضعیت کلی: <b>آماده نیست</b> — @signStatus.Reason</div>
-            }
-        </td></tr>
-    </table>
-
-    <form method="post" asp-page-handler="Keygen" style="margin-top:1rem">
-        <div class="grid">
-            @{
-                var officialIds = SignerKeyService.OfficialProductKeys();
-            }
-            <div class="field"><label for="keyId">شناسهٔ کلید (Key ID)</label>
-                <input id="keyId" name="keyId" class="mono" placeholder="مثلاً sup-@DateTime.Now.AddMonths(1).ToString("yyyyMM")-b" />
-                <div class="hint" style="line-height:1.9">
-                    @if (officialIds.Count > 0)
-                    {
-                        <span>شناسه‌های <b>رسمی محصول</b> (با این شناسه‌ها کلید تازه نسازید — کلید خصوصی همان‌ها را وصل کنید):
-                            @foreach (var (officialId, officialFp) in officialIds)
-                            {
-                                <span class="mono">@officialId</span>
-                                <span class="mono small" style="direction:ltr">(@(officialFp.Length > 16 ? officialFp[..16] + "…" : officialFp))</span><span> </span>
-                            }
-                        </span>
-                    }
-                    <span>ساختن جفت‌کلید تازه، کلید امضا را عوض می‌کند؛ تا نسخهٔ تازهٔ محصول منتشر نشود، مشتری فایل را رد می‌کند.</span>
-                </div>
-            </div>
-            <div class="field"><label for="keyFolder">پوشهٔ کلیدها (بیرون از پوشهٔ برنامه و مخزن)</label>
-                <input id="keyFolder" name="keyFolder" class="mono" value="@(savedKey?.Folder ?? Keys.SuggestedFolder())" /></div>
-            <div class="field"><label for="keyPass">رمز کلید خصوصی</label>
-                <input id="keyPass" name="keyPass" type="password" autocomplete="new-password" /></div>
-            <div class="field"><label for="keyPass2">تکرار رمز</label>
-                <input id="keyPass2" name="keyPass2" type="password" autocomplete="new-password" /></div>
-        </div>
-        <div class="field"><label><input type="checkbox" name="overwrite" /> اگر کلیدی با این شناسه بود، بازنویسی شود</label></div>
-        <p class="hint">جفت‌کلید RSA 3072 ساخته می‌شود؛ کلید خصوصی <b>رمزنگاری‌شده</b> (AES‑256، ۱۰۰٬۰۰۰ تکرار) روی
-            همین ماشین نوشته و پنل بلافاصله به آن وصل می‌شود — بدون ری‌استارت و بدون ست‌کردن دستی متغیر محیطی.
-            رمز <b>هیچ‌جا ذخیره نمی‌شود</b> (نه DB، نه لاگ، نه فایل)؛ آن را نگه دارید چون هنگام هر امضا یا با
-            <span class="mono">@Options.KeyPasswordEnvironmentVariable</span> لازم است.</p>
-        <button type="submit" class="btn">ساخت جفت‌کلید و اتصال به پنل</button>
-        @if (savedKey is not null)
-        {
-            <button type="submit" formnovalidate asp-page-handler="KeyDisconnect" class="btn ghost"
-                    onclick="return confirm('اتصال از کلید ثبت‌شده قطع شود؟ فایل‌ها پاک نمی‌شوند.')">قطع اتصال از کلید ثبت‌شده</button>
-        }
-    </form>
-
-    <form method="post" asp-page-handler="CheckKeyPass" style="margin-top:1rem;border-top:1px solid #e6e9ef;padding-top:.9rem">
-        <div class="grid">
-            <div class="field"><label for="checkPass">بررسی رمز کلید فعال (بدون امضا)</label>
-                <input id="checkPass" name="checkPass" type="password" autocomplete="off" /></div>
-        </div>
-        <button type="submit" class="btn ghost">بررسی رمز کلید فعال</button>
-        @if (PasswordCheck is not null)
-        {
-            <div class="alert @(PasswordCheck.Matches ? "ok" : "error")" style="margin:.7rem 0 0">
-                @PasswordCheck.Message
-                @if (!PasswordCheck.Matches && PasswordCheck.KeyExists)
-                {
-                    <span> — رمز درست همان رمزی است که هنگام ساخت این کلید دادید؛ اگر گم شده، فقط با ساخت کلید جدید
-                        (با «بازنویسی») قابل جبران است.</span>
-                }
-            </div>
-        }
-        <p class="hint">اگر کلید رمزنگاری‌شده نباشد یا رمز خالی باشد، همین پیام کوتاه علت را می‌گوید؛
-            رمز در پاسخ صفحه یا لاگ نوشته نمی‌شود.</p>
-    </form>
-
-    @if (activeKey.Exists && activeKey.Fingerprint is { Length: 64 })
-    {
-        var fileName = System.IO.Path.GetFileName(activeKey.PublicKeyPath!);
-        var json = "{\n" +
-                   $"  \"keyId\": \"{activeKey.KeyId}\",\n" +
-                   "  \"algorithm\": \"RS256\",\n" +
-                   $"  \"file\": \"{fileName}\",\n" +
-                   $"  \"sha256\": \"{activeKey.Fingerprint}\",\n" +
-                   "  \"note\": \"کلید تولیدی — کلید خصوصی بیرون از مخزن\",\n" +
-                   "  \"debugOnly\": false\n" +
-                   "}";
-        <details style="margin-top:1rem;border:1px solid #e6e9ef;border-radius:.6rem;padding:.7rem .9rem">
-            <summary style="cursor:pointer"><b>ثبت این کلید در نرم‌افزار مشتری (Keys/manifest.json)</b></summary>
-            <p class="hint" style="line-height:1.95;margin:.7rem 0">
-                تا این ردیف در محصول ثبت و نسخهٔ Release دوباره ساخته نشود، نرم‌افزار مشتری لایسنس امضاشده با
-                شناسهٔ <span class="mono">@activeKey.KeyId</span> را نمی‌پذیرد و پیام «کلید امضا روی این نصب شناخته‌شده نیست» می‌دهد.
-            </p>
-            <ol class="hint" style="line-height:2;margin:.2rem 0 .6rem">
-                <li>فایل کلید عمومی <span class="mono">@fileName</span> را در پوشهٔ
-                    <span class="mono">inventory/src/Inventory.Licensing/Keys/</span> کپی کنید.</li>
-                <li>ردیف زیر را به آرایهٔ <span class="mono">keys</span> در همان پوشه، فایل
-                    <span class="mono">manifest.json</span> اضافه کنید (ردیف‌های قبلی را حذف نکنید تا لایسنس‌های قدیمی معتبر بمانند).</li>
-                <li>بیلد <b>Release</b> بگیرید و نسخهٔ نصب مشتری را به‌روزرسانی کنید (کلیدها داخل اسمبلی جاسازی می‌شوند).</li>
-                <li>بررسی: <span class="mono">LicenseCheck --keys</span> باید همین شناسه را نشان دهد؛ بعد همان فایل <span class="mono">.lic</span> را دوباره بارگذاری کنید.</li>
-            </ol>
-            <pre class="mono" style="direction:ltr;text-align:left;background:#0f172a;color:#e6edf7;padding:.8rem 1rem;border-radius:.5rem;overflow:auto">@json</pre>
-            <p class="hint">اثر انگشت بالا از SHA-256 کلید عمومی در قالب DER (SubjectPublicKeyInfo) است و هنگام بارگذاری در محصول بررسی می‌شود.</p>
-
-            <form method="post" asp-page-handler="RegisterKey" style="border-top:1px solid #e6e9ef;margin-top:.8rem;padding-top:.8rem">
-                <div class="field"><label for="keysFolder">یا خودکار ثبت کن: مسیر پوشهٔ Keys محصول</label>
-                    <input id="keysFolder" name="keysFolder" class="mono"
-                           placeholder="C:\src\TotallCollectionSoftware\inventory\src\Inventory.Licensing\Keys" /></div>
-                <div class="field"><label><input type="checkbox" name="allowReplace" /> جایگزینی ردیف موجود با همین شناسه
-                    (خطرناک — فقط اگر هیچ لایسنس فعالی با کلید قبلی وجود ندارد)</label></div>
-                <button type="submit" class="btn ghost">افزودن/به‌روزرسانی ردیف در manifest و کپی کلید عمومی</button>
-                <p class="hint">پوشه‌ای که <span class="mono">manifest.json</span> در آن است. نسخهٔ پشتیبان از manifest گرفته می‌شود،
-                    ردیف‌های قبلی حذف نمی‌شوند و بعد از آن باید بیلد Release بگیرید (کلیدها داخل اسمبلی جاسازی می‌شوند).</p>
-            </form>
-        </details>
-    }
-
-    @if (KeyResult is { Ok: true, Key: not null })
-    {
-        <div class="card" style="margin-top:.8rem;box-shadow:none;border:1px solid #cfe8d5">
-            <div class="card-body">
-                <p><b>کلید ساخته شد:</b> <span class="mono">@KeyResult.Key.KeyId</span></p>
-                <table class="table">
-                    <tr><th style="width:32%">کلید عمومی</th><td class="mono">@KeyResult.Key.PublicKeyPath</td></tr>
-                    <tr><th>کلید خصوصی</th><td class="mono">@KeyResult.Key.PrivateKeyPath</td></tr>
-                    <tr><th>اثر انگشت (sha256)</th><td class="mono small">@KeyResult.Key.Fingerprint</td></tr>
-                </table>
-                <ul class="hint" style="line-height:1.9">
-                    @foreach (var w in KeyWarnings) { <li>@w</li> }
-                </ul>
-            </div>
-        </div>
-    }
-</div></div>
-
-<div class="card"><div class="card-head">تشخیص: چرا مشتری «امضای فایل لایسنس معتبر نیست» می‌گیرد؟</div><div class="card-body">
-    <p class="hint" style="line-height:1.95;margin:0 0 .8rem">
-        نصب مشتری، امضا را با <b>کلید عمومیِ جاسازی‌شده در همان نسخهٔ نصب‌شده</b> بررسی می‌کند؛
-        پنل پیش از ذخیره، فایل را با کلید عمومیِ همین ماشین می‌سنجد. اگر این دو کلید یکی نباشند،
-        پنل «سبز» می‌شود ولی مشتری فایل را رد می‌کند (شناسهٔ کلید یکی است، اثر انگشت کلید یکی نیست).
-        این دو دکمه همان مقایسه را انجام می‌دهند — بدون خط فرمان.
-    </p>
-
-    <form method="post" asp-page-handler="CheckProductKey" style="border-top:1px solid #e6e9ef;padding-top:.8rem">
-        <div class="grid">
-            <div class="field"><label for="productPass">رمز کلید خصوصی (اگر رمزدار است)</label>
-                <input id="productPass" name="productPass" type="password" autocomplete="off" class="mono" /></div>
-        </div>
-        <button type="submit" class="btn">۱) کلید امضا با کلید محصول می‌خواند؟</button>
-        <p class="hint">اثر انگشت کلید امضا از خود کلید خصوصی مشتق می‌شود و با اثر انگشت کلیدهای
-            جاسازی‌شده در بیلد محصول مقایسه می‌شود. رمز در پاسخ صفحه و لاگ نوشته نمی‌شود.</p>
-    </form>
-
-    @if (ProductCheck is not null)
-    {
-        <div class="alert @(ProductCheck.Ok ? "ok" : "error")" style="margin-top:.8rem">
-            <b>@ProductCheck.Headline</b>
-            <ul class="hint" style="line-height:1.9;margin:.5rem 0 0">
-                @foreach (var d in ProductCheck.Details) { <li>@d</li> }
-            </ul>
-            @if (ProductCheck.SignerFingerprint is { Length: 64 })
-            {
-                <div class="hint mono small" style="margin-top:.5rem;direction:ltr;text-align:left">
-                    signer: @ProductCheck.SignerFingerprint
-                </div>
-            }
-            @if (ProductCheck.ProductKeys.Count > 0)
-            {
-                <table class="table" style="margin-top:.6rem">
-                    <tr><th style="width:28%">کلید داخل محصول</th><th>اثر انگشت</th></tr>
-                    @foreach (var pk in ProductCheck.ProductKeys)
-                    {
-                        <tr><td class="mono">@pk.KeyId</td><td class="mono small" style="direction:ltr;text-align:left">@pk.Fingerprint</td></tr>
-                    }
-                </table>
-            }
-        </div>
-    }
-
-    <form method="post" asp-page-handler="CheckLicenseProduct" style="margin-top:1rem;border-top:1px solid #e6e9ef;padding-top:.8rem">
-        @{
-            var licFiles = new List<string>();
-            try
-            {
-                var dir = Signing.LicenseFolder;
-                if (System.IO.Directory.Exists(dir))
-                    licFiles = System.IO.Directory.GetFiles(dir, "*.lic").OrderByDescending(System.IO.File.GetLastWriteTimeUtc).Take(50).ToList();
-            }
-            catch { /* پوشهٔ لایسنس‌ها خوانده نشد — فهرست خالی */ }
-        }
-        @if (licFiles.Count > 0)
-        {
-            <div class="field"><label for="licenseFile">فایل لایسنس صادرشده</label>
-                <select id="licenseFile" name="licenseFile">
-                    @foreach (var f in licFiles)
-                    {
-                        <option value="@f">@System.IO.Path.GetFileName(f) — @System.IO.File.GetLastWriteTime(f).ToString("yyyy-MM-dd HH:mm")</option>
-                    }
-                </select></div>
-            <button type="submit" class="btn ghost">۲) همین فایل روی نصب مشتری پذیرفته می‌شود؟</button>
-        }
-        else
-        {
-            <p class="hint">هنوز فایل لایسنس صادرشده‌ای در پوشهٔ
-                <span class="mono">@Signing.LicenseFolder</span> نیست؛ پس از اولین امضا این فهرست پر می‌شود.</p>
-        }
-    </form>
-
-    @if (LicenseCheck is { } lc)
-    {
-        <div class="alert @(lc.Ok ? "ok" : "error")" style="margin-top:.8rem">
-            <b>@lc.Headline</b>
-            <ul class="hint" style="line-height:1.9;margin:.5rem 0 0">
-                @foreach (var d in lc.Details) { <li>@d</li> }
-            </ul>
-        </div>
-    }
-</div></div>
 
 <div class="card"><div class="card-head">SMTP (اختیاری)</div><div class="card-body">
     <form method="post" asp-page-handler="Smtp">
         <div class="grid">
-            <div class="field"><label for="host">میزبان</label><input id="host" name="host" class="mono" value="@smtp.Host" placeholder="smtp.example.com" /></div>
-            <div class="field"><label for="port">درگاه</label><input id="port" name="port" class="mono" value="@smtp.Port" /></div>
+            <div class="field"><label for="host">هاست</label><input id="host" name="host" class="mono" value="@smtp.Host" /></div>
+            <div class="field"><label for="port">پورت</label><input id="port" name="port" class="mono" value="@smtp.Port" /></div>
             <div class="field"><label for="user">کاربر</label><input id="user" name="user" class="mono" value="@smtp.User" /></div>
             <div class="field"><label for="from">فرستنده (ایمیل)</label><input id="from" name="from" class="mono" value="@smtp.From" /></div>
             <div class="field"><label for="fromName">نام فرستنده</label><input id="fromName" name="fromName" value="@smtp.FromName" /></div>
             <div class="field"><label for="timeout">مهلت (ثانیه)</label><input id="timeout" name="timeout" class="mono" value="@smtp.TimeoutSeconds" /></div>
         </div>
-        <div class="field"><label><input type="checkbox" name="starttls" checked="@smtp.UseStartTls" /> STARTTLS</label></div>
-        <p class="hint">رمز SMTP از متغیر محیطی <span class="mono">LICENSESIGNER_SMTP_PASSWORD</span> خوانده می‌شود —
-            وضعیت: @(passwordAvailable ? "در دسترس" : "موجود نیست").</p>
-        <button type="submit" class="btn">ذخیرهٔ تنظیمات SMTP</button>
+        <label style="display:flex;gap:.5rem;align-items:center;margin:.4rem 0">
+            <input type="checkbox" name="starttls" @(smtp.UseStartTls ? "checked" : "") /> استفاده از STARTTLS
+        </label>
+        <p class="hint">
+            رمز SMTP در پایگاه‌داده ذخیره نمی‌شود؛ آن را در متغیر محیطی
+            <span class="mono">@Options.SmtpPasswordEnvironmentVariable</span> بگذارید.
+            وضعیت: @(passwordAvailable ? "رمز تنظیم شده است." : "رمز تنظیم نشده — ارسال ایمیل انجام نمی‌شود.")
+        </p>
+        <p><button type="submit" class="btn">ذخیرهٔ SMTP</button></p>
     </form>
 </div></div>
 
-<div class="card"><div class="card-head">قالب ایمیل تحویل</div><div class="card-body">
+<div class="card"><div class="card-head">قالب ایمیل پاسخ</div><div class="card-body">
     <form method="post" asp-page-handler="Template">
-        <div class="field"><label for="subject">موضوع</label><input id="subject" name="subject" value="@template.Subject" /></div>
-        <div class="field"><label for="body">متن</label><textarea id="body" name="body">@template.Body</textarea></div>
-        <p class="hint">جای‌نگهدارها: <span class="mono">{{Serial}}</span>، <span class="mono">{{InstallationId}}</span>،
-            <span class="mono">{{CustomerName}}</span>، <span class="mono">{{RequestNo}}</span>.</p>
-        <button type="submit" class="btn ghost">ذخیرهٔ قالب</button>
+        <div class="field"><label for="subject">موضوع</label>
+            <input id="subject" name="subject" value="@template.Subject" /></div>
+        <div class="field"><label for="body">متن</label>
+            <textarea id="body" name="body" rows="8">@template.Body</textarea></div>
+        <p><button type="submit" class="btn">ذخیرهٔ قالب</button></p>
     </form>
 </div></div>

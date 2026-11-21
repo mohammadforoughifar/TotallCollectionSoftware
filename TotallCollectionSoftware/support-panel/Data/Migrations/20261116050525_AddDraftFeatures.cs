@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace LicenseSigner.Data.Migrations
+namespace SupportPanel.Data.Migrations
 {
     /// <inheritdoc />
     public partial class AddDraftFeatures : Migration

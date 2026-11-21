@@ -1,7 +1,7 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace LicenseSigner.Data;
+namespace SupportPanel.Data;
 
 /// <summary>
 /// فقط برای زمان طراحی (dotnet ef migrations): بدون این کلاس، `dotnet ef` نمی‌تواند
@@ -11,8 +11,8 @@ public sealed class SupportDbContextFactory : IDesignTimeDbContextFactory<Suppor
 {
     public SupportDbContext CreateDbContext(string[] args)
     {
-        var connection = Environment.GetEnvironmentVariable("LICENSESIGNER_DESIGN_DB")
-                         ?? "Data Source=/var/tmp/signer-design.db";
+        var connection = Environment.GetEnvironmentVariable("PANEL_DESIGN_DB")
+                         ?? "Data Source=/var/tmp/panel-design.db";
         var builder = new DbContextOptionsBuilder<SupportDbContext>();
         if (connection.Contains("Server=", StringComparison.OrdinalIgnoreCase))
             builder.UseSqlServer(connection);

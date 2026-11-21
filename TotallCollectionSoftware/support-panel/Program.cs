@@ -1,57 +1,30 @@
-using LicenseSigner;
-using LicenseSigner.Data;
-using LicenseSigner.Services;
+﻿using SupportPanel;
+using SupportPanel.Data;
+using SupportPanel.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 // بایندر پیکربندی فقط true/false می‌پذیرد؛ «1» را پیش از ساخت builder عادی می‌کنیم.
-if (Environment.GetEnvironmentVariable("Signer__PreviewMode") == "1")
-    Environment.SetEnvironmentVariable("Signer__PreviewMode", "true");
+if (Environment.GetEnvironmentVariable("Panel__PreviewMode") == "1")
+    Environment.SetEnvironmentVariable("Panel__PreviewMode", "true");
 
 var builder = WebApplication.CreateBuilder(args);
 
-var options = new SignerOptions();
-builder.Configuration.GetSection("Signer").Bind(options);
-// محیط بر پیکربندی اولویت دارد (رازها فقط از این راه می‌آیند).
-options.ToolPath = Environment.GetEnvironmentVariable("Signer__ToolPath") ?? options.ToolPath;
-options.PrivateKeyPath = Environment.GetEnvironmentVariable("Signer__PrivateKeyPath") ?? options.PrivateKeyPath;
-options.PublicKeyPath = Environment.GetEnvironmentVariable("Signer__PublicKeyPath") ?? options.PublicKeyPath;
-options.KeyId = Environment.GetEnvironmentVariable("Signer__KeyId") ?? options.KeyId;
-options.WorkFolder = Environment.GetEnvironmentVariable("Signer__WorkFolder") ?? options.WorkFolder;
-options.PresetsPath = Environment.GetEnvironmentVariable("Signer__PresetsPath") ?? options.PresetsPath;
-options.DatabaseConnection = Environment.GetEnvironmentVariable("Signer__DatabaseConnection") ?? options.DatabaseConnection;
+var options = new PanelOptions();
+builder.Configuration.GetSection("Panel").Bind(options);
+// محیط بر پیکربندی اولویت دارد.
+options.DatabaseConnection = Environment.GetEnvironmentVariable("Panel__DatabaseConnection") ?? options.DatabaseConnection;
+options.WorkFolder = Environment.GetEnvironmentVariable("Panel__WorkFolder") ?? options.WorkFolder;
 options.DatabaseConnection = Environment.GetEnvironmentVariable("ConnectionStrings__Panel") ?? options.DatabaseConnection;
-// حالت پیش‌نمایش (دمو پشت پراکسی HTTPS): از پیکربندی یا متغیر محیطی.
 options.PreviewMode = options.PreviewMode
-    || string.Equals(Environment.GetEnvironmentVariable("Signer__PreviewMode"), "1", StringComparison.Ordinal)
-    || string.Equals(Environment.GetEnvironmentVariable("Signer__PreviewMode"), "true", StringComparison.OrdinalIgnoreCase);
+    || string.Equals(Environment.GetEnvironmentVariable("Panel__PreviewMode"), "1", StringComparison.Ordinal)
+    || string.Equals(Environment.GetEnvironmentVariable("Panel__PreviewMode"), "true", StringComparison.OrdinalIgnoreCase);
 
-// مسیرهای نسبی (پوشهٔ کاری/ابزار/presets/کلیدها) نسبت به ریشهٔ برنامه باز می‌شوند، نه پوشهٔ جاری.
-// این‌طور اجرا از Visual Studio/Rider (F5) و dotnet run هر دو یک نتیجه می‌دهند.
+// مسیر نسبی پوشهٔ کاری نسبت به ریشهٔ برنامه باز می‌شود تا F5 و dotnet run یک نتیجه بدهند.
 var contentRoot = builder.Environment.ContentRootPath;
 if (!string.IsNullOrWhiteSpace(options.WorkFolder) && !Path.IsPathRooted(options.WorkFolder))
     options.WorkFolder = Path.Combine(contentRoot, options.WorkFolder);
-if (!string.IsNullOrWhiteSpace(options.ToolPath) && !Path.IsPathRooted(options.ToolPath))
-    options.ToolPath = Path.GetFullPath(Path.Combine(contentRoot, options.ToolPath));
-if (!string.IsNullOrWhiteSpace(options.PresetsPath) && !Path.IsPathRooted(options.PresetsPath))
-    options.PresetsPath = Path.GetFullPath(Path.Combine(contentRoot, options.PresetsPath));
-if (!string.IsNullOrWhiteSpace(options.PrivateKeyPath) && !Path.IsPathRooted(options.PrivateKeyPath))
-    options.PrivateKeyPath = Path.GetFullPath(Path.Combine(contentRoot, options.PrivateKeyPath));
-if (!string.IsNullOrWhiteSpace(options.PublicKeyPath) && !Path.IsPathRooted(options.PublicKeyPath))
-    options.PublicKeyPath = Path.GetFullPath(Path.Combine(contentRoot, options.PublicKeyPath));
-
-// اگر مسیر ابزار امضا/presets تعیین نشده یا روی دیسک نیست، نسخهٔ کنار خود برنامه را
-// امتحان می‌کنیم (<OutDir>/tools/…) که هدف BuildAndCopyLicenseTool می‌سازد؛
-// این‌طور F5 در Visual Studio/Rider بدون تنظیم دستی مسیر کار می‌کند.
-var bundledTool = Path.Combine(AppContext.BaseDirectory, "tools", "LicenseTool.dll");
-if ((string.IsNullOrWhiteSpace(options.ToolPath) || !File.Exists(options.ToolPath)) && File.Exists(bundledTool))
-    options.ToolPath = bundledTool;
-
-var bundledPresets = Path.Combine(AppContext.BaseDirectory, "tools", "presets.json");
-if ((string.IsNullOrWhiteSpace(options.PresetsPath) || !File.Exists(options.PresetsPath)) && File.Exists(bundledPresets))
-    options.PresetsPath = bundledPresets;
 
 builder.Services.AddSingleton(options);
 
@@ -59,7 +32,6 @@ if (options.PreviewMode)
 {
     // پیش‌نمایش پشت دامنهٔ پراکسی اجرا می‌شود؛ فیلتر میزبان باید هر هاستی را بپذیرد.
     builder.Configuration["AllowedHosts"] = "*";
-    // پشت پراکسی HTTPS: پروتکل/هاست واقعی از هدرهای X-Forwarded خوانده شود.
     builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
     {
         o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
@@ -72,12 +44,11 @@ if (options.PreviewMode)
     builder.Services.AddAntiforgery(a =>
     {
         a.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.None;
-        // همان‌چه در درخواست است: پشت پراکسی HTTPS ⇒ Secure، روی HTTP ساده ⇒ بدون Secure.
         a.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     });
 }
 
-var connection = SignerOptions.NormalizeSqlitePath(
+var connection = PanelOptions.NormalizeSqlitePath(
     options.ResolveConnectionString(builder.Configuration.GetConnectionString("Panel")), contentRoot);
 
 // پوشهٔ فایل SQLite باید پیش از Migration وجود داشته باشد.
@@ -92,6 +63,7 @@ if (!connection.Contains("Server=", StringComparison.OrdinalIgnoreCase))
         if (!string.IsNullOrWhiteSpace(folder)) Directory.CreateDirectory(folder);
     }
 }
+
 builder.Services.AddDbContext<SupportDbContext>(db =>
 {
     if (connection.Contains("Server=", StringComparison.OrdinalIgnoreCase)) db.UseSqlServer(connection);
@@ -100,15 +72,7 @@ builder.Services.AddDbContext<SupportDbContext>(db =>
 
 builder.Services.AddScoped<AuditChainService>();
 builder.Services.AddScoped<SupportAuthService>();
-builder.Services.AddScoped<RequestService>();
-builder.Services.AddScoped<DraftService>();
-builder.Services.AddSingleton<LicenseToolRunner>();
-builder.Services.AddSingleton<LicenseInspector>();
-builder.Services.AddScoped<SigningRunner>();
 builder.Services.AddScoped<SupportSettingsService>();
-builder.Services.AddScoped<SignerKeyService>();
-builder.Services.AddScoped<CustomerTrustService>();
-builder.Services.AddScoped<DeliveryService>();
 builder.Services.AddScoped<BackupService>();
 builder.Services.AddScoped<SeedService>();
 
@@ -121,7 +85,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         cookie.AccessDeniedPath = "/Login";
         cookie.ExpireTimeSpan = TimeSpan.FromHours(8);
         cookie.SlidingExpiration = true;
-        cookie.Cookie.Name = "licsupport";
+        cookie.Cookie.Name = "supportpanel";
         cookie.Cookie.HttpOnly = true;
         // localhost: Lax + بدون Secure؛ پیش‌نمایش پشت HTTPS: None + Secure (برای iframe).
         cookie.Cookie.SameSite = options.PreviewMode
@@ -152,10 +116,6 @@ using (var scope = app.Services.CreateScope())
 {
     var seed = scope.ServiceProvider.GetRequiredService<SeedService>();
     await seed.SeedAsync();
-
-    // کلیدی که از صفحهٔ تنظیمات ساخته شده، بر پیکربندی محیطی اولویت دارد (اگر فایل‌هایش سرجایشان باشند).
-    var keys = scope.ServiceProvider.GetRequiredService<SignerKeyService>();
-    await keys.ApplySavedAsync();
 }
 
 app.UseStaticFiles();
@@ -190,6 +150,6 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 app.MapRazorPages();
-app.MapGet("/api/health", () => Results.Ok(new { ok = true, app = "LicenseSigner" }));
+app.MapGet("/api/health", () => Results.Ok(new { ok = true, app = "SupportPanel" }));
 
 app.Run();

@@ -1,21 +1,20 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <!--
-    پنل پشتیبانی لایسنس — پروژهٔ کامل ASP.NET Core 8 (بک‌اند + فرانت‌اند).
-      • فرانت‌اند: Pages/*.cshtml  (RTL فارسی، تاریخ شمسی، بدون CDN) + wwwroot/site.css
-      • بک‌اند   : Services/* (چرخهٔ درخواست، امضا، تحویل، ممیزی، پشتیبان) + Data/* (EF Core)
-    وابستگی‌های بیرونی (عمدی):
-      • Inventory.Licensing  → مدل/اعتبارسنجی لایسنس و فهرست ماژول‌ها (یک منبع حقیقت)
-      • LicenseTool (CLI)    → تنها مسیر امضا/بازبینی فایل .lic
-    پایگاه‌دادهٔ خودش را دارد و هیچ ارتباطی با InventoryDb مشتری ندارد.
+    پنل پشتیبانی — ASP.NET Core 8 (بک‌اند + فرانت‌اند).
+      • فرانت‌اند: Pages/*.cshtml (RTL فارسی، تاریخ شمسی، بدون CDN) + wwwroot/site.css
+      • بک‌اند   : Services/* (احراز هویت، ممیزی زنجیره‌ای، پشتیبان، تنظیمات) + Data/* (EF Core)
+    موتور لایسنس از این پروژه حذف شده است: نه ارجاعی به Inventory.Licensing دارد و نه
+    ابزار امضا (LicenseTool) را می‌سازد/کپی می‌کند. پایگاه‌دادهٔ خودش را دارد و هیچ
+    ارتباطی با InventoryDb مشتری ندارد.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <InvariantGlobalization>true</InvariantGlobalization>
-    <RootNamespace>LicenseSigner</RootNamespace>
+    <RootNamespace>SupportPanel</RootNamespace>
     <AssemblyName>SupportPanel</AssemblyName>
-    <UserSecretsId>support-panel-licensing</UserSecretsId>
+    <UserSecretsId>support-panel</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,38 +26,6 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="../inventory/src/Inventory.Licensing/Inventory.Licensing.csproj" />
-  </ItemGroup>
 
-  <!--
-    ابزار امضا (LicenseTool) هم به‌صورت پروژهٔ مستقل ساخته و کنار پنل کپی می‌شود،
-    تا اجرا از Visual Studio/Rider (F5) و «dotnet run» بدون تنظیم مسیر کار کند.
-    خروجی: <OutDir>/tools/LicenseTool.dll + <OutDir>/tools/presets.json
-  -->
-  <Target Name="BuildAndCopyLicenseTool" AfterTargets="Build">
-    <MSBuild Projects="../inventory/tools/LicenseTool/LicenseTool.csproj"
-             Targets="Build"
-             Properties="Configuration=$(Configuration)" />
-    <ItemGroup>
-      <_LicenseToolFiles Include="../inventory/tools/LicenseTool/bin/$(Configuration)/net8.0/**/*" />
-      <_LicenseToolPresets Include="../inventory/tools/LicenseTool/presets.json" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_LicenseToolFiles)" DestinationFolder="$(OutDir)tools/%(RecursiveDir)"
-          SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_LicenseToolPresets)" DestinationFiles="$(OutDir)tools/presets.json"
-          SkipUnchangedFiles="true" />
-  </Target>
 
-  <!-- همان کپی، این بار در پوشهٔ انتشار (dotnet publish) -->
-  <Target Name="CopyLicenseToolToPublish" AfterTargets="Publish">
-    <ItemGroup>
-      <_LicenseToolPublish Include="../inventory/tools/LicenseTool/bin/$(Configuration)/net8.0/**/*" />
-      <_LicenseToolPresetsPublish Include="../inventory/tools/LicenseTool/presets.json" />
-    </ItemGroup>
-    <Copy SourceFiles="@(_LicenseToolPublish)" DestinationFolder="$(PublishDir)tools/%(RecursiveDir)"
-          SkipUnchangedFiles="true" />
-    <Copy SourceFiles="@(_LicenseToolPresetsPublish)" DestinationFiles="$(PublishDir)tools/presets.json"
-          SkipUnchangedFiles="true" />
-  </Target>
 </Project>

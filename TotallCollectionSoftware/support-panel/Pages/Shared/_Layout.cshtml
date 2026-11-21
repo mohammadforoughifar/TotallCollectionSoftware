@@ -1,4 +1,4 @@
-@{
+﻿@{
     var user = User;
     var current = "/" + (ViewContext.RouteData.Values["page"]?.ToString() ?? "/").TrimStart('/');
     string Active(string prefix) => current.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ? "active" : "";
@@ -8,7 +8,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>@ViewData["Title"] — پشتیبانی لایسنس</title>
+    <title>@ViewData["Title"] — پنل پشتیبانی</title>
     <link rel="stylesheet" href="/site.css" />
     <script src="/jdatepicker.js" defer></script>
     <script src="/password-eye.js" defer></script>
@@ -17,14 +17,10 @@
 @if (user.Identity?.IsAuthenticated == true)
 {
     <header class="top">
-        <span class="brand">🔑 پنل پشتیبانی لایسنس</span>
+        <span class="brand">🛠️ پنل پشتیبانی</span>
         <nav>
             <a href="/" class="@(current == "/" ? "active" : "")">داشبورد</a>
-            <a href="/Requests" class="@Active("/Requests")">درخواست‌ها</a>
-            <a href="/Requests/Ingest" class="@Active("/Requests/Ingest")">ثبت درخواست</a>
             <a href="/Customers" class="@Active("/Customers")">مشتریان</a>
-            <a href="/Licenses" class="@Active("/Licenses")">لایسنس‌ها</a>
-            <a href="/Renewals" class="@Active("/Renewals")">تمدیدها</a>
             @if (user.IsAdmin())
             {
                 <a href="/Settings" class="@Active("/Settings")">تنظیمات</a>
@@ -42,7 +38,7 @@
     @RenderBody()
 </main>
 <footer class="footer">
-    پنل پشتیبانی لایسنس — فقط روی ماشین پشتیبانی. کلید خصوصی و رمزها در این پنل ذخیره نمی‌شوند.
+    پنل پشتیبانی — فقط روی ماشین پشتیبانی. رمزها در این پنل ذخیره نمی‌شوند.
 </footer>
 @await RenderSectionAsync("Scripts", required: false)
 </body>
