@@ -169,12 +169,20 @@
                                     <input type="checkbox" checked="@(selectedErjaIds.Contains(ll.ErjaId.Value))" @onchange="() => ToggleSelectErja(ll.ErjaId)" style="width:16px;height:16px;cursor:pointer;" />
                                 </div>
                             }
-                            @{ var rowIsSent = FolderIsSent || string.IsNullOrEmpty(ll.Sender); }
-                            <div class="avt">@AvatarText(rowIsSent ? ll.Reciver : ll.Sender)</div>
+                            @{ var rowIsSent = FolderIsSent || (ll.ErjaId is null && string.IsNullOrEmpty(ll.Sender)); }
+                            @if (rowIsSent)
+                            {
+                                @* در ارسالی، نامِ گیرنده نشان داده می‌شود؛ شناسهٔ فرستنده نباید عکسِ کنار آن باشد. *@
+                                <div class="avt">@AvatarText(ll.Reciver)</div>
+                            }
+                            else
+                            {
+                                <div class="avt letter-avatar" title="@ll.Sender"><UserAvatar LoginUserId="ll.SenderUserId" Size="40" /></div>
+                            }
                             <div class="mail-b">
                                 <div class="mail-r1">
                                     <span class="who">
-                                        @(rowIsSent ? "به: " + ll.Reciver + (ll.ReciverCount > 1 ? " +" + (ll.ReciverCount - 1).FaDigits() : "") : ll.Sender)
+                                        @(rowIsSent ? "به: " + ll.Reciver + (ll.ReciverCount > 1 ? " +" + (ll.ReciverCount - 1).FaDigits() : "") : string.IsNullOrWhiteSpace(ll.Sender) ? "فرستنده نامشخص" : ll.Sender)
                                         <i class="bi bi-star-fill star-ico"></i>
                                     </span>
                                     <span class="tm num">@ll.Date.ToFaDateTime()</span>
@@ -359,7 +367,7 @@
                     <div>
                         <div class="paper">
                             <div class="paper-h">
-                                <div class="avt">@AvatarText(selected.SenderName)</div>
+                                <div class="avt letter-avatar" title="@selected.SenderName"><UserAvatar LoginUserId="selected.SenderUserId" Size="40" /></div>
                                 <div class="ph-meta">
                                     <div class="n1">@selected.SenderName</div>
                                     <div class="n2">فرستنده @(selected.IsMine ? "(شما)" : "")</div>
@@ -574,9 +582,9 @@
                         <div class="scard">
                             <h3><i class="bi bi-people-fill"></i> گیرندگان</h3>
                             <div class="ppl">
-                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (گیرنده)</span> }
-                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (ارجاع)</span> }
-                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (هامش)</span> }
+                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="u.UserId" Size="18" /></span> @u.FullName (گیرنده)</span> }
+                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="u.UserId" Size="18" /></span> @u.FullName (ارجاع)</span> }
+                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="u.UserId" Size="18" /></span> @u.FullName (هامش)</span> }
                             </div>
                         </div>
                     </aside>
@@ -1262,17 +1270,18 @@
         OpenErjaSheet();
     }
 
-    private void MenuGardesh(InnerLetterListItemDto l)
+    private Task MenuGardesh(InnerLetterListItemDto l)
     {
         openMenuId = 0;
-        _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber,
-            string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date, l.SenderUserId);
+        // فرستندهٔ ردیف دریافتی «ارجاع‌دهنده» است، نه لزوماً فرستندهٔ اصلی نامه.
+        // خودِ مودال، اطلاعات شروع گردش را از جزئیات نامه می‌خواند؛ بدون علامت‌زدن نامه به‌عنوان خوانده‌شده.
+        return gardesh?.Open(l.LetterId, l.Title, l.LetterNumber) ?? Task.CompletedTask;
     }
 
-    private void MenuGardeshCur()
+    private Task MenuGardeshCur()
     {
-        if (selected == null) return;
-        _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt, selected.SenderUserId);
+        if (selected == null) return Task.CompletedTask;
+        return gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber) ?? Task.CompletedTask;
     }
 
     private bool printingPdf, printMenuOpen;

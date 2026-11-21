@@ -400,6 +400,7 @@
                 signerUsers.Add(new LetterReciverDto
                 {
                     UserId = optionId,
+                    AvatarLoginUserId = user.AvatarLoginUserId ?? user.UserId,
                     FullName = user.FullName,
                     SematId = sematId,
                     SematTitle = position.Title,

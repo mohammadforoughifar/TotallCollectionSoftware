@@ -49,9 +49,9 @@
                     @foreach (var u in FilteredUsers)
                     {
                         var pos = PositionText(u);
-                        <div class="copt @(SelectedUsers.Contains(u.UserId) ? "on" : "")" @onclick="() => ToggleUser(u.UserId)">
+                        <div class="copt @(SelectedUsers.Contains(u.UserId) ? "on" : "")" @key="u.UserId" @onclick="() => ToggleUser(u.UserId)">
                             <span class="chk"><i class="bi bi-check"></i></span>
-                            <span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="24" /></span>
+                            <span class="mini"><UserAvatar LoginUserId="@(u.AvatarLoginUserId ?? u.UserId)" Size="24" /></span>
                             <span>@u.FullName</span>
                             @if (!string.IsNullOrWhiteSpace(pos))
                             {
@@ -82,8 +82,9 @@
         {
             var u = Users.FirstOrDefault(x => x.UserId == uid);
             var pos = u is null ? "" : PositionText(u);
-            <span class="spill">
-                <span class="mini"><UserAvatar SystemUserId="@uid" Size="18" /></span>
+            <span class="spill" @key="uid">
+                @* کلید انتخاب ممکن است شناسهٔ موقتِ سمت باشد؛ بدون اطلاعات کاربر، عکس پیش‌فرض امن‌تر است. *@
+                <span class="mini"><UserAvatar LoginUserId="@(u?.AvatarLoginUserId ?? u?.UserId ?? 0)" Size="18" /></span>
                 @(u?.FullName ?? uid.ToString())
                 @if (!string.IsNullOrWhiteSpace(pos))
                 {

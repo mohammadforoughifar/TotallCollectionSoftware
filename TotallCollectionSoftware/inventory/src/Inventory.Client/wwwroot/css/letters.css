@@ -987,3 +987,29 @@
     border: 0; box-shadow: none; border-radius: 99px;
     background: #e0e7ff; object-fit: cover; display: block;
 }
+
+/* عکس‌های نام‌دار نامه داخلی و انتخاب‌گر مشترک گیرندگان. اندازهٔ پیل باید
+   مستقل از width پیش‌فرض UserAvatar باشد تا عکس به اندازهٔ متن کش نیاید. */
+.ltx .spill .mini {
+    width:18px; height:18px; flex:0 0 18px; border-radius:50%; display:inline-flex;
+    align-items:center; justify-content:center;
+}
+.ltx .avt.letter-avatar { overflow:hidden; }
+.ltx .avt.letter-avatar .user-avatar {
+    width:100%; height:100%; display:block; border:0; box-shadow:none;
+    border-radius:inherit; object-fit:cover;
+}
+.ltx .letter-person {
+    display:inline-flex; align-items:center; gap:5px; vertical-align:middle;
+    max-width:100%; min-width:0;
+}
+.ltx .letter-person-name { min-width:0; overflow-wrap:anywhere; }
+.ltx .letter-person > .user-avatar { width:24px; height:24px; flex-shrink:0; }
+.ltx .letter-person-sm > .user-avatar { width:18px; height:18px; border-width:1px; }
+.ltx .letter-node-sender {
+    display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:3px;
+    color:var(--sub); font-size:10.5px; font-weight:400;
+}
+.ltx.inner-letter-gardesh .gdetail h4 { flex-wrap:wrap; }
+.ltx.inner-letter-gardesh .tnode > .mini,
+.ltx.inner-letter-gardesh .fnode > .mini { flex-shrink:0; }

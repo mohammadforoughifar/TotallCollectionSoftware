@@ -18,6 +18,13 @@ public class BatchBayeganiRequest
 public class LetterReciverDto
 {
     public int UserId { get; set; }
+
+    /// <summary>
+    /// شناسهٔ واقعی کاربر لاگین برای عکس؛ فقط گزینه‌های ترکیبی «کاربر/سمت» که
+    /// UserId را به‌عنوان کلید انتخاب موقت به کار می‌برند آن را مقداردهی می‌کنند.
+    /// مقدار null یعنی خودِ UserId، بدون تغییر شناسهٔ ارسالی برای انتخاب/ارجاع.
+    /// </summary>
+    public int? AvatarLoginUserId { get; set; }
     public string FullName { get; set; } = "";
 
     /// <summary>سمت — بعد از چارت سازمانی فعال می‌شود</summary>
