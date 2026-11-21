@@ -220,6 +220,10 @@ public class WorkOrderLog
     public int Id { get; set; }
     public int OrderId { get; set; }
 
+    // Stable login-user identity for avatars; null for system/unknown legacy actors.
+    // No foreign key: deleting a user must not remove or invalidate audit history.
+    public int? ActorUserId { get; set; }
+
     [MaxLength(150)]
     public string ActorName { get; set; } = "";
 

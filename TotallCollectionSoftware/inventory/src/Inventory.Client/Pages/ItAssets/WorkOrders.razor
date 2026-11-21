@@ -240,10 +240,25 @@ else if (tab == "kanban")
                                 @if (w2.Children.Count > 0) { <span class="num">🔗 @w2.Children.Count(c => c.Status == "Closed")/@w2.Children.Count</span> }
                                 @if (w2.Recurrence > 0) { <span>🔁</span> }
                             </div>
-                            <div class="fs-9 text-muted mt-1 d-flex align-items-center gap-1">
-                                <i class="bi bi-people"></i>
-                                <span>@(kanbanScope == "mine" ? string.Join("، ", w2.Assignees.Select(a => a.Name)) : w2.OwnerName)</span>
-                                <span class="ms-auto num">@w2.Assignees.Count(a => a.RepliedAt != null)/@w2.Assignees.Count پاسخ</span>
+                            <div class="fs-9 text-muted mt-1 d-flex flex-wrap align-items-center gap-2">
+                                @if (kanbanScope == "mine")
+                                {
+                                    @foreach (var a in w2.Assignees)
+                                    {
+                                        <span class="d-inline-flex align-items-center gap-1" @key="a.UserId">
+                                            <UserAvatar LoginUserId="a.UserId" Size="20" CssClass="user-avatar-sm" />
+                                            <span>@a.Name</span>
+                                        </span>
+                                    }
+                                }
+                                else
+                                {
+                                    <span class="d-inline-flex align-items-center gap-1">
+                                        <UserAvatar LoginUserId="w2.OwnerUserId" Size="20" CssClass="user-avatar-sm" />
+                                        <span>@w2.OwnerName</span>
+                                    </span>
+                                }
+                                <span class="ms-auto num text-nowrap">@w2.Assignees.Count(a => a.RepliedAt != null)/@w2.Assignees.Count پاسخ</span>
                             </div>
                             @if (HasRelatedOrders(w2)) { @RelatedOrderLinks(w2) }
                             @if (w2.Tags.Count > 0)
@@ -383,7 +398,7 @@ else if (tab == "perf")
                 {
                     <div class="wo-podium-card wo-podium-@r.Rank">
                         <div class="wo-podium-medal">@(r.Rank == 1 ? "🥇" : r.Rank == 2 ? "🥈" : "🥉")</div>
-                        <div class="fw-700">@r.Name</div>
+                        <div class="d-flex align-items-center justify-content-center gap-2"><UserAvatar LoginUserId="r.UserId" Size="28" CssClass="user-avatar-sm" /><span class="fw-700">@r.Name</span></div>
                         <div class="fs-8 text-muted num">@r.OnTime از @r.Total به‌موقع</div>
                         <div class="wo-podium-pct num">@r.OnTimePercent٪</div>
                     </div>
@@ -415,7 +430,7 @@ else if (tab == "perf")
                             {
                                 <tr>
                                     <td><span class="wo-rank num @(r.Rank <= 3 ? $"wo-rank-{r.Rank}" : "")">@r.Rank</span></td>
-                                    <td class="fw-600">@r.Name</td>
+                                    <td class="fw-600"><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="r.UserId" Size="22" CssClass="user-avatar-sm" /> @r.Name</span></td>
                                     <td class="text-center num">@r.Total</td>
                                     <td class="text-center num">@r.Done</td>
                                     <td class="text-center num text-success fw-700">@r.OnTime</td>
@@ -737,7 +752,7 @@ else
                                         <span class="wo-tag wo-tag-sm" title="فیلتر با این برچسب" @onclick="() => SetTagFilter(t2)" @onclick:stopPropagation="true">@t2</span>
                                     }
                                 </td>
-                                <td>@w.OwnerName</td>
+                                <td><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName</span></td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
                                 <td class="wo-who-cell">
                                     @* ---------- گیرندگان: آواتار + شمارنده + نوار پاسخ‌ها ----------
@@ -759,7 +774,7 @@ else
                                                      @onkeydown="OnWhoKeyDown">
                                                     @foreach (var a in w.Assignees)
                                                     {
-                                                        <span class="av @AvClass(a.UserId) @AsgState(a)" title="@($"{a.Name} — {AsgStateFa(a)}")">@Initials(a.Name)</span>
+                                                        <span class="wo-av-photo-wrap @AsgState(a)" title="@($"{a.Name} — {AsgStateFa(a)}")"><UserAvatar LoginUserId="a.UserId" Size="24" CssClass="user-avatar-sm" /></span>
                                                     }
                                                     <span class="wo-avcnt num" title="تعداد کل گیرندگان">@w.Assignees.Count</span>
                                                 </div>
@@ -797,7 +812,7 @@ else
                                                     @foreach (var a in WhoSorted(w))
                                                     {
                                                         <li>
-                                                            <span class="av @AvClass(a.UserId) @AsgState(a)">@Initials(a.Name)</span>
+                                                            <UserAvatar LoginUserId="a.UserId" Size="24" CssClass="user-avatar-sm" />
                                                             <span class="nm" title="@a.Name">@a.Name</span>
                                                             <span class="wo-who-st @AsgState(a)">@AsgStateFa(a)</span>
                                                         </li>
@@ -1075,11 +1090,11 @@ else
                                     }
                                     @foreach (var t in targets.Where(t => selTargets.Contains(t.Id)))
                                     {
-                                        <span class="ms-chip">@t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
+                                        <span class="ms-chip"><UserAvatar LoginUserId="t.Id" Size="20" CssClass="user-avatar-sm" /> @t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
                                     }
                                     @foreach (var t in unavailableTargets.Where(t => selTargets.Contains(t.Id)))
                                     {
-                                        <span class="ms-chip text-danger" title="گیرنده دیگر مجاز نیست؛ برای ذخیره حذف کنید">@t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
+                                        <span class="ms-chip text-danger" title="گیرنده دیگر مجاز نیست؛ برای ذخیره حذف کنید"><UserAvatar LoginUserId="t.Id" Size="20" CssClass="user-avatar-sm" /> @t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
                                     }
                                     <i class="bi bi-chevron-@(tDropOpen ? "up" : "down") ms-caret"></i>
                                 </div>
@@ -1095,7 +1110,9 @@ else
                                             {
                                                 var isSel = selTargets.Contains(t.Id);
                                                 <div class="ms-combo-item @(isSel ? "sel" : "")" @onclick="() => { if (isSel) selTargets.Remove(t.Id); else selTargets.Add(t.Id); }">
-                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i> @t.Username
+                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i>
+                                                    <UserAvatar LoginUserId="t.Id" Size="24" CssClass="user-avatar-sm" />
+                                                    <span>@t.Username</span>
                                                 </div>
                                             }
                                         </div>
@@ -1354,7 +1371,7 @@ else
                 <div class="modal-body wo-detail-body">
                     <section hidden="@(detailTab != "overview")" aria-label="اطلاعات">
                         <div class="wo-info mb-3">
-                            <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
+                            <div><span class="wo-lbl">دستوردهنده</span><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="detail.OwnerUserId" Size="24" CssClass="user-avatar-sm" /> @detail.OwnerName</span></div>
                             <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
                             <div><span class="wo-lbl">تاریخ ثبت</span><span class="num">@detail.CreatedAt.ToFa()</span></div>
                             @* تعداد پیوست‌ها — از خودِ فهرست پیوست‌ها خوانده می‌شود تا شمارنده با
@@ -1416,7 +1433,8 @@ else
                                         var returnedReason = WorkOrderSmsAppearance.FailureReason(item);
                                         <div class="d-flex flex-wrap gap-2 align-items-center small py-1 border-bottom">
                                             <span class="text-muted num">@item.CreatedAtUtc.ToLocalTime().ToFaDateTime()</span>
-                                            <span>@SmsEventLabel(item.EventType) — @item.RecipientName</span>
+                                            <span>@SmsEventLabel(item.EventType) —</span>
+                                            <span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="item.RecipientUserId" Size="22" CssClass="user-avatar-sm" /> @item.RecipientName</span>
                                             <span class="ms-auto fw-700 @(WorkOrderSmsAppearance.IsSuccess(item.Status) ? "text-success" : WorkOrderSmsAppearance.IsFailure(item.Status) ? "text-danger" : "text-muted")"
                                                   title="@WorkOrderSmsAppearance.Text(item.Status)">
                                                 @if (WorkOrderSmsAppearance.IsSuccess(item.Status))
@@ -1499,7 +1517,7 @@ else
                                         <span class="flex-grow-1">@c.Text</span>
                                         @if (c.IsDone && !string.IsNullOrWhiteSpace(c.DoneByName))
                                         {
-                                            <span class="fs-9 text-muted">@c.DoneByName@(c.DoneAt != null ? $" — {c.DoneAt.Value.ToFa()}" : "")</span>
+                                            <span class="fs-9 text-muted d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="@(c.DoneByUserId ?? 0)" Size="20" CssClass="user-avatar-sm" /><span>@c.DoneByName@(c.DoneAt != null ? $" — {c.DoneAt.Value.ToFa()}" : "")</span></span>
                                         }
                                     </div>
                                 }
@@ -1548,7 +1566,7 @@ else
                                             <a class="wo-chain-link" href="@($"/work-orders?open={ch2.Id}")">
                                                 @ch2.Number — @ch2.Title
                                             </a>
-                                            <span class="fs-9 text-muted">(@ch2.OwnerName)</span>
+                                            <span class="fs-9 text-muted d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="ch2.OwnerUserId" Size="20" CssClass="user-avatar-sm" /> (@ch2.OwnerName)</span>
                                             <span class="badge @(ch2.Status == "Closed" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") border fs-9">
                                                 @(ch2.Status == "Closed" ? "بسته" : "باز")
                                             </span>
@@ -1638,7 +1656,7 @@ else
                     <div class="mb-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
                         <div class="flex-grow-1">
                             <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")"
-                                           OnCountChanged="SetDetailAttCount" />
+                                           ShowUploaderAvatar="true" OnCountChanged="SetDetailAttCount" />
                         </div>
                         <ArchiveButton Module="WorkOrders" RefId="@detail.Id"
                                        Title="@($"{detail.Number} — {detail.Title}")"
@@ -1677,7 +1695,14 @@ else
                                             var parent = comments.FirstOrDefault(x => x.Id == cm.ReplyToId);
                                             <div class="wo-cm-quote">
                                                 <i class="bi bi-reply-fill"></i>
-                                                @(parent == null || parent.IsDeleted ? "کامنت حذف‌شده" : $"{parent.AuthorName}: {Brief(parent.Text)}")
+                                                @if (parent == null || parent.IsDeleted)
+                                                {
+                                                    <span>کامنت حذف‌شده</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="parent.AuthorUserId" Size="20" CssClass="user-avatar-sm" /> @parent.AuthorName</span><span>: @Brief(parent.Text)</span>
+                                                }
                                             </div>
                                         }
                                         @if (cm.IsDeleted)
@@ -1720,7 +1745,7 @@ else
                                     @if (replyTo != null)
                                     {
                                         <div class="wo-cm-quote d-flex justify-content-between align-items-center mb-1">
-                                            <span><i class="bi bi-reply-fill"></i> پاسخ به @replyTo.AuthorName: @Brief(replyTo.Text)</span>
+                                            <span><i class="bi bi-reply-fill"></i> پاسخ به <span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="replyTo.AuthorUserId" Size="20" CssClass="user-avatar-sm" /> @replyTo.AuthorName</span>: @Brief(replyTo.Text)</span>
                                             <button class="wo-cm-link" @onclick="() => replyTo = null"><i class="bi bi-x-lg"></i></button>
                                         </div>
                                     }
@@ -2146,22 +2171,20 @@ else
     .wo-who-top { display: flex; align-items: center; gap: 6px; }
     .wo-avstack { display: flex; align-items: center; cursor: pointer; padding-inline-end: 2px; }
     .wo-avstack:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; border-radius: 999px; }
-    .wo-avstack > .av { margin-inline-start: -7px; }
-    .wo-avstack > .av:first-child { margin-inline-start: 0; }
-    .wo-who .av {
-        width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center;
-        font-size: 10px; font-weight: 700; color: #fff; flex: 0 0 auto;
-        box-shadow: 0 0 0 2px #fff; font-family: inherit; letter-spacing: 0;
+    .wo-avstack > .wo-av-photo-wrap { margin-inline-start: -7px; }
+    .wo-avstack > .wo-av-photo-wrap:first-child { margin-inline-start: 0; }
+    .wo-who .wo-av-photo-wrap {
+        width: 24px; height: 24px; border-radius: 50%; display: inline-flex; flex: 0 0 auto;
+        box-shadow: 0 0 0 2px #fff;
+    }
+    .wo-who .wo-av-photo-wrap .user-avatar {
+        width: 24px; height: 24px; border: 0; box-shadow: none; display: block;
     }
     /* رنگ حلقه = وضعیت همان نفر (سبز=انجام شد، قرمز=انجام نشد، آبی=دیده بی‌پاسخ، خاکستری=نخوانده) */
-    .wo-who .av.done { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #86efac; }
-    .wo-who .av.bad { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fca5a5; }
-    .wo-who .av.seen { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #bfdbfe; }
-    .wo-who .av.new { opacity: .78; }
-    .wo-who .av.c1 { background: #2563eb; } .wo-who .av.c2 { background: #0891b2; }
-    .wo-who .av.c3 { background: #7c3aed; } .wo-who .av.c4 { background: #db2777; }
-    .wo-who .av.c5 { background: #059669; } .wo-who .av.c6 { background: #d97706; }
-    .wo-who .av.c7 { background: #475569; } .wo-who .av.c8 { background: #dc2626; }
+    .wo-who .wo-av-photo-wrap.done { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #86efac; }
+    .wo-who .wo-av-photo-wrap.bad { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #fca5a5; }
+    .wo-who .wo-av-photo-wrap.seen { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #bfdbfe; }
+    .wo-who .wo-av-photo-wrap.new { opacity: .78; }
     .wo-avcnt {
         min-width: 22px; height: 22px; padding: 0 4px; border-radius: 999px; margin-inline-start: 1px;
         background: #eef2f7; border: 1px solid #e2e8f0; color: #334155;
@@ -2178,9 +2201,9 @@ else
     .wo-who-bar > i.b { background: #dc2626; }
     .wo-who-sub { font-size: 10.5px; color: #64748b; }
     /* تعداد آواتارِ نمایش‌داده‌شده = خودکار بر اساس عرض صفحه (بقیه در شمارنده و پنل) */
-    .wo-avstack > .av:nth-child(n+4) { display: none; }
-    @@media (max-width: 1199.98px) { .wo-avstack > .av:nth-child(n+3) { display: none; } }
-    @@media (max-width: 767.98px) { .wo-avstack > .av:nth-child(n+2) { display: none; } .wo-who-btn { display: none; } }
+    .wo-avstack > .wo-av-photo-wrap:nth-child(n+4) { display: none; }
+    @@media (max-width: 1199.98px) { .wo-avstack > .wo-av-photo-wrap:nth-child(n+3) { display: none; } }
+    @@media (max-width: 767.98px) { .wo-avstack > .wo-av-photo-wrap:nth-child(n+2) { display: none; } .wo-who-btn { display: none; } }
     /* پنل فهرست کامل گیرندگان — باید از کادر جدول بیرون بزند، پس تا وقتی باز است
        اسکرول افقیِ جدول موقتاً آزاد می‌شود (الگوی :has در همین پروژه استفاده شده). */
     .table-responsive:has(.wo-who-pop) { overflow: visible; }
@@ -2522,7 +2545,7 @@ else
                                             @foreach (var t in targets.Where(t => gdAddSel.Contains(t.Id)))
                                             {
                                                 var tid = t.Id;
-                                                <span class="ms-chip">@t.Username <i class="bi bi-x-circle-fill" role="button" @onclick="() => gdAddSel.Remove(tid)"></i></span>
+                                                <span class="ms-chip"><UserAvatar LoginUserId="t.Id" Size="20" CssClass="user-avatar-sm" /> @t.Username <i class="bi bi-x-circle-fill" role="button" @onclick="() => gdAddSel.Remove(tid)"></i></span>
                                             }
                                         </div>
                                     }
@@ -2543,7 +2566,9 @@ else
                                                 var tid = t.Id;
                                                 var isSel = gdAddSel.Contains(tid);
                                                 <div class="ms-combo-item @(isSel ? "sel" : "")" role="button" @onclick="() => { if (!gdAddSel.Remove(tid)) gdAddSel.Add(tid); }">
-                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i> @t.Username
+                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i>
+                                                    <UserAvatar LoginUserId="t.Id" Size="24" CssClass="user-avatar-sm" />
+                                                    <span>@t.Username</span>
                                                 </div>
                                             }
                                         }
@@ -2565,7 +2590,7 @@ else
                     {
                         <div class="wo-gd-station">
                             <div class="d-flex justify-content-between flex-wrap gap-1">
-                                <b><i class="bi bi-person-badge text-primary"></i> @detail.OwnerName @(isOwnerG ? "(شما)" : "")</b>
+                                <b class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="detail.OwnerUserId" Size="24" CssClass="user-avatar-sm" /> @detail.OwnerName @(isOwnerG ? "(شما)" : "")</b>
                                 <span class="fs-8 text-muted">دستوردهنده · ثبت: <span class="num">@detail.CreatedAt.ToFa()</span></span>
                             </div>
                             <div class="fs-8 text-muted mt-1">شروع گردش — وضعیت دستور: @(detail.Status == "Open" ? "باز" : "بسته‌شده")</div>
@@ -2575,7 +2600,7 @@ else
                             var aa = a;
                             <div class="wo-gd-station @(aa.Done == true ? "done" : "") @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
                                 <div class="d-flex justify-content-between flex-wrap gap-1">
-                                    <b><i class="bi bi-person"></i> @aa.Name @(aa.UserId == access.UserId ? "(شما)" : "")</b>
+                                    <b class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="aa.UserId" Size="24" CssClass="user-avatar-sm" /> @aa.Name @(aa.UserId == access.UserId ? "(شما)" : "")</b>
                                     @if (aa.Done == true) { <span class="badge bg-success-subtle text-success border">✅ انجام شد</span> }
                                     else if (aa.Done == false) { <span class="badge bg-danger-subtle text-danger border">❌ انجام نشد</span> }
                                     else if (aa.SeenAt != null) { <span class="badge bg-info-subtle text-info border">رویت شده</span> }
@@ -2610,7 +2635,7 @@ else
                                 <ul>
                                     <li>
                                         <div class="tnode">
-                                            <span class="mini"><i class="bi bi-person-badge"></i></span>
+                                            <span class="mini"><UserAvatar LoginUserId="detail.OwnerUserId" Size="26" CssClass="user-avatar-sm" /></span>
                                             <div><b>@detail.OwnerName</b><small> — دستوردهنده · @detail.CreatedAt.ToFa()</small></div>
                                             <span class="tst p">شروع گردش</span>
                                         </div>
@@ -2629,7 +2654,7 @@ else
                                                         var aa = a;
                                                         <li>
                                                             <div class="tnode gnode-click @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
-                                                                <span class="mini"><i class="bi bi-person"></i></span>
+                                                                <span class="mini"><UserAvatar LoginUserId="aa.UserId" Size="26" CssClass="user-avatar-sm" /></span>
                                                                 <div><b>@aa.Name</b><small> — رویت: @(aa.SeenAt == null ? "—" : aa.SeenAt.Value.ToFa())</small></div>
                                                                 <span class="tst @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")">
                                                                     @(aa.Done == true ? "انجام شد" : aa.Done == false ? "انجام نشد" : aa.SeenAt != null ? "رویت شده" : "در انتظار")
@@ -2655,7 +2680,7 @@ else
                                     <ul>
                                         <li>
                                             <div class="fnode root">
-                                                <span class="mini"><i class="bi bi-person-badge"></i></span>
+                                                <span class="mini"><UserAvatar LoginUserId="detail.OwnerUserId" Size="26" CssClass="user-avatar-sm" /></span>
                                                 <div><b>@detail.OwnerName</b><small>دستوردهنده</small></div>
                                                 <span class="fdot p"></span>
                                             </div>
@@ -2665,7 +2690,7 @@ else
                                                     var aa = a;
                                                     <li>
                                                         <div class="fnode gnode-click @(aa.Done == true ? "ok" : aa.Done == false ? "no" : "wt") @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
-                                                            <span class="mini"><i class="bi bi-person"></i></span>
+                                                            <span class="mini"><UserAvatar LoginUserId="aa.UserId" Size="26" CssClass="user-avatar-sm" /></span>
                                                             <div><b>@aa.Name</b><small>@(aa.Done == true ? "انجام شد" : aa.Done == false ? "انجام نشد" : aa.SeenAt != null ? "رویت شده" : "در انتظار رویت")</small></div>
                                                             <span class="fdot @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")"></span>
                                                         </div>
@@ -2698,7 +2723,7 @@ else
                     @if (selectedGardeshAssignee != null)
                     {
                         <div class="wo-gd-description mt-3">
-                            <div class="wo-block-title"><i class="bi bi-chat-left-text"></i> توضیحات گردش — @selectedGardeshAssignee.Name</div>
+                            <div class="wo-block-title d-flex flex-wrap align-items-center gap-1"><i class="bi bi-chat-left-text"></i> توضیحات گردش — <span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="selectedGardeshAssignee.UserId" Size="24" CssClass="user-avatar-sm" /> @selectedGardeshAssignee.Name</span></div>
                             <div class="wo-block-body">
                                 <div><b>وضعیت:</b> @(selectedGardeshAssignee.Done == true ? "انجام شد" : selectedGardeshAssignee.Done == false ? "انجام نشد" : selectedGardeshAssignee.SeenAt != null ? "رویت شده" : "در انتظار رویت")</div>
                                 <div class="mt-2"><b>پاسخ / توضیحات کارشناس:</b><br />@(string.IsNullOrWhiteSpace(selectedGardeshAssignee.ReplyText) ? "توضیحی ثبت نشده است." : selectedGardeshAssignee.ReplyText)</div>
@@ -2716,10 +2741,10 @@ else
                             <div class="wo-block-body">
                                 @foreach (var l in logs)
                                 {
-                                    <div class="d-flex gap-2 fs-9 py-1 border-bottom">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 fs-9 py-1 border-bottom">
                                         <span class="num text-muted" style="min-width:110px">@l.CreatedAt.ToFaDateTime()</span>
                                         <span style="min-width:90px">@((MarkupString)LogBadge(l.Action))</span>
-                                        <span class="flex-grow-1">@l.ActorName@(string.IsNullOrWhiteSpace(l.Text) ? "" : " — " + l.Text)</span>
+                                        <span class="flex-grow-1"><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="@(l.ActorUserId ?? 0)" Size="22" CssClass="user-avatar-sm" /> @l.ActorName</span>@(string.IsNullOrWhiteSpace(l.Text) ? "" : " — " + l.Text)</span>
                                     </div>
                                 }
                             </div>
@@ -4055,7 +4080,7 @@ else
     private List<string> newChecklist = new();   // فرم ایجاد/ویرایش
     private string newClText = "";
     private List<ClItem> detailChecklist = new(); // مودال جزئیات
-    public class ClItem { public int Id { get; set; } public string Text { get; set; } = ""; public int SortOrder { get; set; } public bool IsDone { get; set; } public string? DoneByName { get; set; } public DateTime? DoneAt { get; set; } }
+    public class ClItem { public int Id { get; set; } public string Text { get; set; } = ""; public int SortOrder { get; set; } public bool IsDone { get; set; } public int? DoneByUserId { get; set; } public string? DoneByName { get; set; } public DateTime? DoneAt { get; set; } }
 
     private void AddChecklistItem()
     {
@@ -4087,6 +4112,7 @@ else
             if (resp.IsSuccessStatusCode)
             {
                 item.IsDone = newVal;
+                item.DoneByUserId = newVal ? access.UserId : null;
                 item.DoneByName = newVal ? "من" : null;
                 item.DoneAt = newVal ? DateTime.Now : null;
             }
@@ -4369,18 +4395,6 @@ else
         "seen" => "دیده، بی‌پاسخ",
         _ => "نخوانده"
     };
-
-    /// <summary>حروف اول نام برای آواتار (مثلاً «مریم احمدی» ⇒ «م ا»).</summary>
-    private static string Initials(string? name)
-    {
-        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) return "؟";
-        if (parts.Length == 1) return parts[0].Length >= 2 ? parts[0][..2] : parts[0];
-        return $"{parts[0][0]} {parts[^1][0]}";
-    }
-
-    /// <summary>رنگ ثابتِ هر کاربر (بر اساس شناسه) تا در همهٔ ردیف‌ها یک نفر یک رنگ باشد.</summary>
-    private static string AvClass(int userId) => "c" + ((userId <= 0 ? 0 : (userId - 1) % 8) + 1);
 
     private static int RepliedCount(WoItem w) => w.Assignees.Count(a => a.RepliedAt != null);
     private static int DoneCount(WoItem w) => w.Assignees.Count(a => AsgState(a) == "done");
@@ -5109,9 +5123,9 @@ else
     public class SmsOperationRes { public bool SmsStageFailed { get; set; } public bool NotificationsFailed { get; set; } public bool Duplicate { get; set; } }
     public class AddAssigneesRes : SmsOperationRes { public int Added { get; set; } public int Skipped { get; set; } }
     public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
-    public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
+    public class LogItem { public int Id { get; set; } public int? ActorUserId { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
     public class CalItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime DueAt { get; set; } public string Status { get; set; } = ""; public string Kind { get; set; } = "Self"; public string Tone { get; set; } = "none"; }
-    public class ChildItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public string Status { get; set; } = ""; public string OwnerName { get; set; } = ""; }
+    public class ChildItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public string Status { get; set; } = ""; public int OwnerUserId { get; set; } public string OwnerName { get; set; } = ""; }
     public class AsgItem
     {
         public int Id { get; set; } public int UserId { get; set; } public string Name { get; set; } = "";

@@ -17,6 +17,7 @@ public enum WorkOrderSmsStatus
 public sealed class WorkOrderSmsEventDto
 {
     public int Id { get; set; }
+    public int RecipientUserId { get; set; }
     public string RecipientName { get; set; } = "";
     public WorkOrderSmsEventType EventType { get; set; }
     public WorkOrderSmsStatus Status { get; set; }

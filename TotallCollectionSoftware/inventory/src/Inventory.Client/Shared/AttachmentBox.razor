@@ -64,7 +64,13 @@
                                 <i class="bi bi-droplet-half"></i> واترمارک
                             </span>
                         }
-                        <span>@a.UploaderName</span>
+                        <span class="d-inline-flex align-items-center gap-1">
+                            @if (ShowUploaderAvatar)
+                            {
+                                <UserAvatar LoginUserId="a.UploaderUserId" Size="22" CssClass="user-avatar-sm" />
+                            }
+                            @a.UploaderName
+                        </span>
                         <span>•</span>
                         <span>@FormatSize(a.Size)</span>
                         <span>•</span>
@@ -214,6 +220,9 @@
 
     /// <summary>اجازه آپلود/حذف</summary>
     [Parameter] public bool CanUpload { get; set; } = true;
+
+    /// <summary>نمایش تصویر بارگذار در فرم‌هایی که نام افراد را همراه تصویر نشان می‌دهند.</summary>
+    [Parameter] public bool ShowUploaderAvatar { get; set; }
 
     /// <summary>
     /// آدرس پایهٔ متن استخراج‌شده برای پیش‌نمایش Word/Excel (فقط آرشیو اسناد):

@@ -383,7 +383,7 @@ public sealed class ServersController : ControllerBase
         _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = assignee.Id, Name = UserDisplay.Name(assignee) });
         var createdLog = new WorkOrderLog
         {
-            OrderId = wo.Id, ActorName = ownerName, Action = "Created",
+            OrderId = wo.Id, ActorUserId = UserId, ActorName = ownerName, Action = "Created",
             Text = $"دستور کار از هشدار سرور «{server.Name}» ایجاد شد. هشدار #{alert.Id}"
         };
         _db.WorkOrderLogs.Add(createdLog);

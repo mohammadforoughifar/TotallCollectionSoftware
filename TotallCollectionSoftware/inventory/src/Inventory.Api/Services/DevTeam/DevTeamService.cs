@@ -2364,6 +2364,7 @@ public class DevTeamService : IDevTeamService
         _db.WorkOrderLogs.Add(new WorkOrderLog
         {
             OrderId = wo.Id,
+            ActorUserId = userId,
             ActorName = userName,
             Action = "Created",
             Text = $"از تسک DevTeam {task.Number} ساخته شد"

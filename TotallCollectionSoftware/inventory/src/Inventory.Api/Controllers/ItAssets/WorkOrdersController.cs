@@ -108,7 +108,7 @@ public class WorkOrdersController : ControllerBase
 
     private WorkOrderLog Log(int orderId, string action, string? text)
     {
-        var row = new WorkOrderLog { OrderId = orderId, ActorName = MyUsername, Action = action, Text = text };
+        var row = new WorkOrderLog { OrderId = orderId, ActorUserId = MyUserId, ActorName = MyUsername, Action = action, Text = text };
         _db.WorkOrderLogs.Add(row);
         return row;
     }
@@ -1147,7 +1147,7 @@ public class WorkOrdersController : ControllerBase
             .Select(w => new { w.Id, w.Number, w.Title }).ToListAsync();
         var children = await _db.WorkOrders.AsNoTracking()
             .Where(w => w.ParentOrderId != null && ids.Contains(w.ParentOrderId.Value))
-            .Select(w => new { w.Id, ParentId = w.ParentOrderId!.Value, w.Number, w.Title, w.Status, w.OwnerName })
+            .Select(w => new { w.Id, ParentId = w.ParentOrderId!.Value, w.Number, w.Title, w.Status, w.OwnerUserId, w.OwnerName })
             .ToListAsync();
 
         // پروژه کاری متصل — پروژه حذف‌شده هم با پسوند «(حذف‌شده)» نمایش داده می‌شود تا تاریخچه حفظ شود
@@ -1194,7 +1194,7 @@ public class WorkOrdersController : ControllerBase
             ParentNumber = parents.FirstOrDefault(p => p.Id == w.ParentOrderId)?.Number,
             ParentTitle = parents.FirstOrDefault(p => p.Id == w.ParentOrderId)?.Title,
             Children = children.Where(c => c.ParentId == w.Id)
-                .Select(c => new { c.Id, c.Number, c.Title, c.Status, c.OwnerName }).ToList(),
+                .Select(c => new { c.Id, c.Number, c.Title, c.Status, c.OwnerUserId, c.OwnerName }).ToList(),
             Assignees = asgs.Where(a => a.OrderId == w.Id).Select(a => new
             {
                 a.Id, a.UserId, a.Name, a.SeenAt, a.RepliedAt, a.Done, a.ReplyText,
@@ -1413,7 +1413,7 @@ public class WorkOrdersController : ControllerBase
         var users = await _db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync();
         return Ok(rows.Select(n => new WorkOrderSmsEventDto
         {
-            Id = n.Id, EventType = n.EventType, Status = n.Status, CreatedAtUtc = n.CreatedAtUtc,
+            Id = n.Id, RecipientUserId = n.RecipientUserId, EventType = n.EventType, Status = n.Status, CreatedAtUtc = n.CreatedAtUtc,
             RecipientName = users.FirstOrDefault(u => u.Id == n.RecipientUserId) is { } u ? UserDisplay.Name(u) : $"کاربر {n.RecipientUserId}",
             FailureCode = n.Status != WorkOrderSmsStatus.Failed ? null :
                 n.ProviderCode is not null and not 200 ? n.ProviderCode : n.ProviderMessageStatus
@@ -2112,7 +2112,7 @@ public class WorkOrdersController : ControllerBase
         if (!await CanSeeOrderAsync(id)) return Forbid();
         return Ok(await Paging.ResultAsync(_db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
             .OrderBy(c => c.SortOrder).ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Text, c.SortOrder, c.IsDone, c.DoneByName, c.DoneAt }), skip, take));
+            .Select(c => new { c.Id, c.Text, c.SortOrder, c.IsDone, c.DoneByUserId, c.DoneByName, c.DoneAt }), skip, take));
     }
 
     public class ChecklistAddDto { public string Text { get; set; } = ""; }
@@ -2879,7 +2879,7 @@ public class WorkOrdersController : ControllerBase
     {
         if (!await CanSeeOrderAsync(id)) return Forbid();
         return Ok(await Paging.ResultAsync(_db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
-            .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }), skip, take));
+            .Select(l => new { l.Id, l.ActorUserId, l.ActorName, l.Action, l.Text, l.CreatedAt }), skip, take));
     }
 
     // ================== پیوست‌ها (بند ۴) ==================

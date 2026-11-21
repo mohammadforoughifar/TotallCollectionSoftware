@@ -237,6 +237,7 @@ public static class DbInitializer
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await WorkOrderSmsSchemaV1.EnsureAsync(db);
+                await WorkOrderActorSchemaV1.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
                 // مدت نمایش اعلان‌ها/پیام‌ها (سراسری، مدیر سامانه) — ستون‌های AppSettings
