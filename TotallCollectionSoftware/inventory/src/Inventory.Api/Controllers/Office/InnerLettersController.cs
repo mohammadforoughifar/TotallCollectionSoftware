@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office;
 using Inventory.Shared.Dtos;
@@ -30,8 +31,9 @@ public class InnerLettersController : RbacControllerBase
     private readonly IArchiveService _archive;
     private readonly FileStore _store;
     private readonly IInnerLetterPrintService _print;
+    private readonly INotifyService _notify;
 
-    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive, FileStore store, IInnerLetterPrintService print)
+    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive, FileStore store, IInnerLetterPrintService print, INotifyService notify)
         : base(db)
     {
         _letters = letters;
@@ -41,6 +43,7 @@ public class InnerLettersController : RbacControllerBase
         _archive = archive;
         _store = store;
         _print = print;
+        _notify = notify;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -552,6 +555,23 @@ public class InnerLettersController : RbacControllerBase
         };
         Db.AppAttachments.Add(att);
         await Db.SaveChangesAsync();
+
+        // ---------- اعلان «پیوست جدید» ----------
+        // قاعدهٔ کارفرما: افرادی که نامه در گردششان است و آن را رویت کرده‌اند
+        // (Erja.IsRead = true) + ایجادکنندهٔ نامه، از آپدیت نامه باخبر شوند.
+        // کسانی که هنوز نامه را باز نکرده‌اند اعلان نمی‌گیرند (نامه در کارتابلشان
+        // نخوانده است) و بارگذارندهٔ فایل هم خودش اعلان نمی‌گیرد (در Notifier).
+        // این فراخوانی قبلاً برای نامهٔ داخلی جا افتاده بود — فقط وارده و صادره
+        // آن را صدا می‌زدند — به همین دلیل گیرندهٔ نامهٔ داخلی از پیوست تازه
+        // باخبر نمی‌شد. اعلان هرگز نباید بارگذاری پیوست را fail کند.
+        try
+        {
+            await LetterAttachmentNotifier.NotifyNewAttachmentAsync(
+                Db, HttpContext.RequestServices, id, att.FileName, MyUserId, att.UploaderName);
+            await _notify.BroadcastChangedAsync("letters");
+        }
+        catch { /* اعلان هرگز نباید بارگذاری پیوست را fail کند */ }
+
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
