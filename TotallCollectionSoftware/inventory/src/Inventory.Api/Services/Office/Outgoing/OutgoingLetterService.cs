@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services;
@@ -1277,17 +1277,27 @@ public class OutgoingLetterService : IOutgoingLetterService
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        if (newlyAdded.Count > 0)
+        // ⚠️ کارهای «پس از ذخیره» (اعلان و Broadcast) هرگز نباید ویرایشِ انجام‌شده را
+        // به خطای ۵۰۰ تبدیل کنند؛ قبلاً اگر اعلان شکست می‌خورد، کاربر پیام خطا می‌دید
+        // در حالی که تغییرات روی دیتابیس ذخیره شده بود.
+        try
         {
-            var senderName = await _db.Users.Where(u => u.Id == letter.CreatorUserId)
-                .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() == "" ? u.Username : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim())
-                .FirstOrDefaultAsync() ?? "";
-            await _notify.SendManyAsync(newlyAdded,
-                $"نامه صادره جهت بررسی: {letter.Title}",
-                $"گیرنده: {letter.ReceiverOrganization} — شماره {letter.LetterNumber}",
-                senderName, "نامه صادره", $"outgoing-letters/view/{letterId}");
+            if (newlyAdded.Count > 0)
+            {
+                var senderName = await _db.Users.Where(u => u.Id == letter.CreatorUserId)
+                    .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() == "" ? u.Username : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim())
+                    .FirstOrDefaultAsync() ?? "";
+                await _notify.SendManyAsync(newlyAdded,
+                    $"نامه صادره جهت بررسی: {letter.Title}",
+                    $"گیرنده: {letter.ReceiverOrganization} — شماره {letter.LetterNumber}",
+                    senderName, "نامه صادره", $"outgoing-letters/view/{letterId}");
+            }
+            await _notify.BroadcastChangedAsync("outgoing-letters");
         }
-        await _notify.BroadcastChangedAsync("outgoing-letters");
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[OutgoingLetters] ویرایش نامهٔ {letterId} ذخیره شد ولی اعلان/اطلاع‌رسانی ناموفق بود: {ex.Message}");
+        }
     }
 
     public async Task UpdateStatusAsync(int letterId, int newStatus, int userId, bool isAdmin)

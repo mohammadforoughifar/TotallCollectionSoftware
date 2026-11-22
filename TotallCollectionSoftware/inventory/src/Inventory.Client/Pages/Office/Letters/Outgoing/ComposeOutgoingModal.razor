@@ -1,4 +1,4 @@
-@inject IOutgoingLetterService OutgoingSvc
+﻿@inject IOutgoingLetterService OutgoingSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
 @inject IJSRuntime JS
@@ -721,8 +721,9 @@
                 FromPishnevisId = draftId
             };
             var letterId = await OutgoingSvc.SendAsync(dto);
-            await UploadPendingAsync(id => OutgoingSvc.UploadAttachmentAsync(letterId, id.stream, id.name, id.type));
+            var failedFiles = await UploadPendingAsync(id => OutgoingSvc.UploadAttachmentAsync(letterId, id.stream, id.name, id.type));
             Toast.Success("نامه صادره با موفقیت ثبت شد.");
+            ReportAttachmentFailures(failedFiles, "نامه");
             visible = false;
             await OnSent.InvokeAsync();
         }
@@ -745,8 +746,9 @@
                 ReceiverName = receiverName?.Trim(),
                 ReceiverTitle = receiverTitle?.Trim()
             });
-            await UploadPendingAsync(x => OutgoingSvc.UploadPishnevisAttachmentAsync(id, x.stream, x.name, x.type));
+            var failedFiles = await UploadPendingAsync(x => OutgoingSvc.UploadPishnevisAttachmentAsync(id, x.stream, x.name, x.type));
             Toast.Success("پیش‌نویس صادره ذخیره شد.");
+            ReportAttachmentFailures(failedFiles, "پیش‌نویس");
             visible = false;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -783,10 +785,20 @@
                 SignerGroupIds = signerSelGroups.ToList(),
                 RelatedLetters = related
             });
+            // ⚠️ از این‌جا به بعد نامه ذخیره شده است؛ خطاهای مراحل بعدی «هشدار» هستند نه «خطا».
+            // قبلاً خطای رونوشت‌گیرندگان/پیوست‌ها به‌صورت پیام قرمز نشان داده می‌شد و کاربر
+            // تصور می‌کرد ویرایش انجام نشده، در حالی که متن نامه ذخیره شده بود.
+            var warnings = new List<string>();
+
             // رونوشت‌گیرندگان پس از ویرایشِ خودِ نامه جایگزین می‌شوند (جدول مستقل)
-            await OutgoingSvc.ReplaceCopyTosAsync(editLetterId, CopyRowsForSave());
-            await UploadPendingAsync(x => OutgoingSvc.UploadAttachmentAsync(editLetterId, x.stream, x.name, x.type));
-            Toast.Success("نامه صادره ویرایش شد.");
+            try { await OutgoingSvc.ReplaceCopyTosAsync(editLetterId, CopyRowsForSave()); }
+            catch (Exception cex) { warnings.Add($"رونوشت‌گیرندگان ذخیره نشد — {cex.Message}"); }
+            warnings.AddRange(await UploadPendingAsync(x => OutgoingSvc.UploadAttachmentAsync(editLetterId, x.stream, x.name, x.type)));
+
+            Toast.Success("تغییرات نامه صادره ذخیره شد.");
+            if (warnings.Count > 0)
+                Toast.Warning($"تغییرات نامه ذخیره شد، اما این موارد انجام نشد: "
+                              + string.Join("، ", warnings.Take(3)) + (warnings.Count > 3 ? $" و {warnings.Count - 3} مورد دیگر" : ""));
             visible = false;
             await OnSent.InvokeAsync();
         }
@@ -794,8 +806,15 @@
         finally { busy = false; }
     }
 
-    private async Task UploadPendingAsync(Func<(Stream stream, string name, string type), Task> uploader)
+    /// <summary>
+    /// بارگذاری پیوست‌های انتخاب‌شده — خطای هر فایل جمع می‌شود و پرتاب نمی‌شود.
+    /// دلیل: در ثبت/ویرایش، نامه پیش از بارگذاری پیوست‌ها ذخیره شده است؛ پیام «خطا»
+    /// بدون توضیح این نکته باعث می‌شد کاربر فکر کند کارش انجام نشده (یا برعکس).
+    /// خروجی: فهرست پیوست‌هایی که بارگذاری نشدند.
+    /// </summary>
+    private async Task<List<string>> UploadPendingAsync(Func<(Stream stream, string name, string type), Task> uploader)
     {
+        var failed = new List<string>();
         foreach (var f in pendingFiles)
         {
             try
@@ -803,8 +822,17 @@
                 await using var s = f.OpenReadStream(long.MaxValue);
                 await uploader((s, f.Name, f.ContentType));
             }
-            catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }
+            catch (Exception ex) { failed.Add($"{f.Name} — {ex.Message}"); }
         }
         pendingFiles.Clear();
+        return failed;
+    }
+
+    /// <summary>گزارش پیوست‌های ناموفق با پیام هشدار که صریحاً می‌گوید متن ذخیره شده است</summary>
+    private void ReportAttachmentFailures(List<string> failed, string what)
+    {
+        if (failed.Count == 0) return;
+        Toast.Warning($"{failed.Count.FaDigits()} پیوست بارگذاری نشد — {what} ذخیره شد: "
+                      + string.Join("، ", failed.Take(3)));
     }
 }
