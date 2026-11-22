@@ -805,20 +805,35 @@ public class OutgoingLettersController : RbacControllerBase
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
         }
 
-        var list = await Db.AppAttachments.AsNoTracking()
+        var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == AttachmentModule && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new LetterAttachmentDto
+            .Select(a => new
             {
-                Id = a.Id,
-                FileName = a.FileName,
-                ContentType = a.ContentType,
-                Size = a.Data.Length,
-                UploaderName = a.UploaderName,
-                UploaderUserId = a.UploaderUserId,
-                UploadedAt = a.UploadedAt
+                a.Id,
+                a.FileName,
+                a.ContentType,
+                // فقط طول ستون در SQL حساب می‌شود؛ بایت‌های فایل به حافظه نمی‌آیند
+                DataLength = a.Data == null ? 0 : a.Data.Length,
+                a.FilePath,
+                a.UploaderName,
+                a.UploaderUserId,
+                a.UploadedAt
             })
             .ToPageListAsync(pagination);
+
+        // فایل‌های جدید روی دیسک ذخیره می‌شوند و ستون Data خالی می‌ماند؛ پس حجم باید از
+        // روی دیسک خوانده شود، وگرنه همهٔ پیوست‌ها «۰ بایت» نشان داده می‌شدند.
+        var list = rows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
         return Ok(pagination.Result(list));
     }
 
@@ -935,20 +950,35 @@ public class OutgoingLettersController : RbacControllerBase
         var owns = await Db.OutgoingPishnevisLetters.AnyAsync(p => p.PishnevisId == id && p.UserId == MyUserId && !p.IsDelete);
         if (!owns) return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
 
-        var list = await Db.AppAttachments.AsNoTracking()
+        var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == PishnevisAttachmentModule && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new LetterAttachmentDto
+            .Select(a => new
             {
-                Id = a.Id,
-                FileName = a.FileName,
-                ContentType = a.ContentType,
-                Size = a.Data.Length,
-                UploaderName = a.UploaderName,
-                UploaderUserId = a.UploaderUserId,
-                UploadedAt = a.UploadedAt
+                a.Id,
+                a.FileName,
+                a.ContentType,
+                // فقط طول ستون در SQL حساب می‌شود؛ بایت‌های فایل به حافظه نمی‌آیند
+                DataLength = a.Data == null ? 0 : a.Data.Length,
+                a.FilePath,
+                a.UploaderName,
+                a.UploaderUserId,
+                a.UploadedAt
             })
             .ToPageListAsync(pagination);
+
+        // فایل‌های جدید روی دیسک ذخیره می‌شوند و ستون Data خالی می‌ماند؛ پس حجم باید از
+        // روی دیسک خوانده شود، وگرنه همهٔ پیوست‌ها «۰ بایت» نشان داده می‌شدند.
+        var list = rows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.DataLength,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
         return Ok(pagination.Result(list));
     }
 
