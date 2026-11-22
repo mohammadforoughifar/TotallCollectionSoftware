@@ -331,12 +331,12 @@
         </div>
     }
 
-    @* ============ فرم‌های متفرقه ============ *@
+    @* ============ صورتجلسه ============ *@
     @if (Auth.CanSee("MeetingMinutes"))
     {
         <div class="nav-group group-misc">
             <button type="button" class="nav-section-title nav-toggle @(gMisc ? "open" : "")" @onclick="() => gMisc = !gMisc">
-                <span><i class="bi bi-files"></i>فرم‌های متفرقه</span>
+                <span><i class="bi bi-files"></i>صورتجلسه</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gMisc)
