@@ -733,7 +733,7 @@ else
                                 </td>
                                 <td class="num fw-700 text-primary">@w.Number</td>
                                 <td class="fw-600">
-                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId, null, w.SourceType) @ProjectBadge(w)
+                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId, w.SourceRefId, w.SourceType) @ProjectBadge(w)
                                     @if (w.Recurrence > 0)
                                     {
                                         <i class="bi bi-arrow-repeat text-info" title="تکرار @RecurrenceFa(w.Recurrence)"></i>
@@ -915,7 +915,7 @@ else
                     <div class="fw-700">@PriorityBadge(w.Priority) @w.Title</div>
                     @ToneBadge(w, tone)
                 </div>
-                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId, null, w.SourceType) @ProjectBadge(w)</div>
+                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId, w.SourceRefId, w.SourceType) @ProjectBadge(w)</div>
                 @if (HasRelatedOrders(w)) { <div class="wo-mobile-related">@RelatedOrderLinks(w)</div> }
                 @if (w.Assignees.Any(a => a.OwnerDecision != null) || w.Assignees.Any(a => a.RepliedAt != null))
                 {
@@ -1044,7 +1044,7 @@ else
                         }
                         @if (!string.IsNullOrWhiteSpace(_sourceLabel))
                         {
-                            <div class="wo-source-meta">@SourceLink(_sourceModule, _sourceId) @_sourceLabel</div>
+                            <div class="wo-source-meta">@SourceLink(_sourceModule, _sourceId, _sourceRefId) @_sourceLabel</div>
                         }
                     </div>
                     <div class="wo-header-actions">
@@ -4169,7 +4169,11 @@ else
             </a>;
         if (module == "MeetingMinutes" || module == "MeetingMinutesItem")
         {
-            var targetId = module == "MeetingMinutes" ? sourceId : (sourceRefId ?? _sourceRefId ?? sourceId);
+            // اگر دستورکار از «بندِ» صورتجلسه ساخته شده باشد، SourceId شناسهٔ خودِ بند است
+            // و باز کردنِ /misc/minutes/{بند} صفحهٔ صورتجلسه را پیدا نمی‌کرد. شناسهٔ درست،
+            // SourceRefId است که سرور از MeetingMinutesItems پر می‌کند.
+            var targetId = module == "MeetingMinutes" ? sourceId : sourceRefId;
+            if (targetId is not > 0) return null;
             return @<a class="wo-att" href="@($"/misc/minutes/{targetId}")" target="_blank" title="رفتن به صورتجلسه مبدأ">
                 <i class="bi bi-journal-text"></i> صورتجلسه
             </a>;

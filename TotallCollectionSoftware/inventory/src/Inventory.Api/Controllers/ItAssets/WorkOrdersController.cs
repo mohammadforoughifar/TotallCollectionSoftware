@@ -1082,6 +1082,16 @@ public class WorkOrdersController : ControllerBase
             .ToDictionaryAsync(s => s.Id, s => s.SourceType);
     }
 
+    /// <summary>نگاشتِ شناسهٔ بندِ صورتجلسه → شناسهٔ صورتجلسه (برای لینکِ درستِ «صورتجلسه»).</summary>
+    private async Task<Dictionary<int, int>> MinutesRefMapAsync(IEnumerable<int?> itemIds)
+    {
+        var ids = itemIds.Where(x => x is > 0).Select(x => x!.Value).Distinct().ToList();
+        if (ids.Count == 0) return new();
+        return await _db.MeetingMinutesItems.AsNoTracking()
+            .Where(i => ids.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id, i => i.MinutesId);
+    }
+
     /// <summary>
     /// نوعِ نامهٔ مبدأ را با اولویتِ جدولِ LetterSources و سپس نامِ ماژول برمی‌گرداند.
     /// اگر مبدأ صریحاً یک ماژولِ غیرنامه (مدرک/صورتجلسه) باشد، null برمی‌گردد تا
@@ -1170,13 +1180,26 @@ public class WorkOrdersController : ControllerBase
         // (۱=داخلی، ۲=صادره، ۳=وارده) تا لینکِ «نامه» هرگز نامهٔ اشتباهی را باز نکند.
         var letterTypeBySourceId = await LetterTypeMapAsync(orders.Select(w => w.SourceId));
 
+        // صورتجلسهٔ مبدأ: دستورکاری که از «بندِ» صورتجلسه ساخته شده، SourceId = شناسهٔ بند
+        // دارد و برای لینکِ درست به شناسهٔ خودِ صورتجلسه (SourceRefId) نیاز است. رکوردهای
+        // قدیمی این ستون را خالی دارند؛ از روی جدولِ بندها پر می‌شود.
+        var minutesRefByItemId = await MinutesRefMapAsync(orders
+            .Where(w => string.Equals(w.SourceModule, "MeetingMinutesItem", StringComparison.OrdinalIgnoreCase)
+                        && w.SourceRefId == null)
+            .Select(w => w.SourceId));
+
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             HasFullDescription = longDescIds.Contains(w.Id),
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
-            w.SourceModule, w.SourceId, w.SourceRefId,
+            w.SourceModule, w.SourceId,
+            SourceRefId = w.SourceRefId
+                ?? (string.Equals(w.SourceModule, "MeetingMinutesItem", StringComparison.OrdinalIgnoreCase)
+                    && w.SourceId is int srcItemId
+                    && minutesRefByItemId.TryGetValue(srcItemId, out var minutesId)
+                        ? minutesId : (int?)null),
             // نوعِ نامهٔ مبدأ (۱=داخلی، ۲=صادره، ۳=وارده) — از LetterSource خوانده شده
             SourceType = LetterTypeOf(w.SourceModule, w.SourceId, letterTypeBySourceId),
             w.ProjectId, w.Weight,
