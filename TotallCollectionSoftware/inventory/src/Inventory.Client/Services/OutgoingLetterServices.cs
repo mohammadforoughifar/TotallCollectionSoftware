@@ -1,4 +1,4 @@
-using Inventory.Shared.Dtos;
+﻿using Inventory.Shared.Dtos;
 
 namespace Inventory.Client.Services;
 
@@ -111,11 +111,27 @@ public class OutgoingLetterService : IOutgoingLetterService
     private class NeshanResponse { public bool IsNeshan { get; set; } }
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
 
-    /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
-    public Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items) =>
-        _api.PutAsync<List<OutgoingLetterCopyToDto>>(
+    /// <summary>
+    /// جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره.
+    /// ⚠️ سرور پاسخ را به‌شکل <c>{ items, message }</c> برمی‌گرداند؛ قبلاً همین‌جا مستقیم
+    /// به <c>List&lt;OutgoingLetterCopyToDto&gt;</c> دیسریال می‌شد و چون ساختار پاسخ
+    /// «آرایه» نبود، deserialize شکست می‌خورد و پیام <c>{"items":[],"message":"…"}</c>
+    /// به‌عنوان «خطا» در Toast نشان داده می‌شد — در حالی که نامه ذخیره شده بود.
+    /// </summary>
+    public async Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items)
+    {
+        var res = await _api.PutAsync<CopyTosSaveResponse>(
             $"api/outgoing-letters/{letterId}/copy-tos",
             new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
+        return res?.Items ?? new List<OutgoingLetterCopyToDto>();
+    }
+
+    /// <summary>بدنهٔ پاسخ ذخیرهٔ رونوشت‌گیرندگان: { items, message }</summary>
+    private sealed class CopyTosSaveResponse
+    {
+        public List<OutgoingLetterCopyToDto>? Items { get; set; }
+        public string? Message { get; set; }
+    }
 
     public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15,
         bool? starredOnly = null, bool? attachOnly = null)
