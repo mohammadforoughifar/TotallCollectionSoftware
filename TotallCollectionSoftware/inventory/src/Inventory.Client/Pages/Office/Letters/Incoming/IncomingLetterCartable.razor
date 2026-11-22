@@ -152,7 +152,15 @@
                                 </div>
                             }
 
-                            <div class="avt" style="background:#3b82f6;color:#fff"><i class="bi bi-inbox"></i></div>
+                            @if (l.SenderUserId > 0)
+                            {
+                                @* عکس کاربر ثبت‌کننده — همان رفتار نامه داخلی *@
+                                <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(l.Sender) ? l.Ferestande : $"{l.Sender} — ثبت‌کننده")"><UserAvatar SystemUserId="l.SenderUserId" Size="40" /></div>
+                            }
+                            else
+                            {
+                                <div class="avt" style="background:#3b82f6;color:#fff"><i class="bi bi-inbox"></i></div>
+                            }
 
                             <div class="mail-b">
                                 <div class="mail-r1">
@@ -343,6 +351,13 @@
                                             <span> — شماره مبدأ: @activeDetail.NumberLetterVarede</span>
                                         }
                                     </div>
+                                    @if (activeDetail.CreatorUserId > 0)
+                                    {
+                                        <div class="n2 letter-person letter-person-sm">
+                                            <UserAvatar SystemUserId="activeDetail.CreatorUserId" Size="20" />
+                                            <span class="letter-person-name">ثبت‌کننده: @(string.IsNullOrWhiteSpace(activeDetail.CreatorName) ? "—" : activeDetail.CreatorName)</span>
+                                        </div>
+                                    }
                                 </div>
                                 <div class="ind">
                                     <div class="no num"># @activeDetail.NumberSabt.FaDigits()</div>

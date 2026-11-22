@@ -152,7 +152,16 @@
                                     <input type="checkbox" checked="@(selectedLetterIds.Contains(ll.LetterId))" @onchange="() => ToggleSelectLetter(ll.LetterId)" style="width:16px;height:16px;cursor:pointer;" />
                                 </div>
                             }
-                            <div class="avt">@AvatarText(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)</div>
+                            @if (!FolderIsSent && ll.SenderUserId > 0)
+                            {
+                                @* عکس کاربر فرستنده — همان رفتار نامه داخلی *@
+                                <div class="avt letter-avatar" title="@ll.Sender"><UserAvatar SystemUserId="ll.SenderUserId" Size="40" /></div>
+                            }
+                            else
+                            {
+                                @* در ارسالی، نام گیرندهٔ بیرونی است و عکسی برایش نیست *@
+                                <div class="avt" title="@(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)">@AvatarText(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)</div>
+                            }
                             <div class="mail-b">
                                 <div class="mail-r1">
                                     <span class="who">
@@ -348,7 +357,14 @@
                     <div>
                         <div class="paper">
                             <div class="paper-h">
-                                <div class="avt">@AvatarText(selected.SenderName)</div>
+                                @if (selected.SenderUserId > 0)
+                                {
+                                    <div class="avt letter-avatar" title="@selected.SenderName"><UserAvatar SystemUserId="selected.SenderUserId" Size="40" /></div>
+                                }
+                                else
+                                {
+                                    <div class="avt">@AvatarText(selected.SenderName)</div>
+                                }
                                 <div class="ph-meta">
                                     <div class="n1">@selected.SenderName</div>
                                     <div class="n2">فرستنده @(selected.IsMine ? "(شما)" : "")</div>
@@ -415,7 +431,8 @@
                                     @foreach (var s in selected.Signers.OrderBy(x=>x.Order))
                                     {
                                         <span class="pp" style="@(s.IsSigned ? "background:#dcfce7" : "background:#fef3c7")">
-                                            <span class="mini"><i class="bi @(s.IsSigned ? "bi-check2-all" : "bi-pen")"></i></span>
+                                            @* عکس کاربر امضاکننده — همان الگوی نامه داخلی (رنگ پس‌زمینه = وضعیت امضا) *@
+                                            <span class="mini"><UserAvatar SystemUserId="@s.UserId" Size="18" /></span>
                                             @s.DisplayName @(s.UserId==selected.SenderUserId ? "(فرستنده)" : "")
                                             @if (!string.IsNullOrWhiteSpace(s.SematTitle))
                                             {
@@ -548,7 +565,7 @@
                                 <h3><i class="bi bi-pen-fill"></i> وضعیت امضا</h3>
                                 @foreach (var s in selected.Signers.OrderBy(x=>x.Order))
                                 {
-                                    <div class="kv"><b>@s.DisplayName</b>@if (!string.IsNullOrWhiteSpace(s.SematTitle)) { <span style="color:#475569;font-weight:600"><i class="bi bi-briefcase"></i> @s.SematTitle</span> }<span class="@(s.IsSigned ? "tg green" : "tg amber")">@(s.IsSigned ? $"امضا {s.DateSigned?.ToFa()}" : "در انتظار")</span></div>
+                                    <div class="kv"><b class="letter-person letter-person-sm"><UserAvatar SystemUserId="@s.UserId" Size="20" /><span class="letter-person-name">@s.DisplayName</span></b>@if (!string.IsNullOrWhiteSpace(s.SematTitle)) { <span style="color:#475569;font-weight:600"><i class="bi bi-briefcase"></i> @s.SematTitle</span> }<span class="@(s.IsSigned ? "tg green" : "tg amber")">@(s.IsSigned ? $"امضا {s.DateSigned?.ToFa()}" : "در انتظار")</span></div>
                                 }
                             </div>
                         }

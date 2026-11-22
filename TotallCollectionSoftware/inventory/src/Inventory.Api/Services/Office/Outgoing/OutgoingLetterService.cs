@@ -1655,6 +1655,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                         ? l.Creator.Username
                         : (l.Creator.FirstName + " " + l.Creator.LastName).Trim())
                     : "",
+                CreatorUserId = l.CreatorUserId,
                 ReceiverOrganization = l.ReceiverOrganization,
                 ReceiverName = l.ReceiverName,
                 DateSabt = l.DateSabt,

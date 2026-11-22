@@ -263,7 +263,10 @@
                             <div style="font-size:12.5px;color:#64748b;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px">
                                 <span><b>شماره صادره:</b> <span class="num" style="color:#16a34a;font-weight:700">@(ll.SadereNumber ?? "—")</span></span>
                                 <span><b>مقصد:</b> @ll.ReceiverOrganization @(string.IsNullOrWhiteSpace(ll.ReceiverName) ? "" : $"({ll.ReceiverName})")</span>
-                                <span><b>فرستنده:</b> @ll.CreatorName</span>
+                                <b class="letter-person letter-person-sm" title="ثبت‌کننده/فرستنده">
+                                    <UserAvatar SystemUserId="@ll.CreatorUserId" Size="18" />
+                                    <span class="letter-person-name">@ll.CreatorName</span>
+                                </b>
                                 @if (ll.DateSadere is { } ds) { <span><b>تاریخ صدور:</b> @ds.ToFaDateTime()</span> }
                                 @if (!string.IsNullOrWhiteSpace(ll.CompanyName)) { <span><b>سربرگ:</b> @ll.CompanyName</span> }
                                 @if (ll.HasAttachment) { <span><i class="bi bi-paperclip"></i> پیوست‌دار</span> }

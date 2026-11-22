@@ -425,6 +425,9 @@ public class DabirkhaneListItemDto
     public string? SadereNumber { get; set; }
     public string Title { get; set; } = "";
     public string CreatorName { get; set; } = "";
+
+    /// <summary>شناسه کاربر ثبت‌کننده (برای نمایش عکس پروفایل مثل نامه داخلی)</summary>
+    public int? CreatorUserId { get; set; }
     public string ReceiverOrganization { get; set; } = "";
     public string? ReceiverName { get; set; }
     public DateTime DateSabt { get; set; }

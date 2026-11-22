@@ -92,7 +92,14 @@
 
             <div class="paper">
                 <div class="paper-h">
-                    <div class="avt">@AvatarText(letter.SenderName)</div>
+                    @if (letter.SenderUserId > 0)
+                    {
+                        <div class="avt letter-avatar" title="@letter.SenderName"><UserAvatar SystemUserId="letter.SenderUserId" Size="40" /></div>
+                    }
+                    else
+                    {
+                        <div class="avt">@AvatarText(letter.SenderName)</div>
+                    }
                     <div class="ph-meta">
                         <div class="n1">@letter.SenderName</div>
                         <div class="n2">فرستنده — ثبت: @letter.DateSabt.ToFaDateTime()</div>
