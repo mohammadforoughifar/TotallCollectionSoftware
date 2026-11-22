@@ -247,7 +247,7 @@
     {
         if (letter == null) return;
         _ = gardesh?.Open(letter.LetterId, letter.Title, letter.LetterNumber,
-            string.IsNullOrWhiteSpace(letter.SenderName) ? "شما" : letter.SenderName, letter.DateSabt);
+            string.IsNullOrWhiteSpace(letter.SenderName) ? "شما" : letter.SenderName, letter.DateSabt, letter.SenderUserId);
     }
 
     /// <summary>نتیجهٔ تشخیص چاپ — با دکمهٔ «تشخیص چاپ» در منوی چاپ پر می‌شود.</summary>

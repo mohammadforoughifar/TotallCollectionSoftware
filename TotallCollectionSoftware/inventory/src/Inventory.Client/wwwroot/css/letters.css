@@ -345,6 +345,12 @@
 .ltx .tl-i.done::before { background:var(--ok); box-shadow:0 0 0 2px #a7f3d0; }
 .ltx .tl-i.start::before { background:var(--p); box-shadow:0 0 0 2px #c7d2fe; }
 .ltx .tl-t { font-size:12.5px; font-weight:700; }
+/* عکس کاربر در ردیف‌های نمای لیستی گردش نامه (فرستنده، امضاکننده، گیرنده) */
+.ltx .tl-t .mini {
+    width:22px; height:22px; flex:0 0 22px; border-radius:99px; display:inline-flex;
+    align-items:center; justify-content:center; vertical-align:middle;
+    margin-inline-end:5px; background:#e0e7ff; color:var(--p2);
+}
 .ltx .tl-s { font-size:11px; color:var(--sub); margin-top:2px; }
 .ltx .tl-ans { margin-top:6px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; border-radius:10px; padding:7px 10px; font-size:11px; }
 

@@ -507,7 +507,9 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
                     ? e.UserSender.Username
                     : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
-                SenderUserId = e.SenderUserId,
+                // اگر ارجاع فرستندهٔ کاربر نداشته باشد (ارجاع سیستمی/دادهٔ قدیمی)، عکس ثبت‌کنندهٔ
+                // نامه نمایش داده می‌شود تا ردیف کارتابل بدون تصویر نماند.
+                SenderUserId = e.SenderUserId > 0 ? e.SenderUserId : e.Source.OutgoingLetter!.CreatorUserId,
                 ReceiverOrganization = e.Source.OutgoingLetter!.ReceiverOrganization,
                 ReceiverName = e.Source.OutgoingLetter!.ReceiverName,
                 Date = e.Date,
@@ -724,7 +726,9 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
                     ? e.UserSender.Username
                     : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
-                SenderUserId = e.SenderUserId,
+                // اگر ارجاع فرستندهٔ کاربر نداشته باشد (ارجاع سیستمی/دادهٔ قدیمی)، عکس ثبت‌کنندهٔ
+                // نامه نمایش داده می‌شود تا ردیف کارتابل بدون تصویر نماند.
+                SenderUserId = e.SenderUserId > 0 ? e.SenderUserId : e.Source.OutgoingLetter!.CreatorUserId,
                 ReceiverOrganization = e.Source.OutgoingLetter!.ReceiverOrganization,
                 ReceiverName = e.Source.OutgoingLetter!.ReceiverName,
                 Date = e.Date,

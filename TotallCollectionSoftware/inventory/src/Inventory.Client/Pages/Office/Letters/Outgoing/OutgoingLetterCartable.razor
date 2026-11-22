@@ -152,15 +152,16 @@
                                     <input type="checkbox" checked="@(selectedLetterIds.Contains(ll.LetterId))" @onchange="() => ToggleSelectLetter(ll.LetterId)" style="width:16px;height:16px;cursor:pointer;" />
                                 </div>
                             }
-                            @if (!FolderIsSent && ll.SenderUserId > 0)
+                            @if (!FolderIsSent)
                             {
-                                @* عکس کاربر فرستنده — همان رفتار نامه داخلی *@
+                                @* عکس کاربر — همان رفتار نامه داخلی. اگر شناسهٔ کاربر معلوم نباشد،
+                                   کامپوننت عکس پیش‌فرض را نشان می‌دهد تا جای عکس خالی نماند. *@
                                 <div class="avt letter-avatar" title="@ll.Sender"><UserAvatar SystemUserId="ll.SenderUserId" Size="40" /></div>
                             }
                             else
                             {
                                 @* در ارسالی، نام گیرندهٔ بیرونی است و عکسی برایش نیست *@
-                                <div class="avt" title="@(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)">@AvatarText(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)</div>
+                                <div class="avt" title="@ll.ReceiverOrganization">@AvatarText(ll.ReceiverOrganization)</div>
                             }
                             <div class="mail-b">
                                 <div class="mail-r1">
@@ -1210,8 +1211,8 @@
 
     private async Task MenuReply(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); OpenReply(); }
     private async Task MenuErja(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); OpenErjaSheet(); }
-    private void MenuGardesh(OutgoingLetterListItemDto l) { openMenuId = 0; _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber, string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date); }
-    private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt); }
+    private void MenuGardesh(OutgoingLetterListItemDto l) { openMenuId = 0; _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber, string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date, l.SenderUserId); }
+    private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt, selected.SenderUserId); }
     // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
     // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
     private int signingTotal;
