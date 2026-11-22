@@ -28,14 +28,26 @@
   و ردیف دوم حذف می‌شود
 - تنها ردیف‌های **فعال** در پیشنهادهای فرم ارسال می‌آیند
 
-## دسترسی
+## دسترسی (در تنظیمات)
 
-| کار | مجوز |
-|---|---|
-| پیشنهاد/انتخاب و ثبت خودکار آدرس | `OutgoingLetters.Dabirkhane` |
-| مدیریت کامل بانک (ویرایش/حذف/ادغام) | `OutgoingLetters.Dabirkhane` یا `Email.Delete` (مدیر ایمیل) |
+ماژول مجوز مستقل **`EmailBank`** اضافه شده است و در
+**تنظیمات ← نقش‌ها و دسترسی‌ها ← «اتوماسیون اداری توکا» ← «بانک ایمیل مخاطبین دبیرخانه 📧»**
+قابل تخصیص به هر نقش است (`RbacSeeder` ⇒ برای دیتابیس‌های موجود هم خودکار ساخته می‌شود و
+به نقش Admin داده می‌شود).
 
-مجوز تازه‌ای اضافه نشده است؛ همان مجوز موجود دبیرخانه کافی است. نبودِ مجوز ⇒ `403` با پیام فارسی.
+| مجوز | برچسب در تنظیمات | کار |
+|---|---|---|
+| `EmailBank.Read` | دیدن بانک و انتخاب آدرس در فرم ارسال 🔍 | `suggest` / `find` — پیشنهاد و انتخاب آدرس |
+| `EmailBank.Use` | ثبت آدرس‌های استفاده‌شده در بانک | `remember` — ذخیرهٔ آدرس هنگام انتخاب/ارسال |
+| `EmailBank.Manage` | مدیریت بانک ایمیل (افزودن/ویرایش/حذف/ادغام) ⚙ | صفحهٔ `office/email-bank` + `list/save/delete/merge` |
+
+**سازگاری عقب‌رو:** نقش‌هایی که از قبل مجوز `OutgoingLetters.Dabirkhane` دارند، همچنان
+می‌توانند آدرس‌ها را ببینند/انتخاب/ثبت کنند و `Email.Delete` (مدیر ایمیل) معادل `Manage` است؛
+پس با ارتقا هیچ کاربری دسترسی‌اش را از دست نمی‌دهد. نبودِ مجوز ⇒ `403` با پیام فارسی که نام
+مجوز لازم را می‌گوید.
+
+- منوی «بانک ایمیل مخاطبین» فقط با `EmailBank.Manage` (یا `Email.Delete` / مدیر) دیده می‌شود.
+- کمبوباکس داخل فرم دبیرخانه برای کاربران دبیرخانه (بدون مجوز تازه) هم کار می‌کند.
 
 ## جدول داده
 
@@ -73,6 +85,8 @@ src/Inventory.Shared/Dtos/EmailBankDtos.cs                     DTOها
 src/Inventory.Api/Entities/Office/EmailBankEntry.cs            موجودیت
 src/Inventory.Api/Data/EmailBankSchemaV1.cs                    ساخت جدول در استارتاپ
 src/Inventory.Api/Data/AppDbContext.cs                         DbSet: OtoEmailBank
+src/Inventory.Api/Data/RbacSeeder.cs                           مجوز EmailBank (Read/Use/Manage)
+src/Inventory.Client/Pages/Settings/Roles.razor                برچسب فارسی + گروه‌بندی در تنظیمات
 src/Inventory.Api/Data/DbInitializer.cs                        فراخوانی EnsureAsync
 src/Inventory.Api/Services/Office/Email/EmailBankService.cs     منطق بانک (پیشنهاد/ثبت/ادغام)
 src/Inventory.Api/Services/Office/Email/EmailService.cs         ثبت آدرس پس از ارسال موفق نامه

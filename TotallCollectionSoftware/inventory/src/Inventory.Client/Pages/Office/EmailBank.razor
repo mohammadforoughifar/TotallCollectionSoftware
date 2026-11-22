@@ -7,9 +7,13 @@
 
 <PageTitle>بانک ایمیل مخاطبین</PageTitle>
 
-@if (!Auth.Has("OutgoingLetters.Dabirkhane") && !Auth.IsAdmin)
+@if (!Auth.Has("EmailBank.Manage") && !Auth.Has("Email.Delete") && !Auth.IsAdmin)
 {
-    <div class="alert alert-danger">شما مجوز مدیریت بانک ایمیل دبیرخانه را ندارید.</div>
+    <div class="alert alert-danger">
+        شما مجوز <b>مدیریت بانک ایمیل</b> را ندارید.
+        این دسترسی در «تنظیمات ← نقش‌ها و دسترسی‌ها ← اتوماسیون اداری توکا ← بانک ایمیل مخاطبین دبیرخانه»
+        با نام <code>EmailBank.Manage</code> قابل تخصیص است.
+    </div>
     return;
 }
 

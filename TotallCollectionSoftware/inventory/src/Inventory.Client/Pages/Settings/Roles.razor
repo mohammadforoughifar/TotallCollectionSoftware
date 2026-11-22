@@ -1,4 +1,4 @@
-@page "/settings/roles"
+﻿@page "/settings/roles"
 @inject HttpClient Http
 @inject IToastService Toast
 @inject IJSRuntime JS
@@ -522,7 +522,7 @@
         // جای درست، دسترسی بخش پروژه را به نقش بدهد.
         new() { Title = "دستورکار رایکا — پروژه‌ها و نگار ذهنی", Icon = "bi-list-task", Modules = new[] { "WorkOrders", "WorkProjects", "MindFlow" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
-        new() { Title = "اتوماسیون اداری توکا", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
+        new() { Title = "اتوماسیون اداری توکا", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email", "EmailBank" } },
         new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } },
         new() { Title = "هوش مصنوعی", Icon = "bi-stars", Modules = new[] { "AiAssistant" } }
     };
@@ -581,6 +581,7 @@
         ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری توکا)",
         ["IncomingLetters"] = "نامه وارده (دبیرخانه)",
         ["Email"] = "ایمیل سازمانی (پست الکترونیک) ✉",
+        ["EmailBank"] = "بانک ایمیل مخاطبین دبیرخانه 📧",
         ["LetterStructures"] = "ساختار شماره نامه (اتوماسیون اداری توکا)",
         ["MeetingMinutes"] = "صورتجلسه",
         // ==================== ماژول‌های ERP ====================
@@ -668,6 +669,10 @@
     // با کلید «ماژول.اکشن» برچسب دقیق همان ماژول برگردانده می‌شود.
     private static readonly Dictionary<string, string> ModuleActionNames = new()
     {
+        // بانک ایمیل مخاطبین دبیرخانه — ماژول EmailBank
+        ["EmailBank.Read"] = "دیدن بانک و انتخاب آدرس در فرم ارسال 🔍",
+        ["EmailBank.Use"] = "ثبت آدرس‌های استفاده‌شده در بانک (هنگام ارسال نامه)",
+        ["EmailBank.Manage"] = "مدیریت بانک ایمیل (افزودن/ویرایش/حذف/ادغام) ⚙",
         ["SmsSettings.Read"] = "مشاهدهٔ مجوزهای پیامکی شرکت فعال",
         ["SmsSettings.Update"] = "تغییر مجوزهای پیامکی شرکت فعال",
         ["ItRequests.Expert"] = "کارشناس IT (دریافت ارجاع)",
