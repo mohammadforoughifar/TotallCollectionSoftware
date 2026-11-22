@@ -36,7 +36,11 @@
                 {
                     <div class="tl">
                         <div class="tl-i start">
-                            <div class="tl-t">@ferestande (مبدأ)</div>
+                            <div class="tl-t">
+                                @* عکس کاربر ثبت‌کننده — همان الگوی نامه داخلی/صادره *@
+                                <span class="mini" title="@ferestande"><UserAvatar SystemUserId="@creatorUserId" Size="22" /></span>
+                                @ferestande (مبدأ)
+                            </div>
                             <div class="tl-s">نامه وارده · ورود به سیستم: @dateErsal.ToFaDate()</div>
                         </div>
 
@@ -44,7 +48,13 @@
                         {
                             var item = r;
                             <div class="tl-i">
-                                <div class="tl-t">@item.SenderName <i class="bi bi-arrow-left"></i> @item.ReceiverName</div>
+                                <div class="tl-t">
+                                    <span class="mini" title="@item.SenderName"><UserAvatar SystemUserId="@item.SenderUserId" Size="22" /></span>
+                                    @item.SenderName
+                                    <i class="bi bi-arrow-left"></i>
+                                    <span class="mini" title="@item.ReceiverName"><UserAvatar SystemUserId="@item.ReciverUserId" Size="22" /></span>
+                                    @item.ReceiverName
+                                </div>
                                 <div class="tl-s">
                                     ارسال: @item.DateErja.ToFaDateTime()
                                     @if (!string.IsNullOrWhiteSpace(item.MatnErja))
@@ -74,7 +84,7 @@
                         <ul>
                             <li>
                                 <div class="tnode">
-                                    <span class="mini"><i class="bi bi-box-arrow-in-left"></i></span>
+                                    <span class="mini" title="@ferestande"><UserAvatar SystemUserId="@creatorUserId" Size="26" /></span>
                                     <div><b>@ferestande</b><small> — مبدأ نامه وارده · @dateErsal.ToFaDateTime()</small></div>
                                     <span class="tst p">ورود به دبیرخانه</span>
                                 </div>
@@ -89,7 +99,7 @@
                 {
                     <div class="fcwrap">
                         <div class="fc"><ul><li>
-                            <div class="fnode root"><span class="mini"><i class="bi bi-box-arrow-in-left"></i></span><div><b>@ferestande</b><small>ورود به دبیرخانه · @dateErsal.ToFaDate()</small></div></div>
+                            <div class="fnode root"><span class="mini" title="@ferestande"><UserAvatar SystemUserId="@creatorUserId" Size="26" /></span><div><b>@ferestande</b><small>ورود به دبیرخانه · @dateErsal.ToFaDate()</small></div></div>
                             <ul>@foreach (var n in roots) { @FlowNode(n) }</ul>
                         </li></ul></div>
                     </div>
@@ -110,10 +120,14 @@
     private int sabtNumber = 0;
     private DateTime dateErsal = DateTime.Now;
 
+    /// <summary>شناسهٔ کاربر ثبت‌کننده — برای نمایش عکس او در سرآغاز گردش</summary>
+    private int creatorUserId;
+
     private List<ErjaTreeNodeDto> roots = new();
 
-    public async Task Open(int letterId, string title, string ferestande, int sabtNumber, DateTime dateErsal)
+    public async Task Open(int letterId, string title, string ferestande, int sabtNumber, DateTime dateErsal, int creatorUserId = 0)
     {
+        this.creatorUserId = creatorUserId;
         this.title = title;
         this.ferestande = ferestande;
         this.sabtNumber = sabtNumber;

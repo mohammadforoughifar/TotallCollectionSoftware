@@ -136,7 +136,7 @@
         await ReloadAsync();
     }
     private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
-    private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal);
+    private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal, l.SenderUserId);
     private async Task OpenErja(IncomingLetterListItemDto l) => await erjaSheet!.OpenErja(l.LetterId, l.NumberSabt);
     private void ToggleSelected(int id)
     {
@@ -197,7 +197,7 @@
         {
             var detail = await IncomingSvc.GetDetailAsync(letterId);
             if (detail is not null && flowModal is not null)
-                await flowModal.Open(detail.LetterId, detail.Title, detail.Ferestande, detail.NumberSabt, detail.DateErsal);
+                await flowModal.Open(detail.LetterId, detail.Title, detail.Ferestande, detail.NumberSabt, detail.DateErsal, detail.CreatorUserId);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

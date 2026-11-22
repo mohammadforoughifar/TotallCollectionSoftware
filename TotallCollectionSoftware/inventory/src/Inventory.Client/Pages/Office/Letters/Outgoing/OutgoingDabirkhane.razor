@@ -819,7 +819,7 @@
 
     private void OpenGardesh(DabirkhaneListItemDto l) =>
         _ = gardesh?.Open(l.LetterId, l.Title, l.SadereNumber ?? l.LetterNumber,
-                          l.CreatorName, l.DateSadere ?? l.DateSabt);
+                          l.CreatorName, l.DateSadere ?? l.DateSabt, l.CreatorUserId ?? 0);
 
     // ==================== ۲) چاپ در دو نسخه ====================
 

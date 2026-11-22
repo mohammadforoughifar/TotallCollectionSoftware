@@ -1019,12 +1019,12 @@
     private void OpenDetailModal(int letterId) => viewModal?.Open(letterId);
 
     private void OpenErja(int letterId, int numberSabt) => erjaSheet?.OpenErja(letterId, numberSabt);
-    private void OpenGardesh(IncomingLetterListItemDto letter) => gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal);
+    private void OpenGardesh(IncomingLetterListItemDto letter) => gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal, letter.SenderUserId);
 
     private void OpenGardeshFromReader(int letterId)
     {
         if (activeDetail != null)
-            gardeshModal?.Open(activeDetail.LetterId, activeDetail.Title, activeDetail.Ferestande, activeDetail.NumberSabt, activeDetail.DateErsal);
+            gardeshModal?.Open(activeDetail.LetterId, activeDetail.Title, activeDetail.Ferestande, activeDetail.NumberSabt, activeDetail.DateErsal, activeDetail.CreatorUserId);
     }
 
     private void OpenAnswerFromReader(int erjaId, int sabtNumber) => erjaSheet?.OpenAnswer(erjaId, sabtNumber);
@@ -1269,7 +1269,7 @@
         {
             var d = await IncomingSvc.GetDetailAsync(letterId);
             if (d != null)
-                await (gardeshModal?.Open(d.LetterId, d.Title, d.Ferestande, d.NumberSabt, d.DateErsal) ?? Task.CompletedTask);
+                await (gardeshModal?.Open(d.LetterId, d.Title, d.Ferestande, d.NumberSabt, d.DateErsal, d.CreatorUserId) ?? Task.CompletedTask);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
