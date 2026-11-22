@@ -152,15 +152,9 @@
                                 </div>
                             }
 
-                            @if (l.SenderUserId > 0)
-                            {
-                                @* عکس کاربر ثبت‌کننده — همان رفتار نامه داخلی *@
-                                <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(l.Sender) ? l.Ferestande : $"{l.Sender} — ثبت‌کننده")"><UserAvatar SystemUserId="l.SenderUserId" Size="40" /></div>
-                            }
-                            else
-                            {
-                                <div class="avt" style="background:#3b82f6;color:#fff"><i class="bi bi-inbox"></i></div>
-                            }
+                            @* عکس کاربر ثبت‌کننده — همان رفتار نامه داخلی. اگر شناسهٔ کاربر معلوم
+                               نباشد، کامپوننت عکس پیش‌فرض را نشان می‌دهد تا جای عکس خالی نماند. *@
+                            <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(l.Sender) ? l.Ferestande : $"{l.Sender} — ثبت‌کننده")"><UserAvatar SystemUserId="l.SenderUserId" Size="40" /></div>
 
                             <div class="mail-b">
                                 <div class="mail-r1">
@@ -341,7 +335,8 @@
                         @* ---------- برگهٔ نامه ---------- *@
                         <div class="paper">
                             <div class="paper-h">
-                                <div class="avt">@AvatarText(activeDetail.Ferestande)</div>
+                                @* عکس واقعی کاربر ثبت‌کننده — همان رفتار نامه داخلی (بدون عکس ⇒ عکس پیش‌فرض) *@
+                                <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(activeDetail.CreatorName) ? activeDetail.Ferestande : $"ثبت‌کننده: {activeDetail.CreatorName}")"><UserAvatar SystemUserId="activeDetail.CreatorUserId" Size="40" /></div>
                                 <div class="ph-meta">
                                     <div class="n1">@activeDetail.Ferestande</div>
                                     <div class="n2">
@@ -350,14 +345,11 @@
                                         {
                                             <span> — شماره مبدأ: @activeDetail.NumberLetterVarede</span>
                                         }
+                                        @if (!string.IsNullOrWhiteSpace(activeDetail.CreatorName))
+                                        {
+                                            <span> — ثبت‌کننده: @activeDetail.CreatorName</span>
+                                        }
                                     </div>
-                                    @if (activeDetail.CreatorUserId > 0)
-                                    {
-                                        <div class="n2 letter-person letter-person-sm">
-                                            <UserAvatar SystemUserId="activeDetail.CreatorUserId" Size="20" />
-                                            <span class="letter-person-name">ثبت‌کننده: @(string.IsNullOrWhiteSpace(activeDetail.CreatorName) ? "—" : activeDetail.CreatorName)</span>
-                                        </div>
-                                    }
                                 </div>
                                 <div class="ind">
                                     <div class="no num"># @activeDetail.NumberSabt.FaDigits()</div>
