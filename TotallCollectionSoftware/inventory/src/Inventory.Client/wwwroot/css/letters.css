@@ -418,6 +418,10 @@
     body * { visibility:hidden !important; }
     .ltx .paper, .ltx .paper * { visibility:visible !important; }
     .ltx .paper { position:absolute; inset:0; border:0; }
+
+    /* نامهٔ چاپی: در سربرگی که چاپ می‌شود تصویر/دایرهٔ کاربر نمایش داده نشود */
+    .ltx .paper .paper-h .avt,
+    .ltx .paper .user-avatar { display:none !important; }
     .ltx .letter-body { width:100%; padding:10mm 0; font-size:11pt; line-height:1.65; overflow:visible; }
     .ltx .letter-body ol { list-style-type:decimal; }
     .ltx .letter-body ul { list-style-type:disc; }
