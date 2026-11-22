@@ -1,0 +1,208 @@
+@inject IEmailBankClientService Bank
+@inject IToastService Toast
+
+@* ============================================================
+   انتخاب ایمیل مقصد از «بانک ایمیل مخاطبین دبیرخانه»
+   • کادر جست‌وجو با پیشنهاد زنده؛ اول آدرس‌های همان سازمان گیرنده،
+     بعد بقیهٔ آدرس‌های بانک.
+   • با انتخاب هر آدرس، همان لحظه در بانک ثبت می‌شود؛ اگر از قبل
+     بود پیام «قبلاً ثبت شده» داده می‌شود (ردیف تکراری ساخته نمی‌شود).
+   • آدرس تازه‌ای که کاربر تایپ کند با دکمهٔ «افزودن به بانک» ذخیره می‌شود.
+   ============================================================ *@
+
+<div class="ebp-wrap">
+    <div class="ebp-input-row">
+        <input class="tin ebp-input" dir="ltr" autocomplete="off"
+               placeholder="@Placeholder" value="@Value"
+               @oninput="OnInputAsync" @onfocus="OnFocusAsync" @onblur="CloseSoon"
+               @onkeydown="OnKeyDownAsync" />
+        <button type="button" class="ebp-add" title="افزودن این آدرس به بانک ایمیل"
+                @onmousedown:preventDefault="true" @onclick="AddTypedAsync">
+            <i class="bi bi-plus-lg"></i>
+        </button>
+    </div>
+
+    @if (open)
+    {
+        <div class="ebp-panel" @onmousedown:preventDefault="true">
+            @if (loading)
+            {
+                <div class="ebp-empty">در حال جست‌وجو…</div>
+            }
+            else if (result is null || (result.OrganizationMatches.Count == 0 && result.OtherMatches.Count == 0))
+            {
+                <div class="ebp-empty">
+                    آدرسی در بانک پیدا نشد — با دکمهٔ <b>+</b> آدرس نوشته‌شده را به بانک اضافه کنید.
+                </div>
+            }
+            else
+            {
+                @if (result.OrganizationMatches.Count > 0)
+                {
+                    <div class="ebp-group">
+                        <i class="bi bi-building"></i> آدرس‌های همین سازمان
+                        @if (!string.IsNullOrWhiteSpace(Organization)) { <span class="ebp-org">(@Organization)</span> }
+                    </div>
+                    @foreach (var e in result.OrganizationMatches)
+                    {
+                        <button type="button" class="ebp-item" @onclick="() => PickAsync(e)">
+                            <span class="ebp-mail" dir="ltr">@e.Email</span>
+                            <span class="ebp-meta">
+                                @if (!string.IsNullOrWhiteSpace(e.PersonName)) { <span>@e.PersonName</span> }
+                                @if (e.UseCount > 0) { <span class="ebp-badge">@e.UseCount بار استفاده</span> }
+                            </span>
+                        </button>
+                    }
+                }
+                @if (result.OtherMatches.Count > 0)
+                {
+                    <div class="ebp-group"><i class="bi bi-collection"></i> سایر آدرس‌های بانک</div>
+                    @foreach (var e in result.OtherMatches)
+                    {
+                        <button type="button" class="ebp-item" @onclick="() => PickAsync(e)">
+                            <span class="ebp-mail" dir="ltr">@e.Email</span>
+                            <span class="ebp-meta">
+                                @if (!string.IsNullOrWhiteSpace(e.Organization)) { <span>@e.Organization</span> }
+                                @if (!string.IsNullOrWhiteSpace(e.PersonName)) { <span>@e.PersonName</span> }
+                                @if (e.UseCount > 0) { <span class="ebp-badge">@e.UseCount بار استفاده</span> }
+                            </span>
+                        </button>
+                    }
+                }
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .ebp-wrap { position: relative; }
+    .ebp-input-row { display: flex; gap: .35rem; align-items: stretch; }
+    .ebp-input { flex: 1; }
+    .ebp-add {
+        width: 38px; border-radius: 8px; border: 1px solid #c7d2fe; background: #eef2ff;
+        color: #4338ca; font-weight: 700; cursor: pointer;
+    }
+    .ebp-add:hover { background: #e0e7ff; }
+    .ebp-panel {
+        position: absolute; z-index: 60; inset-inline: 0; top: calc(100% + 4px);
+        max-height: 280px; overflow: auto; background: #fff; border: 1px solid #cbd5e1;
+        border-radius: 10px; box-shadow: 0 12px 28px rgba(15, 23, 42, .16); padding: .3rem;
+        text-align: start;
+    }
+    .ebp-group {
+        font-size: .78rem; color: #64748b; padding: .35rem .5rem; display: flex; gap: .35rem;
+        align-items: center; border-bottom: 1px dashed #e2e8f0; margin-bottom: .2rem;
+    }
+    .ebp-org { color: #4338ca; }
+    .ebp-item {
+        display: flex; flex-direction: column; gap: .15rem; width: 100%; text-align: start;
+        background: none; border: none; border-radius: 8px; padding: .4rem .5rem; cursor: pointer;
+    }
+    .ebp-item:hover { background: #f1f5f9; }
+    .ebp-mail { font-size: .88rem; color: #0f172a; font-family: monospace, Tahoma; }
+    .ebp-meta { display: flex; gap: .5rem; font-size: .72rem; color: #64748b; flex-wrap: wrap; }
+    .ebp-badge { background: #f1f5f9; border-radius: 999px; padding: 0 .4rem; }
+    .ebp-empty { padding: .6rem .5rem; font-size: .8rem; color: #64748b; }
+</style>
+
+@code {
+    /// <summary>آدرس انتخاب‌شده (دو‌طرفه) — همان فیلد DestEmail فرم</summary>
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>سازمان گیرندهٔ نامه — آدرس‌های همین سازمان اول پیشنهاد می‌شوند</summary>
+    [Parameter] public string? Organization { get; set; }
+
+    /// <summary>نام گیرنده (اختیاری) — همراه آدرس در بانک ذخیره می‌شود</summary>
+    [Parameter] public string? PersonName { get; set; }
+
+    [Parameter] public string Placeholder { get; set; } = "آدرس ایمیل مقصد…";
+
+    private EmailBankSuggestDto? result;
+    private bool open;
+    private bool loading;
+    private CancellationTokenSource? cts;
+
+    private async Task OnFocusAsync()
+    {
+        open = true;
+        await LoadAsync(Value);
+    }
+
+    /// <summary>تأخیر کوتاه پس از کلیک روی گزینه انجام شود (پیش از بسته‌شدن پنل)</summary>
+    private void CloseSoon() => _ = Task.Run(async () =>
+    {
+        await Task.Delay(180);
+        await InvokeAsync(() => { open = false; StateHasChanged(); });
+    });
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(text);
+        Value = text;
+        open = true;
+        await LoadAsync(text);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { open = false; return; }
+        if (e.Key == "Enter") { open = false; await AddTypedAsync(); }
+    }
+
+    private async Task LoadAsync(string? term)
+    {
+        cts?.Cancel();
+        var mine = cts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, mine.Token);   // دیبانس جست‌وجوی زنده
+            loading = true; StateHasChanged();
+            var data = await Bank.SuggestAsync(term, Organization);
+            if (mine.IsCancellationRequested) return;
+            result = data;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally
+        {
+            if (!mine.IsCancellationRequested) { loading = false; StateHasChanged(); }
+        }
+    }
+
+    /// <summary>انتخاب آدرس از بانک — همان لحظه در بانک ثبت/به‌روز می‌شود</summary>
+    private async Task PickAsync(EmailBankEntryDto entry)
+    {
+        open = false;
+        Value = entry.Email;
+        await ValueChanged.InvokeAsync(entry.Email);
+        try
+        {
+            var r = await Bank.RememberAsync(entry.Email, Organization ?? entry.Organization, PersonName ?? entry.PersonName);
+            if (r.Duplicate)
+                Toast.Warning($"این آدرس از قبل در بانک ایمیل ثبت شده است{(string.IsNullOrWhiteSpace(r.Entry?.Organization) ? "" : $" — {r.Entry!.Organization}")}. شمار استفاده به‌روز شد.");
+            else
+                Toast.Success("آدرس در بانک ایمیل مخاطبین ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>ذخیرهٔ آدرسی که کاربر تایپ کرده (بدون انتخاب از فهرست)</summary>
+    private async Task AddTypedAsync()
+    {
+        var email = (Value ?? "").Trim();
+        if (email.Length == 0) { Toast.Warning("اول آدرس ایمیل را بنویسید."); return; }
+        if (!email.Contains('@')) { Toast.Warning("آدرس ایمیل معتبر نیست."); return; }
+        try
+        {
+            var r = await Bank.RememberAsync(email, Organization, PersonName);
+            if (r.Duplicate)
+                Toast.Warning($"این آدرس از قبل در بانک ایمیل ثبت شده است{(string.IsNullOrWhiteSpace(r.Entry?.Organization) ? "" : $" — {r.Entry!.Organization}")}.");
+            else
+                Toast.Success("آدرس در بانک ایمیل مخاطبین ذخیره شد.");
+            await LoadAsync(email);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

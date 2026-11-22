@@ -117,6 +117,7 @@ builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
 builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)
+builder.Services.AddScoped<IEmailBankClientService, EmailBankClientService>(); // بانک ایمیل مخاطبین دبیرخانه
 // ---------- فرم‌های متفرقه — صورتجلسه ----------
 builder.Services.AddScoped<IMinutesApiService, MinutesApiService>();
 builder.Services.AddScoped<IDevTeamClient, DevTeamClient>(); // میز کار توسعه

@@ -319,6 +319,12 @@
                         <NavLink class="nav-link" href="office/personal-email" @onclick="NotifyClose">
                             <i class="bi bi-person-badge"></i><span>ایمیل شخصی</span>
                         </NavLink>
+                        @if (Auth.Has("OutgoingLetters.Dabirkhane"))
+                        {
+                            <NavLink class="nav-link" href="office/email-bank" @onclick="NotifyClose">
+                                <i class="bi bi-envelope-paper"></i><span>بانک ایمیل مخاطبین</span>
+                            </NavLink>
+                        }
                     }
                 </div>
             }

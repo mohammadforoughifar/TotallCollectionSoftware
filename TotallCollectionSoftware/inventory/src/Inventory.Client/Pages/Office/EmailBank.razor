@@ -1,0 +1,272 @@
+﻿@page "/office/email-bank"
+@using Inventory.Shared.Dtos
+@inject IEmailBankClientService Bank
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>بانک ایمیل مخاطبین</PageTitle>
+
+@if (!Auth.Has("OutgoingLetters.Dabirkhane") && !Auth.IsAdmin)
+{
+    <div class="alert alert-danger">شما مجوز مدیریت بانک ایمیل دبیرخانه را ندارید.</div>
+    return;
+}
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-envelope-paper text-primary me-2"></i>بانک ایمیل مخاطبین دبیرخانه</h1>
+        <p class="lead">
+            هر آدرسی که در ارسال نامه صادره استفاده شود خودکار این‌جا ذخیره می‌شود؛
+            کاربر دبیرخانه دیگر لازم نیست آدرس را از میان ایمیل‌ها پیدا کند.
+        </p>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="outgoing-letters/dabirkhane">
+            <i class="bi bi-mailbox me-1"></i>دبیرخانه یکپارچه
+        </a>
+    </div>
+</div>
+
+<div class="row g-3">
+    @* ---------- فرم ثبت/ویرایش ---------- *@
+    <div class="col-12 col-lg-4">
+        <div class="card shadow-sm border-0">
+            <div class="card-header fw-bold">
+                @(editing.Id == 0 ? "افزودن آدرس تازه" : "ویرایش آدرس")
+            </div>
+            <div class="card-body">
+                <label class="form-label">آدرس ایمیل <span class="text-danger">*</span></label>
+                <input class="form-control mb-2" dir="ltr" @bind="editing.Email" placeholder="office@example.ir" />
+
+                <label class="form-label">سازمان / شرکت</label>
+                <input class="form-control mb-2" @bind="editing.Organization" placeholder="مثلاً: شرکت پخش سراسری" />
+
+                <label class="form-label">نام شخص مخاطب</label>
+                <input class="form-control mb-2" @bind="editing.PersonName" placeholder="اختیاری" />
+
+                <label class="form-label">توضیح</label>
+                <input class="form-control mb-2" @bind="editing.Note" placeholder="اختیاری" />
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="ebActive" @bind="editing.IsActive" />
+                    <label class="form-check-label" for="ebActive">فعال (در پیشنهادهای فرم ارسال بیاید)</label>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" disabled="@busy" @onclick="SaveAsync">
+                        <i class="bi bi-check-lg me-1"></i>ذخیره
+                    </button>
+                    <button class="btn btn-outline-secondary" @onclick="ResetForm">فرم خالی</button>
+                </div>
+            </div>
+        </div>
+
+        @if (mergeKeepId > 0 && mergeRemoveId > 0)
+        {
+            <div class="card shadow-sm border-0 mt-3">
+                <div class="card-header fw-bold">ادغام دو ردیف تکراری</div>
+                <div class="card-body">
+                    <p class="small text-muted mb-2">
+                        شمار استفاده و آخرین استفادهٔ ردیف دوم به ردیف اول منتقل و ردیف دوم حذف می‌شود.
+                    </p>
+                    <button class="btn btn-warning" @onclick="MergeAsync">
+                        <i class="bi bi-arrows-collapse me-1"></i>ادغام ردیف #@mergeRemoveId در #@mergeKeepId
+                    </button>
+                    <button class="btn btn-outline-secondary ms-2" @onclick="() => { mergeKeepId = 0; mergeRemoveId = 0; }">لغو</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* ---------- فهرست بانک ---------- *@
+    <div class="col-12 col-lg-8">
+        <div class="card shadow-sm border-0">
+            <div class="card-header d-flex align-items-center gap-2 flex-wrap">
+                <span class="fw-bold">آدرس‌های ثبت‌شده</span>
+                <span class="badge bg-secondary">@total عدد</span>
+                <div class="ms-auto d-flex gap-2">
+                    <input class="form-control form-control-sm" style="width:220px" placeholder="جست‌وجو: ایمیل/سازمان/نام…"
+                           @bind="search" @bind:event="oninput" @bind:after="() => LoadAsync(1)" />
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => LoadAsync(1)">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                @if (loading)
+                {
+                    <div class="p-3 text-muted">در حال بارگذاری…</div>
+                }
+                else if (items.Count == 0)
+                {
+                    <div class="p-3 text-muted">
+                        هنوز آدرسی ثبت نشده است — از فرم سمت راست اضافه کنید یا در «دبیرخانه یکپارچه» نامه‌ای با ایمیل ارسال کنید.
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ایمیل</th>
+                                    <th>سازمان</th>
+                                    <th>مخاطب</th>
+                                    <th>استفاده</th>
+                                    <th>آخرین استفاده</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var e in items)
+                                {
+                                    <tr class="@(e.IsActive ? "" : "text-muted")">
+                                        <td dir="ltr" class="fw-semibold">@e.Email</td>
+                                        <td>@(string.IsNullOrWhiteSpace(e.Organization) ? "—" : e.Organization)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(e.PersonName) ? "—" : e.PersonName)</td>
+                                        <td>@e.UseCount</td>
+                                        <td>@(e.LastUsedAt?.ToString("yyyy/MM/dd HH:mm") ?? "—")</td>
+                                        <td class="text-nowrap">
+                                            <button class="btn btn-sm btn-outline-primary" title="ویرایش"
+                                                    @onclick="() => Edit(e)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-secondary" title="انتخاب به‌عنوان ردیف اصلی ادغام"
+                                                    @onclick="() => PickMergeKeep(e)">
+                                                <i class="bi bi-check2-square"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-warning" title="انتخاب به‌عنوان ردیف تکراری"
+                                                    @onclick="() => PickMergeRemove(e)">
+                                                <i class="bi bi-files"></i>
+                                            </button>
+                                            <button class="btn btn-sm btn-outline-danger" title="حذف"
+                                                    @onclick="() => DeleteAsync(e)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    @if (!string.IsNullOrWhiteSpace(e.Note))
+                                    {
+                                        <tr class="small text-muted">
+                                            <td colspan="6" class="pt-0">@e.Note</td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex align-items-center gap-2 p-2">
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@(page <= 1)" @onclick="() => LoadAsync(page - 1)">
+                            قبلی
+                        </button>
+                        <span class="small text-muted">@($"صفحهٔ {page} از {pages}")</span>
+                        <button class="btn btn-sm btn-outline-secondary" disabled="@(page >= pages)" @onclick="() => LoadAsync(page + 1)">
+                            بعدی
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <p class="small text-muted mt-2">
+            <i class="bi bi-info-circle"></i>
+            آدرس تکراری ثبت نمی‌شود؛ اگر آدرسی از قبل موجود باشد در فرم ارسال پیام «قبلاً ثبت شده» می‌بینید و
+            شمار استفادهٔ همان ردیف زیاد می‌شود.
+        </p>
+    </div>
+</div>
+
+@code {
+    private const int PageSize = 25;
+
+    private List<EmailBankEntryDto> items = new();
+    private SaveEmailBankEntryDto editing = new() { IsActive = true };
+    private string? search;
+    private int page = 1;
+    private int total;
+    private int pages => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private bool loading = true;
+    private bool busy;
+    private int mergeKeepId;
+    private int mergeRemoveId;
+
+    protected override Task OnInitializedAsync() => LoadAsync(1);
+
+    private async Task LoadAsync(int p)
+    {
+        loading = true;
+        try
+        {
+            page = Math.Max(1, p);
+            var res = await Bank.ListAsync(search, null, page, PageSize);
+            items = res.Items;
+            total = res.TotalCount;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private void Edit(EmailBankEntryDto e)
+    {
+        editing = new SaveEmailBankEntryDto
+        {
+            Id = e.Id,
+            Email = e.Email,
+            Organization = e.Organization,
+            PersonName = e.PersonName,
+            Note = e.Note,
+            IsActive = e.IsActive
+        };
+    }
+
+    private void ResetForm() => editing = new SaveEmailBankEntryDto { IsActive = true };
+
+    private void PickMergeKeep(EmailBankEntryDto e) => mergeKeepId = e.Id;
+    private void PickMergeRemove(EmailBankEntryDto e) => mergeRemoveId = e.Id;
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(editing.Email) || !editing.Email.Contains('@'))
+        {
+            Toast.Warning("آدرس ایمیل معتبر وارد کنید.");
+            return;
+        }
+        busy = true;
+        try
+        {
+            var r = await Bank.SaveAsync(editing);
+            if (r.Duplicate) Toast.Warning(r.Message);
+            else Toast.Success(r.Message);
+            ResetForm();
+            await LoadAsync(page);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(EmailBankEntryDto e)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"آدرس «{e.Email}» از بانک ایمیل حذف شود؟")) return;
+        try
+        {
+            await Bank.DeleteAsync(e.Id);
+            Toast.Success("ردیف حذف شد.");
+            await LoadAsync(page);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task MergeAsync()
+    {
+        try
+        {
+            await Bank.MergeAsync(mergeKeepId, mergeRemoveId);
+            Toast.Success("ردیف‌ها ادغام شدند.");
+            mergeKeepId = mergeRemoveId = 0;
+            await LoadAsync(page);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

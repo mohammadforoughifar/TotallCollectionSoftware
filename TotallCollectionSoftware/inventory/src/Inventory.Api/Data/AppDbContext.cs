@@ -366,6 +366,9 @@ public class AppDbContext : DbContext
     public DbSet<OtoEmailFolder> OtoEmailFolders => Set<OtoEmailFolder>();
     public DbSet<OtoEmailAttachment> OtoEmailAttachments => Set<OtoEmailAttachment>();
 
+    /// <summary>بانک ایمیل مخاطبین دبیرخانه — آدرس‌های استفاده‌شده در ارسال نامه صادره</summary>
+    public DbSet<OtoEmailBankEntry> OtoEmailBank => Set<OtoEmailBankEntry>();
+
     // ==================== آرشیو اسناد و مدارک (DocArchive) ====================
     public DbSet<DocFolder> DocFolders => Set<DocFolder>();
     public DbSet<DocFolderPermission> DocFolderPermissions => Set<DocFolderPermission>();

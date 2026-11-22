@@ -103,6 +103,8 @@ public static class DbInitializer
                     await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
+                    // بانک ایمیل مخاطبین دبیرخانه (Oto_TBL_EmailBank)
+                    await EmailBankSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
                     await WorkOrderSchemaV1.EnsureAsync(db);
                     // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»
@@ -192,6 +194,8 @@ public static class DbInitializer
                     await ChequeStatusSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
+                    // بانک ایمیل مخاطبین دبیرخانه (Oto_TBL_EmailBank)
+                    await EmailBankSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
                     await WorkOrderSchemaV1.EnsureAsync(db);
                     // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»

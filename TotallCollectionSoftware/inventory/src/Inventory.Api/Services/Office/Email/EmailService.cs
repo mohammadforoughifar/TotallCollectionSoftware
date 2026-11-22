@@ -103,12 +103,16 @@ public class EmailService : IEmailService
     /// <summary>تعداد پیام در هر دسته‌ی ذخیره‌سازی — به‌جای دو SaveChanges به‌ازای هر پیام</summary>
     private const int SyncSaveBatchSize = 25;
 
-    public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log, IOutgoingLetterPrintService print)
+    private readonly IEmailBankService _bank;
+
+    public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log,
+        IOutgoingLetterPrintService print, IEmailBankService bank)
     {
         _db = db;
         _env = env;
         _log = log;
         _print = print;
+        _bank = bank;
     }
 
     // ==================== ابزارهای مشترک ====================
@@ -598,6 +602,26 @@ public class EmailService : IEmailService
             sent.Subject, sent.Body, attachments.ToArray(), sent.SentId);
         sent.UId = uid;
         await _db.SaveChangesAsync();
+
+        // ---------- بانک ایمیل مخاطبین ----------
+        // آدرسی که واقعاً برای ارسال استفاده شد در بانک می‌ماند تا نوبت بعد
+        // کاربر دبیرخانه مجبور نباشد آن را از میان ایمیل‌ها پیدا کند.
+        // خطای بانک هرگز ارسال انجام‌شده را خراب نمی‌کند.
+        try
+        {
+            var myId = await _db.Users.AsNoTracking()
+                .Where(u => u.Username == userName).Select(u => (int?)u.Id).FirstOrDefaultAsync();
+            foreach (var addr in toList.Select(t => t.Address).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                await _bank.RememberAsync(addr, letter.ReceiverOrganization, letter.ReceiverName,
+                    myId, userName, markUsed: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ثبت آدرس نامه صادره {LetterId} در بانک ایمیل ناموفق بود", letterId);
+        }
+
         return sent.SentId;
     }
 
