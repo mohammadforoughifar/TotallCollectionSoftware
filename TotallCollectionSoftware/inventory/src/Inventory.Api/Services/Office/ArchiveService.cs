@@ -869,6 +869,7 @@ public class ArchiveService : IArchiveService
                     l.Foriat,
                     l.Mahramanegi,
                     l.SendMethod,
+                    l.CreatorUserId,
                     Sender = l.Creator != null
                         ? (string.IsNullOrEmpty(l.Creator.FirstName + l.Creator.LastName)
                             ? l.Creator.Username
@@ -886,6 +887,7 @@ public class ArchiveService : IArchiveService
                     LetterNumber = l.SadereNumber ?? l.LetterNumber ?? "",
                     Title = l.Title,
                     Sender = l.Sender,
+                    CreatorUserId = l.CreatorUserId,
                     Date = l.DateSadere ?? l.DateSabt,
                     Foriat = l.Foriat,
                     Mahramanegi = l.Mahramanegi,
@@ -907,6 +909,7 @@ public class ArchiveService : IArchiveService
                 n.LetterNumber = li.LetterNumber;
                 n.Title = li.Title;                 // عنوان زندهٔ نامه
                 n.Sender = li.Sender;
+                n.CreatorUserId = li.CreatorUserId;
                 n.Date = li.Date;
                 n.Foriat = li.Foriat;
                 n.Mahramanegi = li.Mahramanegi;

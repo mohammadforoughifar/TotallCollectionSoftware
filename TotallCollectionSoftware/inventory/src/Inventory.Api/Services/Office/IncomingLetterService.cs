@@ -215,7 +215,12 @@ public class IncomingLetterService : IIncomingLetterService
         {
             LetterId = l.Id, LetterNumber = l.LetterNumber ?? "", NumberSabt = l.NumberSabt,
             NumberLetterVarede = l.NumberLetterVarede ?? "", Title = l.Title, Ferestande = l.Ferestande,
-            Sender = l.Ferestande, Date = l.Date, DateErsal = l.DateErsal, TypeErsal = l.TypeErsal ?? "",
+            // ثبت‌کنندهٔ واقعی این نامه؛ مبدأ بیرونی جداگانه در Ferestande باقی می‌ماند.
+            SenderUserId = l.CreateUserId,
+            Sender = _db.Users.AsNoTracking().Where(u => u.Id == l.CreateUserId)
+                .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() == ""
+                    ? u.Username : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim()).FirstOrDefault() ?? "",
+            Date = l.Date, DateErsal = l.DateErsal, TypeErsal = l.TypeErsal ?? "",
             DeliveryName = l.DeliveryName ?? "", Mahramanegi = l.Mahramanegi, Foriat = l.Foriat,
             IsBayegani = true, IsRead = true, ReciverCount = _db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete),
             HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
@@ -269,8 +274,10 @@ public class IncomingLetterService : IIncomingLetterService
                 NumberLetterVarede = l.NumberLetterVarede ?? "",
                 Title = l.Title,
                 Ferestande = l.Ferestande,
-                Sender = "شما",
-                SenderUserId = userId,
+                Sender = _db.Users.AsNoTracking().Where(u => u.Id == l.CreateUserId)
+                    .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() == ""
+                        ? u.Username : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim()).FirstOrDefault() ?? "",
+                SenderUserId = l.CreateUserId,
                 Date = l.Date,
                 DateErsal = l.DateErsal,
                 TypeErsal = l.TypeErsal ?? "",

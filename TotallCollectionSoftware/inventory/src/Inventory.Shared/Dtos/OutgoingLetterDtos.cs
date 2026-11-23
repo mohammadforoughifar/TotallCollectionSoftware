@@ -244,6 +244,9 @@ public class OutgoingLetterDetailDto
     public string? DabirkhaneNote { get; set; }
     public string? DabirkhaneUserName { get; set; }
 
+    /// <summary>شناسهٔ کاربر لاگینِ ثبت دبیرخانه؛ مستقل از ایجادکنندهٔ نامه، فقط برای نمایش.</summary>
+    public int? DabirkhaneUserId { get; set; }
+
     /// <summary>ایمیل مقصد که دبیرخانه نامه را به آن ارسال کرده (روش ارسال ایمیل)</summary>
     public string? DestEmail { get; set; }
 
@@ -449,6 +452,9 @@ public class DabirkhaneListItemDto
     public string? SendMethod { get; set; }
     public string? DabirkhaneNote { get; set; }
     public string? DabirkhaneUserName { get; set; }
+
+    /// <summary>شناسهٔ کاربر لاگینِ ثبت دبیرخانه؛ مستقل از ایجادکنندهٔ نامه، فقط برای نمایش.</summary>
+    public int? DabirkhaneUserId { get; set; }
 
     /// <summary>ایمیل مقصد — وقتی با پست الکترونیک ارسال شده پر می‌شود</summary>
     public string? DestEmail { get; set; }

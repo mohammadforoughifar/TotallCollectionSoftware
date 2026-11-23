@@ -1025,4 +1025,34 @@
 .ltx.inner-letter-gardesh .tnode > .mini,
 .ltx.inner-letter-gardesh .fnode > .mini,
 .ltx.outgoing-letter-gardesh .tnode > .mini,
-.ltx.outgoing-letter-gardesh .fnode > .mini { flex-shrink:0; }
+.ltx.outgoing-letter-gardesh .fnode > .mini,
+.ltx.incoming-letter-gardesh .tnode > .mini,
+.ltx.incoming-letter-gardesh .fnode > .mini { flex-shrink:0; }
+.ltx.incoming-letter-gardesh .tl-t,
+.ltx.incoming-letter-view .incoming-referral-people {
+    display:flex; align-items:center; flex-wrap:wrap; gap:5px;
+}
+.ltx.incoming-letter-gardesh .tnode > div { min-width:0; flex:1; overflow-wrap:anywhere; }
+@media (max-width:600px) {
+    /* جای کافی برای نام و عکس ارجاع‌دهنده؛ وضعیت روی خط بعدی می‌آید. */
+    .ltx.incoming-letter-gardesh .tnode { flex-wrap:wrap; align-items:flex-start; }
+    .ltx.incoming-letter-gardesh .tnode > div { flex:1 1 calc(100% - 34px); }
+    .ltx.incoming-letter-gardesh .tnode > .tst { margin-inline-start:34px; }
+}
+
+/* دبیرخانهٔ یکپارچه: هویت کاربران از مبدأ/مقصد بیرونی جداست. */
+.ltx.unified-secretariat .secretariat-heading,
+.ltx.unified-secretariat .secretariat-heading-main { flex-wrap:wrap; min-width:0; }
+.ltx.unified-secretariat .secretariat-heading-main > .t { white-space:normal; }
+.ltx.unified-secretariat .secretariat-creator,
+.ltx.unified-secretariat .secretariat-registrar,
+.ltx .outgoing-secretariat-status .secretariat-registrar {
+    display:inline-flex; align-items:center; flex-wrap:wrap; gap:5px; min-width:0; max-width:100%;
+}
+.ltx .secretariat-archive-info { min-width:0; flex:1; overflow-wrap:anywhere; }
+.ltx .secretariat-archive-letter > .mini { flex-shrink:0; }
+@media (max-width:600px) {
+    .ltx .secretariat-archive-letter { flex-wrap:wrap; align-items:flex-start; }
+    .ltx .secretariat-archive-letter > .secretariat-archive-info { flex:1 1 calc(100% - 34px); }
+    .ltx .secretariat-archive-letter > .tst { margin-inline-start:34px; }
+}

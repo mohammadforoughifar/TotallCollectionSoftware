@@ -893,6 +893,7 @@ public class OutgoingLetterService : IOutgoingLetterService
             DestRegNumber = letter.DestRegNumber,
             SendMethod = letter.SendMethod,
             DabirkhaneNote = letter.DabirkhaneNote,
+            DabirkhaneUserId = letter.DabirkhaneUserId,
             DestEmail = letter.DestEmail,
             IsNeshan = letter.IsNeshan,
             CanEdit = isAdmin || (isMine && !erjas.Any(e => e.IsRead) && signers.All(s => !s.IsSigned)),
@@ -1675,6 +1676,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 DestRegNumber = l.DestRegNumber,
                 SendMethod = l.SendMethod,
                 DabirkhaneNote = l.DabirkhaneNote,
+                DabirkhaneUserId = l.DabirkhaneUserId,
                 DestEmail = l.DestEmail,
 
                 // فیلدهای وابسته به روش ارسال

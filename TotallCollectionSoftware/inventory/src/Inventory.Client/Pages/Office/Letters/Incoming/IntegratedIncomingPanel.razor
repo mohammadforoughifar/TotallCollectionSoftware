@@ -10,11 +10,15 @@
         .iin-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 4px 14px;border-bottom:1px solid var(--line)}
         .iin-title{font-size:17px;font-weight:800;color:#202033;display:flex;align-items:center;gap:8px}.iin-title i{color:var(--purple)}
         .iin-sub{font-size:11px;color:#8b8b9d;margin-top:5px}.iin-actions{display:flex;gap:8px;align-items:center}
+        .iin-identity{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin:8px 0;font-size:12px;color:#555568}
+        .iin-person{display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%}
+        .iin-person>.user-avatar{width:24px;height:24px;flex:0 0 24px}
+        .iin-person-name{min-width:0;overflow-wrap:anywhere}
         .iin-btn{border:1px solid #ddddea;background:#fff;border-radius:9px;padding:9px 14px;color:#303044;font-size:12px;font-weight:700;cursor:pointer}.iin-btn.active,.iin-btn.primary{background:var(--purple);border-color:var(--purple);color:#fff;box-shadow:0 5px 12px #6941e82c}.iin-btn.incoming-create{background:#16a34a;border-color:#15803d;color:#fff;box-shadow:0 5px 12px #16a34a33}.iin-btn i{margin-left:5px}
         .iin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.iin-stat{background:#fff;border:1px solid var(--line);border-radius:13px;text-align:center;padding:12px 8px}.iin-stat b{display:block;font-size:23px;color:var(--purple)}.iin-stat span{font-size:11px;color:#8b8b9d}.iin-stat.green b{color:#13a15d}.iin-stat.orange b{color:#d89400}
         .iin-filter{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:10px;margin-bottom:12px}.iin-search{flex:1;border:1px solid #e3e3ec;border-radius:9px;padding:10px 13px;outline:none;font-size:12px;text-align:right}.iin-search:focus{border-color:var(--purple)}
         .iin-row{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin:9px 0;padding:14px 15px;min-height:88px;transition:.15s}.iin-row:hover{border-color:#b9a9fa;box-shadow:0 5px 16px #3e27730d}.iin-main{flex:1;min-width:0}.iin-r1{display:flex;align-items:center;gap:8px;margin-bottom:9px}.iin-r1 strong{font-size:13px;color:#202033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.iin-num{color:#10945a;font-weight:800;font-size:11px}.iin-meta{display:flex;flex-wrap:wrap;gap:13px;color:#8b8b9d;font-size:11px}.iin-meta b{color:#555568}.iin-badge{font-size:10px;border-radius:7px;padding:5px 8px;white-space:nowrap}.iin-badge.ok{background:#e8f8ef;color:#16834d}.iin-badge.arc{background:#f0edff;color:#6343cd}.iin-row-actions{display:flex;gap:6px;direction:rtl}.iin-mini{border:1px solid #e5e5ee;background:#fff;border-radius:8px;padding:8px 10px;font-size:11px;color:#343447;cursor:pointer}.iin-mini:hover{background:#f5f2ff;border-color:#cfc2ff}.iin-empty{text-align:center;background:#fff;border:1px solid var(--line);border-radius:13px;padding:45px;color:#999;font-size:13px}.iin-pager{display:flex;align-items:center;justify-content:center;gap:5px;flex-wrap:wrap;margin-top:12px}.iin-pager .iin-mini{min-width:32px;height:32px;padding:0 7px;font-weight:700;color:#5b5b70}.iin-pager .iin-mini:hover:not(:disabled){background:#f5f2ff;border-color:#cfc2ff;color:#4f46e5}.iin-pager .iin-mini.on{background:#4f46e5;border-color:#4f46e5;color:#fff}.iin-pager .iin-mini:disabled{opacity:.4;cursor:default}.iin-pginfo{font-size:11px;color:#64748b;margin-inline-start:8px}
-        @@media(max-width:800px){.iin-top{align-items:flex-start;flex-direction:column}.iin-actions{width:100%;overflow:auto}.iin-stats{grid-template-columns:repeat(2,1fr)}.iin-filter{flex-wrap:wrap}.iin-search{flex-basis:100%}.iin-row{align-items:flex-start;flex-wrap:wrap}.iin-main{flex-basis:calc(100% - 10px)}.iin-row-actions{width:100%;justify-content:flex-start}.iin-mini{flex:1}}
+        @@media(max-width:800px){.iin-top{align-items:flex-start;flex-direction:column}.iin-actions{width:100%;overflow:auto}.iin-stats{grid-template-columns:repeat(2,1fr)}.iin-filter{flex-wrap:wrap}.iin-search{flex-basis:100%}.iin-row{align-items:flex-start;flex-wrap:wrap}.iin-main{flex-basis:calc(100% - 10px)}.iin-row-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}.iin-mini{flex:1}}
     </style>
     <div class="iin">
         <div class="iin-top">
@@ -52,7 +56,14 @@
                     }
                     <div class="iin-main">
                         <div class="iin-r1"><span class="iin-num">@l.NumberSabt.FaDigits()</span><strong title="@l.Title">@l.Title</strong><span class="iin-badge @(view == "archived" ? "arc" : "ok")">@(view == "archived" ? "بایگانی‌شده" : "ثبت و ارسال شده")</span></div>
-                        <div class="iin-meta"><span><b>فرستنده:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
+                        <div class="iin-identity">
+                            <b>@(l.ErjaId.HasValue ? "ارجاع‌دهنده:" : "ثبت‌کننده:")</b>
+                            <span class="iin-person" title="@RowUserName(l)">
+                                <UserAvatar LoginUserId="l.SenderUserId" Size="24" />
+                                <span class="iin-person-name">@RowUserName(l)</span>
+                            </span>
+                        </div>
+                        <div class="iin-meta"><span class="letter-external-party"><b>فرستندهٔ مبدأ:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
                     </div>
                     <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button>@if (CanRegister){<button class="iin-mini" title="ویرایش نامه (حتی پس از رویت گیرندگان)" @onclick="() => OpenEditRow(l)"><i class="bi bi-pencil"></i> ویرایش</button>}<button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
                 </div>
@@ -83,6 +94,11 @@
 <IncomingGardeshModal @ref="flowModal" />
 <BayeganiFolderPickerModal @ref="folderPicker" />
 @code {
+    // پاسخ قدیمیِ بایگانی مستقیم، Sender را نام مبدأ می‌گذاشت و شناسه نداشت؛ آن را کاربر فرض نکنیم.
+    private static string RowUserName(IncomingLetterListItemDto row) =>
+        (row.ErjaId.HasValue || row.SenderUserId > 0) && !string.IsNullOrWhiteSpace(row.Sender)
+            ? row.Sender : "کاربر نامشخص";
+
     private string view = "registered", search = "";
     private readonly HashSet<int> selectedIds = new();
     private bool loading; private List<IncomingLetterListItemDto> items = new();
@@ -120,6 +136,8 @@
         view = value;
         if (value == "archived") archivedPage = 1; else registeredPage = 1;
         await ReloadAsync();
+        // فراخوانی از ریلِ والد، رویداد خود این کامپوننت نیست؛ ردیف‌ها/عکس‌های تب تازه را رندر کنیم.
+        StateHasChanged();
     }
 
     private async Task ResetAndReloadAsync()
@@ -136,7 +154,7 @@
         await ReloadAsync();
     }
     private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
-    private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal, l.SenderUserId);
+    private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal);
     private async Task OpenErja(IncomingLetterListItemDto l) => await erjaSheet!.OpenErja(l.LetterId, l.NumberSabt);
     private void ToggleSelected(int id)
     {
@@ -191,16 +209,8 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
-    private async Task HandleGardeshFromView(int letterId)
-    {
-        try
-        {
-            var detail = await IncomingSvc.GetDetailAsync(letterId);
-            if (detail is not null && flowModal is not null)
-                await flowModal.Open(detail.LetterId, detail.Title, detail.Ferestande, detail.NumberSabt, detail.DateErsal, detail.CreatorUserId);
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-    }
+    private Task HandleGardeshFromView(IncomingLetterDetailDto letter) =>
+        flowModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal) ?? Task.CompletedTask;
 
     private async Task Archive(IncomingLetterListItemDto l)
     {

@@ -184,7 +184,7 @@
             </div>
 
             @* ---------- وضعیت دبیرخانه ---------- *@
-            <div class="scard" style="margin-top:12px">
+            <div class="scard outgoing-secretariat-status" style="margin-top:12px">
                 <h3><i class="bi bi-mailbox"></i> دبیرخانه</h3>
                 @if (string.IsNullOrWhiteSpace(letter.SadereNumber))
                 {
@@ -201,7 +201,12 @@
                         @if (letter.DateDabirkhane is { } dd) { <span><b>تاریخ ثبت:</b> @dd.ToFaDateTime()</span> }
                         @if (!string.IsNullOrWhiteSpace(letter.SendMethod)) { <span><b>روش ارسال:</b> @letter.SendMethod</span> }
                         @if (!string.IsNullOrWhiteSpace(letter.DestRegNumber)) { <span><b>شماره ثبت مقصد:</b> @letter.DestRegNumber.FaDigits()</span> }
-                        @if (!string.IsNullOrWhiteSpace(letter.DabirkhaneUserName)) { <span><b>ثبت توسط:</b> @letter.DabirkhaneUserName</span> }
+                        <span class="secretariat-registrar"><b>ثبت دبیرخانه:</b>
+                            <span class="letter-person letter-person-sm">
+                                <UserAvatar LoginUserId="@(letter.DabirkhaneUserId ?? 0)" Size="18" />
+                                <span class="letter-person-name">@(string.IsNullOrWhiteSpace(letter.DabirkhaneUserName) ? "کاربر نامشخص" : letter.DabirkhaneUserName)</span>
+                            </span>
+                        </span>
                         @if (!string.IsNullOrWhiteSpace(letter.DabirkhaneNote)) { <span><b>توضیح:</b> @letter.DabirkhaneNote</span> }
                     </div>
                 }

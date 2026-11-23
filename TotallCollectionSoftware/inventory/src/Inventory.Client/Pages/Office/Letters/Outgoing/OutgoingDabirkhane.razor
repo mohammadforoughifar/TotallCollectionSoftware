@@ -23,7 +23,7 @@
 
 <PageTitle>دبیرخانه یکپارچه</PageTitle>
 
-<div class="ltx @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
+<div class="ltx unified-secretariat @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" style="grid-template-columns:72px 1fr">
         <nav class="rail">
             @if (dabirType == "varede")
@@ -81,8 +81,8 @@
         <section class="pane" style="@(showGuide ? "display:none" : "overflow:auto")">
         <div style="padding:14px;width:100%;box-sizing:border-box">
 
-        <div class="rd-top" style="border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
-            <div style="display:flex;align-items:center;gap:12px">
+        <div class="rd-top secretariat-heading" style="border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+            <div class="secretariat-heading-main" style="display:flex;align-items:center;gap:12px">
                 <span class="t"><i class="bi bi-mailbox" style="color:var(--p2)"></i> دبیرخانه یکپارچه اتوماسیون اداری</span>
                 <div class="btn-group btn-group-sm">
                     <button class="btn @(dabirType == "sadere" ? "btn-primary" : "btn-outline-primary")" @onclick='() => dabirType = "sadere"'>
@@ -251,7 +251,7 @@
             @foreach (var l in items)
             {
                 var ll = l;
-                <div class="scard" style="margin-bottom:10px">
+                <div class="scard secretariat-outgoing-letter" style="margin-bottom:10px">
                     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">
                         <div style="flex:1;min-width:230px">
                             <div style="font-weight:700;font-size:14px">
@@ -262,11 +262,8 @@
                             </div>
                             <div style="font-size:12.5px;color:#64748b;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px">
                                 <span><b>شماره صادره:</b> <span class="num" style="color:#16a34a;font-weight:700">@(ll.SadereNumber ?? "—")</span></span>
-                                <span><b>مقصد:</b> @ll.ReceiverOrganization @(string.IsNullOrWhiteSpace(ll.ReceiverName) ? "" : $"({ll.ReceiverName})")</span>
-                                <b class="letter-person letter-person-sm" title="ثبت‌کننده/فرستنده">
-                                    <UserAvatar LoginUserId="@(ll.CreatorUserId ?? 0)" Size="18" />
-                                    <span class="letter-person-name">@ll.CreatorName</span>
-                                </b>
+                                <span class="letter-external-party"><b>مقصد:</b> @ll.ReceiverOrganization @(string.IsNullOrWhiteSpace(ll.ReceiverName) ? "" : $"({ll.ReceiverName})")</span>
+                                <span class="secretariat-creator"><b>ایجادکننده:</b> @Person(ll.CreatorUserId, ll.CreatorName)</span>
                                 @if (ll.DateSadere is { } ds) { <span><b>تاریخ صدور:</b> @ds.ToFaDateTime()</span> }
                                 @if (!string.IsNullOrWhiteSpace(ll.CompanyName)) { <span><b>سربرگ:</b> @ll.CompanyName</span> }
                                 @if (ll.HasAttachment) { <span><i class="bi bi-paperclip"></i> پیوست‌دار</span> }
@@ -284,7 +281,7 @@
                                     @if (!string.IsNullOrWhiteSpace(ll.DestEmail)) { <span><b>ایمیل مقصد:</b> @ll.DestEmail</span> }
                                     @if (!string.IsNullOrWhiteSpace(ll.DestFax)) { <span><b>فکس مقصد:</b> <span class="num">@ll.DestFax.FaDigits()</span></span> }
                                     @if (ll.DateDabirkhane is { } dd) { <span><b>تاریخ ثبت:</b> @dd.ToFaDateTime()</span> }
-                                    @if (!string.IsNullOrWhiteSpace(ll.DabirkhaneUserName)) { <span><b>توسط:</b> @ll.DabirkhaneUserName</span> }
+                                    <span class="secretariat-registrar"><b>ثبت دبیرخانه:</b> @Person(ll.DabirkhaneUserId, ll.DabirkhaneUserName)</span>
                                 </div>
                             }
                             else
@@ -612,6 +609,11 @@
 <DabirkhaneArchivePicker @ref="archivePicker" />
 
 @code {
+    private RenderFragment Person(int? loginUserId, string? name) => @<span class="letter-person letter-person-sm">
+        <UserAvatar LoginUserId="@(loginUserId ?? 0)" Size="18" />
+        <span class="letter-person-name">@(string.IsNullOrWhiteSpace(name) ? "کاربر نامشخص" : name)</span>
+    </span>;
+
     private bool showGuide;
     private void BackFromGuide() => showGuide = false;
 

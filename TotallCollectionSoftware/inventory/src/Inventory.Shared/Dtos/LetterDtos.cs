@@ -446,6 +446,9 @@ public class BayeganiNodeDto
     /// <summary>1 = نامه داخلی، 2 = نامه صادره (بایگانی دبیرخانه)</summary>
     public int SourceType { get; set; } = 1;
 
+    /// <summary>شناسهٔ ایجادکنندهٔ نامهٔ صادره در بایگانی دبیرخانه؛ نه صاحب پوشه یا بایگانی‌کننده.</summary>
+    public int? CreatorUserId { get; set; }
+
     /// <summary>سازمان/شرکت مقصد نامه صادره</summary>
     public string? ReceiverOrganization { get; set; }
 

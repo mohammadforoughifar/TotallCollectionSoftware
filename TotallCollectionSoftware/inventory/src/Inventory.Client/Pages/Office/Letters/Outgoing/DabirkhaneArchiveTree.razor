@@ -8,7 +8,7 @@
    • نامه‌ها قابل نمایش، انتقال به پوشه دیگر و خروج از بایگانی
    ============================================================ *@
 
-<div class="scard">
+<div class="scard secretariat-archive">
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
         <b style="font-size:14px"><i class="bi bi-archive" style="color:#7c3aed"></i> بایگانی دبیرخانه</b>
         <span style="font-size:12px;color:#64748b">@CountLetters(Tree).FaDigits() نامه در @CountFolders(Tree).FaDigits() پوشه</span>
@@ -205,9 +205,9 @@
         }
         else
         {
-            <div class="tnode">
+            <div class="tnode secretariat-archive-letter">
                 <span class="mini"><i class="bi bi-envelope-paper"></i></span>
-                <div style="cursor:pointer" @onclick="() => OpenLetter(n)">
+                <div class="secretariat-archive-info" style="cursor:pointer" @onclick="() => OpenLetter(n)">
                     <b>@n.Title</b>
                     <small>
                         — <span class="num">@(n.SadereNumber ?? n.LetterNumber ?? "")</span>
@@ -215,6 +215,12 @@
                         @if (n.Date is { } d) { <span> · @d.ToFaDateTime()</span> }
                         @if (!string.IsNullOrWhiteSpace(n.SendMethod)) { <span> · @n.SendMethod</span> }
                     </small>
+                    <div class="letter-node-sender secretariat-creator">ایجادکننده:
+                        <span class="letter-person letter-person-sm">
+                            <UserAvatar LoginUserId="@(n.CreatorUserId ?? 0)" Size="18" />
+                            <span class="letter-person-name">@(string.IsNullOrWhiteSpace(n.Sender) ? "کاربر نامشخص" : n.Sender)</span>
+                        </span>
+                    </div>
                 </div>
                 <span class="tst" style="display:flex;gap:4px;border:none;background:none">
                     <button class="lbtn ghost" style="padding:1px 6px;font-size:11px" title="نمایش نامه"

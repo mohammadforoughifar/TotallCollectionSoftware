@@ -16,7 +16,7 @@
 
 <PageTitle>کارتابل نامه وارده — اتوماسیون اداری</PageTitle>
 
-<div class="ltx @(!showGuide && readerOpen ? "rd-open" : "") @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
+<div class="ltx incoming-letter-cartable @(!showGuide && readerOpen ? "rd-open" : "") @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" @onclick="CloseMenus">
 
         @* ---------- ریل پوشه‌ها (Folder Rail) ---------- *@
@@ -141,6 +141,8 @@
                     @foreach (var item in letters)
                     {
                         var l = item;
+                        var senderName = string.IsNullOrWhiteSpace(l.Sender) ? "کاربر نامشخص" : l.Sender;
+                        var senderLabel = folder == "sent" ? "ثبت‌کننده" : "ارجاع‌دهنده";
                         var isUnread = !l.IsRead && folder == "inbox";
                         var isSel = activeLetter?.LetterId == l.LetterId;
 
@@ -152,19 +154,19 @@
                                 </div>
                             }
 
-                            @* عکس کاربر ثبت‌کننده — همان رفتار نامه داخلی. اگر شناسهٔ کاربر معلوم
-                               نباشد، کامپوننت عکس پیش‌فرض را نشان می‌دهد تا جای عکس خالی نماند. *@
-                            <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(l.Sender) ? l.Ferestande : $"{l.Sender} — ثبت‌کننده")"><UserAvatar SystemUserId="l.SenderUserId" Size="40" /></div>
+                            @* در دریافتی، SenderUserId هویت ارجاع‌دهندهٔ مستقیم است؛ در ثبت‌شده‌ها، ثبت‌کننده. Ferestande مبدأ بیرونی است. *@
+                            <div class="avt letter-avatar" title="@($"{senderLabel}: {senderName}")"><UserAvatar LoginUserId="l.SenderUserId" Size="40" /></div>
 
                             <div class="mail-b">
                                 <div class="mail-r1">
-                                    <span class="who">@l.Ferestande</span>
+                                    <span class="who" title="@($"{senderLabel}: {senderName}")"><span class="who-val">@senderLabel: @senderName</span></span>
                                     <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-0 fs-7"># @l.NumberSabt.FaDigits()</span>
                                     @if (workOrderLetterIds.Contains(l.LetterId)) { <span class="workorder-mark ms-1" title="این نامه دستورکار دارد"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="18" height="18" aria-label="دستورکارشده"><rect x="7" y="5" width="34" height="38" rx="9" fill="#FFEDD5" stroke="#F97316" stroke-width="2.5"/><rect x="17" y="2" width="14" height="7" rx="3.5" fill="#F97316"/><g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M13 18l2.5 2.5 4.5-5.5" stroke="#EA580C"/><path d="M13 27l2.5 2.5 4.5-5.5" stroke="#EA580C"/><circle cx="16" cy="35" r="2.8" stroke="#FDBA74"/><path d="M25 18h9M25 27h9M25 35h6" stroke="#FDBA74"/></g></svg></span> }
                                 </div>
                                 <div class="mail-tt">@l.Title</div>
+                                <div class="mail-pv letter-origin" title="@l.Ferestande">فرستندهٔ مبدأ: @l.Ferestande</div>
                                 <div class="mail-pv">
-                                    <span>مبدأ: @(string.IsNullOrWhiteSpace(l.NumberLetterVarede) ? "-" : l.NumberLetterVarede)</span>
+                                    <span>شمارهٔ مبدأ: @(string.IsNullOrWhiteSpace(l.NumberLetterVarede) ? "-" : l.NumberLetterVarede)</span>
                                     <span class="ms-2">· تاریخ ورود: @l.DateErsal.ToFaDate()</span>
                                 </div>
                             </div>
@@ -335,8 +337,8 @@
                         @* ---------- برگهٔ نامه ---------- *@
                         <div class="paper">
                             <div class="paper-h">
-                                @* عکس واقعی کاربر ثبت‌کننده — همان رفتار نامه داخلی (بدون عکس ⇒ عکس پیش‌فرض) *@
-                                <div class="avt letter-avatar" title="@(string.IsNullOrWhiteSpace(activeDetail.CreatorName) ? activeDetail.Ferestande : $"ثبت‌کننده: {activeDetail.CreatorName}")"><UserAvatar SystemUserId="activeDetail.CreatorUserId" Size="40" /></div>
+                                @* فرستندهٔ بیرونی کاربر سامانه نیست؛ عکس ثبت‌کننده فقط کنار نام خودش قرار می‌گیرد. *@
+                                <div class="avt" title="فرستندهٔ مبدأ"><i class="bi bi-building" aria-hidden="true"></i></div>
                                 <div class="ph-meta">
                                     <div class="n1">@activeDetail.Ferestande</div>
                                     <div class="n2">
@@ -345,11 +347,8 @@
                                         {
                                             <span> — شماره مبدأ: @activeDetail.NumberLetterVarede</span>
                                         }
-                                        @if (!string.IsNullOrWhiteSpace(activeDetail.CreatorName))
-                                        {
-                                            <span> — ثبت‌کننده: @activeDetail.CreatorName</span>
-                                        }
                                     </div>
+                                    <div class="letter-node-sender">ثبت‌کننده: @Person(activeDetail.CreatorUserId, activeDetail.CreatorName)</div>
                                 </div>
                                 <div class="ind">
                                     <div class="no num"># @activeDetail.NumberSabt.FaDigits()</div>
@@ -467,10 +466,7 @@
                             }
                             <div class="kv"><b>فوریت</b><span style="@(activeDetail.Foriat > 0 ? "color:var(--bad);font-weight:700" : "")">@ForiatTitle(activeDetail.Foriat)</span></div>
                             <div class="kv"><b>محرمانگی</b><span style="@(activeDetail.Mahramanegi > 0 ? "color:var(--bad);font-weight:700" : "")">@MahramanegiTitle(activeDetail.Mahramanegi)</span></div>
-                            @if (!string.IsNullOrWhiteSpace(activeDetail.CreatorName))
-                            {
-                                <div class="kv"><b>ثبت‌کننده</b><span>@activeDetail.CreatorName</span></div>
-                            }
+                            <div class="kv"><b>ثبت‌کننده</b>@Person(activeDetail.CreatorUserId, activeDetail.CreatorName)</div>
                             @if (activeDetail.CurrentErja?.MohlatPasokh is { } myDeadline)
                             {
                                 <div class="kv"><b>مهلت پاسخ من</b><span style="color:var(--amb);font-weight:700">@myDeadline.ToFa()</span></div>
@@ -519,7 +515,7 @@
                                     @foreach (var e in activeDetail.Erjas.GroupBy(x => x.ReciverUserId).Select(g => g.First()))
                                     {
                                         <span class="pp">
-                                            <span class="mini"><UserAvatar SystemUserId="@e.ReciverUserId" Size="18" /></span>
+                                            <span class="mini"><UserAvatar LoginUserId="e.ReciverUserId" Size="18" /></span>
                                             @e.ReciverName (@e.Type)
                                         </span>
                                     }
@@ -1019,13 +1015,14 @@
     private void OpenDetailModal(int letterId) => viewModal?.Open(letterId);
 
     private void OpenErja(int letterId, int numberSabt) => erjaSheet?.OpenErja(letterId, numberSabt);
-    private void OpenGardesh(IncomingLetterListItemDto letter) => gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal, letter.SenderUserId);
-
-    private void OpenGardeshFromReader(int letterId)
+    private Task OpenGardesh(IncomingLetterListItemDto letter)
     {
-        if (activeDetail != null)
-            gardeshModal?.Open(activeDetail.LetterId, activeDetail.Title, activeDetail.Ferestande, activeDetail.NumberSabt, activeDetail.DateErsal, activeDetail.CreatorUserId);
+        openMenuLetterId = 0;
+        return gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal) ?? Task.CompletedTask;
     }
+
+    private Task OpenGardeshFromReader(int letterId) => activeDetail is { } letter && letter.LetterId == letterId
+        ? HandleGardeshFromView(letter) : Task.CompletedTask;
 
     private void OpenAnswerFromReader(int erjaId, int sabtNumber) => erjaSheet?.OpenAnswer(erjaId, sabtNumber);
 
@@ -1263,16 +1260,14 @@
         if (composeModal is not null)
             await composeModal.OpenEdit(letter);
     }
-    private async Task HandleGardeshFromView(int letterId)
-    {
-        try
-        {
-            var d = await IncomingSvc.GetDetailAsync(letterId);
-            if (d != null)
-                await (gardeshModal?.Open(d.LetterId, d.Title, d.Ferestande, d.NumberSabt, d.DateErsal, d.CreatorUserId) ?? Task.CompletedTask);
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-    }
+    // مشخصات از همان نمای بازشده می‌آید؛ برای گردش، جزئیات را دوباره نمی‌خوانیم (اثر جانبی IsRead).
+    private Task HandleGardeshFromView(IncomingLetterDetailDto letter) =>
+        gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal) ?? Task.CompletedTask;
+
+    private RenderFragment Person(int loginUserId, string? name) => @<span class="letter-person letter-person-sm">
+        <UserAvatar LoginUserId="loginUserId" Size="18" />
+        <span class="letter-person-name">@(string.IsNullOrWhiteSpace(name) ? "کاربر نامشخص" : name)</span>
+    </span>;
 
     private sealed class LetterWorkOrderSummary
     {
