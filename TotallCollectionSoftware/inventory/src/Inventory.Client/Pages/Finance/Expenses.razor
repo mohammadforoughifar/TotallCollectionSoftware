@@ -288,7 +288,17 @@
             {
                 <div class="col-md-6"><label class="form-label">بانک صادرکننده *</label><div class="input-group"><select class="form-select" @bind="issuedBankId"><option value="0">— انتخاب بانک —</option>@foreach (var a in chequeBanks) { <option value="@a.Id">@a.DisplayName</option> }</select><button type="button" class="btn btn-outline-primary" title="افزودن بانک" @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)"><i class="bi bi-plus-lg"></i></button></div></div>
                 <div class="col-md-6"><label class="form-label">شماره چک *</label><input class="form-control" maxlength="50" @bind="chequeNumber" /></div>
-                <div class="col-md-6"><label class="form-label">سررسید چک *</label><DatePicker @bind-Value="chequeDue" /></div>
+                <div class="col-md-6">
+                    <label class="form-label">سررسید چک *</label>
+                    @* سررسید کوتاه‌ترین مهلت پرداخت است و پیش از تحویل چک معنا ندارد؛ بنابراین
+                       روزهای قبل از تاریخ تحویل در تقویم بسته‌اند، تایپ آن‌ها پذیرفته نمی‌شود و
+                       اگر با تغییر تاریخ تحویل نامعتبر شود، هشدار روی همان فیلد ظاهر می‌شود. *@
+                    <DatePicker @bind-Value="chequeDue" MinDate="@HandedAtDate" BlockedTitle="@BlockedDueTitle" CssClass="@DueCss" />
+                    @if (DueBeforeHandover)
+                    {
+                        <div class="invalid-feedback d-block" data-expense-cheque-due-warning>@ExpenseChequeDates.DueBeforeHandoverMessage</div>
+                    }
+                </div>
             }
             @if (paymentMode == "received")
             {
@@ -446,6 +456,18 @@
     private string paymentMode = "ordinary", chequeNumber = "", statusReason = "";
     private int issuedBankId, sourceChequeId;
     private DateTime? chequeDue, handedAt, statusDate, replacementDate;
+
+    /// <summary>تاریخ تحویل به‌صورت تاریخِ خالص — کمینهٔ مجاز سررسید همین است.</summary>
+    private DateTime? HandedAtDate => handedAt?.Date;
+
+    /// <summary>سررسید پیش از تحویل است؟ همان قاعدهٔ سرور (ExpenseChequeDates) در فرم.</summary>
+    private bool DueBeforeHandover => paymentMode == "issued" && ExpenseChequeDates.DueIsBeforeHandover(chequeDue, handedAt);
+
+    /// <summary>قاب قرمزِ فیلد سررسید وقتی نامعتبر است.</summary>
+    private string DueCss => DueBeforeHandover ? "is-invalid" : "";
+
+    /// <summary>راهنمای روزهای غیرمجاز در تقویم.</summary>
+    private string BlockedDueTitle => "پیش از تاریخ تحویل چک";
     private Guid chequeOperation, statusOperation;
     private List<TrsAccount> chequeBanks = new();
     private List<ShopChequeItem> receivedCheques = new();
@@ -474,6 +496,10 @@
     private async Task PrepareMode(string mode)
     {
         paymentMode = mode;
+        // اگر کاربر قبلاً سررسید را عقب‌تر از تحویل گذاشته بود، با ورود به حالت چک صادره
+        // سررسید به تحویل کشیده می‌شود تا فرم از اول با تاریخ نامعتبر شروع نشود.
+        if (mode == "issued" && chequeDue.HasValue && handedAt.HasValue && chequeDue.Value.Date < handedAt.Value.Date)
+            chequeDue = handedAt;
         try
         {
             if (mode == "issued") chequeBanks = await ExpenseSvc.GetChequeBanksAsync();
@@ -486,8 +512,8 @@
         form = new ExpenseDto { Id = expense.Id, Number = expense.Number, CategoryId = expense.CategoryId,
             Amount = expense.Amount, Date = expense.Date, Payee = expense.Payee, Description = expense.Description };
         catIdStr = expense.CategoryId.ToString(); fAmount = Fa.FormatTyping(expense.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
-        expDate = expense.Date; handedAt = DateTime.Today; chequeDue = DateTime.Today; replacementDate = DateTime.Today; chequeNumber = "";
-        chequeOperation = Guid.NewGuid(); sourceChequeId = 0; issuedBankId = 0; replacement = true; chequeDetail = null; showForm = true;
+        expDate = expense.Date; ResetChequeDates(); replacementDate = DateTime.Today;
+        chequeOperation = Guid.NewGuid(); replacement = true; chequeDetail = null; showForm = true;
         try { bankAccounts = await ExpenseSvc.GetExpenseReplacementAccountsAsync(); }
         catch (Exception ex) { bankAccounts = new(); Toast.Error("فهرست حساب‌های پرداخت دریافت نشد. " + ex.Message); }
         await PrepareMode("issued");
@@ -665,9 +691,16 @@
     {
         form = new ExpenseDto { Date = DateTime.Now, PayType = CashType.Cash };
         replacement = false; paymentMode = "ordinary"; chequeOperation = Guid.NewGuid();
-        chequeNumber = ""; issuedBankId = 0; sourceChequeId = 0; chequeDue = DateTime.Today; handedAt = DateTime.Today;
+        ResetChequeDates();
         catIdStr = "0"; fAmount = ""; expDate = DateTime.Now;
         showForm = true;
+    }
+
+    /// <summary>تاریخ‌های چک: تحویل و سررسید هر دو امروز — یعنی از ابتدا قاعده «سررسید ≥ تحویل» برقرار است.</summary>
+    private void ResetChequeDates()
+    {
+        chequeNumber = ""; issuedBankId = 0; sourceChequeId = 0;
+        handedAt = DateTime.Today; chequeDue = handedAt;
     }
 
     private void OpenEdit(ExpenseDto e)
@@ -716,6 +749,9 @@
                     throw new InvalidOperationException("دریافت‌کننده و تاریخ تحویل چک را وارد کنید.");
                 if (paymentMode == "issued" && (issuedBankId <= 0 || string.IsNullOrWhiteSpace(chequeNumber) || !chequeDue.HasValue))
                     throw new InvalidOperationException("بانک، شماره و سررسید چک صادره را وارد کنید.");
+                // سررسید پیش از تحویل چک پذیرفته نمی‌شود؛ همین قاعده در سرور هم دوباره بررسی می‌شود.
+                if (paymentMode == "issued" && ExpenseChequeDates.DueIsBeforeHandover(chequeDue, handedAt))
+                    throw new InvalidOperationException(ExpenseChequeDates.DueBeforeHandoverMessage);
                 if (paymentMode == "received" && sourceChequeId <= 0)
                     throw new InvalidOperationException("چک دریافتی را انتخاب کنید.");
                 await ExpenseSvc.CreateChequeExpenseAsync(new ExpenseChequeCreateCommand

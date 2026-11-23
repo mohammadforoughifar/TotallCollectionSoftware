@@ -124,7 +124,8 @@ class RepairStatusMenuContracts(unittest.TestCase):
         self.assertIn('position: fixed; z-index: 4500', self.css)
         self.assertIn('max-width: calc(100vw - 16px)', self.css)
         self.assertIn('repair-status-menu.js?v=1', self.index)
-        self.assertIn('css/app.css?v=20', self.index)
+        # نسخهٔ کش app.css با هر تغییر آن بالا می‌رود؛ فقط وجود همان پارامتر مهم است.
+        self.assertRegex(self.index, r'css/app\.css\?v=(?:2[1-9]|[3-9][0-9])')
         for expected in ('pointerdown', "event.key === 'Escape'", "event.key === 'Tab'",
                          "'ArrowDown'", "'ArrowUp'", 'MutationObserver', "'scroll'", "'resize'",
                          'preventScroll: true', 'state.observer.disconnect()'):

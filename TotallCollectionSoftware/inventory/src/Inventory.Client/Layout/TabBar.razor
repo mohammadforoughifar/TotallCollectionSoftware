@@ -4,13 +4,17 @@
    • راست‌کلیک: بازسازی / سنجاق / بستن بقیه / بستن همه / بستن
    • کشیدن و رها کردن برای تغییر ترتیب
    • تبِ خانه سنجاق است و بسته نمی‌شود
+   • دکمه‌های ‹ › کنارِ نوار، صفحهٔ قبلی/بعدی را باز می‌کنند
    ============================================================ *@
 @inject TabService Tabs
 @inject IJSRuntime JS
 @implements IDisposable
 
 <div class="tabbar">
-    <button class="tabnav" title="به راست" @onclick="() => Scroll(220)">
+    @* صفحهٔ قبلی/بعدی (تاریخچهٔ بازدید، مثل مرورگر). اگر مقصدی نباشد دکمه واقعاً
+       غیرفعال می‌شود تا کاربر به‌جای کلیکِ بی‌اثر، دلیل را ببیند. *@
+    <button type="button" class="tabnav" title="صفحهٔ قبلی" aria-label="صفحهٔ قبلی" data-tab-nav="prev"
+            disabled="@(PrevTab is null)" @onclick="GoPrev">
         <i class="bi bi-chevron-right"></i>
     </button>
 
@@ -50,7 +54,8 @@
         }
     </div>
 
-    <button class="tabnav" title="به چپ" @onclick="() => Scroll(-220)">
+    <button type="button" class="tabnav" title="صفحهٔ بعدی" aria-label="صفحهٔ بعدی" data-tab-nav="next"
+            disabled="@(NextTab is null)" @onclick="GoNext">
         <i class="bi bi-chevron-left"></i>
     </button>
 
@@ -218,8 +223,25 @@
         listOpen = false;
     }
 
-    private async Task Scroll(int dx)
+    // ---------- جابه‌جایی بین صفحه‌ها (قبلی/بعدی مثل مرورگر) ----------
+
+    /// <summary>صفحهٔ قبلی در تاریخچهٔ بازدید؛ null یعنی دکمه غیرفعال است.</summary>
+    private TabItem? PrevTab => Tabs.Previous;
+
+    /// <summary>صفحهٔ بعدی در تاریخچهٔ بازدید؛ null یعنی دکمه غیرفعال است.</summary>
+    private TabItem? NextTab => Tabs.Next;
+
+    private void GoPrev()
     {
-        try { await JS.InvokeVoidAsync("appTabs.scrollBy", strip, dx); } catch { }
+        menuTab = null;
+        listOpen = false;
+        Tabs.GoBack();
+    }
+
+    private void GoNext()
+    {
+        menuTab = null;
+        listOpen = false;
+        Tabs.GoForward();
     }
 }

@@ -38,43 +38,136 @@
         return false;
     }
 
-    function placeSearchMenu(anchor, menu) {
-        if (!anchor || !menu) return;
-        menu._orderAnchor = anchor;
-        const modal = anchor.closest('.modal-content');
-        if (!modal) return;
-        const a = anchor.getBoundingClientRect(), box = modal.getBoundingClientRect();
+    const MENU_MAX_HEIGHT = 250;
+
+    // منوی کمبوباکس داخل فرم فاکتور همیشه باید به «فیلد خودش» چسبیده باشد.
+    // مختصات inline که سمت C# (Popover.Below) ساخته می‌شود فقط عکسِ لحظهٔ فوکوس است؛
+    // وقتی فرم بلند می‌شود (بیش از سه ردیف کالا) بدنهٔ مودال اسکرول می‌خورد و همان
+    // مختصاتِ کهنه روی صفحه می‌ماند، در نتیجه منو وسط صفحه/جای دیگری باز می‌شود.
+    // قاعده: تا این تابع جای درست را حساب نکند منو پنهان است، و پس از هر تغییر
+    // چیدمان (اسکرول، تغییر اندازه، اضافه‌شدن ردیف) دوباره از روی خود فیلد حساب می‌شود.
+    function measurable(el) {
+        if (!el || typeof el.getBoundingClientRect !== 'function') return false;
+        // المانِ پنهان (تب غیرفعال) هیچ مستطیلِ دیدنی‌ای ندارد.
+        if (typeof el.getClientRects === 'function' && el.getClientRects().length === 0) return false;
+        const r = el.getBoundingClientRect();
+        if (!r) return false;
+        const w = r.width != null ? r.width : r.right - r.left;
+        const h = r.height != null ? r.height : r.bottom - r.top;
+        return w > 0 && h > 0;
+    }
+
+    function hideMenu(menu) {
+        if (!menu) return;
+        if (menu.style) menu.style.visibility = 'hidden';
+        if (typeof menu.removeAttribute === 'function') menu.removeAttribute('data-menu-placed');
+    }
+
+    // کادرِ مجاز = خودِ مودال بریده‌شده به viewport؛ بیرون از آن منو باز نمی‌شود.
+    function menuClipBox(anchor, menu) {
+        const modal = anchor.closest('.modal-content') || (menu.closest && menu.closest('.modal-content'));
+        const box = modal ? modal.getBoundingClientRect() : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
         const margin = 8;
-        const leftEdge = Math.max(margin, box.left + margin);
-        const rightEdge = Math.min(window.innerWidth - margin, box.right - margin);
-        const topEdge = Math.max(margin, box.top + margin);
-        const bottomEdge = Math.min(window.innerHeight - margin, box.bottom - margin);
-        if (rightEdge <= leftEdge || bottomEdge <= topEdge) return;
-        if (a.bottom < topEdge || a.top > bottomEdge) { menu.style.visibility = 'hidden'; return; }
-        const width = Math.min(Math.max(a.width, 230), rightEdge - leftEdge);
-        // position:fixed is relative to the nearest transformed/filtered ancestor, not the viewport.
+        return {
+            left: Math.max(margin, box.left + margin),
+            right: Math.min(window.innerWidth - margin, box.right - margin),
+            top: Math.max(margin, box.top + margin),
+            bottom: Math.min(window.innerHeight - margin, box.bottom - margin)
+        };
+    }
+
+    function isRtl(el) {
+        try {
+            const doc = el.ownerDocument && el.ownerDocument.documentElement;
+            if (doc && doc.getAttribute && doc.getAttribute('dir') === 'rtl') return true;
+            return window.getComputedStyle(el).direction === 'rtl';
+        } catch (_) { return false; }
+    }
+
+    function placeSearchMenu(anchor, menu) {
+        if (!anchor || !menu) return false;
+        menu._orderAnchor = anchor;
+        // فیلدِ پنهان (تب غیرفعال، فیلد display:none) مختصات صفر می‌دهد؛ در این حالت
+        // منو نباید با مختصات پیش‌فرض گوشهٔ صفحه ظاهر شود، باید پنهان بماند.
+        if (!measurable(anchor)) { hideMenu(menu); return false; }
+        const a = anchor.getBoundingClientRect();
+        const box = menuClipBox(anchor, menu);
+        if (box.right <= box.left || box.bottom <= box.top) { hideMenu(menu); return false; }
+        // فیلد از کادرِ دیدنی بیرون رفته (زیر هدر اسکرول شده) → منو هم جایی برای نشستن ندارد.
+        if (a.bottom < box.top || a.top > box.bottom) { hideMenu(menu); return false; }
+
+        const width = Math.round(Math.min(Math.max(a.width, 230), box.right - box.left));
+        // position:fixed نسبت به نزدیک‌ترین جد دارای transform است، نه viewport.
         const origin = window.fixedOrigin ? window.fixedOrigin(menu) : { left: 0, top: 0 };
-        const left = Math.max(leftEdge, Math.min(a.left, rightEdge - width)) - origin.left;
-        const below = Math.max(0, bottomEdge - a.bottom - 4);
-        const above = Math.max(0, a.top - topEdge - 4);
-        // Measure the rendered menu at its final width before choosing a side.
-        // Reserving 250px for a short list put its visible bottom far above the input.
-        menu.style.width = Math.round(width) + 'px';
-        menu.style.maxHeight = '250px';
-        const naturalHeight = Math.min(250, menu.getBoundingClientRect().height);
+
+        // RTL: لبهٔ راست منو روی لبهٔ راست فیلد می‌نشیند تا «زیر برچسب» دیده شود.
+        let left = isRtl(anchor) ? a.right - width : a.left;
+        left = Math.max(box.left, Math.min(left, box.right - width));
+
+        menu.style.width = width + 'px';
+        menu.style.maxHeight = MENU_MAX_HEIGHT + 'px';
+        // اندازه‌گیری پیش از نمایش تا منو با ارتفاع قبلی/جای قبلی نپرد.
+        menu.style.visibility = 'hidden';
+        const naturalHeight = Math.min(MENU_MAX_HEIGHT, Math.ceil(menu.scrollHeight || menu.getBoundingClientRect().height || 0));
+        if (naturalHeight <= 0) { hideMenu(menu); return false; }
+        const below = Math.max(0, box.bottom - a.bottom - 4);
+        const above = Math.max(0, a.top - box.top - 4);
         const placeBelow = below >= naturalHeight || below >= above;
         const height = Math.max(0, Math.min(naturalHeight, placeBelow ? below : above));
-        menu.style.left = Math.round(left) + 'px';
-        menu.style.top = Math.round((placeBelow ? a.bottom + 4 : a.top - height - 4) - origin.top) + 'px';
-        menu.style.maxHeight = Math.round(Math.max(0, Math.min(250, placeBelow ? below : above))) + 'px';
-        menu.style.visibility = height > 0 ? 'visible' : 'hidden';
+        if (height <= 0) { hideMenu(menu); return false; }
+        const top = placeBelow ? a.bottom + 4 : a.top - height - 4;
+
+        menu.style.left = Math.round(left - origin.left) + 'px';
+        menu.style.top = Math.round(top - origin.top) + 'px';
+        menu.style.maxHeight = Math.round(height) + 'px';
+        menu.style.visibility = 'visible';
+        if (typeof menu.setAttribute === 'function') menu.setAttribute('data-menu-placed', 'true');
+        return true;
     }
-    window.addEventListener('scroll', function () {
-        document.querySelectorAll('.ss-menu[data-order-constrained="true"]').forEach(menu => placeSearchMenu(menu._orderAnchor, menu));
-    }, true);
-    window.addEventListener('resize', function () {
-        document.querySelectorAll('.ss-menu[data-order-constrained="true"]').forEach(menu => placeSearchMenu(menu._orderAnchor, menu));
-    });
+
+    // نخستین تلاش ممکن است پیش از کامل‌شدن چیدمان (سطر تازه‌اضافه‌شده) ناکام بماند؛
+    // یک فریم بعد دوباره تلاش می‌شود تا منو در جای درست ظاهر شود.
+    function placeSearchMenuSoon(anchor, menu) {
+        if (placeSearchMenu(anchor, menu)) return;
+        if (!window.requestAnimationFrame) return;
+        window.requestAnimationFrame(function () { placeSearchMenu(anchor, menu); });
+    }
+
+    function placeOpenMenus() {
+        document.querySelectorAll('.ss-menu[data-order-constrained="true"]').forEach(function (menu) {
+            if (menu._orderAnchor) placeSearchMenu(menu._orderAnchor, menu);
+        });
+    }
+
+    // با بلندشدن فرم (افزودن کالا) یا اسکرول بدنهٔ مودال، منوی باز باید فوراً
+    // به فیلد خودش برگردد؛ این سه شنونده همان چیزی است که وابستگی به تعداد
+    // کالاها را از بین می‌برد.
+    let menuLayoutObserver = null;
+    function watchMenuLayout(menu) {
+        if (!window.ResizeObserver || !menu || !menu.closest) return;
+        const modal = menu.closest('.modal-content');
+        if (!modal) return;
+        if (!menuLayoutObserver) menuLayoutObserver = new window.ResizeObserver(placeOpenMenus);
+        // هر بار مودالِ جاری مشاهده می‌شود (فرم فاکتور هر بار از نو ساخته می‌شود و
+        // observe روی همان المان تکرارپذیر است). بدون این، اسکرول/بلندشدن فرم بعد از
+        // باز شدن دوبارهٔ دیالوگ دیگر منو را جابه‌جا نمی‌کرد.
+        try { menuLayoutObserver.observe(modal); } catch (_) { }
+        const body = modal.querySelector('.modal-body');
+        if (body) { try { menuLayoutObserver.observe(body); } catch (_) { } }
+    }
+
+    window.addEventListener('scroll', placeOpenMenus, true);
+    window.addEventListener('resize', placeOpenMenus);
+
+    // API عمومی برای کامپوننت‌ها (SearchSelect / SearchSelectStr).
+    window.appMenu = {
+        place: placeSearchMenu,
+        placeSoon: function (anchor, menu) { watchMenuLayout(menu); placeSearchMenuSoon(anchor, menu); },
+        placeAll: placeOpenMenus,
+        reveal: function (menu) { if (menu) menu.style.visibility = 'visible'; },
+        hide: function (menu) { if (menu) hideMenu(menu); },
+        MENU_MAX_HEIGHT: MENU_MAX_HEIGHT
+    };
 
     // Persistent invoice validation and temporary notifications share the top-right
     // corner. Measure only visible errors so the toast stack starts below them,
@@ -114,6 +207,7 @@
 
     window.orderEntry = {
         placeSearchMenu: placeSearchMenu,
+        placeSearchMenuSoon: placeSearchMenuSoon,
         isFocusWithin: function (root) { return !!root && root.contains(document.activeElement); },
         focusLine: function (formKey, lineKey) {
             const modal = topModal();

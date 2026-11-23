@@ -104,6 +104,10 @@ public class ShopExpenseChequeService
         if (routeKind == ExpenseChequeKind.Issued && (cmd.IssuingAccountId is not > 0 || cmd.SourceChequeId.HasValue ||
                 string.IsNullOrWhiteSpace(cmd.Number) || cmd.Number.Trim().Length > 50 || cmd.DueDate == default))
             throw new InvalidOperationException("شماره، بانک و سررسید چک صادره را وارد کنید.");
+        // سررسید چک صادره پیش از تحویل چک معنا ندارد (چک با مهلت گذشته تحویل داده می‌شود).
+        // همان قاعدهٔ کلاینت (Inventory.Shared.ExpenseChequeDates) اینجا مرجع نهایی است.
+        if (routeKind == ExpenseChequeKind.Issued && ExpenseChequeDates.DueIsBeforeHandover(cmd.DueDate, cmd.HandedAt))
+            throw new InvalidOperationException(ExpenseChequeDates.DueBeforeHandoverMessage);
         if (routeKind == ExpenseChequeKind.Received && (cmd.SourceChequeId is not > 0 || cmd.IssuingAccountId.HasValue))
             throw new InvalidOperationException("چک دریافتی موجود را انتخاب کنید.");
 

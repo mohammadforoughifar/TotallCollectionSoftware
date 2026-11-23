@@ -130,66 +130,158 @@ else
         <div class="row g-3 mb-3">
             <div class="col-lg-7">
                 <div class="card h-100">
-                    <div class="card-header">
-                        <i class="bi bi-person-exclamation text-danger"></i>
-                        <span class="card-title">بدهکاران سررسیدشده</span>
-                        @if (admin.OverdueDebtors.Count > 0)
-                        {
-                            <span class="badge badge-soft-danger me-2">@admin.OverdueDebtors.Count.Num() مورد</span>
-                        }
+                    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <i class="bi @(creditTab == "purchase" ? "bi-bag-plus text-primary" : "bi-person-exclamation text-danger")"></i>
+                            <span class="card-title">نسیه‌های فروش و خرید</span>
+                        </div>
+                        <div class="mtabs mb-0 border-0 pb-0">
+                            <button type="button" class="mtab @(creditTab == "sale" ? "active" : "")"
+                                    @onclick='() => creditTab = "sale"' aria-pressed="@(creditTab == "sale")">
+                                <i class="bi bi-cart-check"></i> نسیه‌های فروش
+                                @if (admin.OverdueDebtors.Count > 0)
+                                {
+                                    <span class="mtab-num">@admin.OverdueDebtors.Count.Num()</span>
+                                }
+                            </button>
+                            <button type="button" class="mtab @(creditTab == "purchase" ? "active" : "")"
+                                    @onclick='() => creditTab = "purchase"' aria-pressed="@(creditTab == "purchase")">
+                                <i class="bi bi-bag-plus"></i> نسیه‌های خرید
+                                @if (admin.OpenPurchaseCredits.Count > 0)
+                                {
+                                    <span class="mtab-num">@admin.OpenPurchaseCredits.Count.Num()</span>
+                                }
+                            </button>
+                        </div>
                     </div>
                     <div class="card-body p-0">
-                        @if (admin.OverdueDebtors.Count == 0)
+                        @if (creditTab == "sale")
                         {
-                            <div class="p-3 fs-8 text-secondary">نسیه یا قسط فروشِ پرداخت‌نشده با سررسید امروز یا گذشته ثبت نشده است. <a href="shop/credit-management">بررسی اقساط و چک‌ها</a></div>
+                            @* ---------- نسیه‌های فروش (طلب ما از مشتری) ---------- *@
+                            @if (admin.OverdueDebtors.Count == 0)
+                            {
+                                <div class="p-3 fs-8 text-secondary">نسیه یا قسط فروشِ پرداخت‌نشده با سررسید امروز یا گذشته ثبت نشده است. <a href="shop/credit-management">بررسی اقساط و چک‌ها</a></div>
+                            }
+                            else
+                            {
+                                <div class="table-responsive grid-desktop">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead><tr><th>مشتری</th><th>سند</th><th>نوع</th><th class="text-start">مبلغ (ریال)</th><th>سررسید</th><th>تأخیر</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var b in admin.OverdueDebtors.Take(8))
+                                            {
+                                                <tr>
+                                                    <td><div class="fw-500">@b.PartyName</div><div class="fs-8 text-muted num">@(b.Mobile ?? "")</div></td>
+                                                    <td class="doc-number text-primary">@b.Number</td>
+                                                    <td><span class="badge badge-soft-warning fs-8">@b.Kind</span></td>
+                                                    <td class="text-start num fw-700 text-danger">@b.Amount.Money()</td>
+                                                    <td class="num fs-8">@b.DueDate.ToFa()</td>
+                                                    <td>
+                                                        @if (b.DaysOverdue == 0)
+                                                        {
+                                                            <span class="badge badge-soft-warning">امروز</span>
+                                                        }
+                                                        else if (b.DaysOverdue < 0)
+                                                        {
+                                                            <span class="badge badge-soft-primary">آینده</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge badge-soft-danger">@b.DaysOverdue.Num() روز</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="cards-mobile">
+                                    @foreach (var b in admin.OverdueDebtors.Take(8))
+                                    {
+                                        <div class="m-card st-cancelled">
+                                            <div class="m-card-head">
+                                                <div class="m-card-icon"><i class="bi bi-person-exclamation"></i></div>
+                                                <div class="flex-grow-1 min-w-0">
+                                                    <div class="fw-700 text-truncate">@b.PartyName</div>
+                                                    <div class="fs-8 text-muted">@b.Number — @b.Kind</div>
+                                                </div>
+                                                <div class="text-end">
+                                                    <div class="num fw-800 text-danger">@b.Amount.Money()</div>
+                                                    <div class="fs-8 text-muted num">@b.DueDate.ToFa()</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         }
                         else
                         {
-                            <div class="table-responsive grid-desktop">
-                                <table class="table table-hover align-middle mb-0">
-                                    <thead><tr><th>مشتری</th><th>سند</th><th>نوع</th><th class="text-start">مبلغ (ریال)</th><th>سررسید</th><th>تأخیر</th></tr></thead>
-                                    <tbody>
-                                        @foreach (var b in admin.OverdueDebtors.Take(8))
-                                        {
-                                            <tr>
-                                                <td><div class="fw-500">@b.PartyName</div><div class="fs-8 text-muted num">@(b.Mobile ?? "")</div></td>
-                                                <td class="doc-number text-primary">@b.Number</td>
-                                                <td><span class="badge badge-soft-warning fs-8">@b.Kind</span></td>
-                                                <td class="text-start num fw-700 text-danger">@b.Amount.Money()</td>
-                                                <td class="num fs-8">@b.DueDate.ToFa()</td>
-                                                <td>
-                                                    @if (b.DaysOverdue == 0)
-                                                    {
-                                                        <span class="badge badge-soft-warning">امروز</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="badge badge-soft-danger">@b.DaysOverdue.Num() روز</span>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="cards-mobile">
-                                @foreach (var b in admin.OverdueDebtors.Take(8))
-                                {
-                                    <div class="m-card st-cancelled">
-                                        <div class="m-card-head">
-                                            <div class="m-card-icon"><i class="bi bi-person-exclamation"></i></div>
-                                            <div class="flex-grow-1 min-w-0">
-                                                <div class="fw-700 text-truncate">@b.PartyName</div>
-                                                <div class="fs-8 text-muted">@b.Number — @b.Kind</div>
-                                            </div>
-                                            <div class="text-end">
-                                                <div class="num fw-800 text-danger">@b.Amount.Money()</div>
-                                                <div class="fs-8 text-muted num">@b.DueDate.ToFa()</div>
+                            @* ---------- نسیه‌های خرید (بدهی ما به تأمین‌کننده) ---------- *@
+                            @if (admin.OpenPurchaseCredits.Count == 0)
+                            {
+                                <div class="p-3 fs-8 text-secondary">نسیهٔ خریدِ پرداخت‌نشده‌ای ثبت نشده است. در ثبت خرید، ماندهٔ فاکتور را با «نسیه» و تاریخ سررسید ثبت کنید. <a href="orders/purchase">فهرست خرید</a></div>
+                            }
+                            else
+                            {
+                                <div class="px-3 py-2 border-bottom d-flex flex-wrap align-items-center gap-2">
+                                    <span class="fs-8 text-secondary">جمع ماندهٔ نسیهٔ خرید:</span>
+                                    <span class="num fw-800 text-primary">@admin.OpenPurchaseCreditsTotal.Money()</span>
+                                    <span class="fs-8 text-secondary">ریال</span>
+                                    <span class="badge badge-soft-warning num me-auto">@admin.OpenPurchaseCredits.Count.Num() فاکتور</span>
+                                </div>
+                                <div class="table-responsive grid-desktop">
+                                    <table class="table table-hover align-middle mb-0">
+                                        <thead><tr><th>تأمین‌کننده</th><th>سند</th><th>مبلغ نسیه (ریال)</th><th>سررسید</th><th>تأخیر</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var b in admin.OpenPurchaseCredits.Take(8))
+                                            {
+                                                <tr>
+                                                    <td><div class="fw-500">@b.PartyName</div><div class="fs-8 text-muted num">@(b.Mobile ?? "")</div></td>
+                                                    <td class="doc-number text-primary">@b.Number</td>
+                                                    <td class="num fw-700 text-primary">@b.Amount.Money()</td>
+                                                    <td class="num fs-8">@b.DueDate.ToFa()</td>
+                                                    <td>
+                                                        @if (b.DaysOverdue == 0)
+                                                        {
+                                                            <span class="badge badge-soft-warning">امروز</span>
+                                                        }
+                                                        else if (b.DaysOverdue < 0)
+                                                        {
+                                                            <span class="badge badge-soft-primary">@Math.Abs(b.DaysOverdue).Num() روز آینده</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge badge-soft-danger">@b.DaysOverdue.Num() روز</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="cards-mobile">
+                                    @foreach (var b in admin.OpenPurchaseCredits.Take(8))
+                                    {
+                                        <div class="m-card st-progress">
+                                            <div class="m-card-head">
+                                                <div class="m-card-icon"><i class="bi bi-bag-plus"></i></div>
+                                                <div class="flex-grow-1 min-w-0">
+                                                    <div class="fw-700 text-truncate">@b.PartyName</div>
+                                                    <div class="fs-8 text-muted">@b.Number — @b.Kind</div>
+                                                </div>
+                                                <div class="text-end">
+                                                    <div class="num fw-800 text-primary">@b.Amount.Money()</div>
+                                                    <div class="fs-8 text-muted num">@b.DueDate.ToFa()</div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                }
-                            </div>
+                                    }
+                                </div>
+                                <div class="px-3 py-2 border-top">
+                                    <a class="fs-8" href="orders/purchase">مدیریت و تسویه نسیه‌های خرید</a>
+                                </div>
+                            }
                         }
                     </div>
                 </div>
@@ -599,6 +691,9 @@ else
     private List<RecentActivity> recent = new();
     private List<ReorderItem> lowStock = new();
     private bool loading = true;
+
+    /// <summary>تب فعال کارت نسیه‌ها: «sale» = نسیه‌های فروش، «purchase» = نسیه‌های خرید.</summary>
+    private string creditTab = "sale";
 
     private readonly List<string> loadErrors = new();
 

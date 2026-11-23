@@ -63,11 +63,15 @@
                     var g = PersianDate.ToGregorian(viewYear, viewMonth, day);
                     var key = g == DateTime.MinValue ? "" : g.ToString("yyyy-MM-dd");
                     var isFri = g != DateTime.MinValue && g.DayOfWeek == DayOfWeek.Friday;
-                    var extraCls = key.Length > 0 && DayClasses != null && DayClasses.TryGetValue(key, out var c) ? c : "";
+                    var blocked = IsBlocked(g);
+                    var extraCls = (key.Length > 0 && DayClasses != null && DayClasses.TryGetValue(key, out var c) ? c : "")
+                                   + (blocked ? " dp-disabled" : "");
                     var title = key.Length > 0 && DayTitles != null && DayTitles.TryGetValue(key, out var t) ? t : "";
+                    title = blocked ? (BlockedTitle ?? title) : title;
                     <button type="button"
                             class="dp-day @(IsSelected(day) ? "selected" : "") @(IsToday(day) ? "today" : "") @(isFri ? "fri" : "") @extraCls"
                             title="@title"
+                            disabled="@blocked"
                             @onclick="() => Pick(day)">
                         @Fa.Digits(day)
                     </button>
@@ -126,6 +130,12 @@
     /// <summary>بیشترین سال شمسی قابل انتخاب</summary>
     [Parameter] public int MaxYear { get; set; } = 1430;
 
+    /// <summary>کمینهٔ مجاز تاریخ (میلادی)؛ روزهای قبل از آن در تقویم غیرفعال و در تایپ دستی رد می‌شوند.</summary>
+    [Parameter] public DateTime? MinDate { get; set; }
+
+    /// <summary>توضیح روی روزهای غیرمجاز (پیش‌فرض: «پیش از تاریخ مجاز»)</summary>
+    [Parameter] public string? BlockedTitle { get; set; }
+
     private string Text
     {
         get => _text;
@@ -159,6 +169,8 @@
     {
         _text = e.Value?.ToString() ?? "";
         var dt = PersianDate.TryParse(_text);
+        // تاریخ تایپ‌شده حتی اگر پیش از MinDate باشد به مقدار داده می‌شود؛ «رد کردن» کار
+        // فرمِ میزبان است (قاب قرمز + هشدار + جلوگیری از ذخیره)، نه پاک کردنِ خاموشِ ورودی.
         if (dt.HasValue) _ = Notify(dt.Value);
     }
 
@@ -226,11 +238,15 @@
 
     private async Task Pick(int day)
     {
-        open = false;
         var dt = PersianDate.ToGregorian(viewYear, viewMonth, day);
-        if (dt != DateTime.MinValue)
-            await Notify(dt);
+        if (dt == DateTime.MinValue || IsBlocked(dt))
+            return; // روز غیرمجاز انتخاب نمی‌شود؛ پنجره باز می‌ماند تا کاربر روز درست را بزند
+        open = false;
+        await Notify(dt);
     }
+
+    /// <summary>روز پیش از کمینهٔ مجاز است؟ (مثلاً سررسید پیش از تاریخ تحویل چک)</summary>
+    private bool IsBlocked(DateTime g) => MinDate.HasValue && g != DateTime.MinValue && g.Date < MinDate.Value.Date;
 
     private void MoveMonth(int delta)
     {

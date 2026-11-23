@@ -486,6 +486,9 @@ a { text-decoration: none; }
 .dp-day:hover { background: var(--primary-50); }
 .dp-day.selected { background: var(--primary); color: #fff; font-weight: 700; }
 .dp-day.today { box-shadow: inset 0 0 0 1px var(--primary); }
+/* روزهای پیش از کمینهٔ مجاز (مثل سررسیدِ پیش از تحویل چک): نه انتخاب می‌شوند نه هاور می‌گیرند. */
+.dp-day.dp-disabled, .dp-day:disabled { opacity: .32; cursor: not-allowed; text-decoration: line-through; }
+.dp-day.dp-disabled:hover, .dp-day:disabled:hover { background: none; }
 
 /* ---------- جستجوی انتخاب (کمبوباکس) ---------- */
 .ss { position: relative; }
@@ -500,6 +503,10 @@ a { text-decoration: none; }
     overflow: auto;
     z-index: 4500;
 }
+/* منوی فرم فاکتور تا جای‌گذاری جاوااسکریپتی (window.appMenu) پنهان است؛ بدون این قاعده
+   منو با مختصات کهنه یک فریم «وسط صفحه» دیده می‌شد. visibility (نه display) چون اندازه‌گیری
+   ارتفاع طبیعی منو لازم است. */
+.ss-menu[data-order-constrained="true"]:not([data-menu-placed]) { visibility: hidden; }
 .ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; transition: background .08s ease; }
 .ss-item-copy { display: flex; min-width: 0; flex-direction: column; gap: .08rem; }
 .ss-item-info { color: inherit; opacity: .78; font-size: .72rem; line-height: 1.3; }
@@ -3445,7 +3452,11 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     font-size: .8rem;
     transition: .15s;
 }
-.tabbar .tabnav:hover { background: var(--bg); color: var(--primary); }
+.tabbar .tabnav { display: inline-flex; align-items: center; justify-content: center; }
+.tabbar .tabnav:hover:not(:disabled) { background: var(--bg); color: var(--primary); }
+/* در ابتدا/انتهای فهرستِ تب‌ها دکمه واقعاً غیرفعال است و باید همین را نشان دهد،
+   وگرنه کاربر فکر می‌کند دکمهٔ خراب است. */
+.tabbar .tabnav:disabled { opacity: .32; cursor: default; }
 
 /* ---------- ردیف تب‌ها ---------- */
 .tabbar .tabstrip {
@@ -3678,7 +3689,9 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     .tabbar { top: 66px; height: 40px; }
     .tabbar .tab { max-width: 150px; font-size: .74rem; padding: 0 6px 0 5px; }
     .tabbar .tab .tab-ico { font-size: .8rem; }
-    .tabbar .tabnav { display: none; }
+    /* دکمه‌های صفحهٔ قبلی/بعدی روی موبایل هم لازم‌اند (تب‌های باز زیاد می‌شوند و
+       ردیف تب با کشیدن افقی پیدا کردن صفحهٔ قبلی را سخت می‌کند). */
+    .tabbar .tabnav { width: 30px; display: inline-flex; }
 }
 
 /* چاپ جزئیات دستور کار: فقط محتوای دستور چاپ شود، نه هدر و سایدبار. */
@@ -3696,6 +3709,8 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     .tabbar .tab .tab-title { max-width: 82px; }
     .tabbar .tab .tab-x { width: 19px; height: 19px; font-size: .72rem; }
     .tabbar .tabtool { width: 26px; height: 26px; }
+    /* دکمه‌های صفحهٔ قبلی/بعدی در گوشی هم می‌مانند ولی باریک‌تر. */
+    .tabbar .tabnav { width: 26px; }
 }
 
 /* صورتجلسه: دکمه‌ها از سمت چپ فیزیکی.
