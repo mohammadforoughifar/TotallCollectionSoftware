@@ -3445,7 +3445,11 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     font-size: .8rem;
     transition: .15s;
 }
-.tabbar .tabnav:hover { background: var(--bg); color: var(--primary); }
+.tabbar .tabnav { display: inline-flex; align-items: center; justify-content: center; }
+.tabbar .tabnav:hover:not(:disabled) { background: var(--bg); color: var(--primary); }
+/* در ابتدا/انتهای فهرستِ تب‌ها دکمه واقعاً غیرفعال است و باید همین را نشان دهد،
+   وگرنه کاربر فکر می‌کند دکمهٔ خراب است. */
+.tabbar .tabnav:disabled { opacity: .32; cursor: default; }
 
 /* ---------- ردیف تب‌ها ---------- */
 .tabbar .tabstrip {
@@ -3678,7 +3682,9 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     .tabbar { top: 66px; height: 40px; }
     .tabbar .tab { max-width: 150px; font-size: .74rem; padding: 0 6px 0 5px; }
     .tabbar .tab .tab-ico { font-size: .8rem; }
-    .tabbar .tabnav { display: none; }
+    /* دکمه‌های صفحهٔ قبلی/بعدی روی موبایل هم لازم‌اند (تب‌های باز زیاد می‌شوند و
+       ردیف تب با کشیدن افقی پیدا کردن صفحهٔ قبلی را سخت می‌کند). */
+    .tabbar .tabnav { width: 30px; display: inline-flex; }
 }
 
 /* چاپ جزئیات دستور کار: فقط محتوای دستور چاپ شود، نه هدر و سایدبار. */
@@ -3696,6 +3702,8 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     .tabbar .tab .tab-title { max-width: 82px; }
     .tabbar .tab .tab-x { width: 19px; height: 19px; font-size: .72rem; }
     .tabbar .tabtool { width: 26px; height: 26px; }
+    /* دکمه‌های صفحهٔ قبلی/بعدی در گوشی هم می‌مانند ولی باریک‌تر. */
+    .tabbar .tabnav { width: 26px; }
 }
 
 /* صورتجلسه: دکمه‌ها از سمت چپ فیزیکی.

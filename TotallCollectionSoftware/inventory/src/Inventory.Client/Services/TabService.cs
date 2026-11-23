@@ -57,8 +57,83 @@ public sealed class TabService
     private bool _loaded;
     private TabItem? _active;
 
+    /// <summary>تاریخچهٔ بازدیدِ صفحه‌ها (کلید تب) برای دکمه‌های «صفحهٔ قبلی/بعدی».</summary>
+    private readonly List<string> _history = new();
+    private int _historyIndex = -1;
+
     public IReadOnlyList<TabItem> Tabs => _tabs;
     public TabItem? Active => _active;
+
+    /// <summary>تبِ صفحهٔ قبلی در تاریخچهٔ بازدید؛ null یعنی دکمه باید غیرفعال باشد.</summary>
+    public TabItem? Previous => HistoryAt(_historyIndex - 1);
+
+    /// <summary>تبِ صفحهٔ بعدی در تاریخچهٔ بازدید؛ null یعنی دکمه باید غیرفعال باشد.</summary>
+    public TabItem? Next => HistoryAt(_historyIndex + 1);
+
+    private TabItem? HistoryAt(int index)
+    {
+        if (index < 0 || index >= _history.Count) return null;
+        var key = _history[index];
+        var tab = _tabs.FirstOrDefault(x => x.Key == key);
+        return tab is null || ReferenceEquals(tab, _active) ? null : tab;
+    }
+
+    /// <summary>
+    /// رفتن به صفحهٔ قبلی/بعدی. مثل مرورگر: اگر تاریخچه عقب رفته باشیم، «بعدی»
+    /// دوباره جلو می‌رود؛ بازدید تازه شاخهٔ بعدی را پاک می‌کند.
+    /// </summary>
+    public void GoBack()
+    {
+        if (Previous is { } tab) MoveHistoryTo(_historyIndex - 1, tab);
+    }
+
+    public void GoForward()
+    {
+        if (Next is { } tab) MoveHistoryTo(_historyIndex + 1, tab);
+    }
+
+    private void MoveHistoryTo(int index, TabItem tab)
+    {
+        _historyIndex = index;
+        _nav.NavigateTo(tab.Url);
+    }
+
+    /// <summary>ثبت بازدید در تاریخچه؛ تب‌های تکراری پشت‌سرهم جمع می‌شوند.</summary>
+    private void PushHistory(string key)
+    {
+        if (_historyIndex >= 0 && _historyIndex < _history.Count && _history[_historyIndex] == key) return;
+        if (_historyIndex + 1 < _history.Count)
+            _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+        _history.Add(key);
+        _historyIndex = _history.Count - 1;
+        // تاریخچه بی‌نهایت لازم نیست؛ ۵۰ بازدید آخر کافی است.
+        if (_history.Count > 50)
+        {
+            _history.RemoveRange(0, _history.Count - 50);
+            _historyIndex = _history.Count - 1;
+        }
+    }
+
+    /// <summary>
+    /// تب از فهرست حذف شد — کلیدش نباید در تاریخچه بماند. چون ورودی‌ها ممکن است
+    /// جلوتر یا عقب‌تر از نقطهٔ جاری حذف شوند، جای فعلی از روی «کلیدِ صفحهٔ جاری»
+    /// دوباره پیدا می‌شود تا دکمه‌های قبلی/بعدی به صفحهٔ اشتباه نروند.
+    /// </summary>
+    private void ForgetHistory(string key)
+    {
+        if (!_history.Contains(key)) return;
+        var current = _historyIndex >= 0 && _historyIndex < _history.Count ? _history[_historyIndex] : null;
+        _history.RemoveAll(x => x == key);
+        if (_history.Count == 0) { _historyIndex = -1; return; }
+        if (current is not null && current != key)
+        {
+            var at = _history.IndexOf(current);
+            // همان صفحه هنوز در تاریخچه هست یا خودش صفحهٔ حذف‌شده بود.
+            _historyIndex = at >= 0 ? at : Math.Min(_historyIndex, _history.Count - 1);
+            return;
+        }
+        _historyIndex = Math.Min(_historyIndex, _history.Count - 1);
+    }
 
     /// <summary>هر تغییری در فهرست تب‌ها — نوار تب و نگه‌دارنده‌ی صفحات مشترک‌اند</summary>
     public event Action? Changed;
@@ -353,6 +428,7 @@ public sealed class TabService
         var wasActiveKey = _active?.Key;
         foreach (var x in _tabs) x.IsActive = ReferenceEquals(x, t);
         _active = t;
+        PushHistory(t.Key);
 
         Changed?.Invoke();
         if (!string.Equals(wasActiveKey, t.Key, StringComparison.Ordinal)) _ = RaiseActivatedAsync(t);
@@ -395,6 +471,7 @@ public sealed class TabService
             var victim = _tabs.FirstOrDefault(x => x.Closable && !x.IsActive);
             if (victim is null) break;
             _tabs.Remove(victim);
+            ForgetHistory(victim.Key);
         }
     }
 
@@ -455,6 +532,7 @@ public sealed class TabService
         if (i < 0) return;
 
         _tabs.RemoveAt(i);
+        ForgetHistory(t.Key);
 
         if (t.IsActive)
         {
@@ -472,7 +550,7 @@ public sealed class TabService
     public async Task CloseOthersAsync(TabItem keep)
     {
         var doomed = _tabs.Where(x => !ReferenceEquals(x, keep) && x.Closable).ToList();
-        foreach (var d in doomed) _tabs.Remove(d);
+        foreach (var d in doomed) { _tabs.Remove(d); ForgetHistory(d.Key); }
 
         if (!keep.IsActive) _nav.NavigateTo(keep.Url);
         Changed?.Invoke();
@@ -483,7 +561,7 @@ public sealed class TabService
     public async Task CloseAllAsync()
     {
         var doomed = _tabs.Where(x => x.Closable).ToList();
-        foreach (var d in doomed) _tabs.Remove(d);
+        foreach (var d in doomed) { _tabs.Remove(d); ForgetHistory(d.Key); }
 
         var home = _tabs.FirstOrDefault(x => x.Key.Length == 0);
         _nav.NavigateTo(home?.Url ?? "");
