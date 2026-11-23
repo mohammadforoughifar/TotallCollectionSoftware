@@ -3486,6 +3486,54 @@ public class InventoryService : IInventoryService
         }
         dash.OverdueDebtors = dash.OverdueDebtors.OrderByDescending(d => d.DaysOverdue).ThenByDescending(d => d.Amount).ToList();
 
+        // ---------- نسیه‌های خرید (بدهی ما به تأمین‌کننده) ----------
+        // آینهٔ «نسیه‌های فروش» که در OverdueDebtors آمده است؛ اما مستقل از سررسید: هر فاکتور خرید
+        // با سهم نسیهٔ باز در این فهرست نمایش داده می‌شود (سررسید گذشته/آینده در ستون «تأخیر» دیده می‌شود).
+        // سهم نسیه = مبلغ سند − نقد − چک‌های باز − اقساط − پرداخت‌های نسیه، و برای اسناد قدیمی
+        // با سقف «ماندهٔ ناخالص» (مبلغ − تسویه) محدود می‌شود تا مانده‌ای از هیچ ساخته نشود.
+        // چک پرداختی یا قسط پرداخت‌نشده جزء نسیهٔ آزاد نیست؛ هر کدام کارت/فهرست جداگانه دارند.
+        var purchaseCredits = await _db.Transactions
+            .Include(t => t.Cheques)
+            .Include(t => t.Installments)
+            // پیش‌فیلتر معتبر: مانده هرگز از (مبلغ − تسویه) بیشتر نیست
+            .Where(t => t.Type == TransactionType.Purchase && t.PartyId != null && t.SettledAmount < t.Amount)
+            .ToListAsync();
+        if (purchaseCredits.Count > 0)
+        {
+            var purchaseIds = purchaseCredits.Select(t => t.Id).ToList();
+            var purchaseCreditPaid = (await _db.ShopOrderCreditReceipts.AsNoTracking()
+                    .Where(r => purchaseIds.Contains(r.TransactionId) && r.ReversalDate == null)
+                    .Select(r => new { r.TransactionId, r.Amount }).ToListAsync())
+                .GroupBy(r => r.TransactionId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+            foreach (var t in purchaseCredits)
+            {
+                // سقف بالا: همان ماندهٔ ناخالص صورت‌حساب (مبلغ − تسویه‌ها)، تا اسناد قدیمی که
+                // تسویه‌شان با نقد/قسط ثبت نشده، به‌اشتباه «نسیهٔ باز» نشان داده نشوند.
+                var unpaidGross = Math.Max(0m, t.Amount - Math.Max(0m, t.SettledAmount));
+                var creditShare = Math.Max(0m,
+                    t.Amount - CashOf(t) - ChequeOf(t) - InstOf(t) - purchaseCreditPaid.GetValueOrDefault(t.Id));
+                var outstanding = Math.Min(creditShare, unpaidGross);
+                if (outstanding == 0) continue;
+                var dueDate = t.DueDate ?? t.Date;
+                var party = partyNames.TryGetValue(t.PartyId!.Value, out var sp) ? sp : null;
+                dash.OpenPurchaseCredits.Add(new DebtorItem
+                {
+                    PartyId = t.PartyId.Value,
+                    PartyName = party?.Name ?? "—",
+                    Mobile = party?.Mobile,
+                    Number = t.Number,
+                    TransactionId = t.Id,
+                    Kind = "نسیه خرید",
+                    Amount = outstanding,
+                    DueDate = dueDate,
+                    DaysOverdue = (int)(today - dueDate.Date).TotalDays
+                });
+            }
+            dash.OpenPurchaseCreditsTotal = dash.OpenPurchaseCredits.Sum(x => x.Amount);
+            dash.OpenPurchaseCredits = dash.OpenPurchaseCredits
+                .OrderByDescending(c => c.DaysOverdue).ThenByDescending(c => c.Amount).ToList();
+        }
+
         // چک‌های دریافتی از مشتری و چک‌های پرداختی ما (شامل سررسید امروز/گذشته یا برگشتی‌ها)
         // Use the same persisted shop cheque source as credit management. Do not mix
         // treasury IDs into these alerts: their settlement endpoints are different.

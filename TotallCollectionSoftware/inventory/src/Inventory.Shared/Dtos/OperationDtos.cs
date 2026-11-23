@@ -535,6 +535,15 @@ public class AdminDashboard
     /// <summary>بدهکاران دارای سررسید گذشته/امروز</summary>
     public List<DebtorItem> OverdueDebtors { get; set; } = new();
 
+    /// <summary>
+    /// نسیه‌های خرید (بدهی ما به تأمین‌کننده) با مانده باز — مستقل از سررسید؛
+    /// معادل «نسیه‌های فروش» که در OverdueDebtors نمایش داده می‌شود.
+    /// </summary>
+    public List<DebtorItem> OpenPurchaseCredits { get; set; } = new();
+
+    /// <summary>جمع مانده باز نسیه‌های خرید.</summary>
+    public decimal OpenPurchaseCreditsTotal { get; set; }
+
     /// <summary>چک‌هایی که امروز باید پاس شوند</summary>
     public List<ChequeAlertItem> TodayCheques { get; set; } = new();
 
