@@ -486,6 +486,9 @@ a { text-decoration: none; }
 .dp-day:hover { background: var(--primary-50); }
 .dp-day.selected { background: var(--primary); color: #fff; font-weight: 700; }
 .dp-day.today { box-shadow: inset 0 0 0 1px var(--primary); }
+/* روزهای پیش از کمینهٔ مجاز (مثل سررسیدِ پیش از تحویل چک): نه انتخاب می‌شوند نه هاور می‌گیرند. */
+.dp-day.dp-disabled, .dp-day:disabled { opacity: .32; cursor: not-allowed; text-decoration: line-through; }
+.dp-day.dp-disabled:hover, .dp-day:disabled:hover { background: none; }
 
 /* ---------- جستجوی انتخاب (کمبوباکس) ---------- */
 .ss { position: relative; }
