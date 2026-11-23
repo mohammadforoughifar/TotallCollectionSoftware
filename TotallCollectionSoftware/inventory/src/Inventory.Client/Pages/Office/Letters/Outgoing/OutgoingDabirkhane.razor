@@ -264,7 +264,7 @@
                                 <span><b>شماره صادره:</b> <span class="num" style="color:#16a34a;font-weight:700">@(ll.SadereNumber ?? "—")</span></span>
                                 <span><b>مقصد:</b> @ll.ReceiverOrganization @(string.IsNullOrWhiteSpace(ll.ReceiverName) ? "" : $"({ll.ReceiverName})")</span>
                                 <b class="letter-person letter-person-sm" title="ثبت‌کننده/فرستنده">
-                                    <UserAvatar SystemUserId="@ll.CreatorUserId" Size="18" />
+                                    <UserAvatar LoginUserId="@(ll.CreatorUserId ?? 0)" Size="18" />
                                     <span class="letter-person-name">@ll.CreatorName</span>
                                 </b>
                                 @if (ll.DateSadere is { } ds) { <span><b>تاریخ صدور:</b> @ds.ToFaDateTime()</span> }
@@ -817,9 +817,8 @@
 
     // ==================== ۴) نمایش گردش نامه ====================
 
-    private void OpenGardesh(DabirkhaneListItemDto l) =>
-        _ = gardesh?.Open(l.LetterId, l.Title, l.SadereNumber ?? l.LetterNumber,
-                          l.CreatorName, l.DateSadere ?? l.DateSabt, l.CreatorUserId ?? 0);
+    private Task OpenGardesh(DabirkhaneListItemDto l) =>
+        gardesh?.Open(l.LetterId, l.Title, l.SadereNumber ?? l.LetterNumber) ?? Task.CompletedTask;
 
     // ==================== ۲) چاپ در دو نسخه ====================
 

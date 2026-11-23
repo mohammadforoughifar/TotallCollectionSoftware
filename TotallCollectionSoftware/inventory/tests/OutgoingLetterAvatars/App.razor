@@ -1,0 +1,27 @@
+@page "/"
+@namespace OutgoingLetterAvatarTests
+@using Inventory.Client.Pages.Office.Letters.Outgoing
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <title>آزمون عکس کاربران نامه صادره</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="icons/bootstrap-icons.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/letters.css" />
+    <style>body{margin:0;padding:8px;background:#f5f7fb}.fixture-notice{padding:6px 12px;font-size:12px;color:#1e40af;background:#dbeafe;border-radius:8px;margin-bottom:8px}</style>
+</head>
+<body>
+    <div class="fixture-notice">محیط آزمون — تمام نامه‌ها، کاربران و تصاویر ساختگی‌اند؛ سرور اصلی استفاده نمی‌شود.</div>
+    <OutgoingLetterCartable Tab="inbox" @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <script src="js/ui.js"></script>
+    <script src="js/order-entry.js"></script>
+    <script src="fixture-hotkeys.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

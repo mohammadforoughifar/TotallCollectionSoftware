@@ -998,7 +998,7 @@
     background: #e0e7ff; object-fit: cover; display: block;
 }
 
-/* عکس‌های نام‌دار نامه داخلی و انتخاب‌گر مشترک گیرندگان. اندازهٔ پیل باید
+/* عکس‌های نام‌دار نامه‌ها و انتخاب‌گر مشترک گیرندگان. اندازهٔ پیل باید
    مستقل از width پیش‌فرض UserAvatar باشد تا عکس به اندازهٔ متن کش نیاید. */
 .ltx .spill .mini {
     width:18px; height:18px; flex:0 0 18px; border-radius:50%; display:inline-flex;
@@ -1020,6 +1020,9 @@
     display:flex; align-items:center; flex-wrap:wrap; gap:4px; margin-top:3px;
     color:var(--sub); font-size:10.5px; font-weight:400;
 }
-.ltx.inner-letter-gardesh .gdetail h4 { flex-wrap:wrap; }
+.ltx.inner-letter-gardesh .gdetail h4,
+.ltx.outgoing-letter-gardesh .gdetail h4 { flex-wrap:wrap; }
 .ltx.inner-letter-gardesh .tnode > .mini,
-.ltx.inner-letter-gardesh .fnode > .mini { flex-shrink:0; }
+.ltx.inner-letter-gardesh .fnode > .mini,
+.ltx.outgoing-letter-gardesh .tnode > .mini,
+.ltx.outgoing-letter-gardesh .fnode > .mini { flex-shrink:0; }

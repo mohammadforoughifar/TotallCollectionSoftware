@@ -138,6 +138,8 @@
                     @foreach (var l in Paged)
                     {
                         var ll = l;
+                        // نشان‌شده‌ها ترکیبی از ارسالی/دریافتی‌اند؛ کنار نام سازمان بیرونی عکس کاربر نگذاریم.
+                        var showExternalRecipient = FolderIsSent || (folder == "starred" && ll.ErjaId is null && !ll.IsSigner && string.IsNullOrWhiteSpace(ll.Sender));
                         var day = ll.Date.ToFaLong();
                         @if (day != lastDay)
                         {
@@ -152,21 +154,18 @@
                                     <input type="checkbox" checked="@(selectedLetterIds.Contains(ll.LetterId))" @onchange="() => ToggleSelectLetter(ll.LetterId)" style="width:16px;height:16px;cursor:pointer;" />
                                 </div>
                             }
-                            @if (!FolderIsSent)
+                            @if (showExternalRecipient)
                             {
-                                @* عکس کاربر — همان رفتار نامه داخلی. اگر شناسهٔ کاربر معلوم نباشد،
-                                   کامپوننت عکس پیش‌فرض را نشان می‌دهد تا جای عکس خالی نماند. *@
-                                <div class="avt letter-avatar" title="@ll.Sender"><UserAvatar SystemUserId="ll.SenderUserId" Size="40" /></div>
+                                <div class="avt" title="@ll.ReceiverOrganization">@AvatarText(ll.ReceiverOrganization)</div>
                             }
                             else
                             {
-                                @* در ارسالی، نام گیرندهٔ بیرونی است و عکسی برایش نیست *@
-                                <div class="avt" title="@ll.ReceiverOrganization">@AvatarText(ll.ReceiverOrganization)</div>
+                                <div class="avt letter-avatar" title="@ll.Sender"><UserAvatar LoginUserId="ll.SenderUserId" Size="40" /></div>
                             }
                             <div class="mail-b">
                                 <div class="mail-r1">
                                     <span class="who">
-                                        <span class="who-val">@(FolderIsSent ? "به: " + ll.ReceiverOrganization + (ll.ReceiverName != null ? " (" + ll.ReceiverName + ")" : "") : ll.Sender)</span>
+                                        <span class="who-val">@(showExternalRecipient ? "به: " + ll.ReceiverOrganization + (ll.ReceiverName != null ? " (" + ll.ReceiverName + ")" : "") : (string.IsNullOrWhiteSpace(ll.Sender) ? "فرستنده نامشخص" : ll.Sender))</span>
                                         <i class="bi bi-star-fill star-ico"></i>
                                     </span>
                                     <span class="tm num">@ll.Date.ToFaDateTime()</span>
@@ -358,14 +357,7 @@
                     <div>
                         <div class="paper">
                             <div class="paper-h">
-                                @if (selected.SenderUserId > 0)
-                                {
-                                    <div class="avt letter-avatar" title="@selected.SenderName"><UserAvatar SystemUserId="selected.SenderUserId" Size="40" /></div>
-                                }
-                                else
-                                {
-                                    <div class="avt">@AvatarText(selected.SenderName)</div>
-                                }
+                                <div class="avt letter-avatar" title="@selected.SenderName"><UserAvatar LoginUserId="selected.SenderUserId" Size="40" /></div>
                                 <div class="ph-meta">
                                     <div class="n1">@selected.SenderName</div>
                                     <div class="n2">فرستنده @(selected.IsMine ? "(شما)" : "")</div>
@@ -432,8 +424,8 @@
                                     @foreach (var s in selected.Signers.OrderBy(x=>x.Order))
                                     {
                                         <span class="pp" style="@(s.IsSigned ? "background:#dcfce7" : "background:#fef3c7")">
-                                            @* عکس کاربر امضاکننده — همان الگوی نامه داخلی (رنگ پس‌زمینه = وضعیت امضا) *@
-                                            <span class="mini"><UserAvatar SystemUserId="@s.UserId" Size="18" /></span>
+                                            <span class="mini"><UserAvatar LoginUserId="s.UserId" Size="18" /></span>
+                                            <i class="bi @(s.IsSigned ? "bi-check2-all" : "bi-pen")" aria-hidden="true"></i>
                                             @s.DisplayName @(s.UserId==selected.SenderUserId ? "(فرستنده)" : "")
                                             @if (!string.IsNullOrWhiteSpace(s.SematTitle))
                                             {
@@ -551,9 +543,9 @@
                         <div class="scard">
                             <h3><i class="bi bi-people-fill"></i> گیرندگان داخلی</h3>
                             <div class="ppl">
-                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (گیرنده)</span> }
-                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (ارجاع)</span> }
-                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar SystemUserId="@u.UserId" Size="18" /></span> @u.FullName (هامش)</span> }
+                                @foreach (var u in selected.ReciversGirande) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="@(u.AvatarLoginUserId ?? u.UserId)" Size="18" /></span> @u.FullName (گیرنده)</span> }
+                                @foreach (var u in selected.ReciversErja) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="@(u.AvatarLoginUserId ?? u.UserId)" Size="18" /></span> @u.FullName (ارجاع)</span> }
+                                @foreach (var u in selected.ReciversHamesh) { <span class="pp"><span class="mini"><UserAvatar LoginUserId="@(u.AvatarLoginUserId ?? u.UserId)" Size="18" /></span> @u.FullName (هامش)</span> }
                                 @if (selected.ReciversGirande.Count == 0 && selected.ReciversErja.Count == 0 && selected.ReciversHamesh.Count == 0)
                                 {
                                     <span class="pp" style="opacity:.6">بدون گردش داخلی — مستقیم صادر شده</span>
@@ -566,7 +558,7 @@
                                 <h3><i class="bi bi-pen-fill"></i> وضعیت امضا</h3>
                                 @foreach (var s in selected.Signers.OrderBy(x=>x.Order))
                                 {
-                                    <div class="kv"><b class="letter-person letter-person-sm"><UserAvatar SystemUserId="@s.UserId" Size="20" /><span class="letter-person-name">@s.DisplayName</span></b>@if (!string.IsNullOrWhiteSpace(s.SematTitle)) { <span style="color:#475569;font-weight:600"><i class="bi bi-briefcase"></i> @s.SematTitle</span> }<span class="@(s.IsSigned ? "tg green" : "tg amber")">@(s.IsSigned ? $"امضا {s.DateSigned?.ToFa()}" : "در انتظار")</span></div>
+                                    <div class="kv"><b class="letter-person letter-person-sm"><UserAvatar LoginUserId="s.UserId" Size="18" /><span class="letter-person-name">@s.DisplayName</span></b>@if (!string.IsNullOrWhiteSpace(s.SematTitle)) { <span style="color:#475569;font-weight:600"><i class="bi bi-briefcase"></i> @s.SematTitle</span> }<span class="@(s.IsSigned ? "tg green" : "tg amber")">@(s.IsSigned ? $"امضا {s.DateSigned?.ToFa()}" : "در انتظار")</span></div>
                                 }
                             </div>
                         }
@@ -1212,8 +1204,13 @@
 
     private async Task MenuReply(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); OpenReply(); }
     private async Task MenuErja(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); OpenErjaSheet(); }
-    private void MenuGardesh(OutgoingLetterListItemDto l) { openMenuId = 0; _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber, string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date, l.SenderUserId); }
-    private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt, selected.SenderUserId); }
+    private Task MenuGardesh(OutgoingLetterListItemDto l)
+    {
+        openMenuId = 0;
+        return gardesh?.Open(l.LetterId, l.Title, l.LetterNumber) ?? Task.CompletedTask;
+    }
+    private Task MenuGardeshCur() => selected is null ? Task.CompletedTask
+        : gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber) ?? Task.CompletedTask;
     // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
     // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
     private int signingTotal;

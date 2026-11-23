@@ -1,5 +1,6 @@
 @inject IOutgoingLetterService OutgoingSvc
 @inject IToastService Toast
+@implements IDisposable
 
 @* ============================================================
    گردش نامه صادره — سه نمای لیستی | درختواره | فلوچارتی
@@ -9,7 +10,7 @@
 
 @if (visible)
 {
-<div class="ltx" style="animation:none;transform:none">
+<div class="ltx outgoing-letter-gardesh" style="animation:none;transform:none">
     <div class="gov">
         <div class="gmodal" @onclick:stopPropagation="true">
             <div class="gm-h">
@@ -30,6 +31,10 @@
                 {
                     <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
                 }
+                else if (loadError is not null)
+                {
+                    <div class="empty text-danger" role="alert"><i class="bi bi-exclamation-circle"></i>@loadError</div>
+                }
                 else if (roots.Count == 0 && signers.Count == 0)
                 {
                     <div class="empty"><i class="bi bi-diagram-3"></i>گردشی ثبت نشده است</div>
@@ -38,11 +43,7 @@
                 {
                     <div class="tl">
                         <div class="tl-i start">
-                            <div class="tl-t">
-                                @* عکس فرستنده — همان الگوی نامه داخلی *@
-                                <span class="mini" title="@senderName"><UserAvatar SystemUserId="@senderUserId" Size="22" /></span>
-                                @senderName
-                            </div>
+                            <div class="tl-t">@Person(senderUserId, senderName)</div>
                             <div class="tl-s">فرستنده · ثبت نامه @letterDate.ToFaDateTime() · شروع گردش</div>
                         </div>
 
@@ -54,8 +55,7 @@
                                 var s1 = sg;
                                 <div class="tl-i @(s1.IsSigned ? "done" : "")">
                                     <div class="tl-t">
-                                        <span class="mini" title="@s1.DisplayName"><UserAvatar SystemUserId="@s1.UserId" Size="22" /></span>
-                                        @s1.DisplayName
+                                        <i class="bi bi-pen" style="font-size:12px;margin-inline-end:4px"></i>@Person(s1.UserId, s1.DisplayName)
                                         <span class="tg @(s1.IsSigned ? "green" : "amber")" style="margin-inline-start:6px">امضا کننده @s1.Order</span>
                                     </div>
                                     <div class="tl-s">
@@ -73,11 +73,9 @@
                         {
                             var nn = n;
                             <div class="tl-i @(IsDone(nn) ? "done" : "") gnode-click" @onclick="() => SelectNode(nn)">
-                                <div class="tl-t">
-                                    <span class="mini" title="@nn.Reciver"><UserAvatar SystemUserId="@nn.ReciverUserId" Size="22" /></span>
-                                    @nn.Reciver @(selectedNode == nn ? "◀" : "")
-                                </div>
+                                <div class="tl-t">@Person(nn.ReciverUserId, nn.Reciver) @(selectedNode == nn ? "◀" : "")</div>
                                 <div class="tl-s">@NodeSub(nn) · @StLabel(nn)</div>
+                                <div class="letter-node-sender">از طرف @Person(nn.SenderUserId, nn.Sender, compact: true)</div>
                                 @if (!string.IsNullOrWhiteSpace(nn.Answer))
                                 {
                                     <div class="tl-ans"><i class="bi bi-reply"></i> @nn.Answer @(nn.DateAnswer is { } da ? "— " + da.ToFaDateTime() : "")</div>
@@ -98,7 +96,8 @@
                                 {
                                     var s2 = sg;
                                     <span class="pp" style="@(s2.IsSigned ? "background:#dcfce7" : "background:#fef3c7")">
-                                        <span class="mini" title="@s2.DisplayName"><UserAvatar SystemUserId="@s2.UserId" Size="18" /></span>
+                                        <span class="mini"><UserAvatar LoginUserId="s2.UserId" Size="18" /></span>
+                                        <i class="bi @(s2.IsSigned ? "bi-check2-all" : "bi-pen")" aria-hidden="true"></i>
                                         @s2.DisplayName (امضا @s2.Order)
                                         <small style="margin-inline-start:6px;@(s2.IsSigned ? "color:#16a34a" : "color:#d97706")">
                                             @(s2.IsSigned ? s2.DateSigned?.ToFaDateTime() + " ✓" : "در انتظار امضا")
@@ -112,7 +111,7 @@
                         <ul>
                             <li>
                                 <div class="tnode">
-                                    <span class="mini" title="@senderName"><UserAvatar SystemUserId="@senderUserId" Size="26" /></span>
+                                    <span class="mini"><UserAvatar LoginUserId="senderUserId" Size="26" /></span>
                                     <div><b>@senderName</b><small> — فرستنده · @letterDate.ToFaDateTime()</small></div>
                                     <span class="tst p">شروع گردش</span>
                                 </div>
@@ -131,7 +130,7 @@
                                                     var s3 = sg;
                                                     <li>
                                                         <div class="tnode">
-                                                            <span class="mini"><UserAvatar SystemUserId="@s3.UserId" Size="26" /></span>
+                                                            <span class="mini"><UserAvatar LoginUserId="s3.UserId" Size="26" /></span>
                                                             <div><b>@s3.DisplayName</b><small> — امضا کننده @(s3.Order)@(string.IsNullOrWhiteSpace(s3.SignNote) ? "" : " · " + s3.SignNote)</small></div>
                                                             <span class="tst @(s3.IsSigned ? "g" : "w")">@(s3.IsSigned ? "امضا شد" : "در انتظار")</span>
                                                         </div>
@@ -153,7 +152,7 @@
                             <ul>
                                 <li>
                                     <div class="fnode root">
-                                        <span class="mini" title="@senderName"><UserAvatar SystemUserId="@senderUserId" Size="26" /></span>
+                                        <span class="mini"><UserAvatar LoginUserId="senderUserId" Size="26" /></span>
                                         <div><b>@senderName</b><small>فرستنده</small></div>
                                         <span class="fdot p"></span>
                                     </div>
@@ -172,7 +171,7 @@
                                                         var s4 = sg;
                                                         <li>
                                                             <div class="fnode @(s4.IsSigned ? "ok" : "wt")">
-                                                                <span class="mini"><UserAvatar SystemUserId="@s4.UserId" Size="26" /></span>
+                                                                <span class="mini"><UserAvatar LoginUserId="s4.UserId" Size="26" /></span>
                                                                 <div><b>@s4.DisplayName</b><small>امضا کننده @(s4.Order)</small></div>
                                                                 <span class="fdot @(s4.IsSigned ? "g" : "w")"></span>
                                                             </div>
@@ -194,11 +193,11 @@
                     <div class="gdetail">
                         <h4>
                             <i class="bi bi-info-circle-fill"></i>
-                            جزئیات ایستگاه — @sn.Reciver
+                            جزئیات ایستگاه — @Person(sn.ReciverUserId, sn.Reciver)
                             <button class="x2" @onclick="() => selectedNode = null"><i class="bi bi-x-lg"></i></button>
                         </h4>
                         <div class="gkv"><b>نوع دریافت</b><span>@sn.Type</span></div>
-                        <div class="gkv"><b>از طرف</b><span>@sn.Sender</span></div>
+                        <div class="gkv"><b>از طرف</b>@Person(sn.SenderUserId, sn.Sender)</div>
                         <div class="gkv"><b>تاریخ ارجاع</b><span class="num">@sn.Date.ToFaDateTime()</span></div>
                         <div class="gkv"><b>وضعیت</b><span>@StLabel(sn)</span></div>
                         @if (!string.IsNullOrWhiteSpace(sn.MatnErja)) { <div class="gkv" style="flex-direction:column"><b>پاراف</b><div class="gtxt">@sn.MatnErja</div></div> }
@@ -215,10 +214,12 @@
     private bool visible;
     private bool loading;
     private int view;
+    private int loadVersion;
+    private string? loadError;
+    // فرستندهٔ اصلی نامه، مستقل از ارجاع‌دهندهٔ ردیف دریافتی.
+    private int senderUserId;
     private string title = "", letterNumber = "", senderName = "";
 
-    /// <summary>شناسهٔ کاربر فرستنده — برای نمایش عکس او در سرآغاز گردش</summary>
-    private int senderUserId;
     private DateTime letterDate;
     private List<ErjaTreeNodeDto> roots = new();
 
@@ -227,23 +228,55 @@
 
     private ErjaTreeNodeDto? selectedNode;
 
-    public async Task Open(int letterId, string letterTitle, string number, string sender, DateTime date, int senderUserId = 0)
+    public async Task Open(int letterId, string letterTitle, string number)
     {
-        title = letterTitle; letterNumber = number; senderName = sender; letterDate = date;
-        this.senderUserId = senderUserId;
+        var version = ++loadVersion;
+        title = letterTitle; letterNumber = number;
+        senderName = ""; senderUserId = 0; letterDate = default;
         view = 0; visible = true; loading = true; selectedNode = null;
-        signers = new(); roots = new();
+        signers = new(); roots = new(); loadError = null;
         StateHasChanged();
         try
         {
-            roots = await OutgoingSvc.GetGardeshAsync(letterId);
-            try { signers = await OutgoingSvc.GetSignersAsync(letterId); } catch { signers = new(); }
+            // نام/عکس و تاریخ شروع از خود نامه می‌آید، نه از آخرین ارجاع یا تاریخ صدور.
+            // این درخواست‌ها فقط خواندنی‌اند؛ مشاهدهٔ گردش، نامه را خوانده‌شده نمی‌کند.
+            var detailTask = OutgoingSvc.GetDetailAsync(letterId);
+            var treeTask = OutgoingSvc.GetGardeshAsync(letterId);
+            var signersTask = LoadSignersAsync(letterId);
+            await Task.WhenAll(detailTask, treeTask, signersTask);
+            if (version != loadVersion) return;
+
+            var letter = await detailTask;
+            if (letter is null) throw new InvalidOperationException("نامه یافت نشد.");
+            title = letter.Title;
+            if (string.IsNullOrWhiteSpace(letterNumber)) letterNumber = letter.LetterNumber;
+            senderName = letter.SenderName; senderUserId = letter.SenderUserId;
+            letterDate = letter.DateSabt;
+            roots = await treeTask ?? new();
+            signers = await signersTask;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); roots = new(); }
-        finally { loading = false; StateHasChanged(); }
+        catch (Exception ex)
+        {
+            if (version != loadVersion) return;
+            roots = new(); signers = new();
+            loadError = "دریافت گردش نامه ممکن نشد؛ لطفاً دوباره آن را باز کنید.";
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            if (version == loadVersion) { loading = false; StateHasChanged(); }
+        }
     }
 
-    private void Close() => visible = false;
+    private async Task<List<OutgoingSignerDto>> LoadSignersAsync(int letterId)
+    {
+        // رفتار قبلی: خطای فهرست امضا مانع نمایش ایستگاه‌های ارجاع نمی‌شود.
+        try { return await OutgoingSvc.GetSignersAsync(letterId) ?? new(); }
+        catch { return new(); }
+    }
+
+    private void Close() { visible = false; loadVersion++; }
+    public void Dispose() => loadVersion++;
     private void SelectNode(ErjaTreeNodeDto n) => selectedNode = selectedNode == n ? null : n;
     private static bool IsDone(ErjaTreeNodeDto n) => n.IsRead || n.TypeTaeed != 0 || !string.IsNullOrWhiteSpace(n.Answer);
     private static string StLabel(ErjaTreeNodeDto n) =>
@@ -255,7 +288,6 @@
     {
         var s = n.Type == "ارجاع" ? $"ارجاع «{n.AmalgarTitle ?? "—"}»" : n.Type == "هامش" ? "هامش" : "گیرنده";
         if (!string.IsNullOrWhiteSpace(n.MatnErja)) s += " · " + (n.MatnErja.Length > 40 ? n.MatnErja[..40] + "…" : n.MatnErja);
-        s += " · از طرف " + n.Sender;
         return s;
     }
     private int CountAll() { int C(List<ErjaTreeNodeDto> l) => l.Sum(x => 1 + C(x.Children)); return 1 + C(roots) + signers.Count; }
@@ -264,18 +296,27 @@
         IEnumerable<ErjaTreeNodeDto> Dfs(ErjaTreeNodeDto n) { yield return n; foreach (var k in n.Children) foreach (var x in Dfs(k)) yield return x; }
         return roots.SelectMany(Dfs);
     }
+    private RenderFragment Person(int loginUserId, string? name, bool compact = false) => @<span class="letter-person @(compact ? "letter-person-sm" : "")">
+        <UserAvatar LoginUserId="loginUserId" Size="@(compact ? 18 : 24)" CssClass="user-avatar-sm" />
+        <span class="letter-person-name">@(string.IsNullOrWhiteSpace(name) ? "کاربر نامشخص" : name)</span>
+    </span>;
+
     private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
         <div class="tnode gnode-click @(selectedNode == n ? "sel" : "")" @onclick="() => SelectNode(n)">
-            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
-            <div><b>@n.Reciver</b><small> — @NodeSub(n)</small></div>
+            <span class="mini"><UserAvatar LoginUserId="n.ReciverUserId" Size="26" /></span>
+            <div><b>@n.Reciver</b><small> — @NodeSub(n)</small>
+                <div class="letter-node-sender">از طرف @Person(n.SenderUserId, n.Sender, compact: true)</div>
+            </div>
             <span class="tst @(IsDone(n) ? "g" : "w")">@StLabel(n)</span>
         </div>
         @if (n.Children.Count > 0) { <ul>@foreach (var k in n.Children) { @TreeNode(k) }</ul> }
     </li>;
     private RenderFragment FlowNode(ErjaTreeNodeDto n) => @<li>
         <div class="fnode @(IsDone(n) ? "ok" : "wt") gnode-click" @onclick="() => SelectNode(n)">
-            <span class="mini"><UserAvatar SystemUserId="@n.ReciverUserId" Size="26" /></span>
-            <div><b>@n.Reciver</b><small>@NodeSub(n)</small></div>
+            <span class="mini"><UserAvatar LoginUserId="n.ReciverUserId" Size="26" /></span>
+            <div><b>@n.Reciver</b><small>@NodeSub(n)</small>
+                <div class="letter-node-sender">از طرف @Person(n.SenderUserId, n.Sender, compact: true)</div>
+            </div>
             <span class="fdot @(IsDone(n) ? "g" : "w")"></span>
         </div>
         @if (n.Children.Count > 0) { <ul>@foreach (var k in n.Children) { @FlowNode(k) }</ul> }

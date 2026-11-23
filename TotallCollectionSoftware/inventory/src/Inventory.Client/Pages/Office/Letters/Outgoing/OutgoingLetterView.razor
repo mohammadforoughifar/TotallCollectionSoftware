@@ -94,7 +94,7 @@
                 <div class="paper-h">
                     @if (letter.SenderUserId > 0)
                     {
-                        <div class="avt letter-avatar" title="@letter.SenderName"><UserAvatar SystemUserId="letter.SenderUserId" Size="40" /></div>
+                        <div class="avt letter-avatar" title="@letter.SenderName"><UserAvatar LoginUserId="letter.SenderUserId" Size="40" /></div>
                     }
                     else
                     {
@@ -243,12 +243,8 @@
     private OutgoingGardeshModal? gardesh;
 
     /// <summary>باز کردنِ پنجرهٔ گردشِ همین نامه از صفحهٔ نمایشِ نامه صادره</summary>
-    private void OpenGardesh()
-    {
-        if (letter == null) return;
-        _ = gardesh?.Open(letter.LetterId, letter.Title, letter.LetterNumber,
-            string.IsNullOrWhiteSpace(letter.SenderName) ? "شما" : letter.SenderName, letter.DateSabt, letter.SenderUserId);
-    }
+    private Task OpenGardesh() => letter is null ? Task.CompletedTask
+        : gardesh?.Open(letter.LetterId, letter.Title, letter.LetterNumber) ?? Task.CompletedTask;
 
     /// <summary>نتیجهٔ تشخیص چاپ — با دکمهٔ «تشخیص چاپ» در منوی چاپ پر می‌شود.</summary>
     private OutgoingLetterPrintDiagnosticsDto? printDiagnostics;
