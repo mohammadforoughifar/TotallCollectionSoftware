@@ -503,6 +503,10 @@ a { text-decoration: none; }
     overflow: auto;
     z-index: 4500;
 }
+/* منوی فرم فاکتور تا جای‌گذاری جاوااسکریپتی (window.appMenu) پنهان است؛ بدون این قاعده
+   منو با مختصات کهنه یک فریم «وسط صفحه» دیده می‌شد. visibility (نه display) چون اندازه‌گیری
+   ارتفاع طبیعی منو لازم است. */
+.ss-menu[data-order-constrained="true"]:not([data-menu-placed]) { visibility: hidden; }
 .ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; transition: background .08s ease; }
 .ss-item-copy { display: flex; min-width: 0; flex-direction: column; gap: .08rem; }
 .ss-item-info { color: inherit; opacity: .78; font-size: .72rem; line-height: 1.3; }

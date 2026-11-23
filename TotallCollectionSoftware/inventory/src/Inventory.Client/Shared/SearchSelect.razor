@@ -33,7 +33,10 @@
         {
             <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
         }
-        <div class="ss-menu" style="@MenuStyle" data-order-constrained="@(ConstrainToModal ? "true" : null)" @ref="_menu" @onclick:stopPropagation="true">
+        @* منوی داخلیِ فرم فاکتور: تا جای‌گذاری جاوااسکریپتی پنهان است (visibility:hidden)،
+           وگرنه پیش از محاسبه با مختصات پیش‌فرض وسط/گوشهٔ صفحه یک فریم دیده می‌شود. *@
+        <div class="ss-menu" style="@MenuStyle" data-order-constrained="@(ConstrainToModal ? "true" : null)"
+             data-menu-placed="@(ConstrainToModal ? null : "true")" @ref="_menu" @onclick:stopPropagation="true">
             @if (matches.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
@@ -109,7 +112,10 @@
     {
         if (open && ConstrainToModal)
         {
-            try { await JS.InvokeVoidAsync("orderEntry.placeSearchMenu", _input, _menu); }
+            // هر رندر (تایپ، تغییر مقدار، افزودن ردیف) جای منو را از روی خود فیلد
+            // دوباره حساب می‌کنیم؛ مختصاتِ محاسبه‌شده در فوکوس پس از اسکرول/بلندشدن
+            // فرم کهنه می‌شود و منو را «وسط صفحه» می‌نشاند.
+            try { await JS.InvokeVoidAsync("appMenu.placeSoon", _input, _menu); }
             catch (JSException) { }
         }
     }
@@ -201,7 +207,8 @@
 
     /// <summary>منو با position:fixed هم‌عرض ورودی زیر آن باز می‌شود (الگوی منوی شناور) —
     /// مصون از stacking context کارت‌ها و overflow جدول/مودال</summary>
-    private string MenuStyle => Popover.FixedStyle(_mTop, _mLeft, _mWidth);
+    private string MenuStyle =>
+        Popover.FixedStyle(_mTop, _mLeft, _mWidth) + (ConstrainToModal ? "visibility:hidden;" : "");
 
 
     protected override void OnParametersSet()
