@@ -1,0 +1,52 @@
+/* نشانه‌های فیلتر فعال (تاریخ، نوع، جستجو) — هر نشانه دکمهٔ حذف مستقل دارد. */
+[data-expense-filter-chips] {
+    row-gap: .35rem;
+}
+
+[data-expense-filter-chips] .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .35rem .5rem;
+    font-weight: 500;
+    font-size: .75rem;
+    line-height: 1.2;
+    background: #f8f9fa;
+    border-radius: .5rem;
+}
+
+/* دکمهٔ حذف روی هر نشانهٔ فیلتر */
+.filter-chip-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.05rem;
+    height: 1.05rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #dc3545;
+    font-size: .65rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: .75;
+    transition: opacity .15s ease, background-color .15s ease;
+}
+
+.filter-chip-x:hover,
+.filter-chip-x:focus-visible {
+    opacity: 1;
+    background: rgba(220, 53, 69, .12);
+    outline: none;
+}
+
+[data-expense-filter-chips] [data-expense-filter-range-error] {
+    font-weight: 600;
+}
+
+@media (max-width: 575.98px) {
+    [data-expense-filter-chips] .badge {
+        font-size: .7rem;
+    }
+}

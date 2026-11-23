@@ -24,7 +24,7 @@
 
 <div class="card mb-3">
     <div class="card-body py-2">
-        <div class="row g-2 align-items-center">
+        <div class="row g-2 align-items-center" data-expense-filter>
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
@@ -33,7 +33,9 @@
                 </div>
             </div>
             <div class="col-md-3">
-                <select class="form-select" @onchange="OnCatFilter">
+                @* value الزامی است: بدون آن، پاک‌کردن catFilter در کد انتخابِ نمایشی کاربر را
+                   تغییر نمی‌داد و فیلتر حذف‌شده همچنان در نوار فیلتر دیده می‌شد. *@
+                <select class="form-select" value="@catFilter" @onchange="OnCatFilter" data-expense-filter-category>
                     <option value="0">— همه انواع هزینه —</option>
                     @foreach (var c in categories)
                     {
@@ -41,12 +43,60 @@
                     }
                 </select>
             </div>
-            <div class="col-md-2"><DatePicker @bind-Value="from" Placeholder="از تاریخ" /></div>
-            <div class="col-md-2"><DatePicker @bind-Value="to" Placeholder="تا تاریخ" /></div>
-            <div class="col-md-1">
-                <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="ApplyFilter"><i class="bi bi-funnel"></i></button>
+            @* فیلترهای بازه تاریخ باید پاک‌شدنی باشند؛ بدون AllowClear دکمهٔ «×» رندر نمی‌شد
+               و کاربر پس از یک بار فیلتر، راهی برای برداشتن تاریخ نداشت. *@
+            <div class="col-md-2"><DatePicker @bind-Value="from" AllowClear="true" Placeholder="از تاریخ" /></div>
+            <div class="col-md-2"><DatePicker @bind-Value="to" AllowClear="true" Placeholder="تا تاریخ" /></div>
+            <div class="col-md-1 d-flex gap-1">
+                <button class="btn btn-light flex-fill" title="اعمال فیلتر" @onclick="ApplyFilter" data-expense-filter-apply><i class="bi bi-funnel"></i></button>
+                <button class="btn btn-outline-secondary flex-fill" title="حذف همهٔ فیلترها" @onclick="ClearFilters"
+                        disabled="@(!HasActiveFilters)" data-expense-filter-clear><i class="bi bi-x-lg"></i></button>
             </div>
         </div>
+        @if (HasActiveFilters)
+        {
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-2 fs-8" data-expense-filter-chips>
+                <span class="text-muted">فیلترهای فعال:</span>
+                @if (from.HasValue)
+                {
+                    <span class="badge bg-light text-dark border">
+                        از تاریخ @from.Value.ToFa()
+                        <button type="button" class="filter-chip-x" title="حذف فیلتر تاریخ شروع"
+                                @onclick="() => ClearFilterDate(true)" data-expense-filter-from-chip><i class="bi bi-x-lg"></i></button>
+                    </span>
+                }
+                @if (to.HasValue)
+                {
+                    <span class="badge bg-light text-dark border">
+                        تا تاریخ @to.Value.ToFa()
+                        <button type="button" class="filter-chip-x" title="حذف فیلتر تاریخ پایان"
+                                @onclick="() => ClearFilterDate(false)" data-expense-filter-to-chip><i class="bi bi-x-lg"></i></button>
+                    </span>
+                }
+                @if (!string.IsNullOrWhiteSpace(search))
+                {
+                    <span class="badge bg-light text-dark border">
+                        جستجو: @search
+                        <button type="button" class="filter-chip-x" title="حذف جستجو"
+                                @onclick="ClearFilterSearch" data-expense-filter-search-chip><i class="bi bi-x-lg"></i></button>
+                    </span>
+                }
+                @if (catFilter > 0)
+                {
+                    <span class="badge bg-light text-dark border">
+                        نوع: @CategoryFilterName
+                        <button type="button" class="filter-chip-x" title="حذف فیلتر نوع هزینه"
+                                @onclick="ClearFilterCategory" data-expense-filter-category-chip><i class="bi bi-x-lg"></i></button>
+                    </span>
+                }
+                @if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+                {
+                    <span class="text-danger" data-expense-filter-range-error>
+                        تاریخ شروع بعد از تاریخ پایان است؛ نتیجه‌ای برگردانده نمی‌شود.
+                    </span>
+                }
+            </div>
+        }
     </div>
 </div>
 
@@ -180,6 +230,8 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">تاریخ سند <span class="text-danger">*</span></label>
+                @* تاریخ سند الزامی است، پس قابل پاک‌شدن نیست؛ مقدار پاک‌شده در ثبت
+                   به امروز برمی‌گردد تا فرم بدون تاریخِ خالی ذخیره نشود. *@
                 @if (replacement) { <div class="form-control bg-light">@form.Date.ToFa()</div> }
                 else { <DatePicker @bind-Value="expDate" /> }
             </div>
@@ -562,6 +614,44 @@
     }
 
     private async Task ApplyFilter() { page = 1; await Load(); }
+
+    /// <summary>آیا فیلتری فعال است؟ برای نمایش دکمهٔ «حذف فیلترها» و نشانه‌های فیلتر.</summary>
+    private bool HasActiveFilters =>
+        from.HasValue || to.HasValue || catFilter > 0 || !string.IsNullOrWhiteSpace(search);
+
+    /// <summary>نام نوع هزینهٔ انتخاب‌شده در فیلتر (برای نشانهٔ فیلتر).</summary>
+    private string CategoryFilterName =>
+        categories.FirstOrDefault(c => c.Id == catFilter)?.Name ?? $"#{catFilter}";
+
+    /// <summary>
+    /// حذف کامل فیلترها (تاریخ‌ها، نوع هزینه و جستجو) و بازگرداندن فهرست به حالت ابتدایی.
+    /// پس از یک بار فیلتر با تاریخ، کاربر باید بتواند فیلتر تاریخ را کاملاً بردارد.
+    /// </summary>
+    private async Task ClearFilters()
+    {
+        from = null;
+        to = null;
+        catFilter = 0;
+        search = "";
+        searchCts?.Cancel();
+        await ApplyFilter();
+    }
+
+    /// <summary>حذف یکی از دو سر بازهٔ تاریخ از نوار فیلتر.</summary>
+    private async Task ClearFilterDate(bool isFrom)
+    {
+        if (isFrom) from = null; else to = null;
+        await ApplyFilter();
+    }
+
+    private async Task ClearFilterSearch()
+    {
+        search = "";
+        searchCts?.Cancel();
+        await ApplyFilter();
+    }
+
+    private async Task ClearFilterCategory() => OnCatFilter(new ChangeEventArgs { Value = "0" });
     private async Task GoToPage(int p) { page = p; await Load(); }
 
     private RenderFragment PayTypeBadge(CashType t) => t switch

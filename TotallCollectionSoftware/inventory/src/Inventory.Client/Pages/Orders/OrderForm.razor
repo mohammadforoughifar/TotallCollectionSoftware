@@ -126,6 +126,10 @@
                                         {
                                             <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + تاخیر تادیه چک <b class="num">@ExactMoney(saleChequeIncome)</b></small>
                                         }
+                                        else if (PurchaseChequeInterest > 0)
+                                        {
+                                            <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + سود چک (خارج از مبلغ فاکتور، ذخیره می‌شود) <b class="num">@ExactMoney(PurchaseChequeInterest)</b></small>
+                                        }
                                     </div>
                                 </div>
                                 <div class="purchase-summary-pay" aria-live="polite">
@@ -133,10 +137,22 @@
                                     <div><span>چک</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(ChequeSum()) : ChequeSum().Money())</strong></div>
                                     <div><span>@(Type == TransactionType.Purchase ? "اعلامیه پرداخت" : "اقساط")</span><strong class="num">@(ExactPaymentDisplay ? ExactMoney(InstSum()) : InstSum().Money())</strong></div>
                                     <div class="purchase-summary-remaining @(Math.Abs(FinalRemaining) > (StrictPaymentBalance ? 0 : 1) ? "is-warning" : "")">
-                                        <span>@(FinalRemaining < 0 ? "مازاد پرداخت" : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده")</span>
+                                        <span>@RemainingCaption</span>
                                         <strong class="num">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</strong>
                                     </div>
                                 </div>
+                                @if (PurchaseChequeInterest > 0 && !HasChequeIncomeArticle)
+                                {
+                                    <div class="purchase-summary-cheque-interest" data-purchase-cheque-interest aria-live="polite">
+                                        <span>سود چک (هزینهٔ مالی خرید) — جدا از مبلغ کالا و مازاد پرداخت</span>
+                                        <strong class="num">@(ExactPaymentDisplay ? ExactMoney(PurchaseChequeInterest) : PurchaseChequeInterest.Money())</strong>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-purchase-cheque-interest-clear
+                                                title="حذف سود چک؛ مبلغ فاکتور و چک‌ها تغییر نمی‌کند" @onclick="ClearPurchaseChequeInterest">
+                                            حذف سود چک
+                                        </button>
+                                        <small>این مبلغ در مبلغ فاکتور نیست ولی در دیتابیس ذخیره می‌شود و در گزارش خرید جدا نمایش داده می‌شود؛ جمع چک‌ها = مبلغ کالا + همین سود.</small>
+                                    </div>
+                                }
                                 @if (FinalRemaining != 0)
                                 {
                                     <p class="purchase-summary-status" aria-live="polite">
@@ -146,7 +162,7 @@
                                         }
                                         else if (FinalRemaining < (StrictPaymentBalance ? 0 : -1))
                                         {
-                                            <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است (مازاد / سود مدت‌دار).")</span>
+                                            <span>@(StrictPaymentBalance ? "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ آن را دستی اصلاح کنید." : "جمع پرداخت‌ها بیشتر از مبلغ فاکتور است؛ مبلغ چک‌ها را دستی اصلاح کنید.")</span>
                                         }
                                         else
                                         {
@@ -237,12 +253,10 @@
                                 <div class="mt-3" data-pay-cheque-box>
                                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                         <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
-                                        @if (Type == TransactionType.Sale)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only title="محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها" @onclick="() => OpenCalc(true, interestOnly: true)">
-                                                <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
-                                            </button>
-                                        }
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only
+                                                title="@ChequeInterestOnlyTitle" @onclick="() => OpenCalc(true, interestOnly: true)">
+                                            <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
@@ -294,8 +308,8 @@
                                                 <button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف چک" aria-label="حذف چک" data-pay-remove-cheque="@i" @onclick="() => RemoveCheque(i)"><i class="bi bi-x-lg text-danger"></i></button>
                                             </div>
                                             <div class="col-12 fs-9">
-                                                <span class="text-muted">باقی‌مانده پس از این چک:</span>
-                                                <b class="num text-primary" data-rem-cheque="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterCheque(i)) : RemainingAfterCheque(i).Money())</b> ریال
+                                                <span class="text-muted">@(RemainingAfterCheque(i) < 0 ? "مازاد این چک بر مانده فاکتور:" : "باقی‌مانده پس از این چک:")</span>
+                                                <b class="num text-primary" data-rem-cheque="@i">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(RemainingAfterCheque(i))) : Math.Abs(RemainingAfterCheque(i)).Money())</b> ریال
                                             </div>
                                         </div>
                                     }
@@ -372,7 +386,7 @@
                                                 <thead>
                                                     <tr>
                                                         <th>قسط</th><th>سررسید</th><th class="text-start">مبلغ (ریال)</th>
-                                                        <th class="text-start">باقی‌مانده پس از این قسط</th><th></th>
+                                                        <th class="text-start">باقی‌مانده / مازاد پس از این قسط</th><th></th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -386,7 +400,7 @@
                                                                 <input class="form-control form-control-sm num" value="@instAmounts[i]"
                                                                        @oninput="@(e => OnInstAmountInput(i, e))" inputmode="numeric" dir="ltr" />
                                                             </td>
-                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(ExactPaymentDisplay ? ExactMoney(RemainingAfterInstallment(i)) : RemainingAfterInstallment(i).Money())</b></td>
+                                                            <td class="text-start"><b class="num text-primary" data-rem-inst="@i">@(ExactPaymentDisplay ? ExactMoney(Math.Abs(RemainingAfterInstallment(i))) : Math.Abs(RemainingAfterInstallment(i)).Money())</b>@(RemainingAfterInstallment(i) < 0 ? " (مازاد)" : "")</td>
                                                             <td><button type="button" class="btn btn-sm btn-light" tabindex="-1" title="حذف قسط" aria-label="حذف قسط" data-pay-remove-inst="@i" @onclick="() => RemoveInstallment(i)"><i class="bi bi-x-lg text-danger"></i></button></td>
                                                         </tr>
                                                     }
@@ -395,7 +409,8 @@
                                         </div>
                                         <div class="fs-8">
                                             جمع اقساط: <b class="num">@ExactMoney(InstSum())</b> —
-                                            باقی‌ماندهٔ تجمعی: <b class="num text-primary" data-pay-remain-inst>@(ExactPaymentDisplay ? ExactMoney(FinalRemaining) : FinalRemaining.Money())</b>
+                                            @(FinalRemaining < 0 ? "مازاد پرداخت تجمعی" : "باقی‌ماندهٔ تجمعی"):
+                                            <b class="num text-primary" data-pay-remain-inst>@(ExactPaymentDisplay ? ExactMoney(Math.Abs(FinalRemaining)) : Math.Abs(FinalRemaining).Money())</b>
                                         </div>
                                     }
                                     else
@@ -944,14 +959,14 @@
                OnSaved="OnPurchaseFormSaved" OnCancel="ClosePurchaseForm" />
 }
 
-<Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
+<Modal Visible="showCalc" Title="@(calcInterestOnly ? ChequeInterestOnlyCaption : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
             <div class="col-md-6">
                 <label class="form-label">مبلغ پایه (ریال)</label>
                 <input class="form-control num" value="@calcBaseText"
                        @oninput="@(e => calcBaseText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
-                <div class="fs-8 text-muted mt-1">@(calcForCheque && Type == TransactionType.Sale ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط" : "مبنای پیشنهادی: باقیماندهٔ سند پس از کسر سایر پرداخت‌ها") (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
+                <div class="fs-8 text-muted mt-1">@CalculatorBaseHint (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">درصد سود ماهانه</label>
@@ -1020,7 +1035,16 @@
             }
             @if (calcInterestOnly)
             {
-                <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
+                @if (Type == TransactionType.Purchase)
+                {
+                    <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8" data-purchase-cheque-interest-only-note>
+                        این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی و همچنین مبلغ فاکتور را تغییر نمی‌دهد؛ سود چک در ردیف مستقل «سود چک (هزینهٔ مالی خرید)» ذخیره می‌شود و در گزارش خرید به‌صورت جدا از مبلغ کالا نمایش داده می‌شود. برای اعمال سود روی مبلغ چک‌ها از «محاسبه اقساطِ چک» استفاده کنید.
+                    </div></div>
+                }
+                else
+                {
+                    <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
+                }
             }
             else
             {
@@ -1029,6 +1053,12 @@
                     <div class="col-12 fs-8 text-muted">با ساخت ردیف‌ها، ردیف‌های چک فعلی جایگزین می‌شوند؛ شماره و بانک چک‌های جدید را تکمیل کنید.</div>
                 }
                 <div class="col-12 fs-8 text-muted">ردیف‌ها تا ۱۰٬۰۰۰ ریال رند می‌شوند؛ اختلاف کمتر از این واحد در ردیف آخر می‌ماند و جمع و سود تغییر نمی‌کنند.</div>
+                @if (calcForCheque && Type == TransactionType.Purchase)
+                {
+                    <div class="col-12"><div class="alert alert-warning py-2 mb-0 fs-8" data-purchase-cheque-interest-note>
+                        سود چک خرید به مبلغ فاکتور اضافه نمی‌شود؛ مبلغ چک‌ها برابر مبلغ کالا به‌علاوهٔ همین سود است و سود در عنوان مستقل «سود چک» نمایش داده می‌شود، نه در «مازاد پرداخت».
+                    </div></div>
+                }
             }
             @if (CalculatorPlan is { } calc)
             {
@@ -1448,15 +1478,84 @@
     // ---------------- پرداخت ترکیبی: نقد + چک + اقساط + نسیه ----------------
     private string cashAmountText = "";
 
+    /// <summary>
+    /// سود چک در فاکتور <b>خرید</b> — عمداً فیلد جدا از <c>saleChequeIncome</c> است.
+    /// <c>saleChequeIncome</c> وارد <c>grandTotal</c> می‌شود و فقط برای «تاخیر تادیه چک»
+    /// فروش است (بدهی مشتری و درآمد فروشگاه). پرداخت چکی به تأمین‌کننده برای ما درآمد
+    /// نیست، پس نباید مبلغ فاکتور خرید را بالا ببرد؛ سود فقط مبلغ چک‌ها را پر می‌کند و
+    /// در عنوان مستقل «سود چک» نمایش داده می‌شود، نه در «مازاد پرداخت».
+    /// </summary>
+    private decimal purchaseChequeInterest;
+
+    /// <summary>
+    /// ورودی‌های ماشین‌حساب سود چک خرید؛ برای ذخیره در سرور فرستاده می‌شود و سود
+    /// دوباره همان‌جا محاسبه می‌شود. مبلغ سود از کلاینت پذیرفته نمی‌شود.
+    /// </summary>
+    private PurchaseChequeInterestInput? purchaseChequeInterestTerms;
+
+    /// <summary>
+    /// مجموع تعهد پرداخت این فاکتور. در خرید، سود چک هم بخشی از تعهد پرداخت است؛
+    /// به همین دلیل مقایسهٔ «باقی‌مانده/مازاد» باید روی این عدد انجام شود، نه
+    /// <c>grandTotal</c>، وگرنه سود به‌اشتباه «مازاد پرداخت» دیده می‌شود.
+    /// </summary>
+    private decimal PayableTotal => grandTotal + PurchaseChequeInterest;
+
+    /// <summary>سود چک خرید؛ برای بقیهٔ انواع سند صفر است.</summary>
+    private decimal PurchaseChequeInterest => Type == TransactionType.Purchase ? purchaseChequeInterest : 0m;
+
+    /// <summary>
+    /// حذف سود چک محاسبه‌شدهٔ خرید. مبلغ، شماره، بانک و سررسید چک‌ها و مبلغ فاکتور
+    /// دست‌نخورده می‌مانند؛ سود فقط از عنوان مستقل خود پاک می‌شود.
+    /// </summary>
+    private void ClearPurchaseChequeInterest()
+    {
+        if (purchaseChequeInterest <= 0) return;
+        purchaseChequeInterest = 0m;
+        purchaseChequeInterestTerms = null;
+        chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0m;
+        InvoiceInfo("سود چک حذف شد؛ مبلغ فاکتور و چک‌ها تغییر نکرده است.");
+    }
+
+    /// <summary>
+    /// عنوان راهنمای دکمهٔ «محاسبه سود چک‌های دستی». در فروش سود همان «تاخیر تادیه چک»
+    /// است؛ در خرید هزینهٔ مالی چک پرداختی است و مبلغ فاکتور را تغییر نمی‌دهد.
+    /// </summary>
+    private string ChequeInterestOnlyTitle => Type == TransactionType.Purchase
+        ? "محاسبه سود چک (هزینهٔ مالی) برای چک‌های دستی، بدون تغییر مبلغ آن‌ها و بدون افزودن به مبلغ فاکتور"
+        : "محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها";
+
+    /// <summary>عنوان پنجرهٔ ماشین‌حساب برای حالت «فقط سود».</summary>
+    private string ChequeInterestOnlyCaption => Type == TransactionType.Purchase
+        ? "محاسبه سود چک‌های دستی"
+        : "محاسبه تاخیر تادیه چک‌های دستی";
+
+    /// <summary>توضیح «مبلغ پایه» در ماشین‌حساب، هم‌سو با نوع سند.</summary>
+    private string CalculatorBaseHint => calcInterestOnly && Type == TransactionType.Purchase
+        ? "مبنای پیشنهادی: مبلغ کالا و ارزش افزوده (سود به مبلغ فاکتور اضافه نمی‌شود)"
+        : calcForCheque && Type == TransactionType.Sale
+            ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط"
+            : "مبنای پیشنهادی: باقی‌ماندهٔ سند پس از کسر سایر پرداخت‌ها";
+
     /// <summary>جزء نقدی: اگر تنها جزء فعال باشد تمام مبلغ سند است، وگرنه مبلغی که کاربر وارد می‌کند.</summary>
     private decimal CashPart => UseInvoiceWizard && !useCash
         ? 0m
-        : !HasNonCash ? grandTotal : Fa.ParseDecimal(cashAmountText);
+        : !HasNonCash ? PayableTotal : Fa.ParseDecimal(cashAmountText);
 
-    /// <summary>باقی‌ماندهٔ نهایی (می‌تواند منفی باشد = مازاد/سود مدت‌دار).</summary>
-    private decimal FinalRemaining => grandTotal - CashPart - ChequeSum() - InstSum();
+    /// <summary>
+    /// باقی‌ماندهٔ نهایی (می‌تواند منفی باشد = مازاد پرداخت). مبنای مقایسه، مجموع تعهد
+    /// پرداخت است تا سود چک خرید به‌اشتباه «مازاد پرداخت» دیده نشود.
+    /// </summary>
+    private decimal FinalRemaining => PayableTotal - CashPart - ChequeSum() - InstSum();
 
-    private decimal RemainingAfterCash => grandTotal - CashPart;
+    /// <summary>
+    /// عنوان فیلد باقی‌مانده. سود چک خرید عنوان مستقل خودش را دارد، پس این فیلد فقط
+    /// مانده/مازاد واقعی پرداخت را نشان می‌دهد.
+    /// </summary>
+    private string RemainingCaption => FinalRemaining < 0
+        ? "مازاد پرداخت"
+        : useCredit && FinalRemaining > (StrictPaymentBalance ? 0 : 1) ? "مانده نسیه" : "باقی‌مانده";
+
+    private decimal RemainingAfterCash => PayableTotal - CashPart;
 
     /// <summary>باقی‌مانده پس از این چک = مبلغ سند − (نقد + جمع چک‌های این سطر تا سطر جاری).</summary>
     private decimal RemainingAfterCheque(int i)
@@ -1465,7 +1564,7 @@
         var upto = Math.Min(i, chequeAmounts.Count - 1);
         decimal s = CashPart;
         for (var k = 0; k <= upto; k++) s += Fa.ParseDecimal(chequeAmounts[k]);
-        return grandTotal - s;
+        return PayableTotal - s;
     }
 
     /// <summary>باقی‌مانده پس از این قسط = مبلغ سند − (نقد + چک‌ها + جمع اقساط این سطر تا سطر جاری).</summary>
@@ -1475,7 +1574,7 @@
         var upto = Math.Min(i, instAmounts.Count - 1);
         decimal s = CashPart + ChequeSum();
         for (var k = 0; k <= upto; k++) s += Fa.ParseDecimal(instAmounts[k]);
-        return grandTotal - s;
+        return PayableTotal - s;
     }
 
     private void OnCashAmountInput(ChangeEventArgs e)
@@ -1509,6 +1608,15 @@
             return;
         }
         useCheque = !useCheque;
+        if (!useCheque && Type == TransactionType.Purchase && purchaseChequeInterest > 0)
+        {
+            // سود چک خرید بدون جزء چک معنایی ندارد؛ عنوان آن باید با خاموش‌شدن چک پاک شود
+            // تا به‌صورت مبلغ سرگردان در باقی‌مانده نماند.
+            purchaseChequeInterest = 0m;
+            purchaseChequeInterestTerms = null;
+            chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0m;
+            InvoiceInfo("سود چک خرید با غیرفعال‌شدن جزء چک پاک شد؛ در صورت نیاز دوباره محاسبه کنید.");
+        }
         EnsureInvoicePaymentMethod();
         if (useCheque && cheques.Count == 0) AddCheque();
         if (useCheque && UseInvoiceWizard) pendingSectionFocus = "[data-pay-cheque-box]";
@@ -1594,9 +1702,15 @@
         }
     }
 
-    private decimal CalculatorSuggestedBase => calcForCheque && Type == TransactionType.Sale
-        ? Math.Max(0m, goodsTotal - CashPart - InstSum())
-        : Math.Max(0m, calcForCheque ? grandTotal - CashPart - InstSum() : grandTotal - CashPart - ChequeSum());
+    private decimal CalculatorSuggestedBase =>
+        // فروش: سود روی اصل کالا پس از کسر نقد و اقساط.
+        calcForCheque && Type == TransactionType.Sale
+            ? Math.Max(0m, goodsTotal - CashPart - InstSum())
+        // خرید در حالت «فقط سود»: مبنا مبلغ کالاست؛ PayableTotal شامل سود قبلی است و
+        // استفاده از آن سود را روی سود محاسبه می‌کرد.
+        : calcInterestOnly && Type == TransactionType.Purchase
+            ? Math.Max(0m, goodsTotal - CashPart)
+        : Math.Max(0m, calcForCheque ? PayableTotal - CashPart - InstSum() : PayableTotal - CashPart - ChequeSum());
 
     private static string ExactMoney(decimal amount) => Fa.MoneyExact(amount);
 
@@ -1633,7 +1747,7 @@
     private void OpenCalc(bool forCheque, bool interestOnly = false)
     {
         calcForCheque = forCheque;
-        calcInterestOnly = forCheque && Type == TransactionType.Sale && interestOnly;
+        calcInterestOnly = forCheque && interestOnly;
         // هنگام محاسبهٔ مجدد، سود قبلی نباید دوباره بخشی از مبنای چک شود.
         var baseRemain = CalculatorSuggestedBase;
         if (forCheque && Type == TransactionType.Sale && saleChequeCharge is not null)
@@ -1717,6 +1831,34 @@
             // Only replace the pending income article. Manual cheque rows and their
             // amounts, numbers, banks and dates are deliberately untouched.
             calculatedChequeSchedule = null;
+            if (Type == TransactionType.Purchase)
+            {
+                // خرید ردیف تاخیر تادیه ندارد؛ سود فقط عنوان مستقل «سود چک» است و
+                // عمداً در saleChequeIncome (که به مبلغ فاکتور اضافه می‌شود) نمی‌نشیند.
+                if (calculation.BaseAmount > goodsTotal)
+                {
+                    InvoiceError("مبنای سود بیشتر از مبلغ کالا و ارزش افزوده است.");
+                    return;
+                }
+                saleChequeCharge = null;
+                saleChequeIncome = 0m;
+                purchaseChequeInterest = calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = calculation.BaseAmount,
+                    CalculatorRatePercent = calculation.MonthlyRatePercent,
+                    CalculatorMonths = calculation.Months
+                };
+                chargeInvoiceBase = goodsTotal;
+                chargeCashBase = CashPart;
+                chargeInstallmentBase = InstSum();
+                removedCalculatedChequeIncome = false;
+                showCalc = false;
+                InvoiceInfo(calculation.Interest <= 0
+                    ? "سود محاسبه‌شده صفر است؛ مبلغ فاکتور و چک‌ها تغییر نکرد."
+                    : $"سود چک {ExactMoney(calculation.Interest)} ریال برای فاکتور خرید محاسبه شد؛ مبلغ فاکتور و چک‌ها تغییر نکرد و سود در عنوان مستقل «سود چک» نمایش داده می‌شود.");
+                return;
+            }
             var hadCharge = saleChequeCharge is not null;
             saleChequeCharge = calculatedCharge;
             saleChequeIncome = calculatedCharge is null ? 0m : calculation.Interest;
@@ -1766,9 +1908,27 @@
                 chargeInstallmentBase = calculatedCharge is null ? 0m : InstSum();
                 removedCalculatedChequeIncome = false;
             }
+            else
+            {
+                // خرید: سود چک به مبلغ فاکتور اضافه نمی‌شود؛ فقط برای عنوان مستقل
+                // «سود چک» نگه داشته می‌شود تا در فیلد مازاد پرداخت ظاهر نشود.
+                saleChequeIncome = 0m;
+                purchaseChequeInterest = calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = calculation.BaseAmount,
+                    CalculatorRatePercent = calculation.MonthlyRatePercent,
+                    CalculatorMonths = calculation.Months
+                };
+                chargeInvoiceBase = goodsTotal;
+                chargeCashBase = CashPart;
+                chargeInstallmentBase = InstSum();
+            }
             calculatedChequeSchedule = new CalculatedChequeSchedule(calculation, goodsTotal, CashPart, InstSum(),
                 adjustmentRate, calcAdjustmentDays);
-            InvoiceSuccess($"{calculation.Months} چک ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود). شماره و بانک هر چک را تکمیل کنید.");
+            InvoiceSuccess(Type == TransactionType.Purchase
+                ? $"{calculation.Months} چک ساخته شد — جمع چک‌ها {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود چک). مبلغ سود جدا از مبلغ کالا و «مازاد پرداخت» نمایش داده می‌شود؛ شماره و بانک هر چک را تکمیل کنید."
+                : $"{calculation.Months} چک ساخته شد — مبلغ نهایی {ExactMoney(calculation.Total)} ریال (شامل {ExactMoney(calculation.Interest)} سود). شماره و بانک هر چک را تکمیل کنید.");
         }
         else
         {
@@ -1833,8 +1993,9 @@
         if (!instFirstDue.HasValue) { if (!silent) InvoiceError("تاریخ اولین قسط را وارد کنید."); return; }
         if (instIntervalDays < 1) { if (!silent) InvoiceError("فاصله اقساط باید حداقل یک روز باشد."); return; }
 
-        // مبلغ قابل تقسیم = باقی‌مانده پس از نقد و چک‌ها (سطرهای قبلی)
-        var totalDue = Math.Max(0, grandTotal - CashPart - ChequeSum());
+        // مبلغ قابل تقسیم = باقی‌مانده پس از نقد و چک‌ها (سطرهای قبلی). در خرید، سود چک
+        // هم بخشی از تعهد پرداخت است و باید در دفترچه دیده شود.
+        var totalDue = Math.Max(0, PayableTotal - CashPart - ChequeSum());
         if (totalDue <= 0) { if (!silent) InvoiceError("ابتدا اقلام فاکتور را وارد کنید."); return; }
         if (totalDue <= PaymentMix.Tolerance / 2m)
         { if (!silent) InvoiceError("مبلغ اقساط برای ثبت روش پرداخت کافی نیست."); return; }
@@ -2134,6 +2295,18 @@
                 creditDue = o.DueDate;
                 useCheque = o.Cheques.Count > 0 || o.PaymentMethod == PaymentMethod.Cheque;
                 useInstallment = o.Installments.Count > 0 || o.PaymentMethod == PaymentMethod.Installment;
+                if (Type == TransactionType.Purchase && o.PurchaseChequeInterestAmount > 0)
+                {
+                    // سود چک خرید در مبلغ فاکتور جمع نشده است؛ باید جدا بارگذاری شود
+                    // وگرنه ویرایش، مبلغ ذخیره‌شده را از دست می‌دهد.
+                    purchaseChequeInterest = o.PurchaseChequeInterestAmount;
+                    purchaseChequeInterestTerms = o.PurchaseChequeInterestSnapshot ?? new PurchaseChequeInterestInput
+                    {
+                        CalculatorBaseAmount = o.PurchaseChequeInterestAmount > 0 ? o.TotalAmount - o.CashAmount : 0m,
+                        CalculatorRatePercent = 0m,
+                        CalculatorMonths = 1
+                    };
+                }
                 if (o.HasChequeCharge)
                 {
                     // Even an old charge without calculator terms is still a real, visible amount.
@@ -2679,6 +2852,21 @@
                 chargeInstallmentBase = nextCharge is null ? 0m : InstSum();
                 removedCalculatedChequeIncome = nextCharge is null && (hadCharge || removedCalculatedChequeIncome);
             }
+            else
+            {
+                // خرید: سود چک فقط عنوان مستقل دارد و به مبلغ فاکتور اضافه نمی‌شود.
+                saleChequeIncome = 0m;
+                purchaseChequeInterest = refreshed.Calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = refreshed.Calculation.BaseAmount,
+                    CalculatorRatePercent = refreshed.Calculation.MonthlyRatePercent,
+                    CalculatorMonths = refreshed.Calculation.Months
+                };
+                chargeInvoiceBase = goodsTotal;
+                chargeCashBase = CashPart;
+                chargeInstallmentBase = InstSum();
+            }
             return true;
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or OverflowException)
@@ -2934,8 +3122,23 @@
         }
         if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
         {
-            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها را تغییر نمی‌دهد.");
+            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها تغییر نمی‌دهد.");
             return;
+        }
+        if (Type == TransactionType.Purchase && purchaseChequeInterest > 0)
+        {
+            // سود چک روی مبنای «مبلغ کالا» محاسبه شده است؛ اگر اقلام یا تخفیف عوض
+            // شده باشد، سود ذخیره‌شده بی‌مبناست و باید دوباره محاسبه شود.
+            if (!useCheque)
+            {
+                ShowFormError("سود چک خرید بدون جزء چک قابل ثبت نیست؛ یا چک را فعال کنید یا سود چک را حذف کنید.");
+                return;
+            }
+            if (purchaseChequeInterestTerms is null || purchaseChequeInterestTerms.CalculatorBaseAmount > goodsTotal)
+            {
+                ShowFormError("مبلغ کالا از مبنای محاسبهٔ سود چک کمتر شده است؛ سود چک را دوباره از «محاسبه سود چک‌های دستی» محاسبه کنید.");
+                return;
+            }
         }
         if (CashPart > 0 && trsAccountId is not > 0 &&
             (!IsEdit || EditOrder?.ShopCashLedgerEnabled == true || saleChequeCharge is not null))
@@ -2970,12 +3173,12 @@
         if (Type is TransactionType.Sale or TransactionType.Purchase)
         {
             // ---------- پرداخت ترکیبی: نقد + چک + اقساط + نسیه ----------
-            if (HasNonCash && CashPart > 0 && CashPart >= grandTotal)
+            if (HasNonCash && CashPart > 0 && CashPart >= PayableTotal)
             {
                 ShowFormError("مبلغ نقدی نمی‌تواند برابر یا بیشتر از مبلغ سند باشد؛ در این صورت فقط «نقدی» را فعال کنید.");
                 return;
             }
-            var cash = HasNonCash ? CashPart : grandTotal;
+            var cash = HasNonCash ? CashPart : PayableTotal;
 
             cmd.PaymentMethod = DeclaredMethod;
             if (Type == TransactionType.Sale && cash > 0 && CashKind == CashType.CardTransfer && string.IsNullOrWhiteSpace(cashTrackingNumber))
@@ -3027,9 +3230,11 @@
             cmd.Cheques = chequeList;
             cmd.Installments = instList;
 
-            // ماندهٔ نهایی = نسیه
+            // ماندهٔ نهایی = نسیه. مبنای مقایسه، مجموع تعهد پرداخت است؛ در خرید سود چک
+            // هم باید با چک/نقد/اقساط پوشش داده شود، وگرنه باقی‌ماندهٔ حاصل از سود
+            // به‌اشتباه بیش از مبلغ فاکتور شمرده می‌شد.
             var paid = cash + chequeList.Sum(c => c.Amount) + instList.Sum(i => i.Amount);
-            var remainder = grandTotal - paid;
+            var remainder = PayableTotal - paid;
             if ((saleChequeCharge is not null || removedCalculatedChequeIncome) && remainder < 0)
             {
                 ShowFormError("جمع پرداخت‌ها بیش از مبلغ فاکتور است؛ لطفاً اجزای پرداخت را دستی اصلاح کنید.");
@@ -3044,16 +3249,46 @@
             {
                 if (!useCredit || !creditDue.HasValue)
                 {
-                    ShowFormError($"جمع پرداخت‌ها ({ExactMoney(paid)}) کمتر از مبلغ سند ({ExactMoney(grandTotal)}) است؛ " +
+                    ShowFormError($"جمع پرداخت‌ها ({ExactMoney(paid)}) کمتر از مبلغ سند ({ExactMoney(PayableTotal)}) است؛ " +
                                 "باقی‌ماندهٔ " + ExactMoney(remainder) + " ریال به نسیه می‌رود — جزء «نسیه» را فعال و تاریخ سررسید را وارد کنید.");
                     return;
                 }
                 cmd.DueDate = creditDue;
             }
+            if (Type == TransactionType.Purchase && purchaseChequeInterest > 0 && remainder < -PaymentMix.Tolerance)
+            {
+                // در خرید سود چک بخشی از تعهد پرداخت است؛ پس جمع چک‌ها حداکثر می‌تواند
+                // «مبلغ کالا + سود» باشد. بیش از آن دیگر سود نیست، مازاد پرداخت واقعی است.
+                ShowFormError($"جمع پرداخت‌ها ({ExactMoney(paid)}) از مبلغ کالا و سود چک ({ExactMoney(PayableTotal)}) بیشتر است؛ " +
+                              "مبلغ چک‌ها را دستی اصلاح کنید.");
+                return;
+            }
             if (saleChequeCharge is not null)
             {
                 saleChequeCharge.ConfirmedCreditDueDate = cmd.DueDate;
                 cmd.ChequeCharge = saleChequeCharge;
+            }
+            // سود چک خرید: فقط ورودی‌های ماشین‌حساب فرستاده می‌شود و سرور مبلغ سود را
+            // دوباره محاسبه و در ردیف مستقل ذخیره می‌کند (مبلغ فاکتور تغییر نمی‌کند).
+            // سکوت دربارهٔ سودِ از قبل ذخیره‌شده یعنی «همان مقدار قبلی حفظ شود»، پس
+            // حذف باید صریح اعلام شود تا سابقه به‌اشتباه پاک نشود.
+            if (Type == TransactionType.Purchase)
+            {
+                var storedInterest = IsEdit ? EditOrder?.PurchaseChequeInterestAmount ?? 0m : 0m;
+                if (purchaseChequeInterest <= 0)
+                {
+                    if (storedInterest > 0) cmd.ClearPurchaseChequeInterest = true;
+                }
+                else if (purchaseChequeInterestTerms is not null)
+                {
+                    cmd.PurchaseChequeInterest = purchaseChequeInterestTerms;
+                }
+                else if (storedInterest <= 0)
+                {
+                    ShowFormError("جزئیات محاسبهٔ سود چک خرید موجود نیست؛ سود را دوباره از «محاسبه سود چک‌های دستی» محاسبه کنید.");
+                    return;
+                }
+                // else: سود قدیمی بدون ورودی‌های ماشین‌حساب — مقدار ثبت‌شده دست‌نخورده می‌ماند.
             }
         }
 

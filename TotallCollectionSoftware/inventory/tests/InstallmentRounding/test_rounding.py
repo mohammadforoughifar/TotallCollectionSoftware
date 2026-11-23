@@ -148,7 +148,10 @@ class RoundingIntegrationContracts(unittest.TestCase):
         for text in ('CalculatorAmountRange(rowAmounts)', 'rowAmounts.GroupBy(amount => amount)',
                      'rowAmounts[^1]', 'RoundingUnit != 0m', 'ExactMoney(InstSum())',
                      'private bool ExactPaymentDisplay', 'grandTotal % 1m != 0m', 'CashPart % 1m != 0m',
-                     'FinalRemaining < 0 ? "مازاد پرداخت"', 'اختلاف در محدوده تلورانس'):
+                     # The label now comes from one shared rule and compares against the payable
+                     # base, so purchase cheque interest can no longer masquerade as overpayment.
+                     'private string RemainingCaption', 'FinalRemaining < 0',
+                     '"مازاد پرداخت"', 'اختلاف در محدوده تلورانس'):
             self.assertIn(text, form)
         management = read('Inventory.Client/Pages/Shop/ShopCreditManagement.razor')
         for text in ('c.Amount.MoneyExact()', 'i.Amount.MoneyExact()',

@@ -15,6 +15,11 @@ public class OperationsOrderReportDto
     /// <summary>مبلغ کالا و خدمات با ارزش افزوده و بدون تاخیر تادیه چک.</summary>
     public decimal GoodsAmount { get; set; }
     public decimal ChequeIncomeAmount { get; set; }
+    /// <summary>
+    /// سود (هزینهٔ مالی) چک‌های پرداختی فاکتورهای خرید. مبلغ فاکتور این سود را شامل
+    /// نمی‌شود؛ جمع تعهد خرید = <see cref="TotalAmount"/> + این مقدار.
+    /// </summary>
+    public decimal PurchaseChequeInterestAmount { get; set; }
     public decimal AverageDocumentAmount { get; set; }
     public List<OperationsOrderTrendPoint> Trend { get; set; } = new();
     public List<OperationsPartyReportRow> TopParties { get; set; } = new();
