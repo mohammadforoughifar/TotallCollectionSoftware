@@ -1,0 +1,27 @@
+@page "/"
+@namespace RoleGroupSelectionTests
+@using Inventory.Client.Pages.Settings
+@using Microsoft.AspNetCore.Components.Web
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <title>آزمون انتخاب گروهی دسترسی‌ها</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="icons/bootstrap-icons.css" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+    <div class="container py-3">
+        <div class="alert alert-info">محیط آزمون با نقش‌ها و مجوزهای ساختگی — هیچ دسترسی‌ای در سرور اصلی تغییر نمی‌کند.</div>
+        <Roles @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    </div>
+    <script src="js/ui.js"></script>
+    <script src="js/order-entry.js"></script>
+    <script src="fixture-hotkeys.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

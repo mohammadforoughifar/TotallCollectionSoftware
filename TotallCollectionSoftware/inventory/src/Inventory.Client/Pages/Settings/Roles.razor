@@ -181,23 +181,36 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExpandAllPermissionTrees"><i class="bi bi-arrows-expand"></i> باز کردن همه</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CollapseAllPermissionTrees"><i class="bi bi-arrows-collapse"></i> بستن همه</button>
                                 </div>
+                                @if (!string.IsNullOrWhiteSpace(permissionSearch))
+                                {
+                                    <div class="small text-muted mt-2" role="status">
+                                        <i class="bi bi-info-circle" aria-hidden="true"></i>
+                                        «انتخاب نتایج» فقط دسترسی‌های نمایش‌داده‌شدهٔ همان گروه را انتخاب یا لغو می‌کند؛ سایر دسترسی‌ها تغییر نمی‌کنند.
+                                    </div>
+                                }
                             </div>
                             <div class="permission-tree">
                                 @foreach (var cat in VisiblePermissionCategories)
                                 {
-                                    var catGroups = FilterPermissionGroups(allPermissions.Where(p => cat.Modules.Contains(p.Module)).GroupBy(p => p.Module));
+                                    var catGroups = FilterPermissionGroups(allPermissions.Where(p => cat.Modules.Contains(p.Module)).GroupBy(p => p.Module)).ToList();
                                     if (!catGroups.Any()) continue;
-                                    <details class="perm-tree-category" open="@IsTreeOpen(cat.Title)">
-                                        <summary><span class="tree-title"><i class="bi @cat.Icon"></i> @cat.Title</span><span class="tree-count">@catGroups.Sum(g => g.Count(PermissionMatches)) مجوز</span></summary>
+                                    <details class="perm-tree-category" @key="cat.Title" open="@IsTreeOpen(cat.Title)">
+                                        <summary>
+                                            <span class="tree-title"><i class="bi @cat.Icon" aria-hidden="true"></i> @cat.Title</span>
+                                            <span class="perm-tree-actions">@BulkSelection(catGroups.SelectMany(g => g), $"گروه {cat.Title}")</span>
+                                        </summary>
                                         <div class="perm-tree-children">
                                             @foreach (var group in catGroups.OrderBy(g => Array.IndexOf(cat.Modules, g.Key)))
                                             {
-                                                <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span title="@group.Key"><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                <details class="perm-tree-module" @key="group.Key" open="@IsTreeOpen(group.Key)">
+                                                    <summary>
+                                                        <span class="tree-title" title="@group.Key"><i class="bi bi-folder2-open text-primary" aria-hidden="true"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span>
+                                                        <span class="perm-tree-actions">@BulkSelection(group, $"ماژول {ModuleNames.GetValueOrDefault(group.Key, group.Key)}")</span>
+                                                    </summary>
                                                     <div class="perm-leaf-list">
                                                         @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
-                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" disabled="@saving" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
                                                         }
                                                     </div>
                                                 </details>
@@ -205,19 +218,26 @@
                                         </div>
                                     </details>
                                 }
-                                @if (VisibleOtherPermissionGroups.Any())
+                                @{ var otherGroups = VisibleOtherPermissionGroups.ToList(); }
+                                @if (otherGroups.Count > 0)
                                 {
-                                    <details class="perm-tree-category" open="@IsTreeOpen(OtherTreeKey)">
-                                        <summary><span class="tree-title"><i class="bi bi-three-dots"></i> سایر</span><span class="tree-count">@VisibleOtherPermissionGroups.Sum(g => g.Count()) مجوز</span></summary>
+                                    <details class="perm-tree-category" @key="OtherTreeKey" open="@IsTreeOpen(OtherTreeKey)">
+                                        <summary>
+                                            <span class="tree-title"><i class="bi bi-three-dots" aria-hidden="true"></i> سایر</span>
+                                            <span class="perm-tree-actions">@BulkSelection(otherGroups.SelectMany(g => g), "گروه سایر")</span>
+                                        </summary>
                                         <div class="perm-tree-children">
-                                            @foreach (var group in VisibleOtherPermissionGroups)
+                                            @foreach (var group in otherGroups)
                                             {
-                                                <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
-                                                    <summary><span title="@group.Key"><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count(PermissionMatches)</span><input type="checkbox" checked="@group.Where(PermissionMatches).All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                <details class="perm-tree-module" @key="group.Key" open="@IsTreeOpen(group.Key)">
+                                                    <summary>
+                                                        <span class="tree-title" title="@group.Key"><i class="bi bi-folder2-open text-primary" aria-hidden="true"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key))<small class="text-muted">@ModuleKeySuffix(group.Key)</small></span>
+                                                        <span class="perm-tree-actions">@BulkSelection(group, $"ماژول {ModuleNames.GetValueOrDefault(group.Key, group.Key)}")</span>
+                                                    </summary>
                                                     <div class="perm-leaf-list">
                                                         @foreach (var perm in group.Where(PermissionMatches).OrderBy(p => p.Action))
                                                         {
-                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" disabled="@saving" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small class="@PermissionBadgeClass(perm.Module)" title="@(perm.Module + "." + perm.Action)">@PermissionBadgeText(perm.Module, perm.Action)</small></label>
                                                         }
                                                     </div>
                                                 </details>
@@ -281,13 +301,29 @@
     .perm-tree-category, .perm-tree-module { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; }
     .perm-tree-category > summary { background: linear-gradient(135deg,#f1f5ff,#f8fafc); font-weight: 800; }
     .perm-tree-module > summary { background: #f8fafc; font-weight: 700; margin: .45rem .65rem 0; border-radius: 9px; }
-    .permission-tree summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .7rem .85rem; user-select: none; }
+    .permission-tree summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .75rem; padding: .7rem .85rem; user-select: none; }
     .permission-tree summary::-webkit-details-marker { display: none; }
     .permission-tree summary::before { content: '‹'; transform: rotate(-90deg); transition: transform .15s; font-size: 1.1rem; color: #64748b; }
     .permission-tree details[open] > summary::before { transform: rotate(90deg); }
-    .tree-title { display: inline-flex; align-items: center; gap: .45rem; }
-    .tree-count { color: #64748b; font-size: .75rem; white-space: nowrap; }
-    .tree-actions { display: inline-flex; align-items: center; gap: .55rem; }
+    .permission-tree .tree-title { display: inline-flex; flex: 1; min-width: 0; align-items: center; gap: .45rem; overflow-wrap: anywhere; }
+    .permission-tree .tree-title > i { flex-shrink: 0; }
+    .permission-tree .perm-tree-actions { display: inline-flex; align-items: center; gap: .55rem; margin-inline-start: auto; flex-shrink: 0; }
+    .permission-tree .perm-select-all {
+        display: inline-flex; align-items: center; gap: .4rem; min-height: 34px;
+        border: 1px solid #dbe3f5; border-radius: 8px; padding: .3rem .5rem;
+        background: #fff; color: #334155; font-size: .75rem; font-weight: 600;
+        white-space: nowrap; cursor: pointer;
+    }
+    .permission-tree .perm-select-all:hover:not(:disabled) { background: #eef4ff; border-color: #93b4ef; }
+    .permission-tree .perm-select-all:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+    .permission-tree .perm-select-all:disabled { opacity: .55; cursor: default; }
+    .permission-tree .perm-select-box {
+        width: 17px; height: 17px; display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid #94a3b8; border-radius: 4px; flex-shrink: 0; background: #fff;
+    }
+    .permission-tree .perm-select-all[aria-checked="true"] .perm-select-box,
+    .permission-tree .perm-select-all[aria-checked="mixed"] .perm-select-box { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .permission-tree .perm-select-count { color: #64748b; font-size: .72rem; font-variant-numeric: tabular-nums; }
     .perm-tree-children { padding: 0 .65rem .65rem; display: flex; flex-direction: column; gap: .4rem; }
     .perm-leaf-list { padding: .45rem .9rem .7rem 2.1rem; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .35rem .8rem; }
     .perm-leaf { display: flex; align-items: center; gap: .5rem; padding: .35rem .45rem; border-radius: 7px; cursor: pointer; min-width: 0; }
@@ -295,7 +331,11 @@
     .perm-leaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .perm-leaf small { color: #94a3b8; margin-right: auto; direction: ltr; }
     .perm-leaf small.perm-key-fa { direction: rtl; color: #0f766e; font-weight: 600; }
-    @@media (max-width: 650px) { .perm-leaf-list { grid-template-columns: 1fr; padding-right: 1rem; } .tree-count { display:none; } .permission-tree summary { padding: .6rem; } }
+    @@media (max-width: 650px) {
+        .perm-leaf-list { grid-template-columns: 1fr; padding-right: 1rem; }
+        .permission-tree summary { padding: .6rem; }
+        .permission-tree .perm-tree-actions { flex-basis: 100%; justify-content: flex-end; }
+    }
 
     /* ===== رسپانسیو کارت‌های آمار ===== */
     @@media (max-width: 575.98px) {
@@ -398,23 +438,42 @@
 
     private void TogglePermission(int id, bool isChecked)
     {
+        if (saving) return;
         if (isChecked) selectedPermissionIds.Add(id);
         else selectedPermissionIds.Remove(id);
     }
 
-    private void ToggleModuleAll(string module, bool isChecked)
+    private void TogglePermissionGroup(IEnumerable<int> ids, bool isChecked)
     {
-        var modulePerms = allPermissions.Where(p => p.Module == module && IsVisiblePermission(p)).Select(p => p.Id);
-        if (isChecked)
-        {
-            foreach (var id in modulePerms)
-                selectedPermissionIds.Add(id);
-        }
-        else
-        {
-            foreach (var id in modulePerms)
-                selectedPermissionIds.Remove(id);
-        }
+        if (saving) return;
+        if (isChecked) selectedPermissionIds.UnionWith(ids);
+        else selectedPermissionIds.ExceptWith(ids);
+    }
+
+    // یک مجموعهٔ مشترک، مبنای شمارش، وضعیت سه‌حالته و عملیات است؛ در جستجو
+    // دسترسی‌های پنهان تغییر نمی‌کنند و مجوزهای منسوخ مودیان هم انتخاب نمی‌شوند.
+    private RenderFragment BulkSelection(IEnumerable<PermissionDto> permissions, string scope)
+    {
+        var ids = permissions.Where(PermissionMatches).Select(p => p.Id).Distinct().ToArray();
+        var selected = ids.Count(selectedPermissionIds.Contains);
+        var allSelected = ids.Length > 0 && selected == ids.Length;
+        var state = allSelected ? "true" : selected > 0 ? "mixed" : "false";
+        var label = string.IsNullOrWhiteSpace(permissionSearch) ? "انتخاب همه" : "انتخاب نتایج";
+        var action = allSelected ? "لغو انتخاب" : "انتخاب";
+
+        return @<button type="button" class="perm-select-all" role="checkbox" aria-checked="@state"
+                       aria-label="@($"{label} در {scope}")"
+                       aria-description="@($"{selected.FaDigits()} از {ids.Length.FaDigits()} دسترسی انتخاب شده است.")"
+                       title="@($"{action} {ids.Length.FaDigits()} دسترسیِ نمایش‌داده‌شده در {scope}")"
+                       disabled="@(saving || ids.Length == 0)" @onclick:stopPropagation="true"
+                       @onclick="() => TogglePermissionGroup(ids, !allSelected)">
+            <span class="perm-select-box" aria-hidden="true">
+                @if (allSelected) { <i class="bi bi-check-lg"></i> }
+                else if (selected > 0) { <i class="bi bi-dash-lg"></i> }
+            </span>
+            <span>@label</span>
+            <span class="perm-select-count" dir="ltr">@selected.FaDigits() / @ids.Length.FaDigits()</span>
+        </button>;
     }
 
     private async Task SaveRole()

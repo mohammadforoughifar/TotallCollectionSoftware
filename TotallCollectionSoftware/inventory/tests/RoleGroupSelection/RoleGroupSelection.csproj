@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Inventory.Client</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <NoWarn>CS0414;BL0006</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Client code uses the Components RouteData, not MVC routing. -->
+    <Using Remove="Microsoft.AspNetCore.Routing" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="8.0.30" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.30" />
+    <ProjectReference Include="../../src/Inventory.Shared/Inventory.Shared.csproj" />
+    <Compile Include="Program.cs;Fixtures.cs;Tests.cs" />
+    <Compile Include="../../src/Inventory.Client/**/*.cs"
+             Exclude="../../src/Inventory.Client/bin/**;../../src/Inventory.Client/obj/**;../../src/Inventory.Client/Program.cs;../../src/Inventory.Client/**/*.razor.cs"
+             Link="%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Compile and exercise the actual production page and its shared dependencies. -->
+    <RazorComponent Include="../../src/Inventory.Client/_Imports.razor" Link="_Imports.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Shared/**/*.razor" Link="Shared/%(RecursiveDir)%(Filename)%(Extension)" />
+    <RazorComponent Include="../../src/Inventory.Client/Layout/**/*.razor" Link="Layout/%(RecursiveDir)%(Filename)%(Extension)" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Settings/Roles.razor" Link="Pages/Settings/Roles.razor" />
+    <RazorComponent Include="App.razor" />
+  </ItemGroup>
+</Project>
