@@ -208,12 +208,28 @@ else
                                            value="@line.Quantity" @onchange="e => OnQty(idx, e)" disabled="@(!Editable)" /></td>
                                 <td><input type="number" step="any" class="form-control form-control-sm num text-center"
                                            value="@line.UnitPrice" @onchange="e => OnPrice(idx, e)" disabled="@(!Editable)" /></td>
-                                <td><input type="number" step="any" class="form-control form-control-sm num text-center"
-                                           value="@line.DiscountPercent" @onchange="e => OnDiscPercent(idx, e)" disabled="@(!Editable)" /></td>
-                                <td><input type="number" step="any" class="form-control form-control-sm num text-center"
-                                           value="@line.Discount" @onchange="e => OnDiscount(idx, e)" disabled="@(!Editable)" /></td>
-                                <td><input type="number" step="any" class="form-control form-control-sm num text-center"
-                                           value="@line.VatRate" @onchange="e => OnVatRate(idx, e)" disabled="@(!Editable)" /></td>
+                                @* صفر با فوکوس پاک می‌شود تا مستقیم تایپ شود؛ خروج بدون تایپ آن را دوباره «0» می‌کند. *@
+                                <td><input type="text" inputmode="decimal" dir="ltr" class="form-control form-control-sm num text-center"
+                                           data-rate-field="discount-percent" placeholder="0" title="درصد تخفیف (۰ تا ۱۰۰)"
+                                           value="@RateText(RateFieldDiscountPercent, idx, line.DiscountPercent)"
+                                           @onfocus="() => RateFocus(RateFieldDiscountPercent, idx, line.DiscountPercent)"
+                                           @oninput="e => OnDiscPercentText(idx, e.Value?.ToString())"
+                                           @onblur="() => RateBlur(RateFieldDiscountPercent, idx, line.DiscountPercent)"
+                                           disabled="@(!Editable)" /></td>
+                                <td><input type="text" inputmode="numeric" dir="ltr" class="form-control form-control-sm num text-center"
+                                           data-rate-field="discount-amount" placeholder="0" title="مبلغ تخفیف (ریال)"
+                                           value="@RateText(RateFieldDiscountAmount, idx, line.Discount, grouped: true)"
+                                           @onfocus="() => RateFocus(RateFieldDiscountAmount, idx, line.Discount, grouped: true)"
+                                           @oninput="e => OnDiscountText(idx, e.Value?.ToString())"
+                                           @onblur="() => RateBlur(RateFieldDiscountAmount, idx, line.Discount, grouped: true)"
+                                           disabled="@(!Editable)" /></td>
+                                <td><input type="text" inputmode="decimal" dir="ltr" class="form-control form-control-sm num text-center"
+                                           data-rate-field="vat-rate" placeholder="0" title="درصد مالیات و عوارض"
+                                           value="@RateText(RateFieldVat, idx, line.VatRate)"
+                                           @onfocus="() => RateFocus(RateFieldVat, idx, line.VatRate)"
+                                           @oninput="e => OnVatRateText(idx, e.Value?.ToString())"
+                                           @onblur="() => RateBlur(RateFieldVat, idx, line.VatRate)"
+                                           disabled="@(!Editable)" /></td>
                                 <td class="text-center num text-muted">@line.VatAmount.Money()</td>
                                 <td class="text-center num fw-600">@line.Total.Money()</td>
                                 <td class="text-center">
@@ -283,8 +299,14 @@ else
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">تخفیف کلی فاکتور (ریال)</label>
-                            <input type="number" step="any" class="form-control num"
-                                   value="@doc.InvoiceDiscount" @onchange="OnInvoiceDiscount" disabled="@(!Editable)" />
+                            @* صفر با فوکوس پاک می‌شود تا مستقیم تایپ شود؛ خروج بدون تایپ آن را دوباره «0» می‌کند. *@
+                            <input type="text" inputmode="numeric" dir="ltr" class="form-control num" placeholder="0"
+                                   data-rate-field="invoice-discount" title="تخفیف کلی فاکتور (ریال)"
+                                   value="@InvoiceDiscountText"
+                                   @onfocus="OnInvoiceDiscountFocus"
+                                   @oninput="e => OnInvoiceDiscountText(e.Value?.ToString())"
+                                   @onblur="OnInvoiceDiscountBlur"
+                                   disabled="@(!Editable)" />
                             <div class="fs-8 text-muted mt-1">
                                 <i class="bi bi-info-circle"></i> این تخفیف به‌نسبت روی اقلام سرشکن و مأخذ مالیات کاهش می‌یابد.
                             </div>
@@ -336,6 +358,22 @@ else
     private bool loading = true, saving;
     private int pickProductId;
 
+    // متن فیلدهای عددی تخفیف/ارزش افزوده به‌ازای هر فیلد و سطر نگه داشته می‌شود تا
+    // «خالی بودن هنگام فوکوس» با «صفر بودن مقدار» اشتباه نشود.
+    private readonly Dictionary<(string Field, int Index), RateCell> rateCells = new();
+
+    // نام فیلدها به‌صورت ثابت تا در مارک‌آپ لازم نباشد رشته داخل رشته نوشته شود.
+    private const string RateFieldDiscountPercent = "discount-percent";
+    private const string RateFieldDiscountAmount = "discount-amount";
+    private const string RateFieldVat = "vat-rate";
+    private const string RateFieldInvoiceDiscount = "invoice-discount";
+
+    private sealed class RateCell
+    {
+        public string Text = InvoiceRateInput.Text(0);
+        public bool Focused;
+    }
+
     private bool Editable => doc.Status == InvoiceStatus.Draft;
     private bool IsBuying => doc.Kind is InvoiceKind.Purchase or InvoiceKind.PurchaseReturn;
 
@@ -379,6 +417,8 @@ else
             }
             originalLineQuantities = doc.Lines.Where(l => l.Id > 0)
                 .ToDictionary(l => l.Id, l => l.Quantity);
+            // متن فیلدهای نرخ/تخفیف با شمارهٔ سطر به سندِ بارگذاری‌شده گره می‌خورد.
+            rateCells.Clear();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -432,6 +472,13 @@ else
         if (idx < 0 || idx >= doc.Lines.Count) return;
         doc.Lines.RemoveAt(idx);
         for (var i = 0; i < doc.Lines.Count; i++) doc.Lines[i].RowNo = i + 1;
+        // متن فیلدهای عددی به شمارهٔ سطر گره خورده است؛ پس از حذف باید جابه‌جا شود.
+        foreach (var key in rateCells.Keys.Where(k => k.Index >= idx).ToList())
+        {
+            var cell = rateCells[key];
+            rateCells.Remove(key);
+            if (key.Index > idx) rateCells[(key.Field, key.Index - 1)] = cell;
+        }
     }
 
     private void OnQty(int idx, ChangeEventArgs e)
@@ -448,30 +495,81 @@ else
         Recalc(line);
     }
 
-    private void OnDiscPercent(int idx, ChangeEventArgs e)
+    /// <summary>
+    /// متن نمایشی فیلد نرخ/مبلغ: در فوکوس همان چیزی که کاربر می‌بیند/تایپ می‌کند و
+    /// در غیر فوکوس، قالب مقدار مدل (صفر → «0» و مبلغ ریالی سه‌رقمی‌جدا).
+    /// </summary>
+    private string RateText(string field, int idx, decimal value, bool grouped = false)
+        => rateCells.TryGetValue((field, idx), out var cell) && cell.Focused
+            ? cell.Text
+            : InvoiceRateInput.Text(value, grouped);
+
+    /// <summary>فوکوس: صفرِ پیش‌فرض پاک می‌شود تا عدد جدید بدون حذف دستی تایپ شود.</summary>
+    private void RateFocus(string field, int idx, decimal value, bool grouped = false)
+    {
+        var cell = Cell(field, idx);
+        cell.Focused = true;
+        cell.Text = InvoiceRateInput.Focused(value, grouped);
+    }
+
+    /// <summary>خروج از فیلد: بدون تایپ دوباره «0» می‌شود، با تایپ همان عدد در قالب خودش.</summary>
+    private void RateBlur(string field, int idx, decimal value, bool grouped = false)
+    {
+        var cell = Cell(field, idx);
+        cell.Focused = false;
+        cell.Text = InvoiceRateInput.AfterBlur(cell.Text, value, grouped);
+    }
+
+    private RateCell Cell(string field, int idx)
+    {
+        if (!rateCells.TryGetValue((field, idx), out var cell))
+            rateCells[(field, idx)] = cell = new RateCell();
+        return cell;
+    }
+
+    private void OnDiscPercentText(int idx, string? raw)
     {
         var line = doc.Lines[idx];
-        line.DiscountPercent = Math.Clamp(Fa.ParseDecimal(e.Value?.ToString()), 0, 100);
+        Cell(RateFieldDiscountPercent, idx).Text = InvoiceRateInput.Typing(raw);
+        line.DiscountPercent = Math.Clamp(InvoiceRateInput.Value(raw), 0, 100);
         Recalc(line);
     }
 
-    private void OnDiscount(int idx, ChangeEventArgs e)
+    private void OnDiscountText(int idx, string? raw)
     {
         var line = doc.Lines[idx];
+        Cell(RateFieldDiscountAmount, idx).Text = InvoiceRateInput.Typing(raw, grouped: true);
         line.DiscountPercent = 0;
-        line.Discount = Math.Clamp(Fa.ParseDecimal(e.Value?.ToString()), 0, line.Gross);
+        line.Discount = Math.Clamp(InvoiceRateInput.Value(raw), 0, line.Gross);
         Recalc(line);
     }
 
-    private void OnVatRate(int idx, ChangeEventArgs e)
+    private void OnVatRateText(int idx, string? raw)
     {
         var line = doc.Lines[idx];
-        line.VatRate = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));
+        Cell(RateFieldVat, idx).Text = InvoiceRateInput.Typing(raw);
+        line.VatRate = InvoiceRateInput.Value(raw);
         Recalc(line);
     }
 
-    private void OnInvoiceDiscount(ChangeEventArgs e)
-        => doc.InvoiceDiscount = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));
+    private string InvoiceDiscountText
+        => RateText(RateFieldInvoiceDiscount, 0, doc.InvoiceDiscount, grouped: true);
+
+    private void OnInvoiceDiscountFocus()
+        => RateFocus(RateFieldInvoiceDiscount, 0, doc.InvoiceDiscount, grouped: true);
+
+    private void OnInvoiceDiscountText(string? raw)
+    {
+        Cell(RateFieldInvoiceDiscount, 0).Text = InvoiceRateInput.Typing(raw, grouped: true);
+        doc.InvoiceDiscount = InvoiceRateInput.Value(raw);
+    }
+
+    private void OnInvoiceDiscountBlur()
+    {
+        var cell = Cell(RateFieldInvoiceDiscount, 0);
+        cell.Focused = false;
+        cell.Text = InvoiceRateInput.AfterBlur(cell.Text, doc.InvoiceDiscount, grouped: true);
+    }
 
     private void OnShipping(ChangeEventArgs e)
         => doc.ShippingCost = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));

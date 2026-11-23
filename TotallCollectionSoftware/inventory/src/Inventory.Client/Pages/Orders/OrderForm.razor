@@ -605,8 +605,11 @@
                                 <td data-label="مبلغ کل (ریال)" class="num fw-500"><span class="order-line-value">@l.Gross.MoneyExact()</span></td>
                                 <td data-label="تخفیف (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
+                                        @* صفر با فوکوس پاک می‌شود تا مستقیم تایپ شود؛ خروج بدون تایپ آن را دوباره «0» می‌کند. *@
                                         <input class="form-control form-control-sm text-center num order-line-control" aria-label="تخفیف درصد یا ریال"
+                                               data-rate-field="discount"
                                                value="@l.DiscountText"
+                                               @onfocus="() => OnLineDiscountFocus(l)"
                                                @oninput="e => OnLineDiscountInput(l, e.Value?.ToString())"
                                                @onblur="() => OnLineDiscountBlur(l)"
                                                placeholder="0" inputmode="numeric" dir="ltr" />
@@ -622,9 +625,14 @@
                                 <td data-label="پس از تخفیف (ریال)" class="num fw-500"><span class="order-line-value">@l.AfterDiscount.MoneyExact()</span></td>
                                 <td data-label="ارزش افزوده (٪ یا ریال)">
                                     <div class="input-group input-group-sm order-line-rate">
+                                        @* صفر با فوکوس پاک می‌شود تا مستقیم تایپ شود؛ خروج بدون تایپ آن را دوباره «0» می‌کند. *@
                                         <input class="form-control form-control-sm text-center num order-line-control" aria-label="ارزش افزوده درصد یا ریال" data-order-last-field
-                                               value="@l.VatText" @oninput="@(e => l.VatText = FormatNum(e.Value))" maxlength="24"
-                                               placeholder="0" inputmode="decimal" dir="ltr" />
+                                               data-rate-field="vat"
+                                               value="@l.VatText"
+                                               @onfocus="() => OnVatFocus(l)"
+                                               @oninput="@(e => OnVatInput(l, e.Value))"
+                                               @onblur="() => OnVatBlur(l)"
+                                               placeholder="0" inputmode="decimal" maxlength="24" dir="ltr" />
                                         <span class="input-group-text order-line-unit" title="@(l.VatValue > 100 ? "مبلغ ریالی" : "درصد")">@(l.VatValue > 100 ? "ریال" : "٪")</span>
                                     </div>
                                     <div class="fs-9 mt-1 text-primary num order-line-sub">@l.VatAmount.MoneyExact() ریال</div>
@@ -1248,7 +1256,7 @@
         /// </summary>
         public bool PriceIsAuto { get; set; }
         public string Unit { get; set; } = "";
-        public string DiscountText { get; set; } = "";
+        public string DiscountText { get; set; } = InvoiceRateInput.Text(0);
         public decimal DiscountPercent { get; set; }
         public decimal DiscountAmount { get; set; }
         public bool DiscountIsAmount { get; set; }
@@ -1259,7 +1267,7 @@
             (DiscountIsAmount ? OriginalDiscountAmount == DiscountAmount : OriginalDiscountPercent == DiscountPercent && OriginalDiscountAmount == DiscountAmount);
         public decimal Gross => SameOriginalBasis && OriginalGross.HasValue ? OriginalGross.Value :
             ShopInvoiceAmounts.TryGross(Qty, Price, out var gross) ? gross : 0m;
-        public string VatText { get; set; } = "";
+        public string VatText { get; set; } = InvoiceRateInput.Text(0);
         public decimal VatValue => Math.Max(0, Fa.ParseDecimal(VatText));
         public decimal AfterDiscount => Math.Max(0, Gross - DiscountAmount);
         public decimal VatAmount => SameOriginalDiscount && OriginalVatValue == VatValue && OriginalVatAmount.HasValue
@@ -2196,12 +2204,9 @@
                         DiscountPercent = l.DiscountPercent,
                         DiscountAmount = l.DiscountAmount,
                         DiscountIsAmount = l.DiscountIsAmount,
-                        VatText = FormatNum(l.VatValue.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))
+                        VatText = VatTextOf(l.VatValue)
                     };
-                    if (vm.DiscountIsAmount)
-                        vm.DiscountText = vm.DiscountAmount > 0 ? FormatNum(ExactDecimal(vm.DiscountAmount)) : "";
-                    else
-                        vm.DiscountText = vm.DiscountPercent > 0 ? ExactDecimal(vm.DiscountPercent) : "";
+                    vm.DiscountText = DiscountTextOf(vm);
                     return vm;
                 }).ToList();
                 if (lines.Count == 0) lines.Add(new LineVm());
@@ -2246,12 +2251,10 @@
                             DiscountPercent = l.DiscountPercent,
                             DiscountAmount = l.DiscountAmount,
                             DiscountIsAmount = l.DiscountIsAmount,
-                            VatText = FormatNum(ExactDecimal(l.VatValue))
+                            VatText = l.VatValue > 0 ? FormatNum(ExactDecimal(l.VatValue)) : InvoiceRateInput.Text(0)
                         };
                         RecalcDiscount(vm);
-                        vm.DiscountText = vm.DiscountIsAmount
-                            ? (vm.DiscountAmount > 0 ? FormatNum(ExactDecimal(vm.DiscountAmount)) : "")
-                            : (vm.DiscountPercent > 0 ? ExactDecimal(vm.DiscountPercent) : "");
+                        vm.DiscountText = DiscountTextOf(vm);
                         return vm;
                     }).ToList();
                     if (lines.Count == 0) lines.Add(new LineVm());
@@ -2402,10 +2405,10 @@
                 l.Unit = "";
                 l.PriceText = "";
                 l.PriceIsAuto = false;
-                l.DiscountText = "";
+                l.DiscountText = InvoiceRateInput.Text(0);
                 l.DiscountAmount = 0;
                 l.DiscountPercent = 0;
-                l.VatText = "0";
+                l.VatText = InvoiceRateInput.Text(0);
                 InvoiceInfo($"کالای «{p?.Name ?? "انتخاب‌شده"}» در این انبار موجود/مجاز نیست و از سطرها حذف شد.");
             }
         }
@@ -2435,6 +2438,16 @@
         }
     }
 
+    /// <summary>
+    /// فوکوس روی فیلد تخفیف: صفرِ پیش‌فرض پاک می‌شود تا کاربر بدون حذف دستی تایپ کند؛
+    /// مقدار موجود دست نمی‌خورد.
+    /// </summary>
+    private void OnLineDiscountFocus(LineVm l)
+    {
+        if (l.DiscountPercent > 0 || l.DiscountAmount > 0) return;
+        l.DiscountText = InvoiceRateInput.Focused(0);
+    }
+
     private void OnLineDiscountInput(LineVm l, string? raw)
     {
         l.DiscountText = raw ?? "";
@@ -2453,18 +2466,51 @@
         RecalcDiscount(l);
     }
 
+    /// <summary>خروج از فیلد تخفیف: اگر چیزی تایپ نشده باشد، مقدار صفر و فیلد دوباره «0» می‌شود.</summary>
     private void OnLineDiscountBlur(LineVm l)
     {
-        RecalcDiscount(l);
-        if (l.DiscountIsAmount)
+        if (string.IsNullOrWhiteSpace(l.DiscountText))
         {
-            l.DiscountText = l.DiscountAmount > 0 ? FormatNum(ExactDecimal(l.DiscountAmount)) : "";
+            l.DiscountIsAmount = false;
+            l.DiscountPercent = 0;
+            l.DiscountAmount = 0;
         }
         else
         {
-            l.DiscountText = l.DiscountPercent > 0 ? l.DiscountPercent.ToString("0.##") : "";
+            RecalcDiscount(l);
         }
+        l.DiscountText = DiscountTextOf(l);
     }
+
+    /// <summary>فوکوس روی فیلد ارزش افزوده: صفرِ پیش‌فرض پاک می‌شود.</summary>
+    private void OnVatFocus(LineVm l)
+    {
+        if (l.VatValue > 0) return;
+        l.VatText = InvoiceRateInput.Focused(0);
+    }
+
+    private void OnVatInput(LineVm l, object? raw)
+    {
+        // عدد جدید بدون پیشوند صفر و با جداکنندهٔ سه‌رقمی تایپ می‌شود.
+        l.VatText = InvoiceRateInput.Typing(raw?.ToString(), grouped: true);
+        RecalcDiscount(l);
+    }
+
+    /// <summary>خروج از فیلد ارزش افزوده: خروج بدون تایپ یعنی صفر، پس فیلد دوباره «0» می‌شود.</summary>
+    private void OnVatBlur(LineVm l)
+    {
+        l.VatText = VatTextOf(l.VatValue);
+        RecalcDiscount(l);
+    }
+
+    /// <summary>متن ارزش افزوده: صفر «0» نمایش داده می‌شود، بقیه با قالب عددی قبلی.</summary>
+    private static string VatTextOf(decimal value) =>
+        value > 0 ? FormatNum(ExactDecimal(value)) : InvoiceRateInput.Text(0);
+
+    /// <summary>متن تخفیف: درصد بدون جداکننده و مبلغ ریالی با جداکننده؛ صفر «0».</summary>
+    private static string DiscountTextOf(LineVm l) => l.DiscountIsAmount
+        ? (l.DiscountAmount > 0 ? FormatNum(ExactDecimal(l.DiscountAmount)) : InvoiceRateInput.Text(0))
+        : (l.DiscountPercent > 0 ? ExactDecimal(l.DiscountPercent) : InvoiceRateInput.Text(0));
 
     private Guid? pendingLineFocus;
 
@@ -2517,9 +2563,9 @@
         l.PriceNotice = null;
         l.PriceIsAuto = false;
         var p = products.FirstOrDefault(x => x.Id == id);
-        if (p is null) { l.VatText = "0"; RecalcDiscount(l); return; }
+        if (p is null) { l.VatText = InvoiceRateInput.Text(0); RecalcDiscount(l); return; }
         l.Unit = p.Unit;
-        l.VatText = FormatNum(ExactDecimal(p.InvoiceVatValue ?? 0));
+        l.VatText = VatTextOf(p.InvoiceVatValue ?? 0);
         if (Type != TransactionType.Sale)
         {
             if (p.PurchasePrice > 0) l.PriceText = PurchaseSalePriceInput.Format(ExactDecimal(p.PurchasePrice));
