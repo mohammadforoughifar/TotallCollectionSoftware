@@ -159,6 +159,57 @@ class PurchaseChequeInterestFlow(unittest.TestCase):
         self.assertNotIn('payableGoodsOnly', save)
 
 
+class ManualChequeInterestForPurchase(unittest.TestCase):
+    """«محاسبه سود چک‌های دستی» must exist for purchases too (parity with sales)."""
+
+    def test_button_is_available_for_both_invoice_types(self):
+        # Previously the button was wrapped in @if (Type == TransactionType.Sale).
+        self.assertIn('data-cheque-interest-only', FORM)
+        self.assertIn('@onclick="() => OpenCalc(true, interestOnly: true)"', FORM)
+        self.assertNotIn('@if (Type == TransactionType.Sale)\n                                        {\n                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only', FORM)
+        # The cheque component header must render it unconditionally.
+        cheque_box = block('data-pay-cheque-box', 'data-pay-add-cheque')
+        self.assertIn('data-cheque-interest-only', cheque_box)
+        self.assertIn('محاسبه سود چک‌های دستی', cheque_box)
+
+    def test_interest_only_mode_is_not_restricted_to_sales(self):
+        self.assertIn('calcInterestOnly = forCheque && interestOnly;', FORM)
+        self.assertNotIn('calcInterestOnly = forCheque && Type == TransactionType.Sale && interestOnly;', FORM)
+
+    def test_purchase_interest_only_keeps_amounts_and_stores_interest(self):
+        apply = block('private void ApplyCalc()', 'private List<ChequeDto> cheques')
+        branch = apply.split('if (Type == TransactionType.Purchase)', 1)[1].split('var hadCharge', 1)[0]
+        # Never touch cheque rows or the invoice total in this mode.
+        self.assertNotIn('chequeAmounts', branch)
+        self.assertNotIn('cheques =', branch)
+        self.assertNotIn('saleChequeIncome = calculation.Interest', branch)
+        self.assertIn('saleChequeIncome = 0m;', branch)
+        self.assertIn('purchaseChequeInterest = calculation.Interest;', branch)
+        self.assertIn('مبنای سود بیشتر از مبلغ کالا و ارزش افزوده است.', branch)
+
+    def test_purchase_base_never_compounds_previous_interest(self):
+        base = block('private decimal CalculatorSuggestedBase', 'private static string ExactMoney')
+        self.assertIn('calcInterestOnly && Type == TransactionType.Purchase', base)
+        self.assertIn('Math.Max(0m, goodsTotal - CashPart)', base)
+
+    def test_interest_can_be_cleared_without_touching_payments(self):
+        clear = block('private void ClearPurchaseChequeInterest()', 'InvoiceInfo("سود چک حذف شد')
+        self.assertIn('purchaseChequeInterest = 0m;', clear)
+        self.assertNotIn('chequeAmounts', clear)
+        self.assertNotIn('saleChequeIncome', clear)
+        self.assertNotIn('cheques =', clear)
+        self.assertIn('data-purchase-cheque-interest-clear', FORM)
+        self.assertIn('ClearPurchaseChequeInterest', FORM)
+
+    def test_titles_and_hints_match_the_invoice_type(self):
+        self.assertIn('private string ChequeInterestOnlyTitle', FORM)
+        self.assertIn('private string ChequeInterestOnlyCaption', FORM)
+        self.assertIn('private string CalculatorBaseHint', FORM)
+        self.assertIn('@CalculatorBaseHint', FORM)
+        self.assertIn('@(calcInterestOnly ? ChequeInterestOnlyCaption', FORM)
+        self.assertIn('data-purchase-cheque-interest-only-note', FORM)
+
+
 class PurchaseChequeInterestRecordedValues(unittest.TestCase):
     """The interest shown must equal cheque-total minus goods, exactly."""
 

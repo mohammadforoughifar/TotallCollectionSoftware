@@ -146,6 +146,10 @@
                                     <div class="purchase-summary-cheque-interest" data-purchase-cheque-interest aria-live="polite">
                                         <span>سود چک (هزینهٔ مالی خرید) — جدا از مبلغ کالا و مازاد پرداخت</span>
                                         <strong class="num">@(ExactPaymentDisplay ? ExactMoney(PurchaseChequeInterest) : PurchaseChequeInterest.Money())</strong>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-purchase-cheque-interest-clear
+                                                title="حذف سود چک؛ مبلغ فاکتور و چک‌ها تغییر نمی‌کند" @onclick="ClearPurchaseChequeInterest">
+                                            حذف سود چک
+                                        </button>
                                         <small>این مبلغ در مبلغ نهایی فاکتور نیست؛ جمع چک‌ها = مبلغ کالا + همین سود.</small>
                                     </div>
                                 }
@@ -249,12 +253,10 @@
                                 <div class="mt-3" data-pay-cheque-box>
                                     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                                         <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
-                                        @if (Type == TransactionType.Sale)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only title="محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها" @onclick="() => OpenCalc(true, interestOnly: true)">
-                                                <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
-                                            </button>
-                                        }
+                                        <button type="button" class="btn btn-sm btn-outline-primary" data-cheque-interest-only
+                                                title="@ChequeInterestOnlyTitle" @onclick="() => OpenCalc(true, interestOnly: true)">
+                                            <i class="bi bi-percent"></i> محاسبه سود چک‌های دستی
+                                        </button>
                                         <button type="button" class="btn btn-sm btn-calc ms-auto" title="محاسبه اقساط چک" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
@@ -957,14 +959,14 @@
                OnSaved="OnPurchaseFormSaved" OnCancel="ClosePurchaseForm" />
 }
 
-<Modal Visible="showCalc" Title="@(calcInterestOnly ? "محاسبه تاخیر تادیه چک‌های دستی" : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
+<Modal Visible="showCalc" Title="@(calcInterestOnly ? ChequeInterestOnlyCaption : calcForCheque ? "محاسبه اقساطِ چک با سود" : "محاسبه اقساط با سود")" OnClose="() => showCalc = false">
     <ChildContent>
         <div class="row g-3" data-order-calculator="@formKey">
             <div class="col-md-6">
                 <label class="form-label">مبلغ پایه (ریال)</label>
                 <input class="form-control num" value="@calcBaseText"
                        @oninput="@(e => calcBaseText = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
-                <div class="fs-8 text-muted mt-1">@(calcForCheque && Type == TransactionType.Sale ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط" : "مبنای پیشنهادی: باقیماندهٔ سند پس از کسر سایر پرداخت‌ها") (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
+                <div class="fs-8 text-muted mt-1">@CalculatorBaseHint (@ExactMoney(CalculatorSuggestedBase) ریال)</div>
             </div>
             <div class="col-md-6">
                 <label class="form-label">درصد سود ماهانه</label>
@@ -1033,7 +1035,16 @@
             }
             @if (calcInterestOnly)
             {
-                <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
+                @if (Type == TransactionType.Purchase)
+                {
+                    <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8" data-purchase-cheque-interest-only-note>
+                        این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی و همچنین مبلغ فاکتور را تغییر نمی‌دهد؛ سود چک فقط در ردیف مستقل «سود چک (هزینهٔ مالی خرید)» نمایش داده می‌شود. برای اعمال سود روی مبلغ چک‌ها از «محاسبه اقساطِ چک» استفاده کنید.
+                    </div></div>
+                }
+                else
+                {
+                    <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8">این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی را تغییر نمی‌دهد. پس از افزودن سود، جمع پرداخت‌ها را خودتان بررسی و اختلاف را تعیین‌تکلیف کنید.</div></div>
+                }
             }
             else
             {
@@ -1486,6 +1497,38 @@
     /// <summary>سود چک خرید؛ برای بقیهٔ انواع سند صفر است.</summary>
     private decimal PurchaseChequeInterest => Type == TransactionType.Purchase ? purchaseChequeInterest : 0m;
 
+    /// <summary>
+    /// حذف سود چک محاسبه‌شدهٔ خرید. مبلغ، شماره، بانک و سررسید چک‌ها و مبلغ فاکتور
+    /// دست‌نخورده می‌مانند؛ سود فقط از عنوان مستقل خود پاک می‌شود.
+    /// </summary>
+    private void ClearPurchaseChequeInterest()
+    {
+        if (purchaseChequeInterest <= 0) return;
+        purchaseChequeInterest = 0m;
+        chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0m;
+        InvoiceInfo("سود چک حذف شد؛ مبلغ فاکتور و چک‌ها تغییر نکرده است.");
+    }
+
+    /// <summary>
+    /// عنوان راهنمای دکمهٔ «محاسبه سود چک‌های دستی». در فروش سود همان «تاخیر تادیه چک»
+    /// است؛ در خرید هزینهٔ مالی چک پرداختی است و مبلغ فاکتور را تغییر نمی‌دهد.
+    /// </summary>
+    private string ChequeInterestOnlyTitle => Type == TransactionType.Purchase
+        ? "محاسبه سود چک (هزینهٔ مالی) برای چک‌های دستی، بدون تغییر مبلغ آن‌ها و بدون افزودن به مبلغ فاکتور"
+        : "محاسبه تاخیر تادیه برای چک‌های دستی، بدون تغییر مبلغ آن‌ها";
+
+    /// <summary>عنوان پنجرهٔ ماشین‌حساب برای حالت «فقط سود».</summary>
+    private string ChequeInterestOnlyCaption => Type == TransactionType.Purchase
+        ? "محاسبه سود چک‌های دستی"
+        : "محاسبه تاخیر تادیه چک‌های دستی";
+
+    /// <summary>توضیح «مبلغ پایه» در ماشین‌حساب، هم‌سو با نوع سند.</summary>
+    private string CalculatorBaseHint => calcInterestOnly && Type == TransactionType.Purchase
+        ? "مبنای پیشنهادی: مبلغ کالا و ارزش افزوده (سود به مبلغ فاکتور اضافه نمی‌شود)"
+        : calcForCheque && Type == TransactionType.Sale
+            ? "مبنای پیشنهادی: اصل کالا با ارزش افزوده پس از کسر نقد و اقساط"
+            : "مبنای پیشنهادی: باقی‌ماندهٔ سند پس از کسر سایر پرداخت‌ها";
+
     /// <summary>جزء نقدی: اگر تنها جزء فعال باشد تمام مبلغ سند است، وگرنه مبلغی که کاربر وارد می‌کند.</summary>
     private decimal CashPart => UseInvoiceWizard && !useCash
         ? 0m
@@ -1651,8 +1694,14 @@
         }
     }
 
-    private decimal CalculatorSuggestedBase => calcForCheque && Type == TransactionType.Sale
-        ? Math.Max(0m, goodsTotal - CashPart - InstSum())
+    private decimal CalculatorSuggestedBase =>
+        // فروش: سود روی اصل کالا پس از کسر نقد و اقساط.
+        calcForCheque && Type == TransactionType.Sale
+            ? Math.Max(0m, goodsTotal - CashPart - InstSum())
+        // خرید در حالت «فقط سود»: مبنا مبلغ کالاست؛ PayableTotal شامل سود قبلی است و
+        // استفاده از آن سود را روی سود محاسبه می‌کرد.
+        : calcInterestOnly && Type == TransactionType.Purchase
+            ? Math.Max(0m, goodsTotal - CashPart)
         : Math.Max(0m, calcForCheque ? PayableTotal - CashPart - InstSum() : PayableTotal - CashPart - ChequeSum());
 
     private static string ExactMoney(decimal amount) => Fa.MoneyExact(amount);
@@ -1690,7 +1739,7 @@
     private void OpenCalc(bool forCheque, bool interestOnly = false)
     {
         calcForCheque = forCheque;
-        calcInterestOnly = forCheque && Type == TransactionType.Sale && interestOnly;
+        calcInterestOnly = forCheque && interestOnly;
         // هنگام محاسبهٔ مجدد، سود قبلی نباید دوباره بخشی از مبنای چک شود.
         var baseRemain = CalculatorSuggestedBase;
         if (forCheque && Type == TransactionType.Sale && saleChequeCharge is not null)
@@ -1778,6 +1827,11 @@
             {
                 // خرید ردیف تاخیر تادیه ندارد؛ سود فقط عنوان مستقل «سود چک» است و
                 // عمداً در saleChequeIncome (که به مبلغ فاکتور اضافه می‌شود) نمی‌نشیند.
+                if (calculation.BaseAmount > goodsTotal)
+                {
+                    InvoiceError("مبنای سود بیشتر از مبلغ کالا و ارزش افزوده است.");
+                    return;
+                }
                 saleChequeCharge = null;
                 saleChequeIncome = 0m;
                 purchaseChequeInterest = calculation.Interest;
@@ -1786,7 +1840,9 @@
                 chargeInstallmentBase = InstSum();
                 removedCalculatedChequeIncome = false;
                 showCalc = false;
-                InvoiceInfo($"سود چک {ExactMoney(calculation.Interest)} ریال برای فاکتور خرید محاسبه شد؛ مبلغ فاکتور و چک‌ها تغییر نکرد و سود در عنوان مستقل «سود چک» نمایش داده می‌شود.");
+                InvoiceInfo(calculation.Interest <= 0
+                    ? "سود محاسبه‌شده صفر است؛ مبلغ فاکتور و چک‌ها تغییر نکرد."
+                    : $"سود چک {ExactMoney(calculation.Interest)} ریال برای فاکتور خرید محاسبه شد؛ مبلغ فاکتور و چک‌ها تغییر نکرد و سود در عنوان مستقل «سود چک» نمایش داده می‌شود.");
                 return;
             }
             var hadCharge = saleChequeCharge is not null;

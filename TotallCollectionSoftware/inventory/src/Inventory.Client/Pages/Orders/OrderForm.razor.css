@@ -62,6 +62,7 @@
 .purchase-summary-cheque-interest span { color: #92400e; font-weight: 600; }
 .purchase-summary-cheque-interest strong { color: #b45309; font-weight: 800; font-variant-numeric: tabular-nums; }
 .purchase-summary-cheque-interest small { flex: 1 1 100%; color: #a16207; font-size: .7rem; line-height: 1.6; }
+.purchase-summary-cheque-interest .btn { flex: 0 0 auto; padding: .15rem .5rem; font-size: .72rem; border-radius: 7px; }
 .purchase-payment .pay-box { border-radius: 12px; padding: 1rem; }
 .purchase-payment .pay-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); gap: .6rem; }
 .purchase-payment .pay-tab { min-height: 42px; padding: .5rem .7rem; border-radius: 10px; font-size: .85rem; }
