@@ -24,7 +24,7 @@ public static class GoodsIssuesPrint
         {
             ["__CSS__"] = Css.Replace("__PAGE_SIZE__", a5 ? "A5" : "A4").Replace("__PAGE_MARGIN__", a5 ? "6mm" : "10mm"),
             ["__PAPER_CLASS__"] = a5 ? "a5" : "", ["__COMPANY__"] = Esc(company), ["__NUMBER__"] = Esc(d.Number),
-            ["__DATE__"] = d.Date.ToFa().FaDigits(), ["__PARTY__"] = Esc(d.PartyName),
+            ["__DATE__"] = d.Date.ToFa().FaDigits(), ["__PARTY__"] = Esc(d.PartyName), ["__WAREHOUSE__"] = Esc(d.WarehouseName),
             ["__COUNT__"] = d.Lines.Count.Num(), ["__QUANTITY__"] = d.TotalQuantity.Qty(),
             ["__ITEMS__"] = items.ToString(), ["__NOTES__"] = Esc(d.Description),
             ["__LOGO__"] = logoDataUrl?.StartsWith("data:image/png;base64,", StringComparison.Ordinal) == true
@@ -40,7 +40,7 @@ public static class GoodsIssuesPrint
     public const string Template = """
 <!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>بیجک تحویل کالا __NUMBER__</title><style>__CSS__</style></head><body><article class="invoice classic __PAPER_CLASS__" id="invoice" aria-label="بیجک تحویل کالا">
   <header class="invoice-header"><div class="logo-cell">__LOGO__</div><div class="title-cell"><span class="document-kind" id="document-title">بیجک تحویل کالا</span><h2>__COMPANY__</h2></div><dl class="document-meta"><div><dt>شماره بیجک</dt><dd id="invoice-number">__NUMBER__</dd></div><div><dt>تاریخ</dt><dd id="invoice-date">__DATE__</dd></div></dl></header>
-  <section class="buyer"><div class="section-tag" id="party-label">گیرندهٔ کالا</div><div class="buyer-details"><div><span>نام / عنوان</span><strong id="printed-customer-name">__PARTY__</strong></div></div></section>
+  <section class="buyer"><div class="section-tag" id="party-label">گیرندهٔ کالا</div><div class="buyer-details"><div><span>نام / عنوان</span><strong id="printed-customer-name">__PARTY__</strong></div><div><span>انبار</span><strong>__WAREHOUSE__</strong></div></div></section>
   <section class="items-section"><div class="table-caption"><strong>اقلام بیجک</strong><span><span id="line-count">__COUNT__</span> ردیف · <span id="quantity-total">__QUANTITY__</span> جمع مقدار</span></div><table class="items" aria-label="اقلام بیجک بدون قیمت"><colgroup><col style="width:7%"><col style="width:55%"><col style="width:15%"><col style="width:23%"></colgroup><thead><tr><th class="row-heading" scope="col">ردیف</th><th scope="col">شرح کالا</th><th scope="col">تعداد</th><th scope="col">ملاحظات</th></tr></thead><tbody id="item-rows">__ITEMS__</tbody></table></section>
 
   <section class="signatures" id="signatures"><div><strong>امضای تحویل‌دهنده</strong><span>نام و امضا</span></div><div><strong>امضای تحویل‌گیرنده</strong><span>نام، مهر و امضا</span></div></section>

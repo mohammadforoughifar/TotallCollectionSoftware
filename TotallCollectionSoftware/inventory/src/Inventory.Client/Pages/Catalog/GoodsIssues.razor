@@ -191,6 +191,18 @@
                     <label class="form-label">شماره حواله</label>
                     <input class="form-control" value="@(editing ? form.Number : "خودکار")" disabled />
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label">انبار (اختیاری)</label>
+                    @if (viewing)
+                    {
+                        <input class="form-control" value="@(form.WarehouseName ?? "—")" disabled />
+                    }
+                    else
+                    {
+                        <SearchSelect Items="warehouseLookup" Value="@(form.WarehouseId ?? 0)" ValueChanged="v => form.WarehouseId = v > 0 ? v : null" Placeholder="انتخاب انبار…" />
+                    }
+                    <div class="fs-8 text-muted">فقط برای ثبت در بیجک؛ موجودی تغییر نمی‌کند و فهرست کالاها موجودی کل را نشان می‌دهد.</div>
+                </div>
                 <div class="col-12">
                     <label class="form-label">توضیحات</label>
                     <input class="form-control" @bind="form.Description" disabled="@viewing" placeholder="اختیاری" />
@@ -420,6 +432,7 @@
     // ---------- فهرست ----------
     private List<GoodsIssueDto> items = new();
     private List<LookupItem> partyLookup = new();
+    private List<LookupItem> warehouseLookup = new();
     private bool loading = true;
 
     // ---------- انتخاب کالا از انبار (در کنار ورود نام دستی) ----------
@@ -468,6 +481,8 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
 
+        try { warehouseLookup = await IssueSvc.GetWarehouseOptionsAsync(); }
+        catch (Exception ex) { Toast.Error("فهرست انبارها دریافت نشد. " + ex.Message); }
         await LoadProductOptionsAsync();
     }
 
@@ -546,7 +561,9 @@
         form.Lines.Add(new GoodsIssueLineDto());
         viewing = false;
         showForm = true;
-        // فهرست انبار برای انتخاب‌گر؛ نبودنش ورود دستی را نمی‌بندد
+        // انبارهای تازه تعریف‌شده نیز بدون خروج از صفحه دیده شوند.
+        try { warehouseLookup = await IssueSvc.GetWarehouseOptionsAsync(); }
+        catch (Exception ex) { Toast.Error("فهرست انبارها دریافت نشد. " + ex.Message); }
         await LoadProductOptionsAsync();
     }
 
@@ -560,6 +577,8 @@
             var full = await IssueSvc.GetAsync(g.Id);
             if (full is null) { Toast.Error("حواله یافت نشد."); showForm = false; return; }
             form = full;
+            if (full.WarehouseId is > 0 && !warehouseLookup.Any(w => w.Id == full.WarehouseId))
+                warehouseLookup.Add(new LookupItem { Id = full.WarehouseId.Value, Name = full.WarehouseName ?? "انبار ثبت‌شده" });
             date = full.Date;
             if (form.Lines.Count == 0) form.Lines.Add(new GoodsIssueLineDto());
             await LoadProductOptionsAsync();
@@ -755,6 +774,7 @@
                 Id = form.Id,
                 Date = date ?? DateTime.Today,
                 PartyId = form.PartyId,
+                WarehouseId = form.WarehouseId,
                 Description = form.Description,
                 Lines = real.Select(l => new GoodsIssueLineDto
                 {

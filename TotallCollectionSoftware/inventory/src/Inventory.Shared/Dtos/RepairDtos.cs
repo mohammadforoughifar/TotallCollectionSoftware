@@ -126,6 +126,9 @@ public class RepairItemDto
     /// <summary>کالای مصرفی از انبار (null = فقط اجرت/کار)</summary>
     public int? ProductId { get; set; }
     public string? ProductName { get; set; }
+    /// <summary>واحد و نوع مقدار فعلی کالا؛ در صورت حذف کالا نامشخص است.</summary>
+    public string? ProductUnit { get; set; }
+    public bool? ProductAllowsFractionalQuantity { get; set; }
 
     public decimal Quantity { get; set; } = 1;
 

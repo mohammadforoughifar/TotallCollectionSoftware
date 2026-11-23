@@ -155,7 +155,7 @@
 </div>
 
 @* ---------------- فرم سند هزینه ---------------- *@
-<Modal Visible="showForm" Title="@(replacement ? $"چک جایگزین برای {form.Number}" : form.Id == 0 ? "هزینه جدید" : $"ویرایش سند {form.Number}")" OnClose="() => showForm = false">
+<Modal Visible="showForm" Title="@(replacement ? $"پرداخت جایگزین برای {form.Number}" : form.Id == 0 ? "هزینه جدید" : $"ویرایش سند {form.Number}")" OnClose="() => showForm = false">
     <ChildContent>
         <div class="row g-3">
             <div class="col-md-6">
@@ -188,17 +188,17 @@
                 <div class="d-flex flex-wrap gap-3 pt-1">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epCash"
-                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.Cash)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.Cash; })" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.Cash)" @onchange="@(() => SelectOrdinary(CashType.Cash))" />
                         <label class="form-check-label" for="epCash">وجه نقد</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epPos"
-                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardReader)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.CardReader; })" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardReader)" @onchange="@(() => SelectOrdinary(CashType.CardReader))" />
                         <label class="form-check-label" for="epPos">کارت‌خوان</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="expPay" id="epC2C"
-                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardTransfer)" disabled="@replacement" @onchange="@(() => { paymentMode = "ordinary"; form.PayType = CashType.CardTransfer; })" />
+                               checked="@(paymentMode == "ordinary" && form.PayType == CashType.CardTransfer)" @onchange="@(() => SelectOrdinary(CashType.CardTransfer))" />
                         <label class="form-check-label" for="epC2C">کارت به کارت</label>
                     </div>
                     @if (form.Id == 0 || replacement)
@@ -227,6 +227,11 @@
                 </div>
             </div>
             }
+            @if (replacement && paymentMode == "ordinary")
+            {
+                <div class="col-md-6"><label class="form-label">تاریخ پرداخت جایگزین *</label><DatePicker @bind-Value="replacementDate" /></div>
+                <div class="col-12"><div class="alert alert-light border mb-0 py-2 fs-8">پرداخت کامل از حساب انتخاب‌شده ثبت می‌شود؛ سابقه چک‌های برگشتی حفظ خواهد شد.</div></div>
+            }
             @if (paymentMode == "issued")
             {
                 <div class="col-md-6"><label class="form-label">بانک صادرکننده *</label><div class="input-group"><select class="form-select" @bind="issuedBankId"><option value="0">— انتخاب بانک —</option>@foreach (var a in chequeBanks) { <option value="@a.Id">@a.DisplayName</option> }</select><button type="button" class="btn btn-outline-primary" title="افزودن بانک" @onclick="() => OpenQuickBank(TreasuryAccountKind.Bank)"><i class="bi bi-plus-lg"></i></button></div></div>
@@ -244,7 +249,7 @@
             }
             <div class="col-md-6">
                 <label class="form-label">دریافت‌کننده / طرف هزینه @(paymentMode != "ordinary" ? "*" : "")</label>
-                <input class="form-control" @bind="form.Payee" placeholder="مثلاً موجر، اداره برق…" />
+                <input class="form-control" @bind="form.Payee" disabled="@(replacement && paymentMode == "ordinary")" placeholder="مثلاً موجر، اداره برق…" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">توضیحات</label>
@@ -278,8 +283,10 @@
                     }
                 </div>
             }
-            @if (chequeDetail.Cheques.All(c => c.State == ExpenseChequeState.Returned))
-            { <button class="btn btn-outline-primary" @onclick="() => OpenReplacement(chequeDetail)">ثبت چک جایگزین برای همین هزینه</button> }
+            @if (chequeDetail.ReplacementVoucherId.HasValue)
+            { <div class="alert alert-success">پرداخت جایگزین ثبت شده است: @PayTypeBadge(chequeDetail.PayType) — @(chequeDetail.TrsAccountName ?? "—")</div> }
+            else if (chequeDetail.Cheques.All(c => c.State == ExpenseChequeState.Returned))
+            { <button class="btn btn-outline-primary" @onclick="() => OpenReplacement(chequeDetail)">ثبت پرداخت جایگزین برای همین هزینه</button> }
         }
     </ChildContent>
     <Footer><button class="btn btn-light" @onclick="() => chequeDetail = null">بستن</button></Footer>
@@ -386,7 +393,7 @@
     private bool replacement;
     private string paymentMode = "ordinary", chequeNumber = "", statusReason = "";
     private int issuedBankId, sourceChequeId;
-    private DateTime? chequeDue, handedAt, statusDate;
+    private DateTime? chequeDue, handedAt, statusDate, replacementDate;
     private Guid chequeOperation, statusOperation;
     private List<TrsAccount> chequeBanks = new();
     private List<ShopChequeItem> receivedCheques = new();
@@ -400,8 +407,17 @@
     };
     private static string ChequeSummary(ExpenseDto e)
     {
+        if (e.ReplacementVoucherId.HasValue)
+            return "پرداخت جایگزین — " + (e.PayType == CashType.Cash ? "نقد" : e.PayType == CashType.CardReader ? "کارت‌خوان" : "کارت به کارت");
         var ch = e.Cheques.Last();
         return (ch.Kind == ExpenseChequeKind.Issued ? "چک صادره" : "چک دریافتی") + " — " + ChequeStateName(ch.State);
+    }
+    private void SelectOrdinary(CashType payType)
+    {
+        paymentMode = "ordinary";
+        form.PayType = payType;
+        form.TrsAccountId = null;
+        form.TrsAccountName = null;
     }
     private async Task PrepareMode(string mode)
     {
@@ -418,8 +434,10 @@
         form = new ExpenseDto { Id = expense.Id, Number = expense.Number, CategoryId = expense.CategoryId,
             Amount = expense.Amount, Date = expense.Date, Payee = expense.Payee, Description = expense.Description };
         catIdStr = expense.CategoryId.ToString(); fAmount = Fa.FormatTyping(expense.Amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
-        expDate = expense.Date; handedAt = DateTime.Today; chequeDue = DateTime.Today; chequeNumber = "";
+        expDate = expense.Date; handedAt = DateTime.Today; chequeDue = DateTime.Today; replacementDate = DateTime.Today; chequeNumber = "";
         chequeOperation = Guid.NewGuid(); sourceChequeId = 0; issuedBankId = 0; replacement = true; chequeDetail = null; showForm = true;
+        try { bankAccounts = await ExpenseSvc.GetExpenseReplacementAccountsAsync(); }
+        catch (Exception ex) { bankAccounts = new(); Toast.Error("فهرست حساب‌های پرداخت دریافت نشد. " + ex.Message); }
         await PrepareMode("issued");
     }
     private void OpenChequeStatus(ExpenseChequeDto cheque, ExpenseChequeState state)
@@ -590,7 +608,17 @@
         saving = true;
         try
         {
-            if (paymentMode == "ordinary")
+            if (paymentMode == "ordinary" && replacement)
+            {
+                if (form.TrsAccountId is not > 0 || !replacementDate.HasValue)
+                    throw new InvalidOperationException("حساب و تاریخ پرداخت جایگزین را انتخاب کنید.");
+                await ExpenseSvc.SettleReturnedExpenseAsync(form.Id, new ExpenseReplacementPaymentCommand
+                {
+                    OperationId = chequeOperation, Date = replacementDate.Value,
+                    PayType = form.PayType, TrsAccountId = form.TrsAccountId.Value
+                });
+            }
+            else if (paymentMode == "ordinary")
                 await ExpenseSvc.SaveExpenseAsync(form);
             else
             {
@@ -609,7 +637,7 @@
                     Number = chequeNumber, DueDate = chequeDue ?? default
                 });
             }
-            Toast.Success(replacement ? "چک جایگزین ثبت شد." : form.Id == 0 ? "سند هزینه ثبت شد." : "سند هزینه ویرایش شد.");
+            Toast.Success(replacement ? "پرداخت جایگزین ثبت شد." : form.Id == 0 ? "سند هزینه ثبت شد." : "سند هزینه ویرایش شد.");
             showForm = false;
             await LoadCats();
             await Load();

@@ -1312,7 +1312,8 @@ public class TreasuryService : ITreasuryService
             await _db.SaleChequeCreditSettlements.IgnoreQueryFilters().AnyAsync(c => c.TrsVoucherId == id) ||
             await _db.SaleChequeCancellations.IgnoreQueryFilters().AnyAsync(c => c.RefundTrsVoucherId == id) ||
             await _db.ShopTradeInUses.IgnoreQueryFilters().AnyAsync(u => u.TrsVoucherId == id) ||
-            await _db.ShopExpenseCheques.IgnoreQueryFilters().AnyAsync(c => c.SettlementVoucherId == id))
+            await _db.ShopExpenseCheques.IgnoreQueryFilters().AnyAsync(c => c.SettlementVoucherId == id) ||
+            await _db.Expenses.IgnoreQueryFilters().AnyAsync(e => e.ReplacementVoucherId == id))
             throw new InvalidOperationException("گردش مربوط به فاکتور چک فقط از همان فاکتور قابل اصلاح است.");
     }
 

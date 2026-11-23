@@ -113,6 +113,7 @@ public sealed class TabService
         ("project-cartable",            "کارتابل پروژه",        "bi-inboxes"),
         ("report-works",                "گزارش‌های کار",        "bi-clock-history"),
         ("type-factors",                "انواع فاکتور",         "bi-card-list"),
+        ("shop-guide",                  "راهنمای سامانه",        "bi-journal-check"),
         ("orders/purchase",             "خرید",                 "bi-bag-plus"),
         ("orders/sale",                 "فروش",                 "bi-cart3"),
         ("referrer-wallets",            "کیف پول معرف‌ها",      "bi-wallet2"),
@@ -233,6 +234,9 @@ public sealed class TabService
         return "صفحه";
     }
 
+    private static bool IsStaleShopGuideTitle(string key, string? title)
+        => key.Split('?')[0] == "shop-guide" && (title == "صفحه" || title == "(صفحه)");
+
     // ==================== بارگیری / ذخیره ====================
 
     private sealed class Snapshot
@@ -282,7 +286,7 @@ public sealed class TabService
                     Key = key,
                     Url = s.Url,
                     // تبِ خانه (کلید "") عنوانش را از مسیرِ ریشه می‌گیرد، نه از نسخهٔ ذخیره‌شده
-                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug || key.Length == 0 ? title : savedTitle,
+                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug || IsStaleShopGuideTitle(key, savedTitle) || key.Length == 0 ? title : savedTitle,
                     Icon = string.IsNullOrWhiteSpace(s.Icon) || staleHr ? icon : s.Icon,
                     // تبِ خانه همیشه سنجاق است
                     Pinned = s.Pinned || key.Length == 0
@@ -340,7 +344,7 @@ public sealed class TabService
             t.Url = relativeUrl;
             if ((!HrNavigation.IsWorkspace(key)
                     && (t.Title == "منابع انسانی" || t.Title == "خانه منابع انسانی"))
-                || IsSlugLike(t.Title))
+                || IsSlugLike(t.Title) || IsStaleShopGuideTitle(key, t.Title))
             {
                 var (title, icon) = Resolve(key);
                 t.Title = title;

@@ -83,6 +83,9 @@ public class OrdersController : ApiControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null,
         [FromQuery] bool? hasChequeIncome = null, [FromQuery] bool openingOnly = false)
     {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+            return BadRequest(new { message = "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد." });
+
         var canViewProfit = await CanSeeProfitAsync();
         if (hasChequeIncome.HasValue && !canViewProfit)
             return StatusCode(403, new { message = "فیلتر درآمد چک به مجوز مستقل مشاهده سود نیاز دارد." });

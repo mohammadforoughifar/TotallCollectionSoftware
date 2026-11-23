@@ -33,6 +33,10 @@ public class GoodsIssuesController : ApiControllerBase
     public async Task<ActionResult<List<GoodsIssueProductOptionDto>>> ProductOptions()
         => Ok(await _service.GetProductOptionsAsync());
 
+    [HttpGet("warehouse-options")]
+    public async Task<ActionResult<List<LookupItem>>> WarehouseOptions()
+        => Ok(await _service.GetWarehouseOptionsAsync());
+
     /// <summary>یک حواله با سطرهایش.</summary>
     [HttpGet("{id:int}")]
     public async Task<ActionResult<GoodsIssueDto>> Get(int id)

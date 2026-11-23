@@ -26,6 +26,8 @@ BEGIN
         [Number] nvarchar(30) NOT NULL,
         [Date] datetime2 NOT NULL,
         [PartyId] int NOT NULL,
+        [WarehouseId] int NULL,
+        [WarehouseName] nvarchar(150) NULL,
         [PartyName] nvarchar(200) NOT NULL,
         [Description] nvarchar(500) NULL,
         [CreatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME())
@@ -34,6 +36,10 @@ BEGIN
     CREATE INDEX [IX_GoodsIssues_PartyId] ON [dbo].[GoodsIssues] ([PartyId]);
     CREATE INDEX [IX_GoodsIssues_Date] ON [dbo].[GoodsIssues] ([Date]);
 END");
+
+        await db.Database.ExecuteSqlRawAsync(@"
+IF COL_LENGTH(N'dbo.GoodsIssues', N'WarehouseId') IS NULL ALTER TABLE dbo.GoodsIssues ADD WarehouseId int NULL;
+IF COL_LENGTH(N'dbo.GoodsIssues', N'WarehouseName') IS NULL ALTER TABLE dbo.GoodsIssues ADD WarehouseName nvarchar(150) NULL;");
 
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.GoodsIssueLines', N'U') IS NULL
@@ -69,7 +75,11 @@ END");
         }
         catch { /* جدول نیست — EnsureCreated آن را ساخته است */ }
 
-        if (hasTable) return;
+        if (hasTable)
+        {
+            await EnsureSqliteWarehouseColumnsAsync(db);
+            return;
+        }
 
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS GoodsIssues (
@@ -77,6 +87,8 @@ CREATE TABLE IF NOT EXISTS GoodsIssues (
     Number TEXT NOT NULL,
     Date TEXT NOT NULL,
     PartyId INTEGER NOT NULL,
+    WarehouseId INTEGER NULL,
+    WarehouseName TEXT NULL,
     PartyName TEXT NOT NULL,
     Description TEXT NULL,
     CreatedAt TEXT NOT NULL
@@ -97,6 +109,20 @@ CREATE TABLE IF NOT EXISTS GoodsIssueLines (
 );");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssueLines_IssueId ON GoodsIssueLines (IssueId);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssueLines_ProductId ON GoodsIssueLines (ProductId);");
+    }
+
+    private static async Task EnsureSqliteWarehouseColumnsAsync(AppDbContext db)
+    {
+        var conn = db.Database.GetDbConnection();
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info(GoodsIssues)";
+            using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
+        }
+        if (!columns.Contains("WarehouseId")) await db.Database.ExecuteSqlRawAsync("ALTER TABLE GoodsIssues ADD COLUMN WarehouseId INTEGER NULL");
+        if (!columns.Contains("WarehouseName")) await db.Database.ExecuteSqlRawAsync("ALTER TABLE GoodsIssues ADD COLUMN WarehouseName TEXT NULL");
     }
 
     private static async Task SafeAsync(AppDbContext db, string sql)

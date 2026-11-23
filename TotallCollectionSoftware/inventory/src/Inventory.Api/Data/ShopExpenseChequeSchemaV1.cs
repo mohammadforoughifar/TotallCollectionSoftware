@@ -49,5 +49,29 @@ CREATE INDEX IF NOT EXISTS [IX_ShopExpenseCheques_SourceTransactionId] ON [ShopE
 CREATE INDEX IF NOT EXISTS [IX_ShopExpenseCheques_IssuingAccountId] ON [ShopExpenseCheques] ([IssuingAccountId]);
 CREATE UNIQUE INDEX IF NOT EXISTS [IX_ShopExpenseCheques_IssuingAccountId_Number] ON [ShopExpenseCheques] ([IssuingAccountId],[Number]) WHERE [IssuingAccountId] IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS [IX_ShopExpenseCheques_SettlementVoucherId] ON [ShopExpenseCheques] ([SettlementVoucherId]) WHERE [SettlementVoucherId] IS NOT NULL;";
-    public static Task EnsureAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync(db.Database.IsSqlite() ? Sqlite : SqlServer);
+    public static async Task EnsureAsync(AppDbContext db)
+    {
+        await db.Database.ExecuteSqlRawAsync(db.Database.IsSqlite() ? Sqlite : SqlServer);
+        if (db.Database.IsSqlite())
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA table_info(Expenses)";
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) columns.Add(reader.GetString(1));
+            }
+            if (!columns.Contains("ReplacementOperationId")) await db.Database.ExecuteSqlRawAsync("ALTER TABLE Expenses ADD COLUMN ReplacementOperationId TEXT NULL");
+            if (!columns.Contains("ReplacementVoucherId")) await db.Database.ExecuteSqlRawAsync("ALTER TABLE Expenses ADD COLUMN ReplacementVoucherId INTEGER NULL");
+            await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IF NOT EXISTS IX_Expenses_ReplacementOperationId ON Expenses(ReplacementOperationId) WHERE ReplacementOperationId IS NOT NULL");
+            await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IF NOT EXISTS IX_Expenses_ReplacementVoucherId ON Expenses(ReplacementVoucherId) WHERE ReplacementVoucherId IS NOT NULL");
+        }
+        else await db.Database.ExecuteSqlRawAsync(@"
+IF COL_LENGTH('dbo.Expenses','ReplacementOperationId') IS NULL ALTER TABLE dbo.Expenses ADD ReplacementOperationId uniqueidentifier NULL;
+IF COL_LENGTH('dbo.Expenses','ReplacementVoucherId') IS NULL ALTER TABLE dbo.Expenses ADD ReplacementVoucherId int NULL;
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.Expenses') AND name='IX_Expenses_ReplacementOperationId') EXEC('CREATE UNIQUE INDEX IX_Expenses_ReplacementOperationId ON dbo.Expenses(ReplacementOperationId) WHERE ReplacementOperationId IS NOT NULL');
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id=OBJECT_ID('dbo.Expenses') AND name='IX_Expenses_ReplacementVoucherId') EXEC('CREATE UNIQUE INDEX IX_Expenses_ReplacementVoucherId ON dbo.Expenses(ReplacementVoucherId) WHERE ReplacementVoucherId IS NOT NULL');");
+    }
 }

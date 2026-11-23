@@ -113,6 +113,7 @@ public class ExpenseService : IExpenseService
                 PayType = e.PayType,
                 TrsAccountId = e.TrsAccountId,
                 TrsAccountName = e.TrsAccountName,
+                ReplacementVoucherId = e.ReplacementVoucherId,
                 Payee = e.Payee,
                 Description = e.Description,
                 CreatedAt = e.CreatedAt
@@ -155,7 +156,7 @@ public class ExpenseService : IExpenseService
             {
                 Id = e.Id, Number = e.Number, CategoryId = e.CategoryId, Amount = e.Amount,
                 Date = e.Date, PayType = e.PayType, TrsAccountId = e.TrsAccountId,
-                TrsAccountName = e.TrsAccountName, Payee = e.Payee, Description = e.Description,
+                TrsAccountName = e.TrsAccountName, ReplacementVoucherId = e.ReplacementVoucherId, Payee = e.Payee, Description = e.Description,
                 CreatedAt = e.CreatedAt
             }).ToListAsync();
         var ids = rows.Select(r => r.CategoryId).Distinct().ToList();
