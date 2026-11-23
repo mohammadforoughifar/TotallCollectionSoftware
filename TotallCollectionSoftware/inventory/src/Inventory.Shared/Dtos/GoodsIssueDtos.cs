@@ -26,6 +26,8 @@ public class GoodsIssueDto
     public string Number { get; set; } = "";
     public DateTime Date { get; set; }
     public int PartyId { get; set; }
+    public int? WarehouseId { get; set; }
+    public string? WarehouseName { get; set; }
     public string PartyName { get; set; } = "";
     public string? Description { get; set; }
     public List<GoodsIssueLineDto> Lines { get; set; } = new();
@@ -67,6 +69,7 @@ public class GoodsIssueCommand
     public int Id { get; set; }
     public DateTime Date { get; set; }
     public int PartyId { get; set; }
+    public int? WarehouseId { get; set; }
     public string? Description { get; set; }
     public List<GoodsIssueLineDto> Lines { get; set; } = new();
 }

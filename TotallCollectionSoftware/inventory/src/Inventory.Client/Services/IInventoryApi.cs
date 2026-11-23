@@ -229,6 +229,8 @@ public interface IExpenseService
     Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize);
     Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to);
     Task<List<TrsAccount>> GetChequeBanksAsync();
+    Task<List<TrsAccount>> GetExpenseReplacementAccountsAsync();
+    Task SettleReturnedExpenseAsync(int id, ExpenseReplacementPaymentCommand command);
     Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync();
     Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command);
     Task ChangeChequeStatusAsync(int id, ExpenseChequeKind kind, ExpenseChequeStatusCommand command);
@@ -246,6 +248,7 @@ public interface IGoodsIssueService
 
     /// <summary>کالاهای انباری با موجودی — برای انتخاب در سطر بیجک (ورود دستی هم مجاز است).</summary>
     Task<List<GoodsIssueProductOptionDto>> GetProductOptionsAsync();
+    Task<List<LookupItem>> GetWarehouseOptionsAsync();
 }
 
 /// <summary>Shop-scoped policy, dated batch preview and audit history.</summary>

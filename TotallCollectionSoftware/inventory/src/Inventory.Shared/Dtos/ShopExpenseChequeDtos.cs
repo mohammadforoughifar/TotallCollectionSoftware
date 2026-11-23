@@ -43,3 +43,12 @@ public class ExpenseChequeStatusCommand
 }
 
 public class ExpenseChequeCreatedResult { public int Id { get; set; } }
+
+/// <summary>تسویه کامل هزینه پس از برگشت همه چک‌ها.</summary>
+public class ExpenseReplacementPaymentCommand
+{
+    public Guid OperationId { get; set; }
+    public DateTime Date { get; set; }
+    public Inventory.Shared.CashType PayType { get; set; }
+    public int TrsAccountId { get; set; }
+}

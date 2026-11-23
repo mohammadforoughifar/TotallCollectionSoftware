@@ -754,7 +754,17 @@
                                             </div>
                                         }
                                     </td>
-                                    <td><input class="form-control form-control-sm num" value="@itemQty[i]" @oninput="@(e => itemQty[i] = e.Value?.ToString() ?? "1")" inputmode="decimal" dir="ltr" /></td>
+                                    <td>
+                                        <input class="form-control form-control-sm num" value="@itemQty[i]" @oninput="@(e => itemQty[i] = e.Value?.ToString() ?? "1")" inputmode="decimal" dir="ltr" aria-label="مقدار قطعه" />
+                                        @if (GetItemProduct(i) is { } quantityProduct)
+                                        {
+                                            <small class="d-block text-muted">واحد: @quantityProduct.Unit<br />@QuantityKind(quantityProduct.AllowsFractionalQuantity)</small>
+                                        }
+                                        else if (form.Items[i].ProductId is > 0)
+                                        {
+                                            <small class="d-block text-muted">واحد و نوع مقدار نامشخص</small>
+                                        }
+                                    </td>
                                     <td><input type="text" class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
                                     <td><input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" disabled="@(form.Items[i].WarrantyDecision == WarrantyDecision.Accepted || !ItemDone(i))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" />
                                         @if (form.Items[i].WarrantyDecision == WarrantyDecision.Rejected && ItemDone(i)) { <small class="text-muted">قیمت مشتری را دستی وارد کنید</small> }
@@ -946,7 +956,14 @@
                                         <span class="badge badge-soft-primary fs-8 me-1">@i.ProductName</span>
                                     }
                                 </td>
-                                <td class="text-start num">@i.Quantity.Qty()</td>
+                                <td class="text-start">
+                                    <span class="num">@i.Quantity.Qty()</span>
+                                    @if (i.ProductId is > 0)
+                                    {
+                                        <span>@(string.IsNullOrWhiteSpace(i.ProductUnit) ? "واحد نامشخص" : i.ProductUnit)</span>
+                                        <small class="d-block text-muted">@QuantityKind(i.ProductAllowsFractionalQuantity)</small>
+                                    }
+                                </td>
                                 <td class="text-start num text-muted">@RepairRowCost(viewing, i).Money()</td>
                                 <td class="text-start num fw-500">@RepairRowPrice(viewing, i).Money()</td>
                                 <td class="text-start num @((RepairRowPrice(viewing, i) - RepairRowCost(viewing, i)) >= 0 ? "text-success" : "text-danger")">@((RepairRowPrice(viewing, i) - RepairRowCost(viewing, i)).Money())</td>
@@ -1567,6 +1584,13 @@ else
         foreach (var id in selectedProducts.Keys.Where(id => !selectedIds.Contains(id)).ToList())
             selectedProducts.Remove(id);
     }
+
+    private static string QuantityKind(bool? allowsFractional) => allowsFractional switch
+    {
+        true => "مقدار اعشاری مجاز",
+        false => "فقط مقدار صحیح",
+        null => "نوع مقدار نامشخص"
+    };
 
     private Product? GetItemProduct(int index)
         => index >= 0 && index < itemProducts.Count ? itemProducts[index] : null;

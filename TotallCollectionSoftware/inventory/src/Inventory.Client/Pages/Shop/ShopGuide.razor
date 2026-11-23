@@ -2,8 +2,9 @@
 @using Inventory.Client.Pages.Office.Guides
 @inject NavigationManager Nav
 @inject IAuthState Auth
+@inject LayoutState Layout
 
-<PageTitle>فروشگاهی کایر — راهنمای کاربری</PageTitle>
+<PageTitle>راهنمای سامانه</PageTitle>
 
 @if (!Auth.CanSee("ShopGuide"))
 {
@@ -24,7 +25,7 @@
 else
 {
     <OfficeGuide
-        Title="راهنمای فروشگاهی کایر"
+        Title="راهنمای سامانه"
         Description="از تعریف اطلاعات پایه و ثبت خرید و فروش تا تسویه، چاپ فاکتور، بیجک، تعمیرات و گزارش‌ها؛ همهٔ بخش‌های فروشگاهی کایر را گام‌به‌گام ببینید."
         Eyebrow="فروشگاهی کایر / راهنمای کاربری"
         Icon="bi-shop"
@@ -413,6 +414,8 @@ else
 }
 
 @code {
+    protected override void OnInitialized() => Layout.SetTitle("راهنمای سامانه");
+
     private void Back() => Nav.NavigateTo(Auth.CanSee("Orders") ? "orders/sale" : "");
 
     private static readonly GuideStep[] QuickSteps =

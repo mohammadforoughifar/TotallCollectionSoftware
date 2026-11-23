@@ -841,6 +841,9 @@ public class AppDbContext : DbContext
         mb.Entity<Expense>().Property(e => e.Amount).HasPrecision(18, 2);
         mb.Entity<Expense>().HasIndex(e => e.Date);
         mb.Entity<Expense>().HasIndex(e => e.CategoryId);
+        mb.Entity<Expense>().HasIndex(e => e.ReplacementOperationId).IsUnique().HasFilter("[ReplacementOperationId] IS NOT NULL");
+        mb.Entity<Expense>().HasIndex(e => e.ReplacementVoucherId).IsUnique().HasFilter("[ReplacementVoucherId] IS NOT NULL");
+        mb.Entity<Expense>().HasOne(e => e.ReplacementVoucher).WithMany().HasForeignKey(e => e.ReplacementVoucherId).OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ShopExpenseCheque>().Property(c => c.Amount).HasPrecision(18, 2);
         mb.Entity<ShopExpenseCheque>().HasIndex(c => c.OperationId).IsUnique();
         mb.Entity<ShopExpenseCheque>().HasIndex(c => c.StatusOperationId).IsUnique().HasFilter("[StatusOperationId] IS NOT NULL");

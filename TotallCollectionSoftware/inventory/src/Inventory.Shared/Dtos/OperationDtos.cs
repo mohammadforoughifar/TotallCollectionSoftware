@@ -650,6 +650,7 @@ public class ExpenseDto
     /// <summary>بانک / حساب خزانهٔ انتخابی برای نحوهٔ پرداخت</summary>
     public int? TrsAccountId { get; set; }
     public string? TrsAccountName { get; set; }
+    public int? ReplacementVoucherId { get; set; }
 
     /// <summary>دریافت‌کننده / طرف هزینه</summary>
     public string? Payee { get; set; }
