@@ -128,7 +128,7 @@
                                         }
                                         else if (PurchaseChequeInterest > 0)
                                         {
-                                            <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + سود چک (خارج از فاکتور) <b class="num">@ExactMoney(PurchaseChequeInterest)</b></small>
+                                            <small class="purchase-summary-breakdown">کالا با ارزش افزوده <b class="num">@ExactMoney(goodsTotal)</b> + سود چک (خارج از مبلغ فاکتور، ذخیره می‌شود) <b class="num">@ExactMoney(PurchaseChequeInterest)</b></small>
                                         }
                                     </div>
                                 </div>
@@ -150,7 +150,7 @@
                                                 title="حذف سود چک؛ مبلغ فاکتور و چک‌ها تغییر نمی‌کند" @onclick="ClearPurchaseChequeInterest">
                                             حذف سود چک
                                         </button>
-                                        <small>این مبلغ در مبلغ نهایی فاکتور نیست؛ جمع چک‌ها = مبلغ کالا + همین سود.</small>
+                                        <small>این مبلغ در مبلغ فاکتور نیست ولی در دیتابیس ذخیره می‌شود و در گزارش خرید جدا نمایش داده می‌شود؛ جمع چک‌ها = مبلغ کالا + همین سود.</small>
                                     </div>
                                 }
                                 @if (FinalRemaining != 0)
@@ -1038,7 +1038,7 @@
                 @if (Type == TransactionType.Purchase)
                 {
                     <div class="col-12"><div class="alert alert-info py-2 mb-0 fs-8" data-purchase-cheque-interest-only-note>
-                        این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی و همچنین مبلغ فاکتور را تغییر نمی‌دهد؛ سود چک فقط در ردیف مستقل «سود چک (هزینهٔ مالی خرید)» نمایش داده می‌شود. برای اعمال سود روی مبلغ چک‌ها از «محاسبه اقساطِ چک» استفاده کنید.
+                        این محاسبه هیچ مبلغ، شماره، بانک یا سررسید چکی و همچنین مبلغ فاکتور را تغییر نمی‌دهد؛ سود چک در ردیف مستقل «سود چک (هزینهٔ مالی خرید)» ذخیره می‌شود و در گزارش خرید به‌صورت جدا از مبلغ کالا نمایش داده می‌شود. برای اعمال سود روی مبلغ چک‌ها از «محاسبه اقساطِ چک» استفاده کنید.
                     </div></div>
                 }
                 else
@@ -1488,6 +1488,12 @@
     private decimal purchaseChequeInterest;
 
     /// <summary>
+    /// ورودی‌های ماشین‌حساب سود چک خرید؛ برای ذخیره در سرور فرستاده می‌شود و سود
+    /// دوباره همان‌جا محاسبه می‌شود. مبلغ سود از کلاینت پذیرفته نمی‌شود.
+    /// </summary>
+    private PurchaseChequeInterestInput? purchaseChequeInterestTerms;
+
+    /// <summary>
     /// مجموع تعهد پرداخت این فاکتور. در خرید، سود چک هم بخشی از تعهد پرداخت است؛
     /// به همین دلیل مقایسهٔ «باقی‌مانده/مازاد» باید روی این عدد انجام شود، نه
     /// <c>grandTotal</c>، وگرنه سود به‌اشتباه «مازاد پرداخت» دیده می‌شود.
@@ -1505,6 +1511,7 @@
     {
         if (purchaseChequeInterest <= 0) return;
         purchaseChequeInterest = 0m;
+        purchaseChequeInterestTerms = null;
         chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0m;
         InvoiceInfo("سود چک حذف شد؛ مبلغ فاکتور و چک‌ها تغییر نکرده است.");
     }
@@ -1606,6 +1613,7 @@
             // سود چک خرید بدون جزء چک معنایی ندارد؛ عنوان آن باید با خاموش‌شدن چک پاک شود
             // تا به‌صورت مبلغ سرگردان در باقی‌مانده نماند.
             purchaseChequeInterest = 0m;
+            purchaseChequeInterestTerms = null;
             chargeInvoiceBase = chargeCashBase = chargeInstallmentBase = 0m;
             InvoiceInfo("سود چک خرید با غیرفعال‌شدن جزء چک پاک شد؛ در صورت نیاز دوباره محاسبه کنید.");
         }
@@ -1835,6 +1843,12 @@
                 saleChequeCharge = null;
                 saleChequeIncome = 0m;
                 purchaseChequeInterest = calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = calculation.BaseAmount,
+                    CalculatorRatePercent = calculation.MonthlyRatePercent,
+                    CalculatorMonths = calculation.Months
+                };
                 chargeInvoiceBase = goodsTotal;
                 chargeCashBase = CashPart;
                 chargeInstallmentBase = InstSum();
@@ -1900,6 +1914,12 @@
                 // «سود چک» نگه داشته می‌شود تا در فیلد مازاد پرداخت ظاهر نشود.
                 saleChequeIncome = 0m;
                 purchaseChequeInterest = calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = calculation.BaseAmount,
+                    CalculatorRatePercent = calculation.MonthlyRatePercent,
+                    CalculatorMonths = calculation.Months
+                };
                 chargeInvoiceBase = goodsTotal;
                 chargeCashBase = CashPart;
                 chargeInstallmentBase = InstSum();
@@ -2275,6 +2295,18 @@
                 creditDue = o.DueDate;
                 useCheque = o.Cheques.Count > 0 || o.PaymentMethod == PaymentMethod.Cheque;
                 useInstallment = o.Installments.Count > 0 || o.PaymentMethod == PaymentMethod.Installment;
+                if (Type == TransactionType.Purchase && o.PurchaseChequeInterestAmount > 0)
+                {
+                    // سود چک خرید در مبلغ فاکتور جمع نشده است؛ باید جدا بارگذاری شود
+                    // وگرنه ویرایش، مبلغ ذخیره‌شده را از دست می‌دهد.
+                    purchaseChequeInterest = o.PurchaseChequeInterestAmount;
+                    purchaseChequeInterestTerms = o.PurchaseChequeInterestSnapshot ?? new PurchaseChequeInterestInput
+                    {
+                        CalculatorBaseAmount = o.PurchaseChequeInterestAmount > 0 ? o.TotalAmount - o.CashAmount : 0m,
+                        CalculatorRatePercent = 0m,
+                        CalculatorMonths = 1
+                    };
+                }
                 if (o.HasChequeCharge)
                 {
                     // Even an old charge without calculator terms is still a real, visible amount.
@@ -2825,6 +2857,12 @@
                 // خرید: سود چک فقط عنوان مستقل دارد و به مبلغ فاکتور اضافه نمی‌شود.
                 saleChequeIncome = 0m;
                 purchaseChequeInterest = refreshed.Calculation.Interest;
+                purchaseChequeInterestTerms = new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = refreshed.Calculation.BaseAmount,
+                    CalculatorRatePercent = refreshed.Calculation.MonthlyRatePercent,
+                    CalculatorMonths = refreshed.Calculation.Months
+                };
                 chargeInvoiceBase = goodsTotal;
                 chargeCashBase = CashPart;
                 chargeInstallmentBase = InstSum();
@@ -3084,8 +3122,23 @@
         }
         if (saleChequeCharge is not null && (!useCheque || (IsEdit && EditOrder?.HasChequeCharge != true) || chargeInvoiceBase != goodsTotal))
         {
-            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها را تغییر نمی‌دهد.");
+            ShowFormError("برای ردیف تاخیر تادیه چک، چک را فعال کنید و پس از تغییر اقلام، سود را دوباره محاسبه کنید. محاسبه چک‌های دستی، مبلغ چک‌ها تغییر نمی‌دهد.");
             return;
+        }
+        if (Type == TransactionType.Purchase && purchaseChequeInterest > 0)
+        {
+            // سود چک روی مبنای «مبلغ کالا» محاسبه شده است؛ اگر اقلام یا تخفیف عوض
+            // شده باشد، سود ذخیره‌شده بی‌مبناست و باید دوباره محاسبه شود.
+            if (!useCheque)
+            {
+                ShowFormError("سود چک خرید بدون جزء چک قابل ثبت نیست؛ یا چک را فعال کنید یا سود چک را حذف کنید.");
+                return;
+            }
+            if (purchaseChequeInterestTerms is null || purchaseChequeInterestTerms.CalculatorBaseAmount > goodsTotal)
+            {
+                ShowFormError("مبلغ کالا از مبنای محاسبهٔ سود چک کمتر شده است؛ سود چک را دوباره از «محاسبه سود چک‌های دستی» محاسبه کنید.");
+                return;
+            }
         }
         if (CashPart > 0 && trsAccountId is not > 0 &&
             (!IsEdit || EditOrder?.ShopCashLedgerEnabled == true || saleChequeCharge is not null))
@@ -3214,6 +3267,28 @@
             {
                 saleChequeCharge.ConfirmedCreditDueDate = cmd.DueDate;
                 cmd.ChequeCharge = saleChequeCharge;
+            }
+            // سود چک خرید: فقط ورودی‌های ماشین‌حساب فرستاده می‌شود و سرور مبلغ سود را
+            // دوباره محاسبه و در ردیف مستقل ذخیره می‌کند (مبلغ فاکتور تغییر نمی‌کند).
+            // سکوت دربارهٔ سودِ از قبل ذخیره‌شده یعنی «همان مقدار قبلی حفظ شود»، پس
+            // حذف باید صریح اعلام شود تا سابقه به‌اشتباه پاک نشود.
+            if (Type == TransactionType.Purchase)
+            {
+                var storedInterest = IsEdit ? EditOrder?.PurchaseChequeInterestAmount ?? 0m : 0m;
+                if (purchaseChequeInterest <= 0)
+                {
+                    if (storedInterest > 0) cmd.ClearPurchaseChequeInterest = true;
+                }
+                else if (purchaseChequeInterestTerms is not null)
+                {
+                    cmd.PurchaseChequeInterest = purchaseChequeInterestTerms;
+                }
+                else if (storedInterest <= 0)
+                {
+                    ShowFormError("جزئیات محاسبهٔ سود چک خرید موجود نیست؛ سود را دوباره از «محاسبه سود چک‌های دستی» محاسبه کنید.");
+                    return;
+                }
+                // else: سود قدیمی بدون ورودی‌های ماشین‌حساب — مقدار ثبت‌شده دست‌نخورده می‌ماند.
             }
         }
 

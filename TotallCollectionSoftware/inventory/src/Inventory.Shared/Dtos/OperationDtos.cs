@@ -71,6 +71,15 @@ public class Order
     public decimal AvailableCustomerCredit { get; set; }
     /// <summary>آیا فاکتور با سند معکوس ابطال شده است؟</summary>
     public bool IsCancelled { get; set; }
+    /// <summary>
+    /// سود (هزینهٔ مالی) چک‌های پرداختی این فاکتور خرید. مبلغ فاکتور را بالا نمی‌برد؛
+    /// برای گزارش «چقدر بابت سود چک پرداخت شد» و بارگذاری دوباره در فرم ویرایش است.
+    /// </summary>
+    public decimal PurchaseChequeInterestAmount { get; set; }
+
+    /// <summary>مقادیر ثبت‌شده ماشین‌حساب سود چک خرید؛ null یعنی سود ثبت‌شده‌ای ندارد.</summary>
+    public PurchaseChequeInterestInput? PurchaseChequeInterestSnapshot { get; set; }
+
     /// <summary>مقادیر ثبت‌شده ماشین‌حساب و نرخ تعدیل برای بارگذاری در ویرایش فاکتور اولیه.</summary>
     public SaleChequeChargeInput? ChequeChargeSnapshot { get; set; }
     public List<SaleChequeReturnSummaryDto> ChequeReturns { get; set; } = new();
@@ -202,6 +211,16 @@ public class OrderCommand
     public DateTime? DueDate { get; set; }
     /// <summary>درخواست صریح ثبت ردیف تاخیر تادیه چک؛ مبلغ سود در سرور محاسبه می‌شود.</summary>
     public SaleChequeChargeInput? ChequeCharge { get; set; }
+    /// <summary>
+    /// درخواست ثبت سود (هزینهٔ مالی) چک در فاکتور خرید. مبلغ سود دوباره در سرور
+    /// از همین ورودی‌ها محاسبه می‌شود و مبلغ فاکتور را تغییر نمی‌دهد.
+    /// </summary>
+    public PurchaseChequeInterestInput? PurchaseChequeInterest { get; set; }
+    /// <summary>
+    /// حذف صریح سود چک ثبت‌شدهٔ خرید. بدون این پرچم، نبودِ ورودی یعنی «سود قبلی حفظ شود»
+    /// تا ویرایشی که سود را ندیده است، سابقه را پاک نکند.
+    /// </summary>
+    public bool ClearPurchaseChequeInterest { get; set; }
     public List<ChequeDto> Cheques { get; set; } = new();
     public List<InstallmentDto> Installments { get; set; } = new();
 
@@ -209,6 +228,17 @@ public class OrderCommand
     /// <summary>فقط مسیر داخلی گارانتی: مانده دقیق نسیه و بدون گردش موجودی برای خدمات.</summary>
     [JsonIgnore]
     public bool IsWarrantyInvoice { get; set; }
+}
+
+/// <summary>
+/// ورودی ماشین‌حساب سود چک خرید؛ همان سه ورودی ماشین‌حساب. مبلغ سود از کلاینت
+/// پذیرفته نمی‌شود و سرور آن را با همان فرمول سود چک فروش محاسبه می‌کند.
+/// </summary>
+public class PurchaseChequeInterestInput
+{
+    public decimal CalculatorBaseAmount { get; set; }
+    public decimal CalculatorRatePercent { get; set; }
+    public int CalculatorMonths { get; set; }
 }
 
 /// <summary>ورودی ماشین‌حساب و شرایط تعدیل سررسید؛ مبلغ ردیف از کلاینت دریافت نمی‌شود.</summary>

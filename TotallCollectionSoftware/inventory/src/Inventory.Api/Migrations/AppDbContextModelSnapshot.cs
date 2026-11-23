@@ -17333,6 +17333,26 @@ namespace Inventory.Api.Migrations
 
                     b.Navigation("UserRoles");
                 });
+            modelBuilder.Entity("Inventory.Api.Data.PurchaseChequeInterest", b =>
+                {
+                    b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                    b.Property<decimal>("Amount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("BaseAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<decimal>("CalculatorBaseAmount").HasPrecision(18, 2).HasColumnType("decimal(18,2)");
+                    b.Property<int>("CalculatorMonths").HasColumnType("int");
+                    b.Property<decimal>("CalculatorRatePercent").HasPrecision(18, 6).HasColumnType("decimal(18,6)");
+                    b.Property<int?>("CompanyId").HasColumnType("int");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime2");
+                    b.Property<string>("CreatedBy").HasMaxLength(120).HasColumnType("nvarchar(120)");
+                    b.Property<int>("Months").HasColumnType("int");
+                    b.Property<decimal>("RatePercent").HasPrecision(18, 6).HasColumnType("decimal(18,6)");
+                    b.Property<int>("TransactionId").HasColumnType("int");
+                    b.HasKey("Id");
+                    b.HasIndex("TransactionId").IsUnique();
+                    b.ToTable("PurchaseChequeInterests");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.SalesProforma", b =>
                 {
                     b.Property<string>("Id").HasMaxLength(32).HasColumnType("nvarchar(32)");

@@ -144,7 +144,7 @@ else
                         <div class="d-flex justify-content-between align-items-start">
                             <div>
                                 <span class="fin-kpi-title @(isPurchase ? "text-indigo" : "text-emerald")">
-                                    جمع کل مبلغ @(isPurchase ? "خرید" : "فروش")
+                                    @(isPurchase ? "جمع مبلغ کالا و ارزش افزودهٔ خرید" : "جمع کل مبلغ فروش")
                                 </span>
                                 <div class="fin-kpi-value num @(isPurchase ? "text-indigo" : "text-emerald") mt-1">
                                     @summary.TotalAmount.MoneyExact()
@@ -156,11 +156,40 @@ else
                             </div>
                         </div>
                         <div class="fin-kpi-footer mt-3 pt-2">
-                            <span class="text-secondary fs-9">مجموع مبالغ قطعی اسناد این بازه</span>
+                            <span class="text-secondary fs-9">
+                                @(isPurchase
+                                    ? "مبلغ کالا و ارزش افزوده؛ سود چک در این عدد نیست و جدا نمایش داده می‌شود"
+                                    : "مجموع مبالغ قطعی اسناد این بازه")
+                            </span>
                         </div>
                     </div>
                 </div>
 
+                @if (isPurchase)
+                {
+                    <div class="col-12 col-sm-6 col-xl-3">
+                        <div class="fin-kpi-card border-amber" data-purchase-cheque-interest-kpi>
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <span class="fin-kpi-title text-amber">سود چک پرداختی (هزینهٔ مالی)</span>
+                                    <div class="fin-kpi-value text-amber num mt-1">
+                                        @summary.PurchaseChequeInterestAmount.MoneyExact()
+                                    </div>
+                                    <div class="fin-kpi-unit">ریال</div>
+                                </div>
+                                <div class="fin-kpi-icon-box bg-amber-subtle text-amber">
+                                    <i class="bi bi-wallet2"></i>
+                                </div>
+                            </div>
+                            <div class="fin-kpi-footer mt-3 pt-2">
+                                <span class="text-secondary fs-9">
+                                    جدا از مبلغ کالا؛ در مبلغ فاکتور جمع نمی‌شود. جمع تعهد خرید
+                                    <b class="num">@((summary.TotalAmount + summary.PurchaseChequeInterestAmount).MoneyExact())</b> ریال
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                }
                 <div class="col-12 col-sm-6 col-xl-3">
                     <div class="fin-kpi-card border-slate">
                         <div class="d-flex justify-content-between align-items-start">
@@ -397,7 +426,16 @@ else
                                         <th class="text-start">کالا و ارزش افزوده (ریال)</th>
                                         <th class="text-start">تاخیر تادیه چک (ریال)</th>
                                     }
-                                    <th class="text-start">مبلغ کل (ریال)</th>
+                                    @if (isPurchase)
+                                    {
+                                        <th class="text-start">مبلغ کالا و ارزش افزوده (ریال)</th>
+                                        <th class="text-start">سود چک (ریال)</th>
+                                        <th class="text-start">جمع تعهد خرید (ریال)</th>
+                                    }
+                                    else
+                                    {
+                                        <th class="text-start">مبلغ کل (ریال)</th>
+                                    }
                                     @if (!isPurchase && CanSeeProfit)
                                     {
                                         <th class="text-start">سود ناخالص (ریال)</th>
@@ -422,9 +460,22 @@ else
                                             <td class="text-start num fs-8">@order.GoodsAmount.MoneyExact()</td>
                                             <td class="text-start num fs-8">@order.ChequeIncomeAmount.MoneyExact()</td>
                                         }
-                                        <td class="text-start num fw-800 fs-7.5 @(isPurchase ? "text-indigo" : "text-emerald")">
-                                            @order.TotalAmount.MoneyExact()
-                                        </td>
+                                        @if (isPurchase)
+                                        {
+                                            <td class="text-start num fs-8">@order.TotalAmount.MoneyExact()</td>
+                                            <td class="text-start num fs-8 @(order.PurchaseChequeInterestAmount > 0 ? "text-amber fw-700" : "text-muted")">
+                                                @(order.PurchaseChequeInterestAmount > 0 ? order.PurchaseChequeInterestAmount.MoneyExact() : "—")
+                                            </td>
+                                            <td class="text-start num fw-800 fs-7.5 text-indigo">
+                                                @((order.TotalAmount + order.PurchaseChequeInterestAmount).MoneyExact())
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <td class="text-start num fw-800 fs-7.5 text-emerald">
+                                                @order.TotalAmount.MoneyExact()
+                                            </td>
+                                        }
                                         @if (!isPurchase && CanSeeProfit)
                                         {
                                             <td class="text-start num fs-8">

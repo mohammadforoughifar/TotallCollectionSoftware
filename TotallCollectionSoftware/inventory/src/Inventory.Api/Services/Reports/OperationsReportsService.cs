@@ -39,6 +39,13 @@ public class OperationsReportsService : IOperationsReportsService
             .Where(c => documentIds.Contains(c.TransactionId))
             .Select(c => new { c.TransactionId, c.Amount }).ToListAsync();
         var chargeById = charges.ToDictionary(c => c.TransactionId, c => c.Amount);
+        // سود چک خرید در مبلغ فاکتور جمع نشده است؛ گزارش باید آن را جدا و صریح نشان دهد.
+        var purchaseInterestRows = type == TransactionType.Purchase
+            ? await _db.PurchaseChequeInterests.AsNoTracking()
+                .Where(x => documentIds.Contains(x.TransactionId))
+                .Select(x => new { x.TransactionId, x.Amount }).ToListAsync()
+            : new();
+        var purchaseInterestTotal = purchaseInterestRows.Sum(x => x.Amount);
         if (documents.Any(t => chargeById.TryGetValue(t.Id, out var charge) && (charge < 0 || charge > t.Amount)))
             throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ یکی از فاکتورها مطابقت ندارد.");
         var chequeIncomeTotal = charges.Sum(c => c.Amount);
@@ -59,7 +66,8 @@ public class OperationsReportsService : IOperationsReportsService
             TotalQuantity = documents.Sum(t => t.Lines.Sum(l => l.Quantity)) - returnedQtyTotal,
             TotalAmount = documents.Sum(t => t.Amount) - returnedGoodsTotal,
             GoodsAmount = documents.Sum(t => t.Amount) - (includeChequeIncome ? chequeIncomeTotal : 0m) - returnedGoodsTotal,
-            ChequeIncomeAmount = includeChequeIncome ? chequeIncomeTotal : 0m
+            ChequeIncomeAmount = includeChequeIncome ? chequeIncomeTotal : 0m,
+            PurchaseChequeInterestAmount = purchaseInterestTotal
         };
         result.AverageDocumentAmount = result.DocumentCount == 0
             ? 0m
