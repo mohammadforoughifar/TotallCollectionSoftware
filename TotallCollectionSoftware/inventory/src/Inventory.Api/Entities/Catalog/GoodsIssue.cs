@@ -25,6 +25,9 @@ public class GoodsIssue : ICompanyOwned
     /// <summary>مشتری (طرف حساب با نوع Customer)</summary>
     public int PartyId { get; set; }
 
+    public int? WarehouseId { get; set; }
+    [MaxLength(150)] public string? WarehouseName { get; set; }
+
     /// <summary>نام مشتری در لحظهٔ ثبت — snapshot تا تغییر نام در طرف حساب، سابقه را عوض نکند</summary>
     [MaxLength(200)]
     public string PartyName { get; set; } = "";

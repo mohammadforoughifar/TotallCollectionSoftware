@@ -100,9 +100,14 @@ class ApiGuard(unittest.TestCase):
         self.assertIn('if (routeKind == ExpenseChequeKind.Issued && '
                       'ExpenseChequeDates.DueIsBeforeHandover(cmd.DueDate, cmd.HandedAt))', SERVICE)
         self.assertIn('throw new InvalidOperationException(ExpenseChequeDates.DueBeforeHandoverMessage);', SERVICE)
-        # بررسی باید پیش از شروع تراکنش باشد تا هیچ سندی ثبت نشود
-        self.assertLess(SERVICE.index('ExpenseChequeDates.DueIsBeforeHandover'),
-                        SERVICE.index('BeginTransactionAsync'))
+        # بررسی باید پیش از شروع تراکنشِ همان متد ثبت باشد تا هیچ سندی ثبت نشود.
+        # توجه: فایل چند متد تراکنشی دارد (مثل SettleReturnedAsync)، پس محدودهٔ
+        # CreateAsync جدا می‌شود.
+        create = SERVICE.split('public async Task<int> CreateAsync', 1)[1]
+        create = create.split('public async Task ChangeStatusAsync', 1)[0]
+        self.assertIn('ExpenseChequeDates.DueIsBeforeHandover', create)
+        self.assertLess(create.index('ExpenseChequeDates.DueIsBeforeHandover'),
+                        create.index('BeginTransactionAsync'))
 
     def test_existing_handover_not_before_expense_date_rule_is_kept(self):
         self.assertIn('cmd.HandedAt.Date < dto.Date.Date', SERVICE)

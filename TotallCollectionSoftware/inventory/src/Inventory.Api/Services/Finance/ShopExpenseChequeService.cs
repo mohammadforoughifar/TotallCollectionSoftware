@@ -33,7 +33,63 @@ public class ShopExpenseChequeService
         return await q.ToListAsync();
     }
 
+    public Task<List<Inventory.Api.Data.TrsAccount>> ReplacementAccountsAsync() => SaleChequeTreasuryGuard.ListCompanyAccountsAsync(_db);
+
     public async Task<List<Inventory.Api.Data.TrsAccount>> BanksAsync() => await SaleChequeTreasuryGuard.ListCompanyAccountsAsync(_db, TreasuryAccountKind.Bank);
+
+    public async Task SettleReturnedAsync(int expenseId, ExpenseReplacementPaymentCommand cmd, string? user)
+    {
+        ArgumentNullException.ThrowIfNull(cmd);
+        if (cmd.OperationId == Guid.Empty || cmd.Date == default || cmd.TrsAccountId <= 0 || user?.Length > 120 ||
+            cmd.PayType is not (CashType.Cash or CashType.CardReader or CashType.CardTransfer))
+            throw new InvalidOperationException("روش، حساب یا تاریخ پرداخت معتبر نیست.");
+
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var prior = await _db.Expenses.IgnoreQueryFilters().Include(e => e.ReplacementVoucher)
+            .FirstOrDefaultAsync(e => e.ReplacementOperationId == cmd.OperationId);
+        if (prior is not null)
+        {
+            if (prior.Id != expenseId || prior.CompanyId != _db.ActiveCompanyId || prior.PayType != cmd.PayType ||
+                prior.TrsAccountId != cmd.TrsAccountId || prior.ReplacementVoucher?.Date.Date != cmd.Date.Date)
+                throw new InvalidOperationException("شناسه عملیات قبلاً با اطلاعات دیگری استفاده شده است.");
+            await transaction.CommitAsync();
+            return;
+        }
+
+        var expense = await _db.Expenses.FirstOrDefaultAsync(e => e.Id == expenseId)
+            ?? throw new InvalidOperationException("سند هزینه یافت نشد.");
+        var cheques = await _db.ShopExpenseCheques.AsNoTracking().Include(c => c.Expense)
+            .Include(c => c.SettlementVoucher).ThenInclude(v => v!.Lines)
+            .Where(c => c.ExpenseId == expense.Id).ToListAsync();
+        foreach (var cheque in cheques) ShopExpenseChequeIntegrity.Validate(cheque);
+        if (expense.ReplacementVoucherId.HasValue || cheques.Count == 0 ||
+            cheques.Any(c => c.CompanyId != expense.CompanyId || c.State != ExpenseChequeState.Returned || !c.SettledAt.HasValue) ||
+            cheques.Any(c => c.SettledAt!.Value.Date > cmd.Date.Date))
+            throw new InvalidOperationException("پرداخت جایگزین فقط پس از برگشت همه چک‌ها و از تاریخ آخرین برگشت ممکن است.");
+        var account = await _db.TrsAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == cmd.TrsAccountId && a.IsActive)
+            ?? throw new InvalidOperationException("حساب پرداخت فعال نیست یا یافت نشد.");
+        var validKind = cmd.PayType == CashType.Cash
+            ? account.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash
+            : account.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos;
+        if (!validKind) throw new InvalidOperationException("نوع حساب با روش پرداخت مطابقت ندارد.");
+        await SaleChequeTreasuryGuard.VerifyCompanyOwnershipAsync(_db, account, expense.CompanyId);
+        await TreasuryBalanceCalculator.EnsureAvailableOnAndAfterAsync(_db, account.Id, cmd.Date.Date, expense.Amount);
+        var no = (await _db.TrsVouchers.IgnoreQueryFilters().Where(v => v.Kind == TreasuryKind.Payment).Select(v => (int?)v.Number).MaxAsync() ?? 0) + 1;
+        var title = $"پرداخت جایگزین هزینه {expense.Number} پس از برگشت چک";
+        var method = cmd.PayType == CashType.Cash ? PayMethod.Cash : PayMethod.Card;
+        var voucher = new TrsVoucher { CompanyId = expense.CompanyId, Number = no, Kind = TreasuryKind.Payment,
+            Date = cmd.Date.Date, Description = title, Status = TreasuryStatus.Confirmed, TotalAmount = expense.Amount,
+            CashAmount = expense.Amount, CreatedBy = user, ConfirmedBy = user, CreatedAt = DateTime.Now, ConfirmedAt = DateTime.Now,
+            Lines = new() { new TrsVoucherLine { RowNo = 1, TrsAccountId = account.Id, Amount = expense.Amount, Method = method, Description = title } } };
+        expense.PayType = cmd.PayType;
+        expense.TrsAccountId = account.Id;
+        expense.TrsAccountName = account.Name;
+        expense.ReplacementOperationId = cmd.OperationId;
+        expense.ReplacementVoucher = voucher;
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
+
 
     public async Task<int> CreateAsync(ExpenseChequeCreateCommand cmd, ExpenseChequeKind routeKind, string? user)
     {
@@ -83,7 +139,7 @@ public class ShopExpenseChequeService
         {
             expense = await _db.Expenses.FirstOrDefaultAsync(e => e.Id == dto.Id)
                 ?? throw new InvalidOperationException("سند هزینه یافت نشد.");
-            if (expense.CompanyId != category.CompanyId || expense.CategoryId != dto.CategoryId || expense.Amount != dto.Amount ||
+            if (expense.ReplacementVoucherId.HasValue || expense.CompanyId != category.CompanyId || expense.CategoryId != dto.CategoryId || expense.Amount != dto.Amount ||
                 expense.Date.Date != dto.Date.Date || expense.Description != Optional(dto.Description) ||
                 !await _db.ShopExpenseCheques.AnyAsync(c => c.ExpenseId == expense.Id && c.State == ExpenseChequeState.Returned) ||
                 await _db.ShopExpenseCheques.AnyAsync(c => c.ExpenseId == expense.Id && c.State != ExpenseChequeState.Returned))
@@ -197,4 +253,5 @@ public class ShopExpenseChequeService
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();
     }
+
 }

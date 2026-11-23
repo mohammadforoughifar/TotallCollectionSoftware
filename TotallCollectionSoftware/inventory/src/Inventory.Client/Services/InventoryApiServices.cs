@@ -592,6 +592,9 @@ public class ExpenseService : IExpenseService
     }
 
     public Task<List<TrsAccount>> GetChequeBanksAsync() => _api.GetAsync<List<TrsAccount>>("api/expenses/cheque-banks");
+    public Task<List<TrsAccount>> GetExpenseReplacementAccountsAsync() => _api.GetAsync<List<TrsAccount>>("api/expenses/replacement-accounts");
+    public async Task SettleReturnedExpenseAsync(int id, ExpenseReplacementPaymentCommand command)
+        => await _api.PostAsync<object>($"api/expenses/{id}/replacement-payment", command);
     public Task<List<ShopChequeItem>> GetAvailableReceivedChequesAsync() => _api.GetAsync<List<ShopChequeItem>>("api/expenses/available-received-cheques");
     public Task<ExpenseChequeCreatedResult> CreateChequeExpenseAsync(ExpenseChequeCreateCommand command)
         => _api.PostAsync<ExpenseChequeCreatedResult>($"api/expenses/{(command.Kind == ExpenseChequeKind.Issued ? "issued-cheque" : "received-cheque")}", command);
@@ -632,6 +635,9 @@ public class GoodsIssueService : IGoodsIssueService
 
     public Task<List<GoodsIssueProductOptionDto>> GetProductOptionsAsync()
         => _api.GetAsync<List<GoodsIssueProductOptionDto>>("api/goods-issues/product-options");
+
+    public Task<List<LookupItem>> GetWarehouseOptionsAsync()
+        => _api.GetAsync<List<LookupItem>>("api/goods-issues/warehouse-options");
 }
 
 public class ShopPricingClient : IShopPricingClient

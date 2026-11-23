@@ -844,7 +844,9 @@
     private const int PageSize = 15;
     private bool loading = true, showForm;
     private DateTime? from, to;
+    private DateTime? appliedFrom, appliedTo;
     private int filterWarehouseId, filterPartyId;
+    private int appliedWarehouseId, appliedPartyId;
     private List<LookupItem> whLookup = new();
     private List<LookupItem> partyLookup = new();
     private Order? viewing;
@@ -888,7 +890,7 @@
         try
         {
             var profitTask = isPurchase ? Task.FromResult(false) : OrderSvc.CanViewProfitAsync();
-            var ordersTask = OrderSvc.GetOrdersAsync(txnType, from, to, filterPartyId, filterWarehouseId, page, PageSize);
+            var ordersTask = OrderSvc.GetOrdersAsync(txnType, appliedFrom, appliedTo, appliedPartyId, appliedWarehouseId, page, PageSize);
             try { canSeeProfit = await profitTask; }
             catch { canSeeProfit = false; }
             var res = await ordersTask;
@@ -1063,6 +1065,15 @@
 
     private async Task ApplyFilter()
     {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+        {
+            Toast.Error("تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.");
+            return;
+        }
+        appliedFrom = from;
+        appliedTo = to;
+        appliedWarehouseId = filterWarehouseId;
+        appliedPartyId = filterPartyId;
         page = 1;
         await Load();
     }

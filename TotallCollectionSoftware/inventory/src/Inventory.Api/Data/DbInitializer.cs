@@ -97,6 +97,8 @@ public static class DbInitializer
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید
                     await TransactionLineDiscountSchemaV1.EnsureAsync(db);
+                    // سود (هزینهٔ مالی) چک‌های پرداختی فاکتور خرید — ردیف مستقل برای گزارش
+                    await PurchaseChequeInterestSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
                     // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی
@@ -188,6 +190,8 @@ public static class DbInitializer
                     await TransactionLineCostSchemaV1.EnsureAsync(db);
                     // ستون‌های تخفیف سطر فاکتور فروش/خرید
                     await TransactionLineDiscountSchemaV1.EnsureAsync(db);
+                    // سود (هزینهٔ مالی) چک‌های پرداختی فاکتور خرید — ردیف مستقل برای گزارش
+                    await PurchaseChequeInterestSchemaV1.EnsureAsync(db);
                     // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
                     await TransactionBankSchemaV1.EnsureAsync(db);
                     // وضعیت، تاریخ و علت برگشت چک‌های فروشگاهی

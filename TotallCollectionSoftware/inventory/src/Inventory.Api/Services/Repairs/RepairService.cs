@@ -621,9 +621,22 @@ public class RepairService : IRepairService
 
         var productIds = r.Items.Where(i => i.ProductId.HasValue).Select(i => i.ProductId!.Value).Distinct().ToList();
         var productInfo = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Name, p.IsService, p.CompanyId }).ToDictionaryAsync(p => p.Id);
+            .Select(p => new { p.Id, p.Name, p.Unit, p.IsService, p.CompanyId }).ToDictionaryAsync(p => p.Id);
         if (r.WarrantyProcessed && (productInfo.Count != productIds.Count || productInfo.Values.Any(p => p.CompanyId != r.CompanyId)))
             throw new InvalidOperationException("کالای پذیرش گارانتی متعلق به شرکت جاری نیست.");
+
+        var unitNames = productInfo.Values.Select(p => (p.Unit ?? "").Trim())
+            .Where(name => name.Length > 0).Distinct().ToList();
+        var unitRows = await _db.MeasureUnits.AsNoTracking().Where(u => unitNames.Contains(u.Name))
+            .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync();
+        var unitRules = unitRows.GroupBy(u => (u.CompanyId, u.Name.Trim()))
+            .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+
+        foreach (var product in productInfo.Values.Where(p => !p.IsService))
+        {
+            var key = (product.CompanyId, (product.Unit ?? "").Trim());
+            if (!unitRules.ContainsKey(key)) unitRules[key] = ShopQuantityRules.DefaultAllowsFraction(key.Item2);
+        }
 
         var items = r.Items.OrderBy(i => i.Id).Select(i => new RepairItemDto
         {
@@ -632,6 +645,9 @@ public class RepairService : IRepairService
             ProductId = i.ProductId,
             ProductName = i.ProductId.HasValue && productInfo.TryGetValue(i.ProductId.Value, out var pn) ? pn.Name : null,
             ProductIsService = i.ProductId.HasValue && productInfo.TryGetValue(i.ProductId.Value, out var pi) && pi.IsService,
+            ProductUnit = i.ProductId.HasValue && productInfo.TryGetValue(i.ProductId.Value, out var pu) ? pu.Unit : null,
+            ProductAllowsFractionalQuantity = i.ProductId.HasValue && productInfo.TryGetValue(i.ProductId.Value, out var pq)
+                ? (pq.IsService ? true : unitRules.GetValueOrDefault((pq.CompanyId, (pq.Unit ?? "").Trim()))) : null,
             Quantity = i.Quantity,
             Cost = i.Cost,
             Price = i.Price,

@@ -32,6 +32,13 @@ public class ExpensesController : ApiControllerBase
     [HttpGet("cheque-banks")]
     public async Task<IActionResult> ChequeBanks() => Ok(await _cheques.BanksAsync());
 
+    [HttpGet("replacement-accounts")]
+    public async Task<IActionResult> ReplacementAccounts() => Ok(await _cheques.ReplacementAccountsAsync());
+
+    [HttpPost("{id:int}/replacement-payment")]
+    public async Task<IActionResult> ReplacementPayment(int id, [FromBody] ExpenseReplacementPaymentCommand cmd)
+    { await _cheques.SettleReturnedAsync(id, cmd, Actor); return Ok(new { ok = true }); }
+
     [HttpGet("available-received-cheques")]
     [RequirePermission("Orders", "Read")]
     public async Task<IActionResult> AvailableReceivedCheques() => Ok(await _cheques.EligibleReceivedAsync());

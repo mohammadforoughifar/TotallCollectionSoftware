@@ -21,6 +21,7 @@ public interface IGoodsIssueService
     /// ورود نام آزاد (دستی) همچنان مجاز است؛ این فهرست فقط انتخاب را سریع می‌کند.
     /// </summary>
     Task<List<GoodsIssueProductOptionDto>> GetProductOptionsAsync();
+    Task<List<LookupItem>> GetWarehouseOptionsAsync();
 }
 
 public class GoodsIssueService : IGoodsIssueService
@@ -33,6 +34,10 @@ public class GoodsIssueService : IGoodsIssueService
         _db = db;
         _inventory = inventory;
     }
+
+    public Task<List<LookupItem>> GetWarehouseOptionsAsync() => _db.Warehouses.AsNoTracking()
+        .Where(w => w.IsActive).OrderBy(w => w.Name).ThenBy(w => w.Id)
+        .Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToListAsync();
 
     /// <summary>
     /// فهرست کالاهای انباری با موجودی کل. خدمات (بدون موجودی) کنار گذاشته می‌شوند چون
@@ -116,6 +121,13 @@ public class GoodsIssueService : IGoodsIssueService
         if (cmd.Lines.Any(l => string.IsNullOrWhiteSpace(l.ProductName)))
             throw new InvalidOperationException("نام کالای هر سطر را وارد کنید.");
 
+        var warehouse = cmd.WarehouseId is > 0
+            ? await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.Id == cmd.WarehouseId)
+                ?? throw new InvalidOperationException("انبار انتخاب‌شده یافت نشد؛ دوباره انتخاب کنید.")
+            : null;
+
+        // Serialize number allocation with the insert; the unique index remains the final guard.
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         GoodsIssue entity;
         if (cmd.Id == 0)
         {
@@ -133,6 +145,8 @@ public class GoodsIssueService : IGoodsIssueService
         entity.Date = cmd.Date == default ? DateTime.Now : cmd.Date;
         entity.PartyId = party.Id;
         entity.PartyName = party.Name;
+        entity.WarehouseId = warehouse?.Id;
+        entity.WarehouseName = warehouse?.Name;
         entity.Description = string.IsNullOrWhiteSpace(cmd.Description) ? null : cmd.Description.Trim();
 
         foreach (var l in cmd.Lines)
@@ -145,6 +159,7 @@ public class GoodsIssueService : IGoodsIssueService
             });
 
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         // پس از ذخیره، Id سطرها هم پر شده است
         var saved = await _db.GoodsIssues.Include(g => g.Lines).AsNoTracking().FirstAsync(g => g.Id == entity.Id);
@@ -166,6 +181,8 @@ public class GoodsIssueService : IGoodsIssueService
         Date = g.Date,
         PartyId = g.PartyId,
         PartyName = g.PartyName,
+        WarehouseId = g.WarehouseId,
+        WarehouseName = g.WarehouseName,
         Description = g.Description,
         Lines = g.Lines.Select(l => new GoodsIssueLineDto
         {
@@ -182,8 +199,14 @@ public class GoodsIssueService : IGoodsIssueService
     {
         var (jy, _, _) = PersianDate.FromGregorian(DateTime.Now);
         var prefix = $"HI-{jy}-";
-        // شمارش بر اساس پیشوند، تا مرز سال میلادی/شمسی شماره تکراری نسازد
-        var count = await _db.GoodsIssues.CountAsync(g => g.Number.StartsWith(prefix)) + 1;
-        return $"{prefix}{count:0000}";
+        // Older installations may still have a global unique index. Allocate across
+        // companies as well, and use the largest suffix rather than a row count:
+        // deleting an earlier issue must never reuse an existing number.
+        var numbers = await _db.GoodsIssues.IgnoreQueryFilters().AsNoTracking()
+            .Where(g => g.Number.StartsWith(prefix)).Select(g => g.Number).ToListAsync();
+        var max = 0;
+        foreach (var number in numbers)
+            if (int.TryParse(number.Substring(prefix.Length), out var n) && n > max) max = n;
+        return $"{prefix}{checked(max + 1):0000}";
     }
 }

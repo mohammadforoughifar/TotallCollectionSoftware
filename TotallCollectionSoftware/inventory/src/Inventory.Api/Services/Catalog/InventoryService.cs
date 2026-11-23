@@ -2092,6 +2092,8 @@ public class InventoryService : IInventoryService
                 throw new InvalidOperationException("خروج گارانتی فقط از پذیرش گارانتی قابل ثبت است.");
             if (cmd.ChequeCharge is not null && cmd.Type != TransactionType.Sale)
                 throw new InvalidOperationException("تاخیر تادیه چک فقط برای فاکتور فروش مجاز است.");
+            if (cmd.PurchaseChequeInterest is not null && cmd.Type != TransactionType.Purchase)
+                throw new InvalidOperationException("سود چک دستی فقط برای فاکتور خرید مجاز است.");
             if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Installments.Any(i => i.IsPaid))
                 throw new InvalidOperationException("تسویه قسط هنگام ثبت اولیه فاکتور سوددار مجاز نیست؛ دریافت قسط جداگانه ثبت می‌شود.");
             if ((cmd.ChequeCharge is not null || trackShopCash) && cmd.Cheques.Any(c => c.IsCleared))
@@ -2224,9 +2226,29 @@ public class InventoryService : IInventoryService
                 paymentTotal = SaleChequeVoucherAmounts.Create(goodsTotal, 0, income).CustomerDebit;
             }
 
+            // سود (هزینهٔ مالی) چک دستی در خرید: مبلغ از همان ورودی‌های ماشین‌حساب
+            // دوباره در سرور محاسبه می‌شود، مبلغ فاکتور را بالا نمی‌برد و در ردیف
+            // مستقل خودش ذخیره می‌شود تا گزارش خرید آن را جدا نشان دهد.
+            var goodsOnlyTotal = ShopInvoiceLineMath.Total(cmd.Lines, wholeRials);
+            var purchaseInterest = cmd.Type == TransactionType.Purchase
+                ? PurchaseChequeInterestMath.Validate(cmd.PurchaseChequeInterest, goodsOnlyTotal)
+                : 0m;
+
+            // خرید: تعهد پرداخت به تأمین‌کننده «مبلغ کالا + سود چک» است، در حالی که
+            // مبلغ خودِ فاکتور همچنان فقط مبلغ کالا می‌ماند.
+            if (purchaseInterest > 0)
+                paymentTotal = PurchaseChequeInterestMath.PayableTotal(goodsOnlyTotal, purchaseInterest);
+
             // پرداخت سند (خرید و فروش): نقدی / نسیه / چک / اقساط
             if (cmd.Type is TransactionType.Sale or TransactionType.Purchase)
                 ApplyPayment(txn, cmd, paymentTotal ?? ShopInvoiceLineMath.Total(cmd.Lines, wholeRials));
+            if (purchaseInterest > 0)
+            {
+                // بیش از «مبلغ کالا + سود» دیگر سود نیست، مازاد پرداخت واقعی است.
+                // اجزای واقعیِ ثبت‌شده بررسی می‌شوند، نه ورودی خام کاربر.
+                var interestPayments = txn.CashAmount + txn.Cheques.Sum(c => c.Amount) + txn.Installments.Sum(i => i.Amount);
+                PurchaseChequeInterestMath.EnsurePaymentsWithinPayable(goodsOnlyTotal, purchaseInterest, interestPayments);
+            }
 
             foreach (var l in cmd.Lines)
             {
@@ -2261,6 +2283,11 @@ public class InventoryService : IInventoryService
 
             if (txn.ShopCashLedgerEnabled)
                 await ShopOrderCashLedger.RecordInitialAsync(_db, txn, user);
+            if (purchaseInterest > 0)
+                await PurchaseChequeInterestRegistration.RegisterAsync(_db, txn.Id,
+                    new PurchaseChequeInterestRegistrationInput(cmd.PurchaseChequeInterest!.CalculatorBaseAmount,
+                        cmd.PurchaseChequeInterest.CalculatorRatePercent, cmd.PurchaseChequeInterest.CalculatorMonths),
+                    user);
             if (cmd.ChequeCharge is { } registration)
             {
                 await FreezeChargedSaleCostsAsync(txn, products, settings.CostingMethod);
@@ -2344,6 +2371,11 @@ public class InventoryService : IInventoryService
         var chargeRow = t.Type == TransactionType.Sale
             ? await _db.SaleChequeCharges.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == t.Id)
             : null;
+        // سود چک خرید جدا از مبلغ فاکتور ذخیره می‌شود؛ گزارش خرید باید تفکیک
+        // «مبلغ کالا» و «سود چک» را از همین ردیف بخواند.
+        var purchaseInterestRow = t.Type == TransactionType.Purchase
+            ? await _db.PurchaseChequeInterests.AsNoTracking().FirstOrDefaultAsync(c => c.TransactionId == t.Id)
+            : null;
         var chequeIncome = knownChequeIncome ?? chargeRow?.Amount ?? 0m;
         if (chequeIncome < 0 || chequeIncome > t.Amount)
             throw new InvalidOperationException("مبلغ تاخیر تادیه چک با مبلغ فاکتور مطابقت ندارد.");
@@ -2398,6 +2430,15 @@ public class InventoryService : IInventoryService
             ReturnedChequeIncomeAmount = returnedIncome,
             CustomerCreditAmount = chargeRow?.CustomerCredit ?? 0m,
             AvailableCustomerCredit = availableCustomerCredit,
+            PurchaseChequeInterestAmount = purchaseInterestRow?.Amount ?? 0m,
+            PurchaseChequeInterestSnapshot = purchaseInterestRow is null
+                ? null
+                : new PurchaseChequeInterestInput
+                {
+                    CalculatorBaseAmount = purchaseInterestRow.CalculatorBaseAmount,
+                    CalculatorRatePercent = purchaseInterestRow.CalculatorRatePercent,
+                    CalculatorMonths = purchaseInterestRow.CalculatorMonths
+                },
             ChequeChargeSnapshot = chargeRow is { CalculatorBaseAmount: not null, CalculatorRatePercent: not null, CalculatorMonths: not null }
                 ? new SaleChequeChargeInput
                 {
@@ -2612,8 +2653,33 @@ public class InventoryService : IInventoryService
                                        || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
                 throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است؛ فقط مقدار قدیمیِ بدون تغییر قابل حفظ است.");
 
+            // سود چک خرید روی مبلغ فاکتور نمی‌نشیند؛ اجزای پرداخت با «مبلغ کالا + سود»
+            // مقایسه می‌شوند تا سود به‌اشتباه مازاد/ماندهٔ نسیه دیده نشود.
+            var goodsOnlyTotal = ShopInvoiceLineMath.Total(cmd.Lines, true, originalLines);
+            // سکوت دربارهٔ سود یعنی «همان مقدار ثبت‌شده حفظ شود»؛ حذف باید صریح باشد.
+            var storedInterestRow = txn.Type == TransactionType.Purchase
+                ? await _db.PurchaseChequeInterests.FirstOrDefaultAsync(x => x.TransactionId == txn.Id)
+                : null;
+            if (cmd.PurchaseChequeInterest is not null && cmd.ClearPurchaseChequeInterest)
+                throw new InvalidOperationException("ثبت و حذف سود چک خرید هم‌زمان ممکن نیست.");
+            var purchaseInterest = txn.Type != TransactionType.Purchase
+                ? 0m
+                : cmd.PurchaseChequeInterest is not null
+                    ? PurchaseChequeInterestMath.Validate(cmd.PurchaseChequeInterest, goodsOnlyTotal)
+                    : cmd.ClearPurchaseChequeInterest ? 0m : storedInterestRow?.Amount ?? 0m;
             if (txn.Type is TransactionType.Sale or TransactionType.Purchase)
-                ApplyPayment(txn, cmd, ShopInvoiceLineMath.Total(cmd.Lines, true, originalLines));
+                ApplyPayment(txn, cmd, purchaseInterest > 0
+                    ? PurchaseChequeInterestMath.PayableTotal(goodsOnlyTotal, purchaseInterest)
+                    : goodsOnlyTotal);
+            if (purchaseInterest > 0)
+            {
+                var interestPayments = txn.CashAmount + txn.Cheques.Sum(c => c.Amount) + txn.Installments.Sum(i => i.Amount);
+                PurchaseChequeInterestMath.EnsurePaymentsWithinPayable(goodsOnlyTotal, purchaseInterest, interestPayments);
+                // سود ثبت‌شده باید مبنایش با مبلغ کالای جدید بخواند.
+                var storedBase = cmd.PurchaseChequeInterest?.CalculatorBaseAmount ?? storedInterestRow?.CalculatorBaseAmount ?? 0m;
+                if (storedBase > goodsOnlyTotal)
+                    throw new InvalidOperationException("مبلغ کالا از مبنای محاسبهٔ سود چک کمتر است؛ سود چک را دوباره محاسبه کنید.");
+            }
             if (!txn.ShopCashLedgerEnabled &&
                 (txn.CashAmount != oldCash.CashAmount || ((oldCash.CashAmount > 0 || txn.CashAmount > 0) &&
                     (txn.CashType != oldCash.CashType || txn.TrsAccountId != oldCash.TrsAccountId ||
@@ -2771,6 +2837,9 @@ public class InventoryService : IInventoryService
                 throw;
             }
 
+            if (txn.Type == TransactionType.Purchase)
+                await PurchaseChequeInterestRegistration.SyncAsync(_db, txn,
+                    cmd.PurchaseChequeInterest, cmd.ClearPurchaseChequeInterest);
             if (goodsCostBasisChanged && txn.Type == TransactionType.Sale && txn.ReferrerId is > 0 &&
                 txn.ReferrerGoodsPercentSnapshot.HasValue && txn.ReferrerServicePercentSnapshot.HasValue)
             {
@@ -4529,6 +4598,20 @@ public class InventoryService : IInventoryService
         return result;
     }
 
+    /// <summary>
+    /// سود چک ثبت‌شدهٔ فاکتورهای خرید این طرف‌حساب‌ها. مبلغ فاکتور خرید این سود را
+    /// شامل نمی‌شود، پس صورت‌حساب باید آن را جدا اضافه کند.
+    /// </summary>
+    private async Task<Dictionary<int, decimal>> LoadPurchaseChequeInterestAsync(IReadOnlyCollection<int> partyIds)
+    {
+        if (partyIds.Count == 0) return new();
+        return await _db.PurchaseChequeInterests.AsNoTracking()
+            .Where(x => x.Transaction.PartyId.HasValue && partyIds.Contains(x.Transaction.PartyId.Value))
+            .GroupBy(x => x.TransactionId)
+            .Select(g => new { TransactionId = g.Key, Amount = g.Sum(x => x.Amount) })
+            .ToDictionaryAsync(x => x.TransactionId, x => x.Amount);
+    }
+
     private sealed record OrdinaryChequeStatementEvent(int TransactionId, int PartyId, string OrderNumber,
         TransactionType Type, DateTime Date, decimal Amount, bool IsReversal, bool IsEndorsement = false);
 
@@ -4735,6 +4818,7 @@ public class InventoryService : IInventoryService
             .ToListAsync())
             .Where(s => !chequeHistory.ContainsKey(s.TargetSaleTransactionId!.Value))
             .ToLookup(s => s.TargetSaleTransactionId!.Value);
+        var purchaseInterestByTxn = await LoadPurchaseChequeInterestAsync(partyIds);
 
         // اسناد فروشگاه
         var txns = await _db.Transactions.AsNoTracking()
@@ -4767,7 +4851,10 @@ public class InventoryService : IInventoryService
                 var initialSaleTotal = t.Type == TransactionType.Sale && chequeHistory.TryGetValue(t.Id, out var saleHistory)
                     ? t.Amount - saleHistory.CurrentIncome + saleHistory.InitialIncome : t.Amount;
                 decimal debit = t.Type == TransactionType.Sale ? initialSaleTotal : 0;
-                decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+                // سود چک خرید تعهد ما به تأمین‌کننده است (هزینهٔ مالی) و مبلغ فاکتور
+                // (کالا) را بالا نمی‌برد؛ در صورت‌حساب طرف حساب هر دو بستانکار می‌شوند.
+                decimal credit = t.Type == TransactionType.Purchase
+                    ? t.Amount + purchaseInterestByTxn.GetValueOrDefault(t.Id) : 0;
 
                 // برای فروش دارای سود، فقط نقد اولیه در تاریخ فاکتور قرار می‌گیرد؛ وصول‌ها تاریخ مستقل دارند.
                 if (t.Type == TransactionType.Sale && (t.SettledAmount > 0 ||
@@ -4956,6 +5043,7 @@ public class InventoryService : IInventoryService
             .ToListAsync())
             .Where(s => !chequeHistory.ContainsKey(s.TargetSaleTransactionId!.Value))
             .ToLookup(s => s.TargetSaleTransactionId!.Value);
+        var purchaseInterestByTxn = await LoadPurchaseChequeInterestAsync(new[] { partyId });
 
         var result = new PartyStatementDetailDto
         {
@@ -4980,7 +5068,8 @@ public class InventoryService : IInventoryService
             var initialSaleTotal = t.Type == TransactionType.Sale && chequeHistory.TryGetValue(t.Id, out var saleHistory)
                 ? t.Amount - saleHistory.CurrentIncome + saleHistory.InitialIncome : t.Amount;
             decimal debit = t.Type == TransactionType.Sale ? initialSaleTotal : 0;
-            decimal credit = t.Type == TransactionType.Purchase ? t.Amount : 0;
+            decimal credit = t.Type == TransactionType.Purchase
+                ? t.Amount + purchaseInterestByTxn.GetValueOrDefault(t.Id) : 0;
             // Initial cash still occurred even when cancellation later brought SettledAmount to zero.
             if (t.SettledAmount > 0 || (t.Type == TransactionType.Sale && chequeHistory.ContainsKey(t.Id) && t.CashAmount > 0))
             {

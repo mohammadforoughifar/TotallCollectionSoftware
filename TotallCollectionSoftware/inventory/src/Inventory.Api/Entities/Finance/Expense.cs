@@ -13,6 +13,9 @@ public class Expense : ICompanyOwned
     public CashType PayType { get; set; } = CashType.Cash;
 
     /// <summary>بانک / حساب خزانهٔ انتخابی برای نحوهٔ پرداخت</summary>
+    public Guid? ReplacementOperationId { get; set; }
+    public int? ReplacementVoucherId { get; set; }
+    public TrsVoucher? ReplacementVoucher { get; set; }
     public int? TrsAccountId { get; set; }
     [MaxLength(200)] public string? TrsAccountName { get; set; }
     [MaxLength(150)] public string? Payee { get; set; }
