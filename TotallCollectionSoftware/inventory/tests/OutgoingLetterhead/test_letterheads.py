@@ -14,7 +14,7 @@ TEMPLATES = API / "Reports" / "OutgoingLetters" / "Companies"
 
 
 class LetterheadAssetsTests(unittest.TestCase):
-    def test_every_company_size_has_an_embedded_jpeg(self):
+    def test_every_company_size_has_a_supported_embedded_image(self):
         for company in (1, 2, 3, 1003, 1005):
             for size in ("A4", "A5"):
                 with self.subTest(company=company, size=size):
@@ -23,8 +23,11 @@ class LetterheadAssetsTests(unittest.TestCase):
                     value = next(e.text for e in watermark if e.tag.split("}")[-1] == "ImageBytes")
                     # Convert.FromBase64String tolerates XML whitespace just as this normalization does.
                     image = base64.b64decode("".join(value.split()), validate=True)
-                    self.assertTrue(image.startswith(b"\xff\xd8"))
-                    self.assertTrue(image.endswith(b"\xff\xd9"))
+                    if company == 1005:
+                        self.assertTrue(image.startswith(b"\x89PNG\r\n\x1a\n"))
+                    else:
+                        self.assertTrue(image.startswith(b"\xff\xd8"))
+                        self.assertTrue(image.endswith(b"\xff\xd9"))
                     self.assertGreater(len(image), 100_000)
 
     def test_1003_enhanced_art_is_synchronized_across_registered_and_embedded_files(self):
@@ -127,12 +130,12 @@ class LetterheadAssetsTests(unittest.TestCase):
     def test_aria_fields_and_body_start_are_fixed_independently_for_a4_and_a5(self):
         source = SERVICE.read_text()
         layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
-        # مختصات تأییدشدهٔ کارفرما: مقدارها راست‌چین و لبهٔ راستشان ۲pt سمت چپِ دونقطهٔ
-        # برچسب روی همان خط نقطه‌چین (۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ در A4).
+        # تصاویر جدید ۳۰۰ DPI: کادر سفید تمام خط‌چین را می‌پوشاند، نه دونقطه/کپشن را.
+        # Top در fallback نسبت به مبدأ header است (۲۴pt در A4 / ۱۶pt در A5).
         expected = {
-            "Date": ((142.8, 48.2, 33.6, 9.7), (202, 66.8, 47.5, 13.7)),
-            "Number": ((77.7, 48.2, 30.8, 9.7), (110, 66.8, 43.5, 13.7)),
-            "Attachment": ((14.8, 48.2, 29, 9.7), (21, 66.8, 41, 13.7)),
+            "Date": ((141.5, 56.35, 35.5, 10.6), (201, 78.4, 50, 15)),
+            "Number": ((77, 56.35, 34, 10.6), (109, 78.4, 48, 15)),
+            "Attachment": ((13.5, 56.35, 30.3, 10.6), (19, 78.4, 43, 15)),
         }
         for name, sizes in expected.items():
             method = re.search(r"static Field " + name + r"\(bool isA5\)(.*?);", layout, re.S).group(1)
@@ -154,16 +157,16 @@ class LetterheadAssetsTests(unittest.TestCase):
         self.assertIn("page.MarginTop(pageTopMargin);", source)
         aria_branch = source.split("if (isAriaLetterhead)", 1)[1].split("else if (isHomepaLetterhead)", 1)[0]
         self.assertIn("page.Header().ContentFromLeftToRight()", aria_branch)
-        self.assertIn(".Layers(layers =>", aria_branch)
-        for field in expected:
-            self.assertIn(f"AriaLetterheadLayout.{field}(isA5)", aria_branch)
+        self.assertIn("OutgoingLetterMetaPainter.Draw", aria_branch)
+        self.assertIn("declared ?? AriaLetterheadLayout.MetaFields(isA5)", aria_branch)
+        self.assertIn("field.Top - pageTopMargin", aria_branch)
         self.assertIn("? AriaLetterheadLayout.BodyTopPadding(isA5)", source)
 
     def test_company_1005_meta_row_sits_on_its_own_dotted_line(self):
         """۱۰۰۵: سه مقدار در یک ردیف افقی، راست‌چین روی خط‌چین، پررنگ و با پلاک سفید.
 
         اعداد از یک منبع می‌آیند: `AriaLetterheadLayout` (چاپ) و همان‌ها در قالب MRT نوشته
-        می‌شوند (`tools/sync_aria_meta_rows.py`). اگر یکی جابه‌جا شود، این تست می‌شکند.
+        می‌شوند (`tools/update_aria_letterhead.py`). اگر یکی جابه‌جا شود، این تست می‌شکند.
         """
         layout = SERVICE.with_name("AriaLetterheadLayout.cs").read_text()
         for size, origin in (("A5", 16.0), ("A4", 24.0)):
@@ -171,20 +174,20 @@ class LetterheadAssetsTests(unittest.TestCase):
                 fields = declared_meta_fields(1005, size)
                 for name, slot in (("Number", "Number"), ("Date", "Date"), ("Attachment", "Attachment")):
                     field = fields[name]
-                    # مرکز عمودی کادرها روی خط نقطه‌چین: ۹۷٫۶pt در A4 و ۶۹٫۰pt در A5.
+                    # مرکز عمودی خط‌چین تصویر جدید: ۱۰۹٫۹pt در A4 و ۷۷٫۶۵pt در A5.
                     centre = field["top"] + field["height"] / 2
-                    self.assertAlmostEqual(centre, 97.65 if size == "A4" else 69.05, delta=0.2,
+                    self.assertAlmostEqual(centre, 109.9 if size == "A4" else 77.65, delta=0.2,
                                            msg=f"{size} {name} باید روی خط نقطه‌چین بنشیند")
                     self.assertEqual(field["color"], "Black", f"{size} {name} باید پررنگ/تیره باشد")
                 # همان سه ردیف افقی: هر سه کادر یک بالا و یک ارتفاع دارند.
                 tops = {round(fields[name]["top"], 2) for name in ("Number", "Date", "Attachment")}
                 self.assertEqual(len(tops), 1, "سه مقدار باید در یک ردیف افقی باشند")
-                # لبهٔ راست هر مقدار = انتهای خط‌چین (۲pt سمت چپِ دونقطهٔ برچسب).
+                # لبهٔ راست مقدار پس از آخرین نقطه و پیش از دونقطهٔ چاپ‌شده است.
                 rights = {name: round(fields[name]["left"] + fields[name]["width"], 1)
                           for name in ("Attachment", "Number", "Date")}
-                self.assertEqual(rights, {"Attachment": 62.0, "Number": 153.5, "Date": 249.5}
+                self.assertEqual(rights, {"Attachment": 62.0, "Number": 157.0, "Date": 251.0}
                                  if size == "A4" else
-                                 {"Attachment": 43.8, "Number": 108.5, "Date": 176.4})
+                                 {"Attachment": 43.8, "Number": 111.0, "Date": 177.0})
                 # قلم: ۹pt در A4 و ۶٫۴pt در A5، همه توپُر، و پلاک سفید پشت مقدار.
                 font = "Vazirmatn,9,Bold" if size == "A4" else "Vazirmatn,6.4,Bold"
                 root = ET.parse(TEMPLATES / "1005" / f"Outgoing-{size}.mrt").getroot()
@@ -435,7 +438,10 @@ class LetterheadMetaValuesTests(unittest.TestCase):
         self.assertIn("? ReadDeclaredMetaFields(", source)
         self.assertIn("var parsed = LetterheadMetaFields.TryRead(templatePath);", source)
         self.assertIn('FindCompanyTemplate(letterheadCompanyId.Value, isA5 ? "A5" : "A4")', source)
-        self.assertIn("AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);", source)
+        # Generic companies keep the primary number layer; Aria uses the independent MRT painter.
+        self.assertIn("AddDeclaredField(layers.PrimaryLayer(), declared.Number, number, pageTopMargin);", source)
+        self.assertIn("declared ?? AriaLetterheadLayout.MetaFields(isA5)", source)
+        self.assertIn("OutgoingLetterMetaPainter.Draw(header, headerFields", source)
         self.assertIn("AddDeclaredField(layers.Layer(), declared.Date, date, pageTopMargin);", source)
         self.assertIn(".FontColor(field.Color).LineHeight(1.05f);", source,
                       "the declared colour must win over the hard-coded white used before")
@@ -685,7 +691,8 @@ class LetterheadSourceResolutionTests(unittest.TestCase):
                 # طرح قالب برای شرکت ۱۰۰۳ و شرکت ۱ (فروغ آریا) جداگانه اولویت دارد
                 # (کلید عمومی خاموش است). برای شرکت ۱ خودِ فایل سربرگ از ForoughCompanyIds
                 # می‌آید، ولی چیدمان/هندسه از Reports/OutgoingLetters/Companies/1 خوانده می‌شود.
-                self.assertIn('"TemplateLetterheadCompanyIds": "1003,1"', settings)
+                # آریا/۱۰۰۵ هم باید تصاویر جدید A4/A5 را از MRT بگیرد، نه PDF اسکن‌شده.
+                self.assertIn('"TemplateLetterheadCompanyIds": "1003,1,1005"', settings)
                 self.assertIn("_templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany))", service)
 
     def test_shadowing_of_the_design_is_logged(self):

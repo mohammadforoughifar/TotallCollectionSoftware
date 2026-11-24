@@ -26,6 +26,8 @@ public sealed class InnerLetterPrintException(string message, Exception? inner =
 /// کش‌کردن نتیجه باعث می‌شود: (۱) QuestPDF هر بار مجبور نباشد تصویر را تغییر اندازه و از نو
 /// JPEG کند، (۲) حجم PDF و حافظهٔ لازم برای نمایش/چاپ در مرورگر چند برابر کمتر شود.
 /// مقدار DPI با کلید <c>Reporting:InnerLetters:LetterheadDpi</c> قابل تنظیم است (۰ = بدون تغییر).
+/// استثنا: تصویر قالب آریا/۱۰۰۵ همیشه با کیفیت اصلی حفظ می‌شود؛ PNG جدید آن نباید به
+/// JPEG با کیفیت کمتر تبدیل شود. آماده‌سازی شرکت‌های دیگر مثل قبل باقی می‌ماند.
 /// </para>
 /// </summary>
 internal static class InnerLetterheadTemplates
@@ -95,9 +97,12 @@ internal static class InnerLetterheadTemplates
         int dpi = DefaultArtworkDpi, string? templateRoot = null)
     {
         if (companyId <= 0) return null;
+        // Aria's supplied 300-DPI PNG must not be downsampled/re-encoded as an 88%-quality JPEG.
+        // Keep the existing configured preparation for every other company.
+        var artworkDpi = companyId == 1005 ? 0 : dpi;
         foreach (var path in CompanyCandidates(contentRoot, baseDirectory, companyId, a5, templateRoot))
         {
-            var bytes = TryLoadArtwork(path, a5, dpi);
+            var bytes = TryLoadArtwork(path, a5, artworkDpi);
             if (bytes != null) return bytes;
         }
 

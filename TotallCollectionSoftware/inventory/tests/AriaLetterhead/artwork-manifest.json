@@ -1,0 +1,72 @@
+{
+  "company": 1005,
+  "colour_conversion": "ICC to sRGB, relative colorimetric",
+  "artwork": [
+    {
+      "size": "A4",
+      "source_name": "Sarbarg    A4.jpg",
+      "source_sha256": "263ac1f57ca0e8ffe308307b24f3dc63dc0b97a9ef35a2bd6bcc7d4814aa7d60",
+      "source_mode": "CMYK",
+      "source_icc": "U.S. Web Coated (SWOP) v2",
+      "format": "PNG",
+      "mode": "RGB",
+      "pixels": [
+        2480,
+        3508
+      ],
+      "dpi": 300,
+      "embedded_sha256": "eaf1976dc47de26e52c294b59bf511cfd61bc34d34730dd71eef1ad19487a9b0",
+      "pixel_sha256": "5c8bd768847eb73bd8f70e526c6bd6edb76c5ea94592d6ba010be9ebb35b6329",
+      "unaffected_xml_sha256": "14d4c0b3dad6c879051139d1cec9a773151c28373e73ad0a36a63503b1d4f6f9",
+      "top": 102.4,
+      "height": 15.0,
+      "fields": {
+        "Text1": {
+          "left": 201.0,
+          "width": 50.0
+        },
+        "Text2": {
+          "left": 109.0,
+          "width": 48.0
+        },
+        "Text3": {
+          "left": 19.0,
+          "width": 43.0
+        }
+      }
+    },
+    {
+      "size": "A5",
+      "source_name": "Sarbarg    A5.jpg",
+      "source_sha256": "2fbadec68b4de45def6f5f72b95daaa996ed3c3d659dca7a4dfdbe8f6e7ba365",
+      "source_mode": "CMYK",
+      "source_icc": "U.S. Web Coated (SWOP) v2",
+      "format": "PNG",
+      "mode": "RGB",
+      "pixels": [
+        1753,
+        2480
+      ],
+      "dpi": 300,
+      "embedded_sha256": "352ba678657998fcd14b9e9c8ee8b0fe633a4442390d27dd8258252b9a0f5690",
+      "pixel_sha256": "ba89e7a905acc5fe6d5b2affe9321c78dd6ee59f3cf6b522a5faff3ef39be630",
+      "unaffected_xml_sha256": "e5c4bc64b167bfde228e4e0369ed2616e2bb45a34a2b0abfe9f62fd51aded8e8",
+      "top": 72.35,
+      "height": 10.6,
+      "fields": {
+        "Text1": {
+          "left": 141.5,
+          "width": 35.5
+        },
+        "Text2": {
+          "left": 77.0,
+          "width": 34.0
+        },
+        "Text3": {
+          "left": 13.5,
+          "width": 30.3
+        }
+      }
+    }
+  ]
+}

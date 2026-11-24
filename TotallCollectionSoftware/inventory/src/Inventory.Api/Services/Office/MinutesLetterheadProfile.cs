@@ -38,7 +38,9 @@ internal readonly record struct MinutesLetterheadProfile(
     // «بلافاصله بعد از پایان متن» جا شود، نه در صفحهٔ بعد.
     float SignatureCompactBoxHeight = 0f,
     // فاصلهٔ بلوک امضا از آخرین بند.
-    float SignatureTopPadding = 14f)
+    float SignatureTopPadding = 14f,
+    // Only Aria/1005 uses exact independent value boxes; other designs keep their existing painter.
+    bool ExactMetaRectangles = false)
 {
     /// <summary>شناسهٔ شرکت «فروغ آریا» (همان شرکتی که درخواست این طرح از او بود).</summary>
     private const int AriaCompanyId = 1;
@@ -81,28 +83,30 @@ internal readonly record struct MinutesLetterheadProfile(
     /// <summary>
     /// طرح شرکت ۱۰۰۵ (آریا همیار ژنراتور) — اعداد اندازه‌گیری‌شده روی خودِ هنر سربرگ:
     /// نوار تیره/زرد پایین کاغذ از y≈۷۶۲pt شروع می‌شود، پس مرز محتوا ۷۴۵pt (رزرو ۹۷) و
-    /// ناحیهٔ تماس تا ≈۱۰۹pt می‌آید، پس صفحهٔ دوم از ۱۱۸pt شروع می‌شود (همان «+۶pt» امن).
+    /// ردیف مقادیر تصویر جدید تا ۱۱۷٫۴pt می‌آید؛ شروع ادامهٔ متن ۱۲۸pt در A4 و ۹۰pt در A5 است.
     /// امضا: سه کادر در یک ردیف (۱۶۸×۴۶pt در A4) — مثل ۱۰۰۳، ولی حجم کاغذ ۱۰۰۵ بیشتر است.
     /// </summary>
     private static MinutesLetterheadProfile AriaArtwork(bool isA5) => isA5
         ? new MinutesLetterheadProfile(
             FooterReserve: 62f,
-            HeaderReserve: 84f,
+            HeaderReserve: 90f,
             MetaColumnLeft: 14f,
             SignatureColumns: 3,
             SignatureBoxHeight: 34f,
             SignatureCellWidth: 108f,
             SignatureCompactBoxHeight: 26f,
-            SignatureTopPadding: 4f)
+            SignatureTopPadding: 4f,
+            ExactMetaRectangles: true)
         : new MinutesLetterheadProfile(
             FooterReserve: 97f,
-            HeaderReserve: 118f,
+            HeaderReserve: 128f,
             MetaColumnLeft: 18f,
             SignatureColumns: 3,
             SignatureBoxHeight: 46f,
             SignatureCellWidth: 168f,
             SignatureCompactBoxHeight: 34f,
-            SignatureTopPadding: 6f);
+            SignatureTopPadding: 6f,
+            ExactMetaRectangles: true);
 
     /// <summary>طرح شرکت ۱ (فروغ آریا) — اعداد اندازه‌گیری‌شده روی خودِ تصویر سربرگ.</summary>
     private static MinutesLetterheadProfile Aria(bool isA5) => isA5

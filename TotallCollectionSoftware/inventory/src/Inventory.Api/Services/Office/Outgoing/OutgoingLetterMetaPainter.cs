@@ -4,7 +4,7 @@ using QuestPDF.Infrastructure;
 namespace Inventory.Api.Services.Office.Outgoing;
 
 /// <summary>
-/// Paints the three Forough outgoing-letter values in the physical rectangles declared
+/// Paints the three Forough/Aria outgoing-letter values in the physical rectangles declared
 /// by the MRT. Width is a width, never the right edge; fixed independent boxes prevent a
 /// long number from moving the following rows onto their printed captions.
 /// </summary>

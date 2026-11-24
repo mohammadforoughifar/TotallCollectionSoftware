@@ -154,7 +154,9 @@ class ForoughFamilyTests(SourceCase):
                 # کلید «یک‌جا» برای هر سه سرویس خوانده می‌شود (نه در سه بخش جدا).
                 self.has_equal(settings.count('"ForoughCompanyIds"'), 1, "کلید باید فقط یک‌جا باشد")
                 self.has('"DesignDrivenCompanyIds": "1003,1"', settings)
-                self.has('"TemplateLetterheadCompanyIds": "1003,1"', settings)
+                # Aria may also prefer its new MRT artwork; the existing Forough/Homepa choices must remain.
+                template_ids = settings.split('"TemplateLetterheadCompanyIds": "', 1)[1].split('"', 1)[0].split(',')
+                self.assertTrue({"1003", "1"}.issubset(template_ids))
 
 
 class PrintNeverFailsHardTests(SourceCase):

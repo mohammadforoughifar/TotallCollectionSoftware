@@ -168,13 +168,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     // Override without a rebuild: Reporting:OutgoingLetters:HomepaCompanyIds = "3,1003".
     private static readonly int[] DefaultHomepaCompanyIds = { 3, HomepaCompanyId };
 
-    // چیدمان چاپ «از دل فایل طرح» و اولویت «طرح قالب بر فایل ثبت‌شدهٔ شرکت» فعلاً فقط برای
-    // شرکت ۱۰۰۳ فعال است (درخواست کارفرما: اصلاح‌ها فقط برای همان شرکت). برای فعال‌کردن
-    // در شرکت دیگر، شناسه‌اش را در Reporting:OutgoingLetters:DesignDrivenCompanyIds /
-    // TemplateLetterheadCompanyIds اضافه کنید — بدون تغییر کد.
+    // چیدمان کامل بدنه «از دل فایل طرح» به‌صورت پیش‌فرض فقط برای شرکت ۱۰۰۳ فعال است.
+    // منبع تصویر سربرگ فهرست جدا دارد: آریا/۱۰۰۵ تصویر جدید MRT را می‌گیرد، اما بدنه و
+    // امضاهایش همان چیدمان قبلی را دارند. دو کلید مستقل و قابل تنظیم بدون بیلد:
+    // Reporting:OutgoingLetters:DesignDrivenCompanyIds / TemplateLetterheadCompanyIds.
     private const int DefaultDesignDrivenCompanyId = 1003;
     private static readonly int[] DefaultDesignDrivenCompanyIds = { DefaultDesignDrivenCompanyId };
     private static readonly int[] DefaultAriaCompanyIds = { AriaCompanyId };
+    // Aria's new A4/A5 artwork must come from its MRT, not a stale registered scanned PDF.
+    // This changes only the artwork source; Aria's existing flowing body/signature layout is retained.
+    private static readonly int[] DefaultTemplateLetterheadCompanyIds = { DefaultDesignDrivenCompanyId, AriaCompanyId };
 
     private static bool _fontsRegistered;
     private static readonly object FontLock = new();
@@ -202,7 +205,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     private readonly int[] _foroughCompanyIds;
 
     // شرکت‌هایی که «طرح قالب» بر «فایل ثبت‌شدهٔ شرکت» اولویت دارد، حتی وقتی
-    // PreferTemplateLetterhead خاموش است. پیش‌فرض: فقط ۱۰۰۳ (درخواست کارفرما).
+    // PreferTemplateLetterhead خاموش است. پیش‌فرض: ۱۰۰۳ و آریا/۱۰۰۵ (سربرگ جدید داخل MRT).
     private readonly int[] _templateLetterheadCompanyIds;
 
     // رنگ مقدارهای شماره/تاریخ/پیوست. پیش‌فرض سفید است — همان رنگ برچسب‌های چاپ‌شده روی
@@ -281,7 +284,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         _designDrivenCompanyIds = CompanyIdsFor(
             "Reporting:OutgoingLetters:DesignDrivenCompanyIds", DefaultDesignDrivenCompanyIds);
         _templateLetterheadCompanyIds = CompanyIdsFor(
-            "Reporting:OutgoingLetters:TemplateLetterheadCompanyIds", DefaultDesignDrivenCompanyIds);
+            "Reporting:OutgoingLetters:TemplateLetterheadCompanyIds", DefaultTemplateLetterheadCompanyIds);
         // فروغ آریا: پیش‌فرض ۱ و ۲؛ سربرگ این شرکت‌ها همیشه forough-letterhead.pdf است،
         // چه رکورد شرکت فایلی ثبت کرده باشد چه نه. قابل تنظیم بدون بیلد.
         _foroughCompanyIds = CompanyIdsFor("Reporting:ForoughCompanyIds", PrintAssetResolver.DefaultForoughCompanyIds);
@@ -724,7 +727,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
 
         var registeredPath = company != null ? ResolveRegisteredLetterheadFile(company) : null;
-        // همان قاعدهٔ خودِ چاپ: طرح قالب یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (۱۰۰۳).
+        // همان قاعدهٔ خودِ چاپ: طرح قالب یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (۱۰۰۳ و ۱۰۰۵).
         var preferTemplate = PreferTemplateLetterhead
             || (effectiveCompanyId is int preferCompany
                 && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
@@ -1378,7 +1381,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             // اولویت منبع سربرگ: پیش‌فرض = فایل ثبت‌شدهٔ شرکت، وگرنه طرح جاسازی‌شده در قالب MRT.
             // با Reporting:OutgoingLetters:PreferTemplateLetterhead=true طرح پوشهٔ
             // Reports/OutgoingLetters/Companies/{id} اولویت می‌گیرد (همان‌جا که طرح‌ها نگهداری می‌شوند).
-            // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳).
+            // اولویت طرح قالب: یا با کلید عمومی، یا برای شرکت‌های فهرست‌شده (پیش‌فرض ۱۰۰۳ و ۱۰۰۵).
             var preferTemplate = PreferTemplateLetterhead
                 || (selectedCompanyId is int preferCompany && _templateLetterheadCompanyIds.Contains(TemplateDesignId(preferCompany)));
             // گارد «سربرگ شرکت دیگر»: اگر فایل ثبت‌شده از آنِ شرکت دیگری باشد و قالب طرح
@@ -2233,25 +2236,6 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 });
         }
 
-        void AddAriaField(IContainer container, AriaLetterheadLayout.Field field, string value,
-            float fieldFontSize, bool isolateLtr = false)
-        {
-            // Place values in fixed page-coordinate boxes over the printed dotted fields.
-            // ScaleToFit prevents long dates/numbers from extending beyond each line.
-            // «پلاک سفید» پشت مقدار: خط‌چینِ چاپ‌شده نباید از میان رقم‌ها رد شود (سربرگ ۱۰۰۵).
-            var displayValue = isolateLtr ? $"\u2066{value}\u2069" : value;
-            var box = container.PaddingLeft(field.Left).PaddingTop(field.Top)
-                .Width(field.Width).Height(field.Height).AlignMiddle().AlignRight()
-                .Background(Colors.White);
-            var text = box.ScaleToFit().Text(displayValue)
-                .FontFamily("Vazirmatn-Bold").FontSize(fieldFontSize)
-                .FontColor(AriaLetterheadLayout.ValueColor).LineHeight(1.05f);
-            if (isolateLtr)
-                text.DirectionFromLeftToRight();
-            else
-                text.DirectionFromRightToLeft();
-        }
-
         void AddHomepaField(IContainer container, HomepaLetterheadLayout.Field field, string value,
             float fieldFontSize, bool isolateLtr = false)
         {
@@ -2424,35 +2408,18 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
                 if (isAriaLetterhead)
                 {
-                    // The artwork already contains all three captions and dotted lines, so only
-                    // the values are painted — on the dotted lines of the artwork.
+                    // Read all three independent boxes from the same MRT as the new artwork.
+                    // The painter fills the complete rectangle before alignment and shrinks a long
+                    // number onto one line, without moving or covering the printed captions.
+                    var ariaFields = declared ?? AriaLetterheadLayout.MetaFields(isA5);
+                    LetterheadMetaFields.Field InHeader(LetterheadMetaFields.Field field)
+                        => field with { Top = Math.Max(0f, field.Top - pageTopMargin) };
+                    var headerFields = new LetterheadMetaFields(
+                        InHeader(ariaFields.Number), InHeader(ariaFields.Date), InHeader(ariaFields.Attachment));
                     page.Header().ContentFromLeftToRight()
                         .Height(AriaLetterheadLayout.HeaderHeight(isA5))
-                        .Layers(layers =>
-                        {
-                            // «لایهٔ اصلی» باید محتوا داشته باشد، وگرنه ارتفاع سربرگ صفر می‌شود
-                            // (مقدارها Wrap و چاپ‌نشده می‌مانند) و بدنهٔ نامه به‌اندازهٔ
-                            // HeaderHeight بالا می‌رود. پس کادر اول خودِ لایهٔ اصلی است؛
-                            // مختصات هر کادر مطلق است و ترتیب لایه‌ها ظاهر را عوض نمی‌کند.
-                            if (declared != null)
-                            {
-                                // هندسه/اندازه/رنگ/پلاک از خودِ قالب همان شرکت (پیش‌فرض).
-                                AddDeclaredField(layers.PrimaryLayer(), declared.Date, date, pageTopMargin);
-                                AddDeclaredField(layers.Layer(), declared.Number, number, pageTopMargin);
-                                AddDeclaredField(layers.Layer(), declared.Attachment,
-                                    hasAttachment ? "دارد" : "ندارد", pageTopMargin);
-                            }
-                            else
-                            {
-                                // قالب این سه کادر را اعلام نکرده: مختصات کالیبرهٔ همان هنر.
-                                AddAriaField(layers.PrimaryLayer(), AriaLetterheadLayout.Date(isA5), date,
-                                    AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
-                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Number(isA5), number,
-                                    AriaLetterheadLayout.FieldFontSize(isA5), isolateLtr: true);
-                                AddAriaField(layers.Layer(), AriaLetterheadLayout.Attachment(isA5),
-                                    hasAttachment ? "دارد" : "ندارد", AriaLetterheadLayout.FieldFontSize(isA5));
-                            }
-                        });
+                        .Element(header => OutgoingLetterMetaPainter.Draw(header, headerFields,
+                            number, date, hasAttachment ? "دارد" : "ندارد"));
                 }
                 else if (isHomepaLetterhead)
                 {

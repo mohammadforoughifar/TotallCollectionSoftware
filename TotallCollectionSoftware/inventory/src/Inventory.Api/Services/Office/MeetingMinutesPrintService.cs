@@ -612,7 +612,8 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                 // کادرهای متا شکست بخورد) تا چاپ روی سربرگ از دست نرود.
                 if (withHeaderMeta && metaRows.Count > 0)
                     page.Foreground().ContentFromLeftToRight()
-                        .Element(host => DrawHeaderMeta(host, metaRows, letterheadProfile.MetaColumnLeft));
+                        .Element(host => DrawHeaderMeta(host, metaRows, letterheadProfile.MetaColumnLeft,
+                            letterheadProfile.ExactMetaRectangles));
 
                 page.ContentFromRightToLeft();
                 page.Content().Column(col =>
@@ -864,7 +865,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
     /// <summary>یک کادر متای سربرگ با مقدار نهایی‌اش (مختصات مطلق صفحه، point).</summary>
     private sealed record HeaderMetaRow(float Left, float Top, float Width, float Height, string Value,
-        string Color, float FontSize, string? Fill);
+        string Color, float FontSize, string? Fill, bool IsolateLtr = false);
 
     /// <summary>
     /// کادرهای شماره/تاریخ/پیوست از خودِ قالب: مقدار در همان جای برچسبِ چاپ‌شدهٔ سربرگ
@@ -876,15 +877,15 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     {
         var rows = new List<HeaderMetaRow>();
 
-        void Add(MeetingMinutesDesignLayout.Box? box, string value)
+        void Add(MeetingMinutesDesignLayout.Box? box, string value, bool isolateLtr = false)
         {
             if (box == null || string.IsNullOrWhiteSpace(value)) return;
             rows.Add(new HeaderMetaRow(box.Left, box.Top, box.Width, box.Height, value,
-                hasLetterhead ? box.Color : Ink, box.FontSize, box.Fill));
+                hasLetterhead ? box.Color : Ink, box.FontSize, box.Fill, isolateLtr));
         }
 
-        Add(design.Number, number);
-        Add(design.MeetingDate, date);
+        Add(design.Number, number, isolateLtr: true);
+        Add(design.MeetingDate, date, isolateLtr: true);
         Add(design.Attachment, attachment);
         return rows.OrderBy(row => row.Top).ToList();
     }
@@ -947,14 +948,13 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
     /// سربرگ ردیفی (۱۰۰۵) هر مقدار را روی نقطه‌چینِ خودش می‌نشاند.
     /// </summary>
     private static void DrawHeaderMeta(IContainer host, IReadOnlyList<HeaderMetaRow> rows,
-        float columnFloor = 0f)
+        float columnFloor = 0f, bool exactRectangles = false)
     {
         if (rows.Count == 0) return;
-
-        HeaderMetaPainter.Draw(host,
-            rows.Select(row => new HeaderMetaCell(row.Left, row.Top, row.Width, row.Height, row.Value,
-                row.Color, row.FontSize, row.Fill)).ToList(),
-            columnFloor);
+        var cells = rows.Select(row => new HeaderMetaCell(row.Left, row.Top, row.Width, row.Height, row.Value,
+            row.Color, row.FontSize, row.Fill, IsolateLtr: row.IsolateLtr)).ToList();
+        if (exactRectangles) HeaderMetaPainter.DrawAbsolute(host, cells);
+        else HeaderMetaPainter.Draw(host, cells, columnFloor);
     }
 
     /// <summary>

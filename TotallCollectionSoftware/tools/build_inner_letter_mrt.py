@@ -11,9 +11,9 @@
 • ساختار مثل نامهٔ داخلی ۱۰۰۳ باشد: گیرنده، «موضوع:» و عنوان، متن، بدون امضا و بدون شمارهٔ صفحه.
 
 اعداد با اندازه‌گیری پیکسلی روی خودِ هنر سربرگ ۱۰۰۵ به‌دست آمده‌اند (نقطه، از گوشهٔ بالا-چپ):
-    خط نقطه‌چین  y ≈ ۹۷٫۶ (A4) و ۶۹٫۰ (A5)
-    خط‌چین‌ها تا x = ۶۴٫۳ / ۱۵۶٫۷ / ۲۵۲٫۱  →  لبهٔ راست کادرها ۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵
-    نوار تماس سربرگ تا y ≈ ۱۰۹pt  →  گیرنده از ۱۳۳pt
+    خط نقطه‌چین  y ≈ ۱۰۹٫۹۲ (A4) و ۷۷٫۶۵ (A5)
+    دونقطه‌ها از x ≈ ۶۳٫۱۳ / ۱۵۸٫۱۸ / ۲۵۲٫۰۳  →  لبهٔ راست کادرها ۶۲ / ۱۵۷ / ۲۵۱
+    پایین کادرهای متا ۱۱۷٫۴pt  →  گیرنده مثل قبل از ۱۳۳pt
     نوار تیره/زرد پایین کاغذ از y ≈ ۷۶۲pt  →  مرز محتوا ۷۴۵pt
 A5 همان نسبت ۰٫۷۰۷ است.
 
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from aria_template_metadata import sync_aria_metadata
 
 ROOT = None
 for parent in Path(__file__).resolve().parents:
@@ -42,17 +43,17 @@ PAGE_MARGIN_INCH = 0.39
 # لبهٔ راست کادر = انتهای خط‌چین (۲pt سمت چپِ دونقطهٔ برچسب).
 META_BOX = {
     "A4": {
-        "attachment": (21.0, 90.8, 41.0, 13.7),
-        "number": (110.0, 90.8, 43.5, 13.7),
-        "date": (202.0, 90.8, 47.5, 13.7),
+        "attachment": (19.0, 102.4, 43.0, 15.0),
+        "number": (109.0, 102.4, 48.0, 15.0),
+        "date": (201.0, 102.4, 50.0, 15.0),
     },
     "A5": {
-        "attachment": (14.8, 64.2, 29.0, 9.7),
-        "number": (77.7, 64.2, 30.8, 9.7),
-        "date": (142.8, 64.2, 33.6, 9.7),
+        "attachment": (13.5, 72.35, 30.3, 10.6),
+        "number": (77.0, 72.35, 34.0, 10.6),
+        "date": (141.5, 72.35, 35.5, 10.6),
     },
 }
-META_FONT = {"A4": "Vazirmatn,9,Bold", "A5": "Vazirmatn,6.5,Bold"}
+META_FONT = {"A4": "Vazirmatn,9,Bold", "A5": "Vazirmatn,6.4,Bold"}
 
 # ── بلوک گیرنده/موضوع/متن (نقطه، مطلق صفحه) ──
 # عرض کادر موضوع طوری است که لبهٔ راستش ۷pt پیش از برچسب «موضوع:» تمام شود؛ کد چاپ همین
@@ -184,7 +185,7 @@ def build(size: str, company: str) -> str:
                   "<ReportName>InnerLetter</ReportName>", text, count=1)
     text = text.replace("<Key>2ef1c17fbf9d48f582c4958a96e39b51</Key>",
                         "<Key>4c7a91d2b6e34f0d9a15c83e2f60b7d4</Key>")
-    return ensure_watermark_flags(text)
+    return sync_aria_metadata(ensure_watermark_flags(text), source.read_text(encoding="utf-8-sig"))
 
 
 def main(argv: list[str] | None = None) -> None:

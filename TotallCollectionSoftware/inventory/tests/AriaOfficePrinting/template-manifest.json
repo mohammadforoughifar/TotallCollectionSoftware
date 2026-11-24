@@ -1,0 +1,68 @@
+{
+  "company": 1005,
+  "scope": "Artwork and metadata layout attributes only; all other XML including bindings is protected.",
+  "templates": [
+    {
+      "path": "inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1005/Inner-A4.mrt",
+      "size": "A4",
+      "unaffected_xml_sha256": "bc7de4d6fa3ef85b0a94c24a43f1ea311d9f07f2c1b78c632421b351bdd8255b"
+    },
+    {
+      "path": "inventory/src/Inventory.Api/Reports/InnerLetters/Companies/1005/Inner-A5.mrt",
+      "size": "A5",
+      "unaffected_xml_sha256": "1e53a6d193b514f75b7c055ac18391cceff52c62d629db800c11156a02498bdc"
+    },
+    {
+      "path": "inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1005/Minutes-A4.mrt",
+      "size": "A4",
+      "unaffected_xml_sha256": "d858a9c7a5fe0dd0f47a19cdedbe7f6fb009af062b1e093b702272b448c47e1d"
+    },
+    {
+      "path": "inventory/src/Inventory.Api/Reports/MeetingMinutes/Companies/1005/Minutes-A5.mrt",
+      "size": "A5",
+      "unaffected_xml_sha256": "b164e7d3de68c30f6b3a93c39856419424473ac7371342d9c68d4a1dfd29ffbc"
+    },
+    {
+      "path": "Report/meetingminutes/1005/Report_A4_MeetingMinutes.mrt",
+      "size": "A4",
+      "unaffected_xml_sha256": "d858a9c7a5fe0dd0f47a19cdedbe7f6fb009af062b1e093b702272b448c47e1d"
+    },
+    {
+      "path": "Report/meetingminutes/1005/Report_A5_MeetingMinutes.mrt",
+      "size": "A5",
+      "unaffected_xml_sha256": "b164e7d3de68c30f6b3a93c39856419424473ac7371342d9c68d4a1dfd29ffbc"
+    }
+  ],
+  "unchanged_other_company_builders": [
+    {
+      "company": "1003",
+      "size": "A4",
+      "sha256": "78a2c04a9e37774716758665da74252bc0162df4aa0ba455aa55ec0bfc572106"
+    },
+    {
+      "company": "1003",
+      "size": "A5",
+      "sha256": "d3746dc51cc7e5b30f2973e2861980552754d1be29d2c9808c7837fbfb16bd66"
+    },
+    {
+      "company": "3",
+      "size": "A4",
+      "sha256": "f69e200bf782758c7f78dd9e0fd8752f4037883cbd643d26c9445e7417ce72fc"
+    },
+    {
+      "company": "3",
+      "size": "A5",
+      "sha256": "cf015a12dd10a40102cbccbe6f99793352a2f68731ec54e9bd428709d86bb61b"
+    },
+    {
+      "company": "1",
+      "size": "A4",
+      "sha256": "72028e71a241d601e7b4f095b4d0ec3aa17697b078c92bf41d7e2bfd8d255196"
+    },
+    {
+      "company": "1",
+      "size": "A5",
+      "sha256": "d9763d02fdba4b2652ef7caf85957006b1b6d08467e78f12ec2d8be091011548"
+    }
+  ]
+}

@@ -20,7 +20,8 @@ internal static class InnerLetterPdfRenderer
     /// <param name="meta">
     /// هندسهٔ خوانده‌شده از خودِ قالب MRT نامهٔ داخلی (همان کادرهای شماره/تاریخ/پیوست قالب
     /// صادرهٔ ۱۰۰۳). اگر قالبِ نصب‌شده روی سرور قدیمی باشد و این کادرها را نداشته باشد، از
-    /// مختصات مطلق کالیبرهٔ <see cref="HomepaLetterheadLayout"/> استفاده می‌شود.
+    /// مختصات مطلق همان طرح استفاده می‌شود: آریا/۱۰۰۵ از <see cref="AriaLetterheadLayout"/>
+    /// و سایر طرح‌ها از <see cref="HomepaLetterheadLayout"/> (رفتار قبلی).
     /// </param>
     /// <param name="companyId">
     /// شرکت صادرکننده؛ فقط برای انتخاب «اعداد کاغذ» همان طرح (رزرو پابرگ و شروع متن) لازم است.
@@ -50,9 +51,9 @@ internal static class InnerLetterPdfRenderer
         var body = LetterPrintTemplate.RtlPlainText(PlainText(data.Body));
         var attachmentText = attachment ? "دارد" : "ندارد";
 
-        // مقادیر سربرگ: از قالب داخلی (اگر کادرها را داشته باشد) یا مختصات کالیبرهٔ ۱۰۰۳.
-        // ۱۰۰۵ سه مقدار را در یک ردیف افقی اعلام می‌کند؛ HeaderMetaPainter هر دو شکل را می‌فهمد.
-        var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5) : new List<HeaderMetaCell>();
+        // مقادیر سربرگ از قالب داخلی؛ فیلدهای مفقود آریا/۱۰۰۵ از هندسهٔ همان تصویر جدید
+        // تکمیل می‌شوند. مسیر قدیمی سایر شرکت‌ها دست‌نخورده است.
+        var metaRows = homepa ? BuildMetaRows(meta, number, date, attachmentText, a5, companyId) : new List<HeaderMetaCell>();
         // هندسهٔ بلوک اطلاعات (گیرنده/موضوع) از خودِ قالب MRT خوانده می‌شود؛ جابه‌جا کردن کادرها
         // در Stimulsoft Designer مستقیماً روی چاپ اثر می‌گذارد. اگر قالب این کادرها را نداشته
         // باشد، به مختصات کالیبرهٔ نامهٔ صادرهٔ ۱۰۰۳ (پایین نوار آبی + ۹۷pt) برمی‌گردد.
@@ -124,7 +125,10 @@ internal static class InnerLetterPdfRenderer
                 page.Header().MinHeight(contentTop);
                 // شماره/تاریخ/پیوست در لایهٔ سراسری صفحه و با مختصات مطلق، روی خط برچسب‌های
                 // چاپ‌شدهٔ سربرگ («موضوع:»/«تاریخ:»/«پیوست:») — روی همهٔ صفحه‌ها.
-                if (metaRows.Count > 0)
+                if (companyId == 1005 && metaRows.Count > 0)
+                    page.Foreground().ContentFromLeftToRight()
+                        .Element(host => HeaderMetaPainter.DrawAbsolute(host, metaRows));
+                else if (metaRows.Count > 0)
                     page.Foreground().ContentFromLeftToRight()
                         // حاشیهٔ امن ۱۵mm همان قاعدهٔ قبلی نامهٔ داخلی است؛ برای سربرگ ردیفی
                         // (۱۰۰۵) مختصات مطلقِ خود کادرها ملاک است و این کف اثری ندارد.
@@ -228,10 +232,10 @@ internal static class InnerLetterPdfRenderer
     /// <summary>
     /// کادرهای شماره/تاریخ/پیوست با مقدار نهایی‌شان. اولویت با هندسه و ظاهرِ خودِ قالب MRT است
     /// (مستطیل، اندازهٔ قلم، رنگ، پس‌زمینه)؛ اگر قالب (نسخهٔ قدیمی نصب‌شده) آن کادرها را نداشته
-    /// باشد، مختصات مطلق کالیبرهٔ ۱۰۰۳ با متن سفید.
+    /// باشد، برای آریا/۱۰۰۵ همان کادرهای کالیبرهٔ آریا و برای سایر شرکت‌ها رفتار قبلی ۱۰۰۳.
     /// </summary>
     private static List<HeaderMetaCell> BuildMetaRows(OutgoingLetterDesignLayout? meta, string number,
-        string date, string attachment, bool a5)
+        string date, string attachment, bool a5, int? companyId = null)
     {
         var rows = new List<HeaderMetaCell>();
         var boxes = meta?.HeaderBoxes
@@ -239,6 +243,25 @@ internal static class InnerLetterPdfRenderer
                 or OutgoingLetterDesignLayout.Slot.Date
                 or OutgoingLetterDesignLayout.Slot.Attachment)
             .ToList() ?? new List<OutgoingLetterDesignLayout.Box>();
+
+        if (companyId == 1005)
+        {
+            var fallback = AriaLetterheadLayout.MetaFields(a5);
+            foreach (var (slot, value, field) in new[]
+            {
+                (OutgoingLetterDesignLayout.Slot.Number, number, fallback.Number),
+                (OutgoingLetterDesignLayout.Slot.Date, date, fallback.Date),
+                (OutgoingLetterDesignLayout.Slot.Attachment, attachment, fallback.Attachment)
+            })
+            {
+                var box = boxes.FirstOrDefault(b => b.Slot == slot);
+                rows.Add(new HeaderMetaCell(box?.Left ?? field.Left, box?.Top ?? field.Top,
+                    box?.Width ?? field.Width, box?.Height ?? field.Height, value,
+                    box?.Color ?? field.Color, box?.FontSize ?? field.FontSize,
+                    box is null ? field.Fill : box.Fill, box?.Bold ?? field.Bold, field.IsolateLtr));
+            }
+            return rows;
+        }
 
         foreach (var box in boxes)
         {

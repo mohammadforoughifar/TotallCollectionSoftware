@@ -20,7 +20,8 @@ internal readonly record struct HeaderMetaCell(
     string Color,
     float FontSize,
     string? Fill = null,
-    bool Bold = true);
+    bool Bold = true,
+    bool IsolateLtr = false);
 
 /// <summary>
 /// چاپ شماره/تاریخ/پیوست روی برچسب‌های چاپ‌شدهٔ سربرگ — یک پیاده‌سازی برای نامهٔ داخلی،
@@ -109,6 +110,39 @@ internal static class HeaderMetaPainter
                 }
 
                 cursor = row.Top + height;
+            }
+        });
+    }
+
+    /// <summary>
+    /// Exact independent MRT rectangles, opt-in for Aria/1005 only. No column normalization,
+    /// row grouping or 7pt minimum that could wrap a long number. The canvas covers every
+    /// box, rather than depending on the size of the leftmost primary layer.
+    /// Existing Draw behavior for other companies is intentionally unchanged.
+    /// </summary>
+    internal static void DrawAbsolute(IContainer host, IReadOnlyList<HeaderMetaCell> cells)
+    {
+        if (cells.Count == 0) return;
+        var right = cells.Max(cell => cell.Left + cell.Width);
+        var bottom = cells.Max(cell => cell.Top + cell.Height);
+        host.ContentFromLeftToRight().AlignLeft().AlignTop().Width(right).Height(bottom).Layers(layers =>
+        {
+            var first = true;
+            foreach (var cell in cells)
+            {
+                var layer = first ? layers.PrimaryLayer() : layers.Layer();
+                first = false;
+                var box = layer.PaddingLeft(Math.Max(0f, cell.Left)).PaddingTop(Math.Max(0f, cell.Top))
+                    .Width(cell.Width).Height(cell.Height);
+                if (!string.IsNullOrWhiteSpace(cell.Fill)) box = box.Background(cell.Fill!);
+                var value = string.IsNullOrWhiteSpace(cell.Value) ? "—" : cell.Value;
+                var preferred = Math.Min(cell.FontSize, cell.Height / 1.35f);
+                var size = Math.Min(preferred, cell.Width / Math.Max(1f, value.Length * 0.65f));
+                var text = box.AlignMiddle().AlignRight().ScaleToFit().Text(value)
+                    .FontFamily(cell.Bold ? "Vazirmatn-Bold" : "Vazirmatn")
+                    .FontSize(size).FontColor(cell.Color).LineHeight(1f);
+                if (cell.IsolateLtr) text.DirectionFromLeftToRight();
+                else text.DirectionFromRightToLeft();
             }
         });
     }

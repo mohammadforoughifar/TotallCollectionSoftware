@@ -1,63 +1,51 @@
 namespace Inventory.Api.Services.Office.Outgoing;
 
 /// <summary>
-/// Company 1005 (Aria Hamyar Generator) outgoing-letter layout, calibrated against its A4 letterhead PDF.
-/// Field coordinates are points from the page-header origin, independent of body spacing.
-/// A5 coordinates follow the registered letterhead's proportional scale (×0.707).
-///
-/// اعداد از اندازه‌گیری پیکسلی روی خودِ هنر سربرگ آمده‌اند (همان هنری که در
-/// <c>Reports/OutgoingLetters/Companies/1005/Outgoing-A{4,5}.mrt</c> جاسازی شده است):
-///   • خط نقطه‌چین یک خط نازک در y≈۹۷٫۶pt (A4) و ۶۹٫۰pt (A5) است.
-///   • خط‌چین‌ها تا x = ۶۴٫۳ / ۱۵۶٫۷ / ۲۵۲٫۱ تمام می‌شوند و دونقطهٔ برچسب‌ها روی
-///     ۶۶٫۲ / ۱۵۸٫۶ / ۲۵۴٫۰ است (A4).
-/// پس مقدار با لبهٔ راستِ ۶۲ / ۱۵۳٫۵ / ۲۴۹٫۵ **روی خط‌چین** و ۲pt سمت چپِ دونقطه می‌نشیند
-/// (قبلاً «پیوست» ۶pt داخلِ برچسب می‌رفت و «تاریخ» روی دونقطه می‌افتاد).
-/// برای اینکه خط‌چین از میان رقم‌ها رد نشود، پشت هر مقدار یک «پلاک سفید» کشیده می‌شود.
+/// Company 1005 (Aria Hamyar Generator), calibrated against the supplied 300-DPI A4/A5 artwork.
+/// The metadata comes from the MRT first; these rectangles are a fallback for an older/incomplete template.
+/// Field.Top is relative to page.Header (24pt below the A4 page top, 16pt for A5).
+/// The new artwork's dotted row is at 109.92pt (A4) / 77.65pt (A5), not the scanned artwork's 97.65/69.05.
+/// Each white value rectangle ends before its printed colon; body/signature spacing is unchanged.
 /// </summary>
 internal static class AriaLetterheadLayout
 {
     internal readonly record struct Field(float Left, float Top, float Width, float Height);
 
-    /// <summary>رنگ مقدارها: مشکی (سربرگ روشن است؛ خاکستریِ قبلی کم‌رنگ دیده می‌شد).</summary>
     internal static string ValueColor => "#000000";
 
-    // Header height controls only where flowing content begins; field rectangles below are absolute.
+    // Header height controls only where flowing content begins; field rectangles are independent.
     internal static float HeaderHeight(bool isA5) => isA5 ? 70f : 95f;
 
-    /// <summary>
-    /// Top of the flowing body (receiver row) in points from the top of the paper — the same
-    /// number the company template stores for <c>GirandeAsli</c> (۱۶۵٫۶ در A4 و ۱۱۶٫۶ در A5)،
-    /// so the printed letter and the Stimulsoft design cannot drift apart.
-    /// </summary>
+    // Preserve the receiver/body start, clear of the new artwork and its metadata row.
     internal static float ContentTop(bool isA5) => isA5 ? 116.64f : 165.6f;
-
-    /// <summary>
-    /// فاصلهٔ بلوک روان از پایین کادر سربرگ: مبدأ صفحه (۲۴/۱۶pt) + ارتفاع سربرگ (۹۵/۷۰pt) و
-    /// بعد تا <see cref="ContentTop"/>. قبلاً ۱۲pt بود و گیرنده ۳۵pt بالاتر از طرح چاپ می‌شد.
-    /// </summary>
     internal static float BodyTopPadding(bool isA5) => isA5 ? 30.64f : 46.6f;
 
-    /// <summary>
-    /// رزرو پابرگ: نوار تیره/زرد پایین کاغذ ۱۰۰۵ از ۷۶۲pt (A4) شروع می‌شود؛ ۹۷pt فاصله
-    /// می‌دهد تا متن روی آن ننشیند (A5 همان نسبت: ۶۸pt).
-    /// </summary>
+    // The footer artwork starts around 762pt on A4; keep flowing text/signatures above it.
     internal static float FooterReserve(bool isA5) => isA5 ? 68f : 97f;
-
-    /// <summary>اندازهٔ قلم مقدارها: ۹pt در A4 (قبلاً ۸) و ۶٫۴pt در A5 (قبلاً ۶).</summary>
     internal static float FieldFontSize(bool isA5) => isA5 ? 6.4f : 9f;
 
-    // Dotted line regions, read from left to right: attachment, number, date.
-    // The text is right-aligned inside each dotted region so it does not overlap its caption.
-    // Top = (خط نقطه‌چین ۹۷٫۶ − نیم‌ارتفاع) − مبدأ page.Header (۲۴pt در A4 / ۱۶pt در A5).
+    // Dotted regions from left to right: attachment, number, date.
+    // A4 absolute top = 102.4, height = 15; A5 absolute top = 72.35, height = 10.6.
+    // A4 right edges = 62 / 157 / 251; A5 = 43.8 / 111 / 177 (before each printed colon).
     internal static Field Date(bool isA5) => isA5
-        ? new(142.8f, 48.2f, 33.6f, 9.7f)
-        : new(202f, 66.8f, 47.5f, 13.7f);
+        ? new(141.5f, 56.35f, 35.5f, 10.6f)
+        : new(201f, 78.4f, 50f, 15f);
 
     internal static Field Number(bool isA5) => isA5
-        ? new(77.7f, 48.2f, 30.8f, 9.7f)
-        : new(110f, 66.8f, 43.5f, 13.7f);
+        ? new(77f, 56.35f, 34f, 10.6f)
+        : new(109f, 78.4f, 48f, 15f);
 
     internal static Field Attachment(bool isA5) => isA5
-        ? new(14.8f, 48.2f, 29f, 9.7f)
-        : new(21f, 66.8f, 41f, 13.7f);
+        ? new(13.5f, 56.35f, 30.3f, 10.6f)
+        : new(19f, 78.4f, 43f, 15f);
+
+    /// <summary>Fallback in physical page coordinates, the same convention as LetterheadMetaFields.TryRead.</summary>
+    internal static LetterheadMetaFields MetaFields(bool isA5)
+    {
+        var origin = isA5 ? 16f : 24f;
+        LetterheadMetaFields.Field Convert(Field field, bool ltr) => new(
+            field.Left, field.Top + origin, field.Width, field.Height,
+            ValueColor, FieldFontSize(isA5), true, false, ltr, "#FFFFFF");
+        return new(Convert(Number(isA5), true), Convert(Date(isA5), true), Convert(Attachment(isA5), false));
+    }
 }
