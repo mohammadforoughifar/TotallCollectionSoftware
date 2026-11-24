@@ -295,7 +295,7 @@
                                                 <td class="text-center">
                                                     <button type="button" class="btn btn-sm btn-outline-primary op-btn-rounded"
                                                             data-opening-edit="parties" data-opening-order="@item.Id"
-                                                            title="@OpeningEditButtonTitle(item)"
+                                                            title="@OpeningEditButtonTitle(PartyState(item))"
                                                             disabled="@(!CanEditPartyRow(item))"
                                                             @onclick="() => OpenPartyEditAsync(item)">
                                                         <i class="bi bi-pencil-square me-1"></i> ویرایش
