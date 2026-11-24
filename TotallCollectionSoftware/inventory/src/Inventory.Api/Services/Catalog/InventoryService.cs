@@ -2332,6 +2332,318 @@ public class InventoryService : IInventoryService
         return await ToOrderDtoAsync(t);
     }
 
+    // ============ ویرایش مانده‌های اول دوره (ماژول افتتاح حساب) ============
+
+    /// <summary>
+    /// وضعیت ویرایش یک سند افتتاحیه. تصمیم «آزاد / غیرفعال» از قاعدهٔ مشترک
+    /// <see cref="OpeningBalanceEdit"/> گرفته می‌شود تا کلاینت و سرور یکسان باشند.
+    /// </summary>
+    public async Task<OpeningBalanceEditState> GetOpeningBalanceEditStateAsync(int id)
+    {
+        var state = await ReadOpeningBalanceEditStateAsync(id);
+        return new OpeningBalanceEditState
+        {
+            CanEdit = OpeningBalanceEdit.CanEdit(state.Settlement),
+            BlockedReason = state.Settlement.BlockedReason,
+            IsCancelled = state.Settlement.IsCancelled,
+            HasSettlementHistory = !state.Settlement.IsUntouched,
+            // ماهیت مانده و نوع چک هرگز از مسیر ویرایش تغییر نمی‌کند.
+            NatureLocked = true
+        };
+    }
+
+    private sealed record OpeningEditState(
+        Db.Transaction Transaction, OpeningBalanceSection Section, OpeningBalanceEdit.SettlementState Settlement);
+
+    private async Task<OpeningEditState> ReadOpeningBalanceEditStateAsync(int id)
+    {
+        var txn = await _db.Transactions.Include(t => t.Lines).Include(t => t.Cheques)
+            .Include(t => t.Installments).AsSplitQuery().FirstOrDefaultAsync(t => t.Id == id)
+            ?? throw new InvalidOperationException("سند افتتاحیه یافت نشد.");
+        var section = await ClassifyOpeningSectionAsync(txn);
+        if (section == OpeningBalanceSection.None)
+            throw new InvalidOperationException("این سند یک مانده اول دوره نیست و از این مسیر ویرایش نمی‌شود.");
+        var settlement = await ReadSettlementStateAsync(txn, section);
+        return new OpeningEditState(txn, section, settlement);
+    }
+
+    /// <summary>بخش ماژول افتتاحیه که این سند در آن دیده می‌شود.</summary>
+    private async Task<OpeningBalanceSection> ClassifyOpeningSectionAsync(Db.Transaction txn)
+    {
+        var productIds = txn.Lines.Select(l => l.ProductId).Distinct().ToList();
+        var hasOpeningProductLine = productIds.Count > 0 && await _db.Products.AnyAsync(p =>
+            productIds.Contains(p.Id) &&
+            (p.Code == OpeningBalanceEdit.ServiceProductCode || p.Code == OpeningBalanceEdit.GoodsProductCode));
+        return OpeningBalanceEdit.SectionOf(txn.Description, txn.PaymentMethod, hasOpeningProductLine);
+    }
+
+    /// <summary>
+    /// گردш مالی ثبت‌شده روی سند افتتاحیه. هر جزء با همان جدولی سنجیده می‌شود که
+    /// گردش را می‌نویسد؛ پس دکمهٔ ویرایش بی‌دلیل باز نمی‌ماند و سابقه هم دستکاری نمی‌شود.
+    /// </summary>
+    private async Task<OpeningBalanceEdit.SettlementState> ReadSettlementStateAsync(
+        Db.Transaction txn, OpeningBalanceSection section)
+    {
+        var hasCashHistory = await _db.ShopOrderCashEntries.IgnoreQueryFilters()
+            .AnyAsync(e => e.TransactionId == txn.Id);
+        var hasCreditReceipts = await _db.ShopOrderCreditReceipts.IgnoreQueryFilters()
+            .AnyAsync(r => r.TransactionId == txn.Id);
+        var hasChequeHistory = txn.Cheques.Any(c => c.IsCleared || c.Status != ChequeStatus.InHand) ||
+            await _db.SaleChequeReceipts.IgnoreQueryFilters().AnyAsync(r => r.TransactionId == txn.Id) ||
+            await _db.ShopExpenseCheques.IgnoreQueryFilters().AnyAsync(c => c.SourceTransactionId == txn.Id);
+        var hasInstallmentHistory = txn.Installments.Any(i => i.IsPaid) ||
+            await _db.SaleChequeInstallmentReceipts.IgnoreQueryFilters().AnyAsync(r => r.TransactionId == txn.Id);
+        // سند ابطال‌شده دیگر «افتتاحیه» نیست؛ سند معکوس آن سابقه را نگه می‌دارد.
+        var isCancelled = await _db.SaleChequeCancellations.IgnoreQueryFilters()
+            .AnyAsync(c => c.SaleTransactionId == txn.Id);
+        return OpeningBalanceEdit.State(isCancelled, txn.Description,
+            hasCashHistory, hasCreditReceipts, hasChequeHistory, hasInstallmentHistory);
+    }
+
+    /// <summary>
+    /// ویرایش سند افتتاحیه در همان سند. شناسه حفظ می‌شود تا شمارهٔ سند، تاریخچه و
+    /// ارجاع‌های گزارش‌ها ثابت بمانند. اگر سند گردش تسویه/وصول/پرداخت داشته باشد،
+    /// ویرایش با همان علتی که دکمهٔ فرم غیرفعال است رد می‌شود.
+    /// </summary>
+    public async Task<Order> UpdateOpeningBalanceAsync(int id, OpeningBalanceEditCommand cmd, string? user = null)
+    {
+        ArgumentNullException.ThrowIfNull(cmd);
+        await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var state = await ReadOpeningBalanceEditStateAsync(id);
+            var blocked = OpeningBalanceEdit.BlockedReason(state.Settlement);
+            if (blocked is not null) throw new InvalidOperationException(blocked);
+            var txn = state.Transaction;
+            if (cmd.Date == default) throw new InvalidOperationException("تاریخ سند افتتاحیه را وارد کنید.");
+            if (cmd.Date.Date == DateTime.MaxValue.Date) throw new InvalidOperationException("تاریخ سند افتتاحیه معتبر نیست.");
+            if ((cmd.Description ?? "").Trim().Length > 400)
+                throw new InvalidOperationException("شرح سند افتتاحیه حداکثر ۴۰۰ نویسه است.");
+            // گردش نقدی فعلی پیش از هر تغییری تأیید و نگه داشته می‌شود؛ اگر بعد از
+            // ویرایش بررسی شود، مبلغ جدید با ردیف قدیمی نمی‌خواند و بی‌دلیل خطا می‌دهد.
+            var previousCash = txn.ShopCashLedgerEnabled
+                ? await ShopOrderCashLedger.VerifyCurrentAsync(_db, txn) : null;
+            // طرف حساب فقط وقتی عوض می‌شود که گردش تسویه‌ای وجود نداشته باشد؛ همین
+            // شرط بالاتر بررسی شد، پس تغییر طرف حساب سابقهٔ کسی را دست‌نخورده می‌گذارد.
+            if (cmd.PartyId is > 0)
+            {
+                var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == cmd.PartyId)
+                    ?? throw new InvalidOperationException("طرف حساب متعلق به شرکت جاری نیست یا یافت نشد.");
+                var requiredType = txn.Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier;
+                if (state.Section != OpeningBalanceSection.Stock && party.Type != requiredType)
+                    throw new InvalidOperationException(requiredType == PartyType.Customer
+                        ? "برای سند طلب، طرف حساب باید مشتری باشد."
+                        : "برای سند بدهی، طرف حساب باید تأمین‌کننده باشد.");
+                txn.PartyId = party.Id;
+            }
+
+            List<(int Wh, int Pid)> stockPairs;
+            switch (state.Section)
+            {
+                case OpeningBalanceSection.Party:
+                    ApplyOpeningPartyEdit(txn, cmd);
+                    stockPairs = new();
+                    break;
+                case OpeningBalanceSection.Installment:
+                    ApplyOpeningInstallmentEdit(txn, cmd);
+                    stockPairs = new();
+                    break;
+                case OpeningBalanceSection.Stock:
+                    stockPairs = await ApplyOpeningStockEditAsync(txn, cmd);
+                    break;
+                case OpeningBalanceSection.Cheque:
+                    throw new InvalidOperationException("ویرایش چک اول دوره از مسیر دفتر چک انجام می‌شود.");
+                default:
+                    throw new InvalidOperationException("این سند یک مانده اول دوره نیست و از این مسیر ویرایش نمی‌شود.");
+            }
+
+            txn.Date = cmd.Date.Date;
+            txn.Description = cmd.Description is null ? txn.Description : cmd.Description;
+            await _db.SaveChangesAsync();
+            // فقط موجودی اولیه جفت (انبار، کالا) را جابه‌جا می‌کند؛ مانده‌های پولی سطر
+            // خدماتی دارند و بازمحاسبهٔ انبار لازم ندارند.
+            if (stockPairs.Count > 0)
+            {
+                foreach (var (wh, pid) in stockPairs.Distinct().ToList())
+                    await RecalcStockAsync(wh, pid);
+                await _db.SaveChangesAsync();
+                await EnsureNoNegativeStockAsync(stockPairs);
+            }
+
+            // گردش نقدی موجودی اولیه (بهای تمام‌شده) با مبلغ جدید هم‌گام می‌شود؛
+            // در غیر این صورت دفتر نقدی با سند ناسازگار می‌ماند.
+            if (txn.ShopCashLedgerEnabled && OpeningBalanceEdit.IsOpeningStock(txn.Description))
+            {
+                await ShopOrderCashLedger.SyncAfterEditAsync(_db, txn, previousCash, user);
+                await _db.SaveChangesAsync();
+            }
+
+            var saved = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException("سند افتتاحیه یافت نشد.");
+            await trx.CommitAsync();
+            return saved;
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await trx.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    /// <summary>ویرایش ماندهٔ طرف حساب: مبلغ، تاریخ سند، سررسید نسیه و شرح.</summary>
+    private static void ApplyOpeningPartyEdit(Db.Transaction txn, OpeningBalanceEditCommand cmd)
+    {
+        if (cmd.Amount <= 0) throw new InvalidOperationException("مبلغ افتتاح حساب باید بزرگ‌تر از صفر باشد.");
+        if (!ShopInvoiceAmounts.IsWholePrice(cmd.Amount))
+            throw new InvalidOperationException("مبلغ افتتاح حساب باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد.");
+        var line = txn.Lines.OrderBy(l => l.Id).FirstOrDefault()
+            ?? throw new InvalidOperationException("سند افتتاحیه سطر کالا ندارد و قابل ویرایش نیست.");
+        if (txn.Lines.Count != 1)
+            throw new InvalidOperationException("سند افتتاحیه بیش از یک سطر دارد و از این مسیر ویرایش نمی‌شود.");
+        // مبلغ سند همان «تعداد × قیمت» است؛ سطر افتتاحیه یک واحد است تا مبلغ سطر
+        // دقیقاً با مبلغ سند یکی بماند.
+        line.Quantity = 1m;
+        var gross = ShopInvoiceAmounts.Gross(line.Quantity, cmd.Amount);
+        line.Price = cmd.Amount;
+        line.GrossAmount = gross;
+        line.DiscountPercent = 0m;
+        line.DiscountAmount = 0m;
+        line.DiscountIsAmount = false;
+        line.VatValue = 0m;
+        line.VatAmount = 0m;
+        txn.Amount = gross;
+        // سند افتتاحیه نسیه است: تمام مبلغ سند بدهی/طلب باقی می‌ماند.
+        txn.PaymentMethod = PaymentMethod.Credit;
+        txn.CashAmount = 0m;
+        txn.CashType = null;
+        txn.CashTrackingNumber = null;
+        txn.TrsAccountId = null;
+        txn.SettledAmount = 0m;
+        var due = (cmd.DueDate ?? cmd.Date.Date.AddMonths(1)).Date;
+        if (due < cmd.Date.Date)
+            throw new InvalidOperationException("سررسید نسیه نمی‌تواند پیش از تاریخ سند افتتاحیه باشد.");
+        txn.DueDate = due;
+    }
+
+    /// <summary>
+    /// ویرایش دفترچهٔ اقساط: مبلغ کل، تعداد، فاصله و سررسید اولین قسط. اقساط تازه
+    /// با شناسهٔ جدید ساخته می‌شوند و قسط پرداخت‌نشدهٔ قبلی حذف می‌شود؛ شرط «هیچ قسط
+    /// پرداخت‌شده‌ای نیست» بالاتر بررسی شده است.
+    /// </summary>
+    private void ApplyOpeningInstallmentEdit(Db.Transaction txn, OpeningBalanceEditCommand cmd)
+    {
+        if (cmd.Amount <= 0) throw new InvalidOperationException("مبلغ بدهی اقساطی باید بزرگ‌تر از صفر باشد.");
+        if (cmd.InstallmentCount < 1 || cmd.InstallmentCount > RoundedInstallmentDistribution.MaximumCount)
+            throw new InvalidOperationException("تعداد اقساط باید بین ۱ و ۶۰ باشد.");
+        if (cmd.IntervalMonths is < 1 or > 12)
+            throw new InvalidOperationException("فاصلهٔ زمانی اقساط باید بین ۱ و ۱۲ ماه باشد.");
+        if (txn.Installments.Count == 0)
+            throw new InvalidOperationException("این سند قسطی ندارد و از این مسیر ویرایش نمی‌شود.");
+        var line = txn.Lines.OrderBy(l => l.Id).FirstOrDefault()
+            ?? throw new InvalidOperationException("سند اقساط سطر کالا ندارد و قابل ویرایش نیست.");
+        if (txn.Lines.Count != 1)
+            throw new InvalidOperationException("سند اقساط بیش از یک سطر دارد و از این مسیر ویرایش نمی‌شود.");
+
+        var start = (cmd.FirstDueDate ?? txn.Installments.OrderBy(i => i.DueDate).First().DueDate).Date;
+        if (start < cmd.Date.Date)
+            throw new InvalidOperationException("سررسید اولین قسط نمی‌تواند پیش از تاریخ سند افتتاحیه باشد.");
+        var amounts = OpeningBalanceEdit.SplitInstallments(cmd.Amount, cmd.InstallmentCount);
+        if (amounts.Any(a => a <= 0m))
+            throw new InvalidOperationException("مبلغ برای ساخت این تعداد قسط مثبت کافی نیست.");
+
+        // ردیف‌های قبلی به‌عنوان «تاریخچه» نمی‌مانند: سند همان سند است و فقط تعداد و
+        // مبالغ اقساط بازچینی می‌شود. برای همین اقساط قدیمی حذف و اقساط تازه ساخته می‌شوند.
+        _db.Installments.RemoveRange(txn.Installments.ToList());
+        txn.Installments.Clear();
+        for (var i = 0; i < amounts.Length; i++)
+        {
+            txn.Installments.Add(new Db.InstallmentLine
+            {
+                CompanyId = txn.CompanyId,
+                No = i + 1,
+                Amount = amounts[i],
+                DueDate = start.AddMonths(i * cmd.IntervalMonths),
+                IsPaid = false,
+                CreatedAt = DateTime.Now
+            });
+        }
+
+        line.Quantity = 1m;
+        var gross = ShopInvoiceAmounts.Gross(line.Quantity, cmd.Amount);
+        line.Price = cmd.Amount;
+        line.GrossAmount = gross;
+        line.DiscountPercent = 0m;
+        line.DiscountAmount = 0m;
+        line.DiscountIsAmount = false;
+        line.VatValue = 0m;
+        line.VatAmount = 0m;
+        txn.Amount = gross;
+        txn.PaymentMethod = PaymentMethod.Installment;
+        txn.CashAmount = 0m;
+        txn.CashType = null;
+        txn.CashTrackingNumber = null;
+        txn.TrsAccountId = null;
+        txn.SettledAmount = 0m;
+        // Include: سررسید سند همان آخرین قسط است (سند اقساطی نسیه‌ای ندارد).
+        txn.DueDate = start.AddMonths((amounts.Length - 1) * cmd.IntervalMonths).Date;
+    }
+
+    /// <summary>
+    /// ویرایش موجودی اولیه: کالا، انبار، تعداد، بهای تمام‌شده و تاریخ. جفت‌های
+    /// (انبار، کالا) که موجودی‌شان باید بازمحاسبه شود برگردانده می‌شوند.
+    /// </summary>
+    private async Task<List<(int Wh, int Pid)>> ApplyOpeningStockEditAsync(
+        Db.Transaction txn, OpeningBalanceEditCommand cmd)
+    {
+        if (cmd.Quantity <= 0) throw new InvalidOperationException("تعداد کالا باید بزرگ‌تر از صفر باشد.");
+        if (cmd.Quantity != decimal.Round(cmd.Quantity, 2))
+            throw new InvalidOperationException("مقدار کالا حداکثر دو رقم اعشار دارد.");
+        if (cmd.Amount < 0) throw new InvalidOperationException("بهای تمام‌شده واحد نمی‌تواند منفی باشد.");
+        if (!ShopInvoiceAmounts.IsWholePrice(cmd.Amount))
+            throw new InvalidOperationException("بهای واحد باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد.");
+        if (cmd.WarehouseId <= 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
+        if (cmd.ProductId <= 0) throw new InvalidOperationException("کالا را انتخاب کنید.");
+        var warehouse = await _db.Warehouses.FirstOrDefaultAsync(w => w.Id == cmd.WarehouseId)
+            ?? throw new InvalidOperationException("انبار متعلق به شرکت جاری نیست یا یافت نشد.");
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == cmd.ProductId)
+            ?? throw new InvalidOperationException("کالا متعلق به شرکت جاری نیست یا یافت نشد.");
+        if (product.IsService) throw new InvalidOperationException("موجودی اولیه فقط برای کالا ثبت می‌شود.");
+        if (product.WarehouseId is > 0 && product.WarehouseId != cmd.WarehouseId)
+            throw new InvalidOperationException($"کالای «{product.Name}» مخصوص انبار دیگری است و در این انبار قابل ثبت نیست.");
+        var rules = await ResolveUnitRulesAsync(new[] { product });
+        var allows = UnitRule(product, rules);
+        if (!allows.HasValue)
+            throw new InvalidOperationException($"نوع مقدار واحد «{product.Unit}» برای «{product.Name}» مشخص نیست؛ آن را در واحدهای شمارش تعیین کنید.");
+        if (!allows.Value && !ShopQuantityRules.IsWhole(cmd.Quantity))
+            throw new InvalidOperationException($"مقدار «{product.Name}» با واحد «{product.Unit}» باید عدد صحیح باشد.");
+        if (txn.Lines.Count != 1)
+            throw new InvalidOperationException("سند موجودی اولیه بیش از یک سطر دارد و از این مسیر ویرایش نمی‌شود.");
+        var line = txn.Lines.OrderBy(l => l.Id).First();
+        var oldWarehouse = txn.WarehouseId;
+        var oldProduct = line.ProductId;
+
+        txn.WarehouseId = warehouse.Id;
+        // طرف حساب سند موجودی، فقط برای سازگاری دفتر نقدی نگه داشته می‌شود؛ اگر فرم
+        // آن را نفرستد، مقدار قبلی دست‌نخورده می‌ماند.
+        if (cmd.PartyId is > 0) txn.PartyId = cmd.PartyId;
+        line.ProductId = product.Id;
+        line.Quantity = cmd.Quantity;
+        line.Price = cmd.Amount;
+        line.GrossAmount = ShopInvoiceAmounts.Gross(cmd.Quantity, cmd.Amount);
+        line.DiscountPercent = 0m;
+        line.DiscountAmount = 0m;
+        line.DiscountIsAmount = false;
+        line.VatValue = 0m;
+        line.VatAmount = 0m;
+        txn.Amount = line.GrossAmount ?? 0m;
+        txn.PaymentMethod = PaymentMethod.Cash;
+        txn.DueDate = null;
+        // جزء نقدی موجودی اولیه همان بهای تمام‌شدهٔ کالاست و کامل تسویه‌شده می‌ماند.
+        txn.CashAmount = txn.Amount;
+        txn.SettledAmount = txn.CashAmount;
+        return new List<(int Wh, int Pid)> { (oldWarehouse, oldProduct), (txn.WarehouseId, line.ProductId) };
+    }
+
     public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null, bool openingOnly = false)
     {
         var q = _db.Transactions.Include(x => x.Lines)

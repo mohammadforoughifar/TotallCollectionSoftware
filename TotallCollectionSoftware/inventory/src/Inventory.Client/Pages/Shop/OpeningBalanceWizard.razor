@@ -251,13 +251,14 @@
                                         <th>ماهیت مانده</th>
                                         <th class="text-start">مبلغ افتتاحیه</th>
                                         <th>تاریخ ثبت</th>
+                                        <th class="text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @if (recentPartyBalances.Count == 0)
                                     {
                                         <tr>
-                                            <td colspan="5" class="text-center py-5">
+                                            <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در سوابق ثبت نشده است</div>
@@ -291,6 +292,15 @@
                                                     @item.Amount.Money() <span class="fs-9 fw-normal text-muted">ریال</span>
                                                 </td>
                                                 <td class="num text-secondary fs-8">@(item.Date.HasValue ? item.Date.Value.ToFa() : "—")</td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary op-btn-rounded"
+                                                            data-opening-edit="parties" data-opening-order="@item.Id"
+                                                            title="@OpeningEditButtonTitle(item)"
+                                                            disabled="@(!CanEditPartyRow(item))"
+                                                            @onclick="() => OpenPartyEditAsync(item)">
+                                                        <i class="bi bi-pencil-square me-1"></i> ویرایش
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                     }
@@ -457,13 +467,14 @@
                                         <th>سررسید</th>
                                         <th class="text-start">مبلغ چک</th>
                                         <th>وضعیت</th>
+                                        <th class="text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @if (chequesList.Count == 0)
                                     {
                                         <tr>
-                                            <td colspan="6" class="text-center py-5">
+                                            <td colspan="7" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-credit-card fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">چکی در سامانه ثبت نشده است</div>
@@ -492,6 +503,15 @@
                                                 </td>
                                                 <td>
                                                     <span class="badge bg-secondary-subtle text-secondary rounded-pill">@GetChequeStatusName(ch.Status)</span>
+                                                </td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary op-btn-rounded"
+                                                            data-opening-edit="cheques" data-opening-cheque="@ch.Id"
+                                                            title="@ChequeEditButtonTitle(ch)"
+                                                            disabled="@(OpeningBalanceEdit.ChequeBlockedReason(ch.Status) is not null)"
+                                                            @onclick="() => OpenChequeEditAsync(ch)">
+                                                        <i class="bi bi-pencil-square me-1"></i> ویرایش
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -613,13 +633,14 @@
                                         <th class="text-start">مبلغ کل</th>
                                         <th>تعداد اقساط</th>
                                         <th>تاریخ صدور</th>
+                                        <th class="text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @if (recentInstallmentOrders.Count == 0)
                                     {
                                         <tr>
-                                            <td colspan="5" class="text-center py-5">
+                                            <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-calendar-x fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز اقساط اولیه‌ای در این بخش ثبت نشده است</div>
@@ -639,6 +660,15 @@
                                                     <span class="badge bg-secondary-subtle text-secondary rounded-pill num">@o.Installments.Count قسط</span>
                                                 </td>
                                                 <td class="num text-secondary fs-8">@o.Date.ToFa()</td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary op-btn-rounded"
+                                                            data-opening-edit="installments" data-opening-order="@o.Id"
+                                                            title="@OpeningEditButtonTitle(InstallmentState(o))"
+                                                            disabled="@(!OpeningBalanceEdit.CanEdit(InstallmentState(o)))"
+                                                            @onclick="() => OpenInstallmentEditAsync(o)">
+                                                        <i class="bi bi-pencil-square me-1"></i> ویرایش
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                     }
@@ -746,13 +776,14 @@
                                         <th class="text-center">تعداد موجودی</th>
                                         <th class="text-start">فی تمام‌شده</th>
                                         <th>تاریخ</th>
+                                        <th class="text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @if (recentStockLines.Count == 0)
                                     {
                                         <tr>
-                                            <td colspan="5" class="text-center py-5">
+                                            <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
                                                     <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در سوابق ثبت نشده است</div>
@@ -770,6 +801,15 @@
                                                 <td class="text-center fw-bold num text-emerald fs-7">@sl.Quantity.Qty()</td>
                                                 <td class="text-start num text-secondary fs-8">@sl.UnitPrice.MoneyExact() ریال</td>
                                                 <td class="num text-muted fs-8">@sl.Date.ToFa()</td>
+                                                <td class="text-center">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary op-btn-rounded"
+                                                            data-opening-edit="stock" data-opening-order="@sl.OrderId"
+                                                            title="@StockEditButtonTitle(sl)"
+                                                            disabled="@(sl.IsCancelled)"
+                                                            @onclick="() => OpenStockEditAsync(sl)">
+                                                        <i class="bi bi-pencil-square me-1"></i> ویرایش
+                                                    </button>
+                                                </td>
                                             </tr>
                                         }
                                     }
@@ -858,6 +898,216 @@
             @if (importingExcel) { <span class="spinner-border spinner-border-sm me-1"></span> }
             <i class="bi bi-cloud-arrow-up me-1"></i> شروع ورود داده‌ها از فایل اکسل
         </button>
+    </Footer>
+</Modal>
+
+<!-- ================== مودال ویرایش مانده‌های اول دوره (هر چهار بخش) ==================
+     دکمهٔ «ویرایش» در سابقهٔ هر تب همین مودال را باز می‌کند. قاعدهٔ فعال بودن دکمه و
+     متن علت غیرفعال شدن از OpeningBalanceEdit گرفته می‌شود تا فرم و سرور یکسان باشند.
+     ماهیت مانده (بدهکار/بستانکار) و نوع چک در ویرایش تغییر نمی‌کند. -->
+<Modal Visible="showEditModal" Title="@EditModalTitle" OnClose="CloseEditModal">
+    <ChildContent>
+        @if (editState is not null && !editState.CanEdit)
+        {
+            <div class="alert alert-warning d-flex align-items-start gap-2 fs-8 rounded-3 mb-0" data-opening-edit-blocked>
+                <i class="bi bi-shield-lock-fill fs-5 text-warning"></i>
+                <div>@editState.BlockedReason</div>
+            </div>
+        }
+        else
+        {
+            @if (editError is not null)
+            {
+                <div class="alert alert-danger fs-8 rounded-3 py-2 mb-3" data-opening-edit-error>@editError</div>
+            }
+
+            @if (editKind == "parties")
+            {
+                <div class="row g-3">
+                    <div class="col-12 col-md-7">
+                        <label class="op-label">طرف حساب <span class="text-danger">*</span></label>
+                        <SearchSelect Items="allPartiesLookup" Value="editParty.PartyId"
+                                      ValueChanged="OnEditPartySelected" Placeholder="جستجو با نام، تلفن یا موبایل طرف حساب…" />
+                    </div>
+                    <div class="col-12 col-md-5">
+                        <label class="op-label">ماهیت مانده</label>
+                        <div class="form-control form-control-sm bg-light num" data-opening-edit-nature>
+                            @(editParty.IsDebtor ? "بدهکار (طلب ما از شخص)" : "بستانکار (بدهی ما به شخص)")
+                        </div>
+                        <div class="op-helper-text text-secondary">ماهیت مانده پس از ثبت تغییر نمی‌کند.</div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="op-label">مبلغ مانده افتتاحیه (ریال) <span class="text-danger">*</span></label>
+                        <div class="op-money-wrapper @(editParty.IsDebtor ? "border-danger-glow" : "border-success-glow")">
+                            <MoneyInput @bind-Value="editParty.Amount" CssClass="form-control op-money-input num" />
+                            <span class="op-currency-tag">ریال</span>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">تاریخ سند</label>
+                        <DatePicker @bind-Value="editParty.Date" CssClass="op-input" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">سررسید نسیه</label>
+                        <DatePicker @bind-Value="editParty.DueDate" />
+                    </div>
+                    <div class="col-12">
+                        <label class="op-label">شرح سند / بابت</label>
+                        <input class="form-control form-control-sm op-input" @bind="editPartyDescription" maxlength="400"
+                               placeholder="مثال: مانده افتتاحیه انتقال از سال مالی قبل / طلب قدیمی" />
+                    </div>
+                </div>
+            }
+            else if (editKind == "installments")
+            {
+                <div class="row g-3">
+                    <div class="col-12 col-md-7">
+                        <label class="op-label">مشتری بدهکار <span class="text-danger">*</span></label>
+                        <SearchSelect Items="customersLookup" Value="editInstallmentPartyId"
+                                      ValueChanged="id => editInstallmentPartyId = id" Placeholder="انتخاب یا جستجوی مشتری…" />
+                    </div>
+                    <div class="col-6 col-md-5">
+                        <label class="op-label">شمارهٔ سند</label>
+                        <div class="form-control form-control-sm bg-light num" data-opening-edit-doc>#@editOrderId</div>
+                    </div>
+                    <div class="col-12 col-md-7">
+                        <label class="op-label">کل مبلغ بدهی (ریال) <span class="text-danger">*</span></label>
+                        <MoneyInput @bind-Value="editInstallmentTotal" CssClass="form-control form-control-sm num op-input" />
+                    </div>
+                    <div class="col-6 col-md-5">
+                        <label class="op-label">تعداد اقساط <span class="text-danger">*</span></label>
+                        <input type="number" min="1" max="60" class="form-control form-control-sm num op-input"
+                               @bind="editInstallmentCount" />
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <label class="op-label">سررسید اولین قسط</label>
+                        <DatePicker @bind-Value="editInstallmentFirstDue" />
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <label class="op-label">فاصلهٔ اقساط</label>
+                        <select class="form-select form-select-sm op-input" @bind="editInstallmentInterval">
+                            <option value="1">ماهانه</option>
+                            <option value="2">دوماهه</option>
+                            <option value="3">فصلی</option>
+                        </select>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="op-label">تاریخ سند</label>
+                        <DatePicker @bind-Value="editInstallmentDate" />
+                    </div>
+                    <div class="col-12">
+                        <label class="op-label">شرح دفترچه</label>
+                        <input class="form-control form-control-sm op-input" @bind="editInstallmentNote" maxlength="400" />
+                    </div>
+                </div>
+            }
+            else if (editKind == "stock")
+            {
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <label class="op-label">انبار <span class="text-danger">*</span></label>
+                        <SearchSelect Items="warehouseLookup" Value="editStockWarehouseId"
+                                      ValueChanged="id => editStockWarehouseId = id" Placeholder="انتخاب انبار…" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="op-label">کالا <span class="text-danger">*</span></label>
+                        <SearchSelect Items="productLookup" Value="editStockProductId"
+                                      ValueChanged="id => editStockProductId = id" Placeholder="انتخاب یا جستجوی کالا…" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">تعداد <span class="text-danger">*</span></label>
+                        <input type="number" step="any" min="0.01" class="form-control form-control-sm num op-input"
+                               @bind="editStockQuantity" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">بهای واحد (ریال)</label>
+                        <input type="text" inputmode="numeric" dir="ltr" class="form-control form-control-sm num op-input"
+                               value="@editStockPriceText"
+                               @oninput="@(e => editStockPriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()))" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">تاریخ سند</label>
+                        <DatePicker @bind-Value="editStockDate" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">شمارهٔ سند</label>
+                        <div class="form-control form-control-sm bg-light num" data-opening-edit-doc>#@editOrderId</div>
+                    </div>
+                    <div class="col-12">
+                        <label class="op-label">شرح سند انبار</label>
+                        <input class="form-control form-control-sm op-input" @bind="editStockDescription" maxlength="400" />
+                    </div>
+                </div>
+            }
+            else if (editKind == "cheques")
+            {
+                <div class="row g-3">
+                    <div class="col-12 col-md-7">
+                        <label class="op-label">
+                            @(editCheque.Kind == ChequeKind.Received ? "مشتری صادرکننده چک" : "تأمین‌کننده / گیرنده چک")
+                        </label>
+                        <SearchSelect Items="@(editCheque.Kind == ChequeKind.Received ? customersLookup : suppliersLookup)"
+                                      Value="editCheque.PartyId ?? 0"
+                                      ValueChanged="id => editCheque.PartyId = id" Placeholder="انتخاب طرف حساب…" />
+                    </div>
+                    <div class="col-12 col-md-5">
+                        <label class="op-label">نوع چک</label>
+                        <div class="form-control form-control-sm bg-light" data-opening-edit-nature>
+                            @(editCheque.Kind == ChequeKind.Received ? "دریافتی (نزد صندوق)" : "پرداختی (دسته چک ما)")
+                        </div>
+                        <div class="op-helper-text text-secondary">نوع چک پس از ثبت تغییر نمی‌کند.</div>
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <label class="op-label">مبلغ چک (ریال) <span class="text-danger">*</span></label>
+                        <MoneyInput @bind-Value="editCheque.Amount" CssClass="form-control form-control-sm num op-input" />
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <label class="op-label">تاریخ سررسید <span class="text-danger">*</span></label>
+                        <DatePicker @bind-Value="editChequeDueDate" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label class="op-label">شماره سریال چک <span class="text-danger">*</span></label>
+                        <input class="form-control form-control-sm num op-input" @bind="editCheque.Number" maxlength="40" />
+                    </div>
+                    @if (editCheque.Kind == ChequeKind.Issued)
+                    {
+                        <div class="col-12 col-md-6">
+                            <label class="op-label">حساب بانکی صادرکننده <span class="text-danger">*</span></label>
+                            <select class="form-select form-select-sm op-input" @bind="editCheque.TrsAccountId">
+                                <option value="0">— انتخاب حساب بانکی صادرکننده —</option>
+                                @foreach (var b in myBankAccounts)
+                                {
+                                    <option value="@b.Id">@b.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">نام بانک</label>
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.BankName" />
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <label class="op-label">شعبه</label>
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.BranchName" />
+                    </div>
+                    <div class="col-12">
+                        <label class="op-label">بابت / توضیحات</label>
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.Description" />
+                    </div>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light rounded-pill px-4" @onclick="CloseEditModal">انصراف</button>
+        @if (editState?.CanEdit == true || (editKind == "cheques" && editState is not null))
+        {
+            <button class="btn btn-primary rounded-pill px-4" data-hotkey="f1" data-opening-edit-save
+                    @onclick="SaveOpeningEditAsync" disabled="@saving">
+                @if (saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-check2-circle me-1"></i> ذخیرهٔ ویرایش
+            </button>
+        }
     </Footer>
 </Modal>
 
@@ -1454,6 +1704,298 @@
     private string stockDescription = "موجودی اولیه اول دوره انبار";
     private List<OpeningStockLine> recentStockLines = new();
 
+    // ---------- ویرایش مانده‌های اول دوره (هر چهار تب) ----------
+    private bool showEditModal;
+    private string editKind = "";
+    private int editOrderId;
+    private string? editError;
+    /// <summary>وضعیت پاسخ سرور برای ردیف باز شده؛ null یعنی هنوز در حال بررسی است.</summary>
+    private OpeningBalanceEditState? editState;
+
+    private PartyBalanceItem editParty = new();
+    private string editPartyDescription = "";
+
+    private int editInstallmentPartyId;
+    private decimal editInstallmentTotal;
+    private int editInstallmentCount = 1;
+    private DateTime? editInstallmentFirstDue;
+    private int editInstallmentInterval = 1;
+    private DateTime? editInstallmentDate;
+    private string editInstallmentNote = "";
+
+    private int editStockWarehouseId;
+    private int editStockProductId;
+    private decimal editStockQuantity = 1;
+    private string editStockPriceText = "";
+    private DateTime? editStockDate;
+    private string editStockDescription = "";
+
+    private TrsCheque editCheque = new();
+    private DateTime? editChequeDueDate;
+
+    private string EditModalTitle => editState is { CanEdit: true } ? "ویرایش مانده اول دوره" : OpeningBalanceEdit.NotEditableTitle;
+
+    // ---------- تصمیم «ویرایش آزاد / غیرفعال» (همان قاعدهٔ سرور) ----------
+    private static OpeningBalanceEdit.SettlementState PartyState(PartyBalanceItem item) =>
+        OpeningBalanceEdit.FromOrderSummary(item.IsCancelled, item.Description, item.HasCashEntry,
+            item.CashAmount, item.SettledAmount, item.ChequesNotInHand, item.AnyInstallmentPaid);
+
+    private static OpeningBalanceEdit.SettlementState InstallmentState(Order order) =>
+        OpeningBalanceEdit.FromOrderSummary(order.IsCancelled, order.Description,
+            order.ShopCashLedgerEnabled && order.CashAmount > 0, order.CashAmount, order.SettledAmount,
+            order.Cheques.Count(c => c.IsCleared || c.Status != ChequeStatus.InHand),
+            order.Installments.Any(i => i.IsPaid));
+
+    private static bool CanEditPartyRow(PartyBalanceItem item) => OpeningBalanceEdit.CanEdit(PartyState(item));
+
+    private static string OpeningEditButtonTitle(OpeningBalanceEdit.SettlementState state) =>
+        state.BlockedReason ?? OpeningBalanceEdit.EditActionTitle;
+
+    private static string ChequeEditButtonTitle(TrsCheque ch) =>
+        OpeningBalanceEdit.ChequeBlockedReason(ch.Status) ?? OpeningBalanceEdit.EditActionTitle;
+
+    private static string StockEditButtonTitle(OpeningStockLine line) =>
+        line.IsCancelled ? OpeningBalanceEdit.LockedCancelledMessage : OpeningBalanceEdit.EditActionTitle;
+
+    private void OpenEditModal(string kind, int orderId)
+    {
+        editKind = kind;
+        editOrderId = orderId;
+        editError = null;
+        editState = null;
+        showEditModal = true;
+    }
+
+    private void CloseEditModal()
+    {
+        showEditModal = false;
+        editState = null;
+        editError = null;
+    }
+
+    private void OnEditPartySelected(int id)
+    {
+        editParty.PartyId = id;
+        editParty.PartyName = allPartiesLookup.FirstOrDefault(p => p.Id == id)?.Name ?? "";
+    }
+
+    private async Task OpenPartyEditAsync(PartyBalanceItem item)
+    {
+        editParty = new PartyBalanceItem
+        {
+            Id = item.Id, PartyId = item.PartyId, PartyName = item.PartyName, PartyType = item.PartyType,
+            Amount = item.Amount, IsDebtor = item.IsDebtor, Date = item.Date, DueDate = item.DueDate,
+            Description = item.Description, IsCancelled = item.IsCancelled, CashAmount = item.CashAmount,
+            SettledAmount = item.SettledAmount, HasCashEntry = item.HasCashEntry,
+            ChequesNotInHand = item.ChequesNotInHand, AnyInstallmentPaid = item.AnyInstallmentPaid
+        };
+        // پیشوند ثبتی از فرم حذف می‌شود تا شرح دوباره پیشوند نگیرد.
+        editPartyDescription = OpeningBalanceEdit.StripMarker(item.Description);
+        OpenEditModal("parties", item.Id);
+        editState = new OpeningBalanceEditState
+        {
+            CanEdit = CanEditPartyRow(item),
+            BlockedReason = PartyState(item).BlockedReason,
+            IsCancelled = item.IsCancelled,
+            HasSettlementHistory = !PartyState(item).IsUntouched,
+            NatureLocked = true
+        };
+        await RefreshEditStateAsync(item.Id);
+    }
+
+    private async Task OpenInstallmentEditAsync(Order order)
+    {
+        var first = order.Installments.OrderBy(i => i.DueDate).FirstOrDefault();
+        var second = order.Installments.OrderBy(i => i.DueDate).Skip(1).FirstOrDefault();
+        editInstallmentPartyId = order.PartyId;
+        editInstallmentTotal = order.TotalAmount;
+        editInstallmentCount = Math.Max(1, order.Installments.Count);
+        editInstallmentFirstDue = first?.DueDate ?? DateTime.Today.AddMonths(1);
+        editInstallmentInterval = first is not null && second is not null
+            ? OpeningBalanceEdit.DeriveIntervalMonths(first.DueDate, second.DueDate) : 1;
+        editInstallmentDate = order.Date;
+        editInstallmentNote = OpeningBalanceEdit.StripMarker(order.Description);
+        var state = InstallmentState(order);
+        OpenEditModal("installments", order.Id);
+        editState = new OpeningBalanceEditState
+        {
+            CanEdit = OpeningBalanceEdit.CanEdit(state), BlockedReason = state.BlockedReason,
+            IsCancelled = order.IsCancelled, HasSettlementHistory = !state.IsUntouched, NatureLocked = true
+        };
+        await RefreshEditStateAsync(order.Id);
+    }
+
+    private async Task OpenStockEditAsync(OpeningStockLine line)
+    {
+        editStockWarehouseId = line.WarehouseId;
+        editStockProductId = line.ProductId;
+        editStockQuantity = line.Quantity;
+        editStockPriceText = line.UnitPrice.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        editStockDate = line.Date;
+        editStockDescription = OpeningBalanceEdit.StripMarker(line.Description);
+        OpenEditModal("stock", line.OrderId);
+        editState = new OpeningBalanceEditState { CanEdit = !line.IsCancelled, NatureLocked = true };
+        await RefreshEditStateAsync(line.OrderId);
+    }
+
+    private async Task OpenChequeEditAsync(TrsCheque ch)
+    {
+        editCheque = new TrsCheque
+        {
+            Id = ch.Id, Kind = ch.Kind, Number = ch.Number, SayadId = ch.SayadId, Amount = ch.Amount,
+            IssueDate = ch.IssueDate, DueDate = ch.DueDate, BankName = ch.BankName, BranchName = ch.BranchName,
+            AccountNumber = ch.AccountNumber, OwnerName = ch.OwnerName, PartyId = ch.PartyId,
+            TrsAccountId = ch.TrsAccountId, Status = ch.Status, Description = ch.Description
+        };
+        editChequeDueDate = ch.DueDate;
+        OpenEditModal("cheques", ch.Id);
+        await RefreshEditStateAsync(ch.Id);
+    }
+
+    /// <summary>
+    /// حرف آخر را سرور می‌زند: گردش نقدی، دریافت نسیه و وصول ممکن است بعد از بارگذاری
+    /// فهرست ثبت شده باشد. اگر سرور ویرایش را رد کند، دکمهٔ ذخیره غیرفعال می‌شود.
+    /// </summary>
+    private async Task RefreshEditStateAsync(int orderId)
+    {
+        if (editKind == "cheques")
+        {
+            // دفتر چک سند خرید/فروش نیست؛ منبع وضعیت، ردیف همان چک است.
+            var reason = OpeningBalanceEdit.ChequeBlockedReason(editCheque.Status);
+            if (editOrderId == orderId && showEditModal)
+                editState = new OpeningBalanceEditState
+                {
+                    CanEdit = reason is null, BlockedReason = reason,
+                    HasSettlementHistory = editCheque.Status != ChequeStatus.InHand, NatureLocked = true
+                };
+            return;
+        }
+        try
+        {
+            var state = await OrderSvc.GetOpeningEditStateAsync(orderId);
+            if (editOrderId == orderId && showEditModal) editState = state;
+        }
+        catch (Exception ex)
+        {
+            if (editOrderId == orderId && showEditModal)
+            {
+                editState = new OpeningBalanceEditState { CanEdit = false, BlockedReason = ex.Message };
+            }
+        }
+    }
+
+    private async Task SaveOpeningEditAsync()
+    {
+        // چک‌های اول دوره سند خرید/فروش نیستند و وضعیت ویرایش آن‌ها از همان ردیف دفتر چک می‌آید.
+        var editable = editKind == "cheques" ? OpeningBalanceEdit.ChequeBlockedReason(editCheque.Status) is null
+            : editState?.CanEdit == true;
+        if (saving || !editable) return;
+        editError = null;
+        saving = true;
+        try
+        {
+            if (editKind == "cheques")
+            {
+                await SaveChequeEditAsync();
+                return;
+            }
+            var cmd = BuildEditCommand();
+            if (cmd is null) return;
+            await OrderSvc.UpdateOpeningBalanceAsync(editOrderId, cmd);
+            Toast.Success("ویرایش مانده اول دوره ذخیره شد.");
+            showEditModal = false;
+            editState = null;
+            await LoadOpeningHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            editError = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    /// <summary>فرم باز را به دستور ویرایش تبدیل می‌کند؛ خطای اعتبارسنجی فرم را برمی‌گرداند.</summary>
+    private OpeningBalanceEditCommand? BuildEditCommand()
+    {
+        if (editKind == "parties")
+        {
+            if (editParty.PartyId <= 0) { editError = "لطفاً طرف حساب را انتخاب کنید."; return null; }
+            if (editParty.Amount <= 0) { editError = "مبلغ افتتاح حساب باید بزرگ‌تر از صفر باشد."; return null; }
+            return new OpeningBalanceEditCommand
+            {
+                PartyId = editParty.PartyId,
+                Amount = editParty.Amount,
+                Date = editParty.Date ?? DateTime.Today,
+                DueDate = editParty.DueDate,
+                Description = OpeningBalanceEdit.Compose(OpeningBalanceEdit.PartyPrefix,
+                    editPartyDescription, "مانده حساب افتتاحیه اول دوره")
+            };
+        }
+
+        if (editKind == "installments")
+        {
+            if (editInstallmentPartyId <= 0) { editError = "لطفاً مشتری را انتخاب کنید."; return null; }
+            if (editInstallmentTotal <= 0) { editError = "مبلغ بدهی اقساطی باید بزرگ‌تر از صفر باشد."; return null; }
+            if (editInstallmentCount <= 0) { editError = "تعداد اقساط باید حداقل ۱ قسط باشد."; return null; }
+            return new OpeningBalanceEditCommand
+            {
+                PartyId = editInstallmentPartyId,
+                Amount = editInstallmentTotal,
+                Date = editInstallmentDate ?? DateTime.Today,
+                Description = OpeningBalanceEdit.Compose(OpeningBalanceEdit.InstallmentPrefix,
+                    editInstallmentNote, OpeningBalanceEdit.LegacyInstallmentDescription),
+                InstallmentCount = editInstallmentCount,
+                FirstDueDate = editInstallmentFirstDue,
+                IntervalMonths = editInstallmentInterval
+            };
+        }
+
+        if (editKind == "stock")
+        {
+            if (editStockWarehouseId <= 0) { editError = "لطفاً انبار را انتخاب کنید."; return null; }
+            if (editStockProductId <= 0) { editError = "لطفاً کالا را انتخاب کنید."; return null; }
+            if (editStockQuantity <= 0) { editError = "تعداد کالا باید بزرگ‌تر از صفر باشد."; return null; }
+            if (!PurchaseSalePriceInput.TryParse(
+                    string.IsNullOrWhiteSpace(editStockPriceText) ? "0" : editStockPriceText, out var unitPrice))
+            { editError = "بهای واحد باید عددی غیرمنفی و بدون اعشار، به ریال صحیح باشد."; return null; }
+            return new OpeningBalanceEditCommand
+            {
+                WarehouseId = editStockWarehouseId,
+                ProductId = editStockProductId,
+                Quantity = editStockQuantity,
+                Amount = unitPrice,
+                Date = editStockDate ?? DateTime.Today,
+                Description = OpeningBalanceEdit.Compose(OpeningBalanceEdit.StockPrefix,
+                    editStockDescription, OpeningBalanceEdit.LegacyStockDescription)
+            };
+        }
+
+        editError = "این ردیف قابل ویرایش نیست.";
+        return null;
+    }
+
+    /// <summary>ویرایش چک در همان ردیف دفتر چک؛ همان اعتبارسنجی ثبت اولیه.</summary>
+    private async Task SaveChequeEditAsync()
+    {
+        editCheque.DueDate = editChequeDueDate ?? editCheque.DueDate;
+        var identifierError = ShopIdentifierRules.ValidateCheque(editCheque);
+        if (identifierError is not null) { editError = identifierError; return; }
+        if ((editCheque.PartyId ?? 0) <= 0) { editError = "لطفاً طرف حساب را انتخاب کنید."; return; }
+        if (editCheque.Amount <= 0) { editError = "مبلغ چک باید بزرگ‌تر از صفر باشد."; return; }
+        if (editCheque.Kind == ChequeKind.Issued && (editCheque.TrsAccountId ?? 0) <= 0)
+        { editError = "لطفاً حساب بانکی صادرکننده را انتخاب کنید."; return; }
+
+        await ChequeSvc.SaveShopAsync(editCheque);
+        Toast.Success($"چک شماره {editCheque.Number} ویرایش شد.");
+        showEditModal = false;
+        editState = null;
+        var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+        chequesList = chqRes.Items;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("افتتاح حساب و مانده‌های اولیه");
@@ -1561,16 +2103,26 @@
             {
                 balances.Add(new PartyBalanceItem
                 {
+                    Id = order.Id,
                     PartyId = order.PartyId, PartyName = order.PartyName ?? "",
                     PartyType = order.Type == TransactionType.Sale ? PartyType.Customer : PartyType.Supplier,
                     Amount = order.TotalAmount, IsDebtor = order.Type == TransactionType.Sale,
-                    Date = order.Date, DueDate = order.DueDate, Description = order.Description
+                    Date = order.Date, DueDate = order.DueDate, Description = order.Description,
+                    // واقعیت‌های گردش برای تصمیم «ویرایش آزاد است یا غیرفعال»؛ سرور همین را دوباره بررسی می‌کند.
+                    IsCancelled = order.IsCancelled,
+                    CashAmount = order.CashAmount,
+                    SettledAmount = order.SettledAmount,
+                    HasCashEntry = order.ShopCashLedgerEnabled && order.CashAmount > 0,
+                    ChequesNotInHand = order.Cheques.Count(c => c.IsCleared || c.Status != ChequeStatus.InHand),
+                    AnyInstallmentPaid = order.Installments.Any(i => i.IsPaid)
                 });
             }
             else if (order.Type == TransactionType.Purchase)
             {
                 stocks.AddRange(order.Lines.Select(line => new OpeningStockLine
                 {
+                    OrderId = order.Id, WarehouseId = order.WarehouseId, ProductId = line.ProductId,
+                    Description = order.Description, IsCancelled = order.IsCancelled,
                     WarehouseName = order.WarehouseName ?? "", ProductName = line.ProductName,
                     Quantity = line.Quantity, UnitPrice = line.Price, Date = order.Date
                 }));
@@ -1896,6 +2448,8 @@
 
     private class PartyBalanceItem
     {
+        /// <summary>شناسهٔ سند افتتاحیه؛ صفر یعنی ردیف تازهٔ ثبت‌نشده.</summary>
+        public int Id { get; set; }
         public int PartyId { get; set; }
         public string PartyName { get; set; } = "";
         public PartyType PartyType { get; set; } = PartyType.Customer;
@@ -1904,10 +2458,22 @@
         public DateTime? Date { get; set; } = DateTime.Today;
         public DateTime? DueDate { get; set; } = DateTime.Today.AddMonths(1);
         public string? Description { get; set; }
+        public bool IsCancelled { get; set; }
+        public decimal CashAmount { get; set; }
+        public decimal SettledAmount { get; set; }
+        public bool HasCashEntry { get; set; }
+        public int ChequesNotInHand { get; set; }
+        public bool AnyInstallmentPaid { get; set; }
     }
 
     private class OpeningStockLine
     {
+        /// <summary>شناسهٔ سند موجودی اولیه؛ برای ویرایش همان سند لازم است.</summary>
+        public int OrderId { get; set; }
+        public int WarehouseId { get; set; }
+        public int ProductId { get; set; }
+        public string? Description { get; set; }
+        public bool IsCancelled { get; set; }
         public string WarehouseName { get; set; } = "";
         public string ProductName { get; set; } = "";
         public decimal Quantity { get; set; }
