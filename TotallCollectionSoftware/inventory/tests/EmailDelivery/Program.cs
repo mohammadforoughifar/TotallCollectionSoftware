@@ -1,0 +1,1 @@
+await EmailDeliveryTests.ServerTests.RunAsync();

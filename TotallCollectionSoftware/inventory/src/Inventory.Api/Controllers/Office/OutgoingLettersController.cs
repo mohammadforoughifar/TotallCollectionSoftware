@@ -1,4 +1,4 @@
-﻿using Inventory.Api.Data;
+using Inventory.Api.Data;
 using Inventory.Api.Infrastructure;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Office.Outgoing;
@@ -450,8 +450,19 @@ public class OutgoingLettersController : RbacControllerBase
     {
         if (!await HasDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
-        await _letters.DabirkhaneRegisterAsync(id, dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { message = "نامه در دبیرخانه ثبت شد." });
+        try
+        {
+            return Ok(await _letters.DabirkhaneRegisterAsync(id, dto, MyUserId, await MyDisplayNameAsync()));
+        }
+        catch (Inventory.Api.Services.Office.Email.EmailPreparationException ex)
+        {
+            return BadRequest(new { message = ex.Message, code = ex.Code, requestId = dto.EmailRequestId, requestRejected = true });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError("Letter {LetterId}, email request {RequestId}: registration result unavailable ({ErrorType}).", id, dto.EmailRequestId, ex.GetType().Name);
+            return StatusCode(503, new { message = "نتیجهٔ ثبت/ارسال قابل تأیید نیست؛ با کد پیگیری وضعیت را بررسی کنید و بدون بررسی ارسال را تکرار نکنید.", requestId = dto.EmailRequestId });
+        }
     }
 
     /// <summary>شرکت‌های فعال — برای انتخاب سربرگ نامه صادره</summary>

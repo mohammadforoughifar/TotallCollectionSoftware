@@ -11,7 +11,11 @@ public class ApiOptions
 
 public class ApiException : Exception
 {
-    public ApiException(string message) : base(message) { }
+    public int? StatusCode { get; }
+    /// <summary>Explicit server confirmation that this request was rejected before processing.</summary>
+    public bool RequestRejected { get; }
+    public ApiException(string message, int? statusCode = null, bool requestRejected = false) : base(message)
+    { StatusCode = statusCode; RequestRejected = requestRejected; }
 }
 
 /// <summary>کلاینت HTTP برای ارتباط با API با استخراج پیام خطای فارسی.</summary>
@@ -250,7 +254,7 @@ public class ApiClient : IApiClient
         if (!resp.IsSuccessStatusCode)
         {
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                throw new ApiException("نشست شما معتبر نیست یا منقضی شده است؛ لطفاً دوباره وارد سامانه شوید.");
+                throw new ApiException("نشست شما معتبر نیست یا منقضی شده است؛ لطفاً دوباره وارد سامانه شوید.", 401, true);
             if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
             {
                 // A confidential-password failure is also HTTP 403. Do not turn the
@@ -264,12 +268,14 @@ public class ApiClient : IApiClient
                         forbiddenMessage = message.GetString()![..Math.Min(message.GetString()!.Length, 600)];
                 }
                 catch (JsonException) { }
-                throw new ApiException(forbiddenMessage);
+                throw new ApiException(forbiddenMessage, 403, true);
             }
             string msg;
+            var requestRejected = false;
             try
             {
                 using var doc = JsonDocument.Parse(text);
+                requestRejected = doc.RootElement.ValueKind == JsonValueKind.Object && doc.RootElement.TryGetProperty("requestRejected", out var rejected) && rejected.ValueKind == JsonValueKind.True;
                 if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String)
                     msg = m.GetString() ?? "خطایی رخ داد.";
                 else
@@ -280,7 +286,7 @@ public class ApiClient : IApiClient
                 msg = DescribeBody(text);
             }
             // افزودن کد وضعیت و آدرس برای تشخیص آسان‌تر
-            throw new ApiException($"{msg} (HTTP {(int)resp.StatusCode} — {Url(path)})");
+            throw new ApiException($"{msg} (HTTP {(int)resp.StatusCode} — {Url(path)})", (int)resp.StatusCode, requestRejected);
         }
 
         if (string.IsNullOrWhiteSpace(text)) return default!;

@@ -1,4 +1,4 @@
-﻿using Inventory.Shared.Dtos;
+using Inventory.Shared.Dtos;
 
 namespace Inventory.Client.Services;
 
@@ -59,7 +59,7 @@ public interface IOutgoingLetterService
     /// <summary>فهرست دبیرخانهٔ نامهٔ صادره با صفحه‌بندی سمت سرور (skip/take).</summary>
     Task<PagedResult<DabirkhaneListItemDto>> GetDabirkhanePageAsync(DabirkhaneSearchDto? filter = null, int page = 1, int pageSize = 15);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
-    Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
+    Task<DabirkhaneRegisterResultDto> DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
 
     /// <summary>شرکت فعال کاربر جاری — برای انتخاب سربرگ نامه صادره</summary>
@@ -376,8 +376,21 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync() =>
         _api.GetAsync<DabirkhaneStatsDto>("api/outgoing-letters/dabirkhane/stats");
 
-    public Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto) =>
-        _api.PostAsync<object>($"api/outgoing-letters/{letterId}/dabirkhane", dto);
+    public async Task<DabirkhaneRegisterResultDto> DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto)
+    {
+        var byEmail = dto.SendByEmail || LetterSendMethods.Spec(dto.SendMethod).NeedsDestEmail;
+        try
+        {
+            var result = await _api.PostAsync<DabirkhaneRegisterResultDto>($"api/outgoing-letters/{letterId}/dabirkhane", dto);
+            if (result != null && result.RegistrationSaved.HasValue && (!byEmail || result.Email?.RequestId != Guid.Empty && result.Email != null))
+                return result;
+        }
+        catch (ApiException ex) when (ex.RequestRejected) { throw; }
+        catch (Exception ex) when (ex is ApiException or HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        { /* Keep this request ID: HTTP failure is not proof of SMTP failure. */ }
+        return new() { RegistrationSaved = null, Email = byEmail ? EmailDeliveryText.Uncertain(dto.EmailRequestId) : null,
+            Warning = "نتیجهٔ ثبت از سرور دریافت نشد؛ فهرست و کد پیگیری را بررسی کنید، نه اینکه عملیات را بی‌اطلاع تکرار کنید." };
+    }
 
     public Task<List<LetterCompanyDto>> GetCompaniesAsync() =>
         ListOrPaged.GetAsync<LetterCompanyDto>(_api, "api/outgoing-letters/companies");

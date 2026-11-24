@@ -4,6 +4,8 @@
 @inject IOutgoingLetterService OutgoingSvc
 @inject LetterPrintWorkflow PrintWorkflow
 @inject IEmailClientService EmailSvc
+@inject IAuthState EmailAuth
+@inject IJSRuntime EmailJs
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject LayoutState Layout
@@ -320,6 +322,8 @@
                                 </button>
                             }
 
+                            <button type="button" class="lbtn ghost" @onclick="() => OpenEmailHistory(ll.LetterId)"><i class="bi bi-clipboard-check"></i> وضعیت ارسال ایمیل</button>
+
                             @if (!ll.DabirkhaneSabt)
                             {
                                 <button class="lbtn pri" @onclick="() => OpenRegister(ll)"><i class="bi bi-send-check"></i> ثبت و ارسال</button>
@@ -358,15 +362,31 @@
 @* ---------- مودال ثبت دبیرخانه ---------- *@
 @if (regOpen && regItem != null)
 {
-    <div class="ltx" style="animation:none;transform:none">
+    <div class="ltx secretariat-register-modal" style="animation:none;transform:none">
         @* قرارداد مودال: بسته‌شدن فقط با × / انصراف — کلیک روی پس‌زمینه فرم را نمی‌بندد *@
         <div class="ov"></div>
         <div class="sheet" style="max-width:560px">
             <div class="sheet-h">
                 <b><i class="bi bi-mailbox" style="color:var(--p2)"></i> ثبت دبیرخانه — @regItem.SadereNumber</b>
-                <button class="x" @onclick="CloseRegister"><i class="bi bi-x-lg"></i></button>
+                <button class="x" disabled="@busy" @onclick="CloseRegister"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="sheet-b">
+                @if (regResult != null)
+                {
+                    <div id="registration-email-outcome" class="alert @(regResult.RegistrationSaved == true ? "alert-success" : "alert-warning") registration-result" role="status">
+                        @(regResult.RegistrationSaved == true ? "ثبت دبیرخانه ذخیره شد؛ نتیجهٔ ایمیل جداگانه در پایین آمده است." : "نتیجهٔ ذخیرهٔ ثبت دریافت نشد؛ فهرست و سابقه را بررسی کنید.")
+                        @if (!string.IsNullOrWhiteSpace(regResult.Warning)) { <p>@regResult.Warning</p> }
+                    </div>
+                }
+                <p style="font-size:11px;overflow-wrap:anywhere">کد درخواست ایمیل: <code dir="ltr">@regRequestId</code></p>
+                <EmailDeliveryResult Result="regResult?.Email" Busy="@(busy || regChecking)" AllowNewAttempt="true" OnCheck="CheckRegistrationEmail" OnNewAttempt="StartNewRegistrationAttempt" />
+                @if (regResult?.Email is { SmtpAccepted: false, ResultPersisted: false } && regSnapshot != null)
+                {
+                    <p style="font-size:12px;line-height:1.9">اگر پاسخ قطع شده، فقط همین درخواستِ بدون تغییر را تکرار کنید؛ کد ثابت مانع ایمیل دوم می‌شود. اگر درخواست اول نرسیده باشد، ثبت و ارسال آغاز می‌شود.</p>
+                    <button type="button" class="lbtn ghost registration-replay" disabled="@(busy || regChecking)" @onclick="ReplayRegistration">تکرار امن همین درخواست — بدون تغییر کد</button>
+                }
+                <button type="button" class="lbtn ghost" style="margin-bottom:12px" @onclick="() => OpenEmailHistory(regItem.LetterId)">مشاهدهٔ همهٔ تلاش‌های ایمیل این نامه</button>
+                <fieldset disabled="@(busy || regResult != null)" style="border:0;padding:0;margin:0;min-width:0">
                 <div class="fcard">
                     <label>نامه</label>
                     <div style="font-size:13px">@regItem.Title — <b>@regItem.ReceiverOrganization</b></div>
@@ -455,6 +475,7 @@
                         <div style="margin-top:10px">
                             <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه — جدا از ایمیل شخصی</span></label>
                             <select class="tin" @bind="regEmailAccountId">
+                                <option value="0">— حساب رسمی فرستنده را انتخاب کنید —</option>
                                 @if (dabirAccounts.Count == 0)
                                 {
                                     <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
@@ -504,6 +525,7 @@
                                 <div>
                                     <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه</span></label>
                                     <select class="tin" @bind="regEmailAccountId">
+                                <option value="0">— حساب رسمی فرستنده را انتخاب کنید —</option>
                                         @if (dabirAccounts.Count == 0)
                                         {
                                             <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
@@ -531,9 +553,10 @@
                     <textarea class="tin" rows="3" placeholder="توضیح دبیرخانه…" @bind="regNote"></textarea>
                 </div>
 
+                </fieldset>
                 <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
-                    <button class="lbtn ghost" @onclick="CloseRegister">انصراف</button>
-                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitRegister">
+                    <button class="lbtn ghost" disabled="@busy" @onclick="CloseRegister">بستن</button>
+                    <button class="lbtn pri" disabled="@(busy || regResult != null)" @onclick="SubmitRegister">
                         <i class="bi bi-send-check"></i> @(busy ? "در حال ثبت…" : "ثبت و ارسال")
                     </button>
                 </div>
@@ -541,6 +564,8 @@
         </div>
     </div>
 }
+
+<EmailDeliveryHistoryModal Open="emailHistoryOpen" LetterId="emailHistoryLetterId" OnClose="() => emailHistoryOpen = false" />
 
 @* ---------- مودال چاپ (دو نسخه) ---------- *@
 @if (printOpen && printItem != null)
@@ -690,7 +715,23 @@
     }
 
     // ---------- مودال ثبت ----------
-    private bool regOpen;
+    private bool regOpen, regChecking, focusRegistrationResult;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusRegistrationResult && regOpen && regResult != null)
+        {
+            focusRegistrationResult = false;
+            try { await EmailJs.InvokeVoidAsync("scrollIntoViewById", "registration-email-outcome", "start", "auto"); } catch { }
+        }
+    }
+    private Guid regRequestId = Guid.NewGuid();
+    private Guid? regResendOf;
+    private bool regAcceptDuplicateRisk;
+    private DabirkhaneRegisterResultDto? regResult;
+    private DabirkhaneRegisterDto? regSnapshot;
+    private bool emailHistoryOpen;
+    private int? emailHistoryLetterId;
+    private void OpenEmailHistory(int letterId) { emailHistoryLetterId = letterId; emailHistoryOpen = true; }
     private DabirkhaneListItemDto? regItem;
     private string regMethod = "";
     private string? regDestNumber;
@@ -918,8 +959,11 @@
 
     // ==================== ثبت دبیرخانه ====================
 
-    private void OpenRegister(DabirkhaneListItemDto l)
+    private async Task OpenRegister(DabirkhaneListItemDto l)
     {
+        if (busy) return;
+        if (regItem?.LetterId == l.LetterId && regResult != null) { regOpen = true; focusRegistrationResult = true; return; }
+        regRequestId = Guid.NewGuid(); regResendOf = null; regAcceptDuplicateRisk = false; regResult = null; regSnapshot = null;
         regItem = l;
         regMethod = l.SendMethod ?? "";
         regDestNumber = l.DestRegNumber;
@@ -936,16 +980,23 @@
         regEmailAccountId = 0;
         regSendByEmail = false;
         regOpen = true;
-        _ = LoadDabirkhaneAccountsAsync();
+        var recovered = await EmailRequestMemory.RestoreAsync(EmailJs, EmailAuth.UserId, $"letter:{l.LetterId}");
+        if (regItem?.LetterId != l.LetterId) return;
+        if (recovered != null)
+        {
+            regRequestId = recovered.RequestId;
+            regResult = new() { RegistrationSaved = l.DabirkhaneSabt ? true : null, Email = recovered };
+            await CheckRegistrationEmail();
+            focusRegistrationResult = true;
+        }
+        await LoadDabirkhaneAccountsAsync();
     }
 
     private async Task LoadDabirkhaneAccountsAsync()
     {
         try
         {
-            dabirAccounts = await EmailSvc.GetDabirkhaneAccountsAsync();
-            if (regEmailAccountId == 0 && dabirAccounts.Count > 0)
-                regEmailAccountId = dabirAccounts[0].EmailId;
+            dabirAccounts = (await EmailSvc.GetDabirkhaneAccountsAsync()).Where(a => a.IsDabirkhane && a.IsActive).ToList();
             StateHasChanged();
         }
         catch { dabirAccounts = new(); }
@@ -964,11 +1015,73 @@
         StateHasChanged();
     }
 
-    private void CloseRegister() { regOpen = false; regItem = null; }
+    private void CloseRegister() { if (!busy) regOpen = false; }
+
+    private async Task CheckRegistrationEmail()
+    {
+        if (regResult?.Email == null || busy || regChecking) return;
+        var key = regResult.Email.RequestId; regChecking = true;
+        try
+        {
+            var result = await EmailSvc.GetDeliveryStatusAsync(key);
+            if (regResult?.Email?.RequestId == key && result != null)
+            {
+                if (!regResult.Email.SmtpAccepted || result.SmtpAccepted) regResult.Email = result;
+                else Toast.Error("ثبت نتیجه هنوز با پذیرش SMTP یکسان نیست؛ ارسال را تکرار نکنید.");
+            }
+        }
+        catch (Exception) { Toast.Error("وضعیت فعلاً در دسترس نیست؛ این خطا دلیل ارسال‌نشدن نیست. با کد پیگیری بررسی کنید."); }
+        finally
+        {
+            if (regResult?.Email != null && regItem != null)
+                await EmailRequestMemory.RememberAsync(EmailJs, EmailAuth.UserId, $"letter:{regItem.LetterId}", regResult.Email);
+            regChecking = false;
+        }
+    }
+    private async Task StartNewRegistrationAttempt(bool acceptRisk)
+    {
+        var email = regResult?.Email;
+        if (busy || regChecking || email == null) return;
+        if (!email.CanRetry && !(email.ResultPersisted && email.AttemptId.HasValue &&
+            (email.SmtpAccepted || (email.Status == EmailDeliveryStatus.Unknown && acceptRisk)))) return;
+        if (regItem != null) await EmailRequestMemory.ForgetAsync(EmailJs, EmailAuth.UserId, $"letter:{regItem.LetterId}");
+        regResendOf = email.RequestId; regAcceptDuplicateRisk = acceptRisk;
+        regRequestId = Guid.NewGuid(); regResult = null; regSnapshot = null;
+    }
+    private async Task ReplayRegistration()
+    {
+        if (busy || regChecking || regItem == null || regSnapshot == null || regResult?.Email == null || regResult.Email.SmtpAccepted || regResult.Email.ResultPersisted) return;
+        busy = true;
+        try { await SendRegistrationSnapshot(regItem.LetterId); }
+        finally { busy = false; }
+    }
+    private async Task SendRegistrationSnapshot(int letterId)
+    {
+        var request = regSnapshot!;
+        var previous = regResult;
+        if (request.SendByEmail && !await EmailRequestMemory.RememberAsync(EmailJs, EmailAuth.UserId, $"letter:{letterId}", EmailDeliveryText.Uncertain(request.EmailRequestId)))
+            Toast.Error("ذخیرهٔ کد در مرورگر ممکن نیست؛ کد پیگیری فرم را نگه دارید و از گزارش سرور پیگیری کنید.");
+        try
+        {
+            regResult = await OutgoingSvc.DabirkhaneRegisterAsync(letterId, request);
+            if (regResult.RegistrationSaved == true)
+                Toast.Success(regResult.Email == null ? "ثبت دبیرخانه ذخیره شد." : "ثبت دبیرخانه ذخیره شد؛ نتیجهٔ ایمیل را جداگانه بررسی کنید.");
+        }
+        catch (ApiException ex) when (ex.RequestRejected) { regResult = previous; Toast.Error(ex.Message); }
+        catch (Exception)
+        {
+            regResult = new() { RegistrationSaved = null, Email = request.SendByEmail ? EmailDeliveryText.Uncertain(request.EmailRequestId) : null,
+                Warning = "پاسخ ثبت دریافت نشد؛ فهرست و سابقه را بررسی کنید. این خطا دلیل ارسال‌نشدن نیست." };
+        }
+        if (regResult?.Email != null) await EmailRequestMemory.RememberAsync(EmailJs, EmailAuth.UserId, $"letter:{letterId}", regResult.Email);
+        else await EmailRequestMemory.ForgetAsync(EmailJs, EmailAuth.UserId, $"letter:{letterId}");
+        focusRegistrationResult = regResult != null;
+        await ReloadAsync();
+    }
 
     private async Task SubmitRegister()
     {
-        if (regItem == null) return;
+        if (regItem == null || busy || regResult != null) return;
 
         errMethod = string.IsNullOrWhiteSpace(regMethod);
         if (errMethod) { Toast.Error("روش ارسال نامه را انتخاب کنید."); return; }
@@ -989,15 +1102,16 @@
         if (regEmailError) { Toast.Error("مشخص کنید نامه به کدوم ایمیل ارسال شود."); return; }
         if (byEmail && regEmailAccountId == 0)
         {
-            Toast.Error("حساب ایمیل دبیرخانه ثبت نشده است — از بخش «ایمیل سازمانی» حساب رسمی دبیرخانه را اضافه کنید.");
+            Toast.Error("حساب رسمی فرستنده را صریحاً انتخاب کنید؛ در صورت نبود حساب، از بخش «ایمیل سازمانی» آن را اضافه کنید.");
             return;
         }
 
         busy = true;
         try
         {
-            await OutgoingSvc.DabirkhaneRegisterAsync(regItem.LetterId, new DabirkhaneRegisterDto
+            regSnapshot = new DabirkhaneRegisterDto
             {
+                EmailRequestId = regRequestId, ResendOfRequestId = regResendOf, AcceptDuplicateRisk = regAcceptDuplicateRisk,
                 SendMethod = regMethod,
                 DestRegNumber = regDestNumber?.Trim(),
                 Note = regNote?.Trim(),
@@ -1007,14 +1121,9 @@
                 DelivererName = spec.NeedsDelivererName ? regDelivererName?.Trim() : null,
                 TrackingCode = spec.NeedsTrackingCode ? regTrackingCode?.Trim() : null,
                 DestFax = spec.NeedsFax ? regFax?.Trim() : null
-            });
-
-            Toast.Success(byEmail ? "نامه در دبیرخانه ثبت و با ایمیل ارسال شد." : "نامه در دبیرخانه ثبت شد.");
-            regOpen = false;
-            regItem = null;
-            await ReloadAsync();
+            };
+            await SendRegistrationSnapshot(regItem.LetterId);
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
     }
 }

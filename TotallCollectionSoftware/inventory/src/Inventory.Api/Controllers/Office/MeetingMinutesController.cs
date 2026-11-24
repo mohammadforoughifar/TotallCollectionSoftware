@@ -384,7 +384,7 @@ public class MeetingMinutesController : RbacControllerBase
 
         try
         {
-            var emailId = await _email.SendAsync(new EmailComposeDto
+            var emailId = await _email.SendSystemEmailAsync(new EmailComposeDto
             {
                 EmailAccountId = dto.EmailAccountId,
                 To = dto.To,

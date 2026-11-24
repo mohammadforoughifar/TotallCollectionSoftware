@@ -60,7 +60,10 @@ public interface IEmailClientService
     /// <summary>نشان‌کردنِ ایمیل به‌عنوان هرزنامه / یا بازگرداندن به صندوقِ دریافتی</summary>
     Task<bool> MarkSpamAsync(string box, int id, bool spam);
     Task ArchiveAsync(string box, int id, int folderId);
-    Task SendAsync(int emailAccountId, string to, string? cc, string subject, string body, List<EmailOutAttachment> attachments);
+    Task<EmailDeliveryResultDto> SendAsync(int emailAccountId, string to, string? cc, string subject, string body, List<EmailOutAttachment> attachments, Guid requestId);
+    Task<EmailDeliveryAttemptDto?> GetDeliveryStatusAsync(Guid requestId, bool personal = false);
+    Task<PagedResult<EmailDeliveryAttemptDto>> GetDeliveryHistoryAsync(int? accountId = null, int? letterId = null, int? sentId = null,
+        EmailDeliveryStatus? status = null, int page = 1, int pageSize = 15, bool personal = false);
     string AttachmentDownloadUrl(int attachmentId);
     Task<(byte[] Data, string FileName)> DownloadAttachmentAsync(int attachmentId);
 
@@ -86,9 +89,12 @@ public class EmailClientService : IEmailClientService
     }
 
     /// <summary>ارسال ایمیل با پیوست — multipart/form-data</summary>
-    public async Task SendAsync(int emailAccountId, string to, string? cc, string subject, string body, List<EmailOutAttachment> attachments)
+    public async Task<EmailDeliveryResultDto> SendAsync(int emailAccountId, string to, string? cc, string subject, string body,
+        List<EmailOutAttachment> attachments, Guid requestId)
     {
+        if (requestId == Guid.Empty) throw new ApiException("کد پیگیری ارسال موجود نیست؛ فرم را دوباره باز کنید.", 400, true);
         using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(requestId.ToString()), "requestId");
         content.Add(new StringContent(emailAccountId.ToString()), "emailAccountId");
         content.Add(new StringContent(to ?? ""), "to");
         content.Add(new StringContent(cc ?? ""), "cc");
@@ -96,30 +102,66 @@ public class EmailClientService : IEmailClientService
         content.Add(new StringContent(body ?? ""), "body");
         foreach (var a in attachments)
         {
-            var bc = new ByteArrayContent(a.Data);
-            bc.Headers.ContentType = MediaTypeHeaderValue.TryParse(a.ContentType, out var mime)
+            var bytes = new ByteArrayContent(a.Data);
+            bytes.Headers.ContentType = MediaTypeHeaderValue.TryParse(a.ContentType, out var mime)
                 ? mime : new MediaTypeHeaderValue("application/octet-stream");
-            content.Add(bc, "files", a.FileName);
+            content.Add(bytes, "files", a.FileName);
         }
-
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{_opts.BaseUrl.TrimEnd('/')}/api/email/send") { Content = content };
-        if (!string.IsNullOrEmpty(_auth.Token))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _auth.Token);
-
-        using var resp = await _http.SendAsync(req);
-        var text = await resp.Content.ReadAsStringAsync();
-        if (!resp.IsSuccessStatusCode)
+        if (!string.IsNullOrEmpty(_auth.Token)) req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _auth.Token);
+        try
         {
-            var msg = "ارسال ایمیل ناموفق بود.";
+            using var response = await _http.SendAsync(req);
+            var text = await response.Content.ReadAsStringAsync();
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(text);
-                if (doc.RootElement.TryGetProperty("message", out var m) && m.ValueKind == System.Text.Json.JsonValueKind.String)
-                    msg = m.GetString() ?? msg;
+                using var envelope = System.Text.Json.JsonDocument.Parse(text);
+                // Validation bodies can also include requestId. They are NOT delivery results.
+                if (envelope.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                    envelope.RootElement.TryGetProperty("status", out var status) && status.ValueKind == System.Text.Json.JsonValueKind.Number &&
+                    envelope.RootElement.TryGetProperty("resultPersisted", out var persisted) && persisted.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+                {
+                    var result = System.Text.Json.JsonSerializer.Deserialize<EmailDeliveryResultDto>(text,
+                        new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+                    if (result?.RequestId == requestId && Enum.IsDefined(result.Status)) return result;
+                }
             }
-            catch { }
-            throw new ApiException(msg);
+            catch (System.Text.Json.JsonException) { }
+            if (!response.IsSuccessStatusCode)
+            {
+                var rejected = response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.RequestEntityTooLarge;
+                var message = "درخواست ارسال پذیرفته نشد؛ دسترسی و محدودیت حجم را بررسی کنید.";
+                try
+                {
+                    using var json = System.Text.Json.JsonDocument.Parse(text);
+                    rejected |= json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && json.RootElement.TryGetProperty("requestRejected", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.True;
+                    if (rejected && json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object && json.RootElement.TryGetProperty("message", out var m) && m.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var value = m.GetString() ?? message;
+                        message = value[..Math.Min(value.Length, 800)];
+                    }
+                }
+                catch (System.Text.Json.JsonException) { }
+                if (rejected) throw new ApiException(message, (int)response.StatusCode, true);
+            }
         }
+        catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or System.Text.Json.JsonException)
+        { /* Do not infer failure and do not retry SMTP after a lost HTTP response. */ }
+        return EmailDeliveryText.Uncertain(requestId);
+    }
+
+    public Task<EmailDeliveryAttemptDto?> GetDeliveryStatusAsync(Guid requestId, bool personal = false) =>
+        _api.GetAsync<EmailDeliveryAttemptDto?>($"api/email/delivery-status/{requestId}?personal={personal.ToString().ToLowerInvariant()}");
+
+    public Task<PagedResult<EmailDeliveryAttemptDto>> GetDeliveryHistoryAsync(int? accountId = null, int? letterId = null, int? sentId = null,
+        EmailDeliveryStatus? status = null, int page = 1, int pageSize = 15, bool personal = false)
+    {
+        var query = new List<string> { $"page={page}", $"pageSize={pageSize}", $"personal={personal.ToString().ToLowerInvariant()}" };
+        if (accountId.HasValue) query.Add($"accountId={accountId.Value}");
+        if (letterId.HasValue) query.Add($"letterId={letterId.Value}");
+        if (sentId.HasValue) query.Add($"sentId={sentId.Value}");
+        if (status.HasValue) query.Add($"status={(int)status.Value}");
+        return _api.GetAsync<PagedResult<EmailDeliveryAttemptDto>>($"api/email/delivery-history?{string.Join("&", query)}");
     }
 
     private class IdResponse { public int Id { get; set; } }

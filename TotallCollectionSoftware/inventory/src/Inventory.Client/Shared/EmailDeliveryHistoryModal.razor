@@ -1,0 +1,24 @@
+@if (Open)
+{
+    <div class="ltx email-delivery-history-modal" style="animation:none;transform:none">
+        <div class="ov"></div>
+        <div class="sheet" role="dialog" aria-modal="true" aria-label="وضعیت ارسال و خطاهای ایمیل" style="max-width:760px;width:calc(100% - 24px)">
+            <div class="sheet-h">
+                <b>گزارش ارسال ایمیل</b>
+                <button type="button" class="x" aria-label="بستن گزارش ارسال" @onclick="OnClose">×</button>
+            </div>
+            <div class="sheet-b">
+                <EmailDeliveryHistory LetterId="LetterId" SentId="SentId" AccountId="AccountId" PersonalOnly="PersonalOnly" />
+            </div>
+            <div class="sheet-f"><button type="button" class="lbtn ghost" @onclick="OnClose">بستن گزارش</button></div>
+        </div>
+    </div>
+}
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public int? AccountId { get; set; }
+    [Parameter] public int? LetterId { get; set; }
+    [Parameter] public int? SentId { get; set; }
+    [Parameter] public bool PersonalOnly { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+}

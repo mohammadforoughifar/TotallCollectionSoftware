@@ -1,0 +1,65 @@
+@using Inventory.Shared.Dtos
+
+@if (Result != null)
+{
+    <section id="@AnchorId" class="email-delivery-result alert alert-@EmailDeliveryText.Tone(Result.Status)" role="status" aria-live="polite" style="margin:12px 0;padding:14px;border:1px solid #cbd5e1;border-radius:12px;overflow-wrap:anywhere">
+        <strong>@EmailDeliveryText.Status(Result.Status)</strong>
+        <p style="margin:8px 0;line-height:1.9">@Result.Message</p>
+        @if (Result.Replayed)
+        {
+            <p style="font-weight:700">نتیجهٔ درخواست قبلی نمایش داده شد؛ این فراخوانی ایمیل تازه‌ای نفرستاد.</p>
+        }
+        <div style="font-size:12px;line-height:2">
+            مرحله: @EmailDeliveryText.Stage(Result.Stage) — کد: <code dir="ltr">@Result.Code</code><br />
+            کد پیگیری: <code dir="ltr" style="display:inline-block;word-break:break-all">@Result.RequestId</code>
+        </div>
+        @if (!Result.ResultPersisted)
+        {
+            <p style="font-size:12px;margin:8px 0">ثبت نهایی نتیجه در سامانه تأیید نشده است؛ کد پیگیری را نگه دارید. ارسال مجدد، راه رفع خطای ثبت نتیجه نیست.</p>
+        }
+        @foreach (var warning in Result.Events.Where(e => e.Code.EndsWith("WARNING", StringComparison.Ordinal)))
+        {
+            <p style="font-size:12px;margin:7px 0"><b>هشدار @EmailDeliveryText.Stage(warning.Stage):</b> @warning.Message <code dir="ltr">@warning.Code</code></p>
+        }
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+            @if (OnCheck.HasDelegate && Result.RequestId != Guid.Empty)
+            {
+                <button type="button" class="lbtn ghost delivery-check" disabled="@Busy" @onclick="OnCheck">بررسی وضعیت — بدون ارسال مجدد</button>
+            }
+            @if (AllowNewAttempt && OnNewAttempt.HasDelegate && Result.CanRetry)
+            {
+                <button type="button" class="lbtn ghost delivery-retry" disabled="@Busy" @onclick="() => OnNewAttempt.InvokeAsync(false)">آماده‌سازی تلاش جدید پس از رفع خطا</button>
+            }
+        </div>
+        @if (AllowNewAttempt && OnNewAttempt.HasDelegate && Result.ResultPersisted && Result.AttemptId.HasValue &&
+             (Result.SmtpAccepted || Result.Status == EmailDeliveryStatus.Unknown))
+        {
+            <details style="margin-top:14px">
+                <summary>ارسال دوبارهٔ آگاهانه</summary>
+                <p style="font-size:12px;line-height:1.8">ممکن است گیرنده پیام قبلی را دریافت کرده باشد. ابتدا بررسی کنید. این گزینه فقط فرم یک تلاش جدید را باز می‌کند و خودش ایمیل نمی‌فرستد.</p>
+                <label style="display:flex;gap:8px;align-items:flex-start">
+                    <input type="checkbox" @bind="confirmed" disabled="@Busy" />
+                    <span>وضعیت را بررسی کرده‌ام و احتمال دریافت تکراری را می‌پذیرم.</span>
+                </label>
+                <button type="button" class="lbtn ghost delivery-explicit-resend" style="margin-top:10px" disabled="@(!confirmed || Busy)"
+                        @onclick="() => OnNewAttempt.InvokeAsync(Result.Status == EmailDeliveryStatus.Unknown)">آماده‌سازی ارسال دوباره</button>
+            </details>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string? AnchorId { get; set; }
+    [Parameter] public EmailDeliveryResultDto? Result { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public bool AllowNewAttempt { get; set; }
+    [Parameter] public EventCallback OnCheck { get; set; }
+    [Parameter] public EventCallback<bool> OnNewAttempt { get; set; }
+    private bool confirmed;
+    private (Guid, EmailDeliveryStatus)? last;
+    protected override void OnParametersSet()
+    {
+        var current = Result == null ? ((Guid, EmailDeliveryStatus)?)null : (Result.RequestId, Result.Status);
+        if (current != last) { confirmed = false; last = current; }
+    }
+}

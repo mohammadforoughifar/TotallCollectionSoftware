@@ -13,8 +13,14 @@ namespace Inventory.Api.Data;
 // ============================================================
 public static class OfficeEmailSchemaV1
 {
-    public static Task EnsureAsync(AppDbContext db) =>
-        db.Database.IsSqlite() ? EnsureSqliteAsync(db) : EnsureSqlServerAsync(db);
+    public static async Task EnsureAsync(AppDbContext db)
+    {
+        if (db.Database.IsSqlite()) await EnsureSqliteAsync(db);
+        else await EnsureSqlServerAsync(db);
+        // Additive ledger; do not fabricate outcomes for existing Sent rows.
+        // Sending fails closed if this schema could not be created.
+        await EmailDeliverySchemaV1.EnsureAsync(db);
+    }
 
     // ==================== SQL Server ====================
     private static async Task EnsureSqlServerAsync(AppDbContext db)

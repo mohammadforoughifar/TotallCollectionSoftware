@@ -519,8 +519,15 @@ public class DabirkhaneRegisterDto
     /// <summary>آدرس ایمیل مقصد — برای روش ارسال «ایمیل» الزامی است</summary>
     public string? DestEmail { get; set; }
 
-    /// <summary>شناسه حساب ایمیل دبیرخانه (Oto_TBL_Email با IsDabirkhane=true) — خالی = اولین حساب فعال دبیرخانه</summary>
+    /// <summary>شناسهٔ صریح حساب رسمی دبیرخانه؛ حساب فرستنده حدس زده نمی‌شود.</summary>
     public int? EmailAccountId { get; set; }
+
+    /// <summary>شناسهٔ ثابتِ این درخواست ارسال؛ برای ارسال با ایمیل الزامی است.</summary>
+    public Guid EmailRequestId { get; set; }
+    /// <summary>فقط برای ارسال دوبارهٔ صریح: کد پیگیری تلاش قبلی.</summary>
+    public Guid? ResendOfRequestId { get; set; }
+    /// <summary>تأیید آگاهانهٔ احتمال تکرار در نتیجهٔ نامشخص؛ ارسال در حال اجرا را دور نمی‌زند.</summary>
+    public bool AcceptDuplicateRisk { get; set; }
 
     // ==================== فیلدهای وابسته به روش ارسال ====================
 

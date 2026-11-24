@@ -658,7 +658,7 @@ public class FaComService : IFaComService
                 var acc = accounts.FirstOrDefault()
                     ?? throw new InvalidOperationException("حساب ایمیل دبیرخانه برای ارسال سیستمی تعریف نشده است.");
                 var html = System.Net.WebUtility.HtmlEncode(body ?? "");
-                await _email.SendAsync(new EmailComposeDto
+                await _email.SendSystemEmailAsync(new EmailComposeDto
                 {
                     EmailAccountId = acc.EmailId,
                     To = string.Join(",", emails),

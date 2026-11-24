@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Inventory.Client</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <NoWarn>CS0414</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../UnifiedSecretariatAvatars/UnifiedSecretariatAvatars.csproj" />
+    <Compile Include="Program.cs;Fixtures.cs;Tests.cs;ClientTests.cs" />
+    <RazorComponent Include="App.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/_Imports.razor" Link="_Imports.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/_Imports.razor" Link="Pages/Office/_Imports.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Email.razor" Link="Pages/Office/Email.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Guides/OrganizationalEmailGuide.razor" Link="Pages/Office/Guides/OrganizationalEmailGuide.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Guides/PersonalEmailGuide.razor" Link="Pages/Office/Guides/PersonalEmailGuide.razor" />
+  </ItemGroup>
+</Project>

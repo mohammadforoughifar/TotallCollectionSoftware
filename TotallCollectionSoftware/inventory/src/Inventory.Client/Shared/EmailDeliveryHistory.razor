@@ -1,0 +1,153 @@
+@using Inventory.Shared.Dtos
+@inject IEmailClientService EmailSvc
+
+<section class="email-delivery-history" dir="rtl" style="min-width:0;max-width:100%">
+    <h3 style="font-size:17px;margin:0 0 10px">وضعیت ارسال و خطاهای ایمیل</h3>
+    <p style="font-size:12px;color:#64748b;line-height:1.9">«پذیرفته‌شده» یعنی سرور SMTP پیام را قبول کرده، نه تحویل قطعی یا خوانده‌شدن توسط گیرنده. سوابق قدیمی یا واردشده از IMAP، نتیجهٔ ساختگی نمی‌گیرند. این صفحه فقط گزارش را می‌خواند؛ دریافت ایمیل یا ارسال مجدد انجام نمی‌دهد.</p>
+    <details style="margin-bottom:14px">
+        <summary>پیگیری با کد درخواست</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">
+            <input class="tin" aria-label="کد پیگیری ایمیل" dir="ltr" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="flex:1;min-width:180px" @bind="lookupText" />
+            <button type="button" class="lbtn ghost" disabled="@lookingUp" @onclick="LookupAsync">بررسی کد — بدون ارسال</button>
+        </div>
+        @if (lookupError != null) { <p class="alert alert-warning" role="alert">@lookupError</p> }
+        <EmailDeliveryResult Result="lookupResult" Busy="lookingUp" OnCheck="LookupAsync" />
+    </details>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px">
+        @if (Accounts != null)
+        {
+            <select class="tin delivery-account-filter" aria-label="حساب گزارش ارسال" style="flex:1;min-width:150px" @bind="selectedAccount" @bind:after="FilterChanged">
+                <option value="0">همهٔ حساب‌های مجاز</option>
+                @foreach (var account in Accounts)
+                {
+                    <option value="@account.EmailId">@account.EmailAddress</option>
+                }
+            </select>
+        }
+        <select class="tin delivery-status-filter" aria-label="وضعیت گزارش ارسال" style="flex:1;min-width:160px" @bind="selectedStatus" @bind:after="FilterChanged">
+            <option value="-1">همهٔ وضعیت‌ها</option>
+            @foreach (var status in Enum.GetValues<EmailDeliveryStatus>())
+            {
+                <option value="@((int)status)">@EmailDeliveryText.Status(status)</option>
+            }
+        </select>
+        <button type="button" class="lbtn ghost delivery-refresh" disabled="@loading" @onclick="ReloadAsync">به‌روزرسانی گزارش</button>
+    </div>
+    @if (error != null)
+    {
+        <div class="alert alert-warning" role="alert">@error</div>
+    }
+    @if (loading)
+    {
+        <p role="status">در حال خواندن سابقهٔ ارسال…</p>
+    }
+    else if (items.Count == 0 && error == null)
+    {
+        <div class="scard delivery-empty">سابقهٔ پیگیری‌شده‌ای برای این فیلتر وجود ندارد. این حالت، اثبات ارسال یا عدم ارسالِ پیام‌های قدیمی نیست.</div>
+    }
+    @foreach (var attempt in items)
+    {
+        <article class="scard delivery-attempt" style="margin:10px 0;padding:13px;overflow-wrap:anywhere;border:1px solid #dbe0ea;border-radius:12px">
+            <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center">
+                <strong>@attempt.Subject</strong>
+                <span class="badge bg-@EmailDeliveryText.Tone(attempt.Status) @(attempt.Status is EmailDeliveryStatus.Accepted or EmailDeliveryStatus.Failed ? "" : "text-dark")" style="white-space:normal;line-height:1.7">@EmailDeliveryText.Status(attempt.Status)</span>
+            </div>
+            <div style="font-size:12px;color:#64748b;line-height:2;margin:8px 0">
+                از: <bdi>@attempt.AccountAddress</bdi> — به: <bdi>@attempt.Recipients</bdi><br />
+                زمان شروع (تهران): @Tehran(attempt.StartedAtUtc) — کاربر اقدام‌کننده: @attempt.RequestedByUserId.FaDigits()
+                @if (attempt.LetterSourceId.HasValue) { <span> — نامهٔ صادره: @attempt.LetterSourceId.Value.FaDigits()</span> }
+                @if (attempt.SentId.HasValue) { <span> — رکورد ایمیل: @attempt.SentId.Value.FaDigits()</span> }
+            </div>
+            <p style="line-height:1.8;margin:8px 0">@attempt.Message</p>
+            <div style="font-size:12px">کد پیگیری: <code dir="ltr" style="display:inline-block;word-break:break-all">@attempt.RequestId</code></div>
+            <details style="margin-top:10px">
+                <summary>مرحله، علت و رخدادهای این تلاش</summary>
+                <p style="font-size:12px;line-height:2">
+                    مرحله: @EmailDeliveryText.Stage(attempt.Stage) — کد خطا/نتیجه: <code dir="ltr">@attempt.Code</code>
+                    @if (attempt.SmtpStatusCode.HasValue) { <span> — کد SMTP: @attempt.SmtpStatusCode</span> }
+                    @if (!string.IsNullOrEmpty(attempt.TechnicalType)) { <span> — نوع فنی: <code>@attempt.TechnicalType</code></span> }
+                </p>
+                @if (attempt.PreviousRequestId.HasValue)
+                {
+                    <p style="font-size:12px">تلاش قبلی: <code dir="ltr" style="word-break:break-all">@attempt.PreviousRequestId</code></p>
+                }
+                <ul style="padding-inline-start:20px;font-size:12px;line-height:2">
+                    @foreach (var item in attempt.Events)
+                    {
+                        <li>@Tehran(item.AtUtc) — <b>@EmailDeliveryText.Stage(item.Stage):</b> @item.Message <code dir="ltr">@item.Code</code></li>
+                    }
+                </ul>
+            </details>
+        </article>
+    }
+    <div class="delivery-pagination" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px">
+        <button type="button" class="lbtn ghost" disabled="@(loading || page <= 1)" @onclick="() => GoPage(page - 1)">صفحه قبل</button>
+        <span style="font-size:12px">@total.FaDigits() تلاش — صفحه @(page.FaDigits()) از @Pages.FaDigits()</span>
+        <button type="button" class="lbtn ghost" disabled="@(loading || page >= Pages)" @onclick="() => GoPage(page + 1)">صفحه بعد</button>
+    </div>
+</section>
+
+@code {
+    [Parameter] public int? AccountId { get; set; }
+    [Parameter] public int? LetterId { get; set; }
+    [Parameter] public int? SentId { get; set; }
+    [Parameter] public bool PersonalOnly { get; set; }
+    [Parameter] public IEnumerable<EmailAccountDto>? Accounts { get; set; }
+    private string lookupText = "";
+    private string? lookupError;
+    private EmailDeliveryResultDto? lookupResult;
+    private bool lookingUp;
+    private async Task LookupAsync()
+    {
+        if (lookingUp) return;
+        lookupError = null;
+        if (!Guid.TryParse(lookupText, out var id) || id == Guid.Empty)
+        { lookupError = "کد پیگیری معتبر را به‌صورت کامل وارد کنید."; return; }
+        if (lookupResult?.RequestId != id) lookupResult = null;
+        lookingUp = true;
+        try
+        {
+            var result = await EmailSvc.GetDeliveryStatusAsync(id, PersonalOnly);
+            if (result == null) lookupError = "رکوردی در حساب‌های مجاز پیدا نشد؛ این حالت به‌تنهایی دلیل ارسال‌نشدن نیست.";
+            else if (lookupResult?.SmtpAccepted != true || result.SmtpAccepted) lookupResult = result;
+            else lookupError = "پاسخ قبلی پذیرش SMTP را نشان داده بود؛ سابقه هنوز به‌روز نیست. ارسال را تکرار نکنید.";
+        }
+        catch (Exception) { lookupError = "پیگیری در دسترس نیست یا این کد در حساب‌های مجاز یافت نشد؛ بدون بررسی ارسال جدید نکنید."; }
+        finally { lookingUp = false; }
+    }
+    private List<EmailDeliveryAttemptDto> items = new();
+    private int selectedAccount, selectedStatus = -1, page = 1, total, version;
+    private const int Size = 15;
+    private int Pages => Math.Max(1, (int)Math.Ceiling(total / (double)Size));
+    private bool loading;
+    private string? error;
+    private (int?, int?, int?, bool)? previousScope;
+    protected override async Task OnParametersSetAsync()
+    {
+        var scope = (AccountId, LetterId, SentId, PersonalOnly);
+        if (previousScope == scope) return;
+        previousScope = scope; selectedAccount = AccountId ?? 0; page = 1; items = new(); total = 0;
+        await ReloadAsync();
+    }
+    private async Task FilterChanged() { page = 1; items = new(); await ReloadAsync(); }
+    private async Task GoPage(int next) { page = Math.Clamp(next, 1, Pages); await ReloadAsync(); }
+    public async Task ReloadAsync()
+    {
+        var current = ++version;
+        loading = true; error = null;
+        try
+        {
+            var result = await EmailSvc.GetDeliveryHistoryAsync(selectedAccount > 0 ? selectedAccount : null,
+                LetterId, SentId, selectedStatus < 0 ? null : (EmailDeliveryStatus)selectedStatus, page, Size, PersonalOnly);
+            if (current != version) return;
+            total = result.TotalCount; items = result.Items;
+            if (page > Pages) { page = Pages; await ReloadAsync(); }
+        }
+        catch (Exception)
+        {
+            if (current == version) { items = new(); error = "گزارش در دسترس نیست؛ این خطا نتیجهٔ ارسال را مشخص نمی‌کند. دسترسی حساب و آماده‌بودن جدول سابقه را بررسی کنید."; }
+        }
+        finally { if (current == version) loading = false; }
+    }
+    private static string Tehran(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).AddMinutes(210).ToFaDateTime();
+}

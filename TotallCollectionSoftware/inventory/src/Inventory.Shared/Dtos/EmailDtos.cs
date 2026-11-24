@@ -97,6 +97,10 @@ public class EmailMessageListItemDto
 
     /// <summary>true = هرزنامه (اسپم) — فقط در بخش اسپم نمایش داده می‌شود</summary>
     public bool IsSpam { get; set; }
+
+    /// <summary>null = legacy/imported row; its presence alone is not proof of SMTP acceptance.</summary>
+    public EmailDeliveryStatus? DeliveryStatus { get; set; }
+    public Guid? DeliveryRequestId { get; set; }
 }
 
 /// <summary>
@@ -132,6 +136,8 @@ public class EmailMessageDetailDto
     public bool IsSpam { get; set; }
 
     public List<EmailAttachmentDto> Attachments { get; set; } = new();
+    public EmailDeliveryStatus? DeliveryStatus { get; set; }
+    public Guid? DeliveryRequestId { get; set; }
 }
 
 /// <summary>پیوست ایمیل</summary>
@@ -159,6 +165,9 @@ public class EmailAttachmentDto
 /// <summary>ارسال ایمیل جدید</summary>
 public class EmailComposeDto
 {
+    /// <summary>برای تمام تکرارهای HTTP همین ارسال ثابت می‌ماند؛ تلاش جدید باید صریح باشد.</summary>
+    public Guid RequestId { get; set; }
+
     /// <summary>حساب فرستنده</summary>
     [Required(ErrorMessage = "حساب فرستنده الزامی است")]
     public int EmailAccountId { get; set; }

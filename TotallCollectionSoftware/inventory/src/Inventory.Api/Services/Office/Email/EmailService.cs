@@ -30,8 +30,15 @@ public interface IEmailService
     Task<EmailTestResultDto> TestAccountAsync(SaveEmailAccountDto dto);
 
     // ---------- ارسال ----------
-    Task<int> SendAsync(EmailComposeDto dto, int userId, bool isDabirkhaneAdmin, (string Name, string ContentType, byte[] Data)[] attachments);
-    Task<int> SendLetterEmailAsync(int letterId, DabirkhaneRegisterDto dto, string userName);
+    Task<EmailDeliveryResultDto> SendAsync(EmailComposeDto dto, int userId, bool isDabirkhaneAdmin, (string Name, string ContentType, byte[] Data)[] attachments);
+    /// <summary>Compatibility for existing system-email callers with an integer sent-id contract.
+    /// Their broader business HTTP idempotency is outside the email-compose/secretariat workflow.</summary>
+    Task<int> SendSystemEmailAsync(EmailComposeDto dto, int userId, bool isDabirkhaneAdmin, (string Name, string ContentType, byte[] Data)[] attachments);
+    Task<EmailDeliveryResultDto> SendLetterEmailAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
+    Task<EmailDeliveryResultDto> AddDeliveryWarningAsync(EmailDeliveryResultDto result, string stage, string code, string safeMessage);
+    Task<EmailDeliveryAttemptDto?> GetDeliveryStatusAsync(Guid requestId, int userId, bool isDabirkhaneAdmin, bool personalOnly = false);
+    Task<PagedResult<EmailDeliveryAttemptDto>> GetDeliveryHistoryAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly,
+        int? accountId = null, int? letterId = null, int? sentId = null, EmailDeliveryStatus? status = null, int page = 1, int pageSize = 15);
 
     // ---------- دریافت ----------
     /// <summary>همگام‌سازیِ یک حساب و یک صندوق مشخص (Inbox | Sent | Junk)</summary>
@@ -82,7 +89,7 @@ public interface IEmailService
     Task DeleteFolderAsync(int folderId, int userId);
 }
 
-public class EmailService : IEmailService
+public partial class EmailService : IEmailService
 {
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
@@ -106,13 +113,15 @@ public class EmailService : IEmailService
     private readonly IEmailBankService _bank;
 
     public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log,
-        IOutgoingLetterPrintService print, IEmailBankService bank)
+        IOutgoingLetterPrintService print, IEmailBankService bank, IEmailDispatchStore dispatchStore, EmailDispatchCoordinator dispatch)
     {
         _db = db;
         _env = env;
         _log = log;
         _print = print;
         _bank = bank;
+        _dispatchStore = dispatchStore;
+        _dispatch = dispatch;
     }
 
     // ==================== ابزارهای مشترک ====================
@@ -192,7 +201,7 @@ public class EmailService : IEmailService
     private static SecureSocketOptions SmtpOptions(int port, bool ssl) =>
         !ssl ? SecureSocketOptions.None
         : port == 465 ? SecureSocketOptions.SslOnConnect
-        : SecureSocketOptions.StartTlsWhenAvailable;
+        : SecureSocketOptions.StartTls;
 
     /// <summary>تجزیه رشته گیرندگان «a@b.com، c@d.com» به لیست آدرس معتبر</summary>
     private static List<MailboxAddress> ParseAddresses(string? raw)
@@ -367,17 +376,19 @@ public class EmailService : IEmailService
             result.Message = "سرور SMTP مشخص نشده است.";
             return result;
         }
+        var smtpStage = "connect";
         try
         {
             using var client = new SmtpClient { Timeout = 15000 };
             await client.ConnectAsync(smtpHost, dto.SmtpPort > 0 ? dto.SmtpPort : 587, SmtpOptions(dto.SmtpPort, dto.SmtpSsl));
+            smtpStage = "authenticate";
             await client.AuthenticateAsync(dto.EmailAddress.Trim(), dto.Password);
             await client.DisconnectAsync(true);
             result.SmtpOk = true;
         }
         catch (Exception ex)
         {
-            result.Message = $"SMTP: {ex.Message}";
+            result.Message = $"SMTP: {EmailSmtpTransport.Classify(ex, smtpStage).Message}";
             return result;
         }
 
@@ -395,7 +406,7 @@ public class EmailService : IEmailService
             }
             catch (Exception ex)
             {
-                result.Message = $"SMTP سالم است — IMAP: {ex.Message}";
+                result.Message = $"SMTP سالم است — اتصال یا احراز هویت IMAP انجام نشد؛ سرور، پورت و رمز برنامه را بررسی کنید. ({ex.GetType().Name})";
                 return result;
             }
         }
@@ -411,218 +422,11 @@ public class EmailService : IEmailService
 
     // ==================== ارسال ایمیل (SMTP) ====================
 
-    public async Task<int> SendAsync(EmailComposeDto dto, int userId, bool isDabirkhaneAdmin, (string Name, string ContentType, byte[] Data)[] attachments)
-    {
-        var acc = await AccessibleAccountAsync(dto.EmailAccountId, userId, isDabirkhaneAdmin)
-            ?? throw new Exception("حساب ایمیل فرستنده پیدا نشد یا به شما تعلق ندارد.");
-        if (!acc.IsActive) throw new Exception("حساب ایمیل غیرفعال است.");
-
-        var toList = ParseAddresses(dto.To);
-        if (toList.Count == 0) throw new Exception("هیچ آدرس گیرنده معتبری وارد نشده است.");
-
-        var sent = new OtoSentEmail
-        {
-            EmailId = acc.EmailId,
-            UId = "",
-            ToDisplay = string.Join("، ", toList.Select(t => t.Address)),
-            Subject = dto.Subject?.Trim() ?? "",
-            Date = IranNow(),
-            Body = dto.Body ?? "",
-            IsAttachment = false
-        };
-        _db.OtoSentEmails.Add(sent);
-        await _db.SaveChangesAsync();
-
-        var files = await BuildAndSendAsync(acc, toList, ParseAddresses(dto.Cc), dto.Subject?.Trim() ?? "", dto.Body ?? "",
-            attachments ?? Array.Empty<(string, string, byte[])>(), sent.SentId);
-
-        sent.UId = files.uid;
-        sent.IsAttachment = files.hasAtt;
-        await _db.SaveChangesAsync();
-
-        return sent.SentId;
-    }
-
-    /// <summary>ساخت پیام Mime و ارسال با SMTP + ذخیره پیوست روی دیسک</summary>
-    private async Task<(string uid, bool hasAtt)> BuildAndSendAsync(
-        OtoEmail acc, List<MailboxAddress> to, List<MailboxAddress> cc,
-        string subject, string htmlBody, (string Name, string ContentType, byte[] Data)[] attachments, int sentId)
-    {
-        var msg = new MimeMessage();
-        var fromName = string.IsNullOrWhiteSpace(acc.DisplayName) ? acc.EmailAddress : acc.DisplayName;
-        msg.From.Add(new MailboxAddress(fromName, acc.EmailAddress));
-        msg.To.AddRange(to);
-        if (cc.Count > 0) msg.Cc.AddRange(cc);
-        msg.Subject = subject;
-        msg.MessageId = $"<{Guid.NewGuid():N}@autmation.local>";
-
-        var builder = new BodyBuilder { HtmlBody = htmlBody };
-        foreach (var (name, ct, data) in attachments)
-        {
-            builder.Attachments.Add(name, data, ContentType.Parse(MimeToExtensionType(name, ct)));
-        }
-        msg.Body = builder.ToMessageBody();
-
-        if (string.IsNullOrWhiteSpace(acc.Smtp))
-            throw new Exception("سرور SMTP حساب ایمیل تنظیم نشده است — از بخش تنظیمات ایمیل تکمیل کنید.");
-
-        string uid;
-        using (var client = new SmtpClient { Timeout = 30000 })
-        {
-            await client.ConnectAsync(acc.Smtp, acc.SmtpPort, SmtpOptions(acc.SmtpPort, acc.SmtpSsl));
-            await client.AuthenticateAsync(acc.EmailAddress, acc.Password);
-            await client.SendAsync(msg);
-            await client.DisconnectAsync(true);
-        }
-        uid = msg.MessageId ?? Guid.NewGuid().ToString("N");
-
-        // ذخیره پیوست‌های ارسالی روی دیسک + جدول Oto_TBL_EmailAttachments
-        foreach (var (name, ct, data) in attachments)
-        {
-            var dir = Path.Combine(AttachmentRoot, $"Sent_{sentId}");
-            Directory.CreateDirectory(dir);
-            var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";
-            await File.WriteAllBytesAsync(Path.Combine(dir, saved), data);
-            _db.OtoEmailAttachments.Add(new OtoEmailAttachment
-            {
-                EmailId = sentId,
-                UId = uid,
-                Type = "Sent",
-                AttachmentRealName = name,
-                AttachmentSavedName = saved,
-                FilePath = $"{AttachmentFolder}/Sent_{sentId}/{saved}"
-            });
-        }
-        await _db.SaveChangesAsync();
-
-        return (uid, attachments.Length > 0);
-    }
-
     /// <summary>حذف فایل‌های پیوست یک پیام از دیسک</summary>
     private void DeleteAttachmentFiles(string box, int messageId)
     {
         var dir = Path.Combine(AttachmentRoot, $"{box}_{messageId}");
         try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
-    }
-
-    // ==================== ارسال نامه صادره از دبیرخانه با پست الکترونیک ====================
-
-    /// <summary>
-    /// ارسال نامه صادره امضا شده به ایمیل مقصد:
-    /// متن نامه در بدنه + PDF چاپ‌شده روی سربرگ شرکت + پیوست‌های نامه
-    /// </summary>
-    public async Task<int> SendLetterEmailAsync(int letterId, DabirkhaneRegisterDto dto, string userName)
-    {
-        var destEmail = dto.DestEmail?.Trim();
-        if (string.IsNullOrWhiteSpace(destEmail))
-            throw new Exception("آدرس ایمیل مقصد برای ارسال نامه الزامی است.");
-        var toList = ParseAddresses(destEmail);
-        if (toList.Count == 0) throw new Exception("آدرس ایمیل مقصد معتبر نیست.");
-
-        // ---------- حساب دبیرخانه (جدا از ایمیل شخصی) ----------
-        var acc = dto.EmailAccountId is > 0
-            ? await _db.OtoEmails.FirstOrDefaultAsync(e => e.EmailId == dto.EmailAccountId && e.IsActive)
-              ?? throw new Exception("حساب ایمیل دبیرخانه انتخاب‌شده پیدا نشد یا غیرفعال است.")
-            : await _db.OtoEmails.FirstOrDefaultAsync(e => e.IsDabirkhane && e.IsActive)
-              ?? throw new Exception("هیچ حساب ایمیل دبیرخانه فعالی ثبت نشده است — ابتدا از «تنظیمات ایمیل» حساب دبیرخانه را اضافه کنید.");
-        if (!acc.IsDabirkhane)
-            throw new Exception("برای ارسال نامه باید حساب رسمی دبیرخانه (IsDabirkhane) انتخاب شود — ایمیل شخصی مجاز نیست.");
-
-        var letter = await _db.OutgoingLetters.AsNoTracking()
-            .Include(l => l.Source)
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
-            ?? throw new Exception("نامه پیدا نشد.");
-        if (string.IsNullOrWhiteSpace(letter.SadereNumber))
-            throw new Exception("فقط نامه‌های امضا شده (دارای شماره صادره) با ایمیل ارسال می‌شوند.");
-
-        // ---------- بدنه ایمیل ----------
-        var signers = await _db.OutgoingLetterSigners.AsNoTracking()
-            .Include(s => s.User)
-            .Where(s => s.SourceId == letterId && !s.IsDelete)
-            .OrderBy(s => s.Order).ToListAsync();
-        static string Name(Data.User? u) => u == null ? "" :
-            string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username ?? "" : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim();
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append(letter.Text ?? "");
-        sb.Append("<hr style=\"border:none;border-top:1px solid #ccc;margin:18px 0\"/>");
-        sb.Append("<div style=\"font-family:Tahoma;font-size:12px;color:#333;direction:rtl\">");
-        sb.Append($"<p><b>شماره صادره:</b> {letter.SadereNumber} — <b>تاریخ صدور:</b> {PersianDate.ToShortDateTime(letter.DateSadere ?? letter.DateSabt)}</p>");
-        sb.Append($"<p><b>گیرنده:</b> {letter.ReceiverOrganization}{(string.IsNullOrWhiteSpace(letter.ReceiverName) ? "" : " — " + letter.ReceiverName)}</p>");
-        if (signers.Count > 0)
-        {
-            sb.Append("<p><b>امضا کنندگان:</b> ");
-            sb.Append(string.Join("، ", signers.Select(s => Name(s.User) + (s.IsSigned ? " ✓" : ""))));
-            sb.Append("</p>");
-        }
-        sb.Append("<p style=\"color:#777\">این نامه از طریق سامانه اتوماسیون اداری و درگاه ایمیل دبیرخانه ارسال شده است.</p>");
-        sb.Append("</div>");
-
-        // ---------- پیوست‌ها: PDF نامه + پیوست‌های نامه ----------
-        var attachments = new List<(string, string, byte[])>();
-        try
-        {
-            var pdf = await _print.GeneratePdfAsync(letterId, "A4");
-            if (pdf is { Length: > 0 })
-            {
-                var pdfName = $"نامه-{letter.SadereNumber.Replace('/', '-')}.pdf";
-                attachments.Add((pdfName, "application/pdf", pdf));
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "ساخت PDF نامه صادره {LetterId} برای ایمیل ناموفق بود", letterId);
-        }
-
-        var letterAtts = await _db.AppAttachments.AsNoTracking()
-            .Where(a => a.Module == "OutgoingLetters" && a.RefId == letterId)
-            .ToListAsync();
-        foreach (var a in letterAtts)
-        {
-            var bytes = a.Data is { Length: > 0 } ? a.Data : ReadDiskFile(a.FilePath);
-            if (bytes is { Length: > 0 }) attachments.Add((a.FileName, a.ContentType, bytes));
-        }
-
-        // ---------- ثبت و ارسال ----------
-        var sent = new OtoSentEmail
-        {
-            EmailId = acc.EmailId,
-            UId = "",
-            ToDisplay = string.Join("، ", toList.Select(t => t.Address)),
-            Subject = $"نامه شماره {letter.SadereNumber} — {letter.Title}",
-            Date = DateTime.Now,
-            Body = sb.ToString(),
-            IsAttachment = attachments.Count > 0,
-            LetterSourceId = letterId
-        };
-        _db.OtoSentEmails.Add(sent);
-        await _db.SaveChangesAsync();
-
-        var (uid, _) = await BuildAndSendAsync(acc, toList, new List<MailboxAddress>(),
-            sent.Subject, sent.Body, attachments.ToArray(), sent.SentId);
-        sent.UId = uid;
-        await _db.SaveChangesAsync();
-
-        // ---------- بانک ایمیل مخاطبین ----------
-        // آدرسی که واقعاً برای ارسال استفاده شد در بانک می‌ماند تا نوبت بعد
-        // کاربر دبیرخانه مجبور نباشد آن را از میان ایمیل‌ها پیدا کند.
-        // خطای بانک هرگز ارسال انجام‌شده را خراب نمی‌کند.
-        try
-        {
-            var myId = await _db.Users.AsNoTracking()
-                .Where(u => u.Username == userName).Select(u => (int?)u.Id).FirstOrDefaultAsync();
-            foreach (var addr in toList.Select(t => t.Address).Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                await _bank.RememberAsync(addr, letter.ReceiverOrganization, letter.ReceiverName,
-                    myId, userName, markUsed: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            _log.LogWarning(ex, "ثبت آدرس نامه صادره {LetterId} در بانک ایمیل ناموفق بود", letterId);
-        }
-
-        return sent.SentId;
     }
 
     /// <summary>
@@ -1320,6 +1124,7 @@ public class EmailService : IEmailService
             }).ToListAsync();
 
         await FillFolderTitlesAsync(rows);
+        await FillDeliveryStatusAsync(rows);
         result.Items = rows;
         return result;
     }
@@ -1378,6 +1183,7 @@ public class EmailService : IEmailService
             }).ToListAsync();
 
         await FillFolderTitlesAsync(rows);
+        await FillDeliveryStatusAsync(rows);
         result.Items = rows;
         return result;
     }
@@ -1467,6 +1273,7 @@ public class EmailService : IEmailService
             .ToList();
 
         await FillFolderTitlesAsync(rows);
+        await FillDeliveryStatusAsync(rows);
         result.Items = rows;
         return result;
     }
@@ -1518,6 +1325,9 @@ public class EmailService : IEmailService
             var attsSent = await AttachmentDtosAsync("Sent", s.SentId);
             var bodySent = FixLegacyInlineRefs(s.Body, attsSent);
             MarkInlineAttachments(attsSent, bodySent);
+            var delivery = await _db.EmailSendAttempts.AsNoTracking()
+                .Where(a => a.EmailAccountId == s.EmailId && (a.SentId == s.SentId || (s.UId != "" && a.MessageId == s.UId)))
+                .OrderByDescending(a => a.Id).FirstOrDefaultAsync();
 
             return new EmailMessageDetailDto
             {
@@ -1525,7 +1335,8 @@ public class EmailService : IEmailService
                 AccountAddress = s.Email?.EmailAddress ?? "",
                 FromOrTo = s.ToDisplay, Subject = s.Subject, Date = s.Date,
                 IsRead = true, IsNeshan = s.IsNeshan, Body = bodySent, IsInFolder = s.IsInFolder, IsSpam = false,
-                Attachments = attsSent
+                Attachments = attsSent, DeliveryStatus = delivery == null ? null : EmailDispatchStore.EffectiveStatus(delivery),
+                DeliveryRequestId = delivery?.RequestId
             };
         }
 

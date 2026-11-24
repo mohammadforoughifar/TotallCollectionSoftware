@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Inventory.Shared.Entities;
 
 namespace Inventory.Api.Data;
@@ -366,6 +366,7 @@ public class AppDbContext : DbContext
     public DbSet<OtoInboxEmail> OtoInboxEmails => Set<OtoInboxEmail>();
     public DbSet<OtoEmailFolder> OtoEmailFolders => Set<OtoEmailFolder>();
     public DbSet<OtoEmailAttachment> OtoEmailAttachments => Set<OtoEmailAttachment>();
+    public DbSet<EmailSendAttempt> EmailSendAttempts => Set<EmailSendAttempt>();
 
     /// <summary>بانک ایمیل مخاطبین دبیرخانه — آدرس‌های استفاده‌شده در ارسال نامه صادره</summary>
     public DbSet<OtoEmailBankEntry> OtoEmailBank => Set<OtoEmailBankEntry>();

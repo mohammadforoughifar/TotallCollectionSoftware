@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.1" />
+    <PackageReference Include="MailKit" Version="4.16.0" />
+    <ProjectReference Include="../../src/Inventory.Shared/Inventory.Shared.csproj" />
+    <Compile Include="Program.cs;TestContext.cs;ServerTests.cs;SmtpFixture.cs;ServerFixture.cs" />
+    <Compile Include="../../src/Inventory.Api/Controllers/Office/EmailController.cs" Link="Production/EmailController.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Office/Outgoing/OutgoingLetterService.EmailRegistration.cs" Link="Production/OutgoingLetterService.EmailRegistration.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Office/OtoEmailEntities.cs" Link="Production/OtoEmailEntities.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Office/EmailSendAttempt.cs" Link="Production/EmailSendAttempt.cs" />
+    <Compile Include="../../src/Inventory.Api/Entities/Office/EmailBankEntry.cs" Link="Production/EmailBankEntry.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Office/Email/EmailService*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Inventory.Api/Services/Office/Email/EmailDispatch*.cs" Link="Production/%(Filename)%(Extension)" />
+    <Compile Include="../../src/Inventory.Api/Services/Office/Email/EmailSmtpTransport.cs" Link="Production/EmailSmtpTransport.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Office/Email/EmailBankService.cs" Link="Production/EmailBankService.cs" />
+    <Compile Include="../../src/Inventory.Api/Data/EmailDeliverySchemaV1.cs" Link="Production/EmailDeliverySchemaV1.cs" />
+    <Compile Include="../../src/Inventory.Api/Data/OfficeEmailSchemaV1.cs" Link="Production/OfficeEmailSchemaV1.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Core/TehranClock.cs" Link="Production/TehranClock.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/Paging.cs" Link="Production/Paging.cs" />
+    <Compile Include="../../src/Inventory.Api/Services/DatabasePaging.cs" Link="Production/DatabasePaging.cs" />
+  </ItemGroup>
+</Project>

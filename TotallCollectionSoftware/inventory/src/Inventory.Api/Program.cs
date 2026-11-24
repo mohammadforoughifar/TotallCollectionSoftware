@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Controllers;
@@ -269,6 +269,9 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.IInnerLetterPrintServic
 // JIT/فونت/استخراج سربرگ را نپردازد.
 builder.Services.AddHostedService<Inventory.Api.Services.Office.LetterPrintWarmupWorker>();
 // ایمیل سازمانی (پست الکترونیک) — SMTP/IMAP با MailKit + حساب‌های دبیرخانه
+builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailDispatchStore, Inventory.Api.Services.Office.Email.EmailDispatchStore>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailSmtpTransport, Inventory.Api.Services.Office.Email.EmailSmtpTransport>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Email.EmailDispatchCoordinator>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, Inventory.Api.Services.Office.Email.EmailService>();
 // بانک ایمیل مخاطبین دبیرخانه — پیشنهاد و ذخیرهٔ آدرس‌های استفاده‌شده در ارسال نامه صادره
 builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailBankService, Inventory.Api.Services.Office.Email.EmailBankService>();

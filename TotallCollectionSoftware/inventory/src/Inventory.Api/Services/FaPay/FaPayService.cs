@@ -962,7 +962,7 @@ public class FaPayService : IFaPayService
             Subject = $"فیش حقوقی {JmName(d.RunMonth)} {d.RunYear}",
             Body = $"<div dir=\"rtl\"><p>{d.EmployeeName} عزیز،</p><p>فیش حقوقی {JmName(d.RunMonth)} ماه {d.RunYear} پیوست این ایمیل است.</p><p>واحد منابع انسانی</p></div>"
         };
-        return await _email.SendAsync(dto, byUserId, true,
+        return await _email.SendSystemEmailAsync(dto, byUserId, true,
             new[] { ($"FaPaySlip-{d.RunYear}-{d.RunMonth:00}.pdf", "application/pdf", pdf) });
     }
 

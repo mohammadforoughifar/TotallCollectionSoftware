@@ -61,6 +61,10 @@
                     <i class="bi bi-send"></i>
                 </button>
                 <span class="rlbl">ارسالی</span>
+                <button class="@(!showGuide && tab == "delivery" ? "on" : "")" title="وضعیت ارسال و خطاها" @onclick='() => SetTab("delivery")' disabled="@busy">
+                    <i class="bi bi-clipboard-check"></i>
+                </button>
+                <span class="rlbl">پیگیری ارسال</span>
 
                 <button class="@(!showGuide && tab == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetTab("starred")' disabled="@busy">
                     <i class="bi bi-star"></i>
@@ -116,6 +120,15 @@
             }
         </div>
 
+        @if (cpResult != null && !composeOpen)
+        {
+            <div class="alert alert-info email-recovery-banner" role="status">
+                درخواست قبلی: @EmailDeliveryText.Status(cpResult.Status)
+                <code dir="ltr">@cpResult.RequestId</code>
+                <button type="button" class="lbtn ghost" @onclick="OpenCompose">نمایش نتیجه و پیگیری</button>
+            </div>
+        }
+
         @* ---------- نوار ابزار ---------- *@
         <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
             <div class="chips" style="margin:0">
@@ -124,6 +137,9 @@
                 </button>
                 <button class="chip @(tab == "sent" ? "on" : "")" @onclick='() => SetTab("sent")'>
                     <i class="bi bi-send"></i> ارسالی
+                </button>
+                <button class="chip @(tab == "delivery" ? "on" : "")" @onclick='() => SetTab("delivery")'>
+                    <i class="bi bi-clipboard-check"></i> وضعیت ارسال و خطاها
                 </button>
                 <button class="chip @(tab == "starred" ? "on" : "")" @onclick='() => SetTab("starred")'>
                     <i class="bi bi-star"></i> نشان‌شده
@@ -139,7 +155,7 @@
                 </button>
             </div>
 
-            @if (tab != "accounts")
+            @if (tab != "accounts" && tab != "delivery")
             {
                 <select class="tin" style="max-width:270px" @bind="accFilter" @bind:after="OnFilterChanged">
                     <option value="0">— همه حساب‌ها —</option>
@@ -194,6 +210,12 @@
             }
         </div>
 
+        @if (tab == "delivery")
+        {
+            <div class="scard"><EmailDeliveryHistory Accounts="VisibleAccounts" AccountId="@(accFilter > 0 ? accFilter : (int?)null)" PersonalOnly="personalMode" /></div>
+        }
+        else
+        {
         @* ---------- نوار پیشرفت جستجو (تیغه‌ای، بلافاصله زیر کادر جستجو) ---------- *@
         @if (searching)
         {
@@ -411,6 +433,10 @@
                                         <div class="mail-pv">@(mm.Box == "Sent" ? "به: " : "از: ")@PreviewName(mm)</div>
                                         <div class="tags">
                                             <span class="tg gray">@mm.AccountAddress</span>
+                                            @if (mm.Box == "Sent")
+                                            {
+                                                <span class="tg delivery-status-label" style="white-space:normal">@EmailDeliveryText.Status(mm.DeliveryStatus)</span>
+                                            }
                                             @if (mm.IsSpam) { <span class="tg red"><i class="bi bi-shield-slash"></i> اسپم</span> }
                                             @if (mm.IsAttachment) { <span class="tg gray"><i class="bi bi-paperclip"></i> پیوست</span> }
                                             @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
@@ -521,6 +547,14 @@
                                     }
                                 </div>
 
+                                @if (openMsg.Box == "Sent")
+                                {
+                                    <div class="alert alert-@EmailDeliveryText.Tone(openMsg.DeliveryStatus)" style="margin:10px 0;line-height:1.8">
+                                        <b>@EmailDeliveryText.Status(openMsg.DeliveryStatus)</b>
+                                        <p style="font-size:12px">وجود رکورد در ارسالی، به‌تنهایی اثبات تحویل به گیرنده نیست.</p>
+                                        <button type="button" class="lbtn ghost" @onclick="() => OpenDeliveryHistory(openMsg.Id)">وضعیت و خطاهای این ایمیل</button>
+                                    </div>
+                                }
                                 <div class="paper-body">@((MarkupString)RenderEmailBody(openMsg.Body))</div>
 
                                 @if (FileAttachments.Any())
@@ -549,6 +583,7 @@
                     }
                 </div>
             </div>        }
+        }
     </div>
         </section>
         }
@@ -558,14 +593,34 @@
 @* ==================== مودال ارسال ایمیل ==================== *@
 @if (composeOpen)
 {
-    <div class="ltx" style="animation:none;transform:none">
+    <div class="ltx email-compose-modal" style="animation:none;transform:none">
         <div class="ov"></div>
         <div class="sheet" style="max-width:640px">
             <div class="sheet-h">
                 <b><i class="bi bi-pencil-square" style="color:var(--p2)"></i> @(composeReplyTo != null ? "پاسخ به ایمیل" : "ایمیل جدید")</b>
-                <button class="x" @onclick="() => composeOpen = false"><i class="bi bi-x-lg"></i></button>
+                <button class="x" disabled="@cpBusy" @onclick="CloseCompose"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="sheet-b">
+                <p style="font-size:11px;overflow-wrap:anywhere">کد این درخواست: <code dir="ltr">@cpRequestId</code></p>
+                <EmailDeliveryResult AnchorId="compose-email-outcome" Result="cpResult" Busy="@(cpBusy || cpChecking)" AllowNewAttempt="true" OnCheck="CheckComposeDelivery" OnNewAttempt="StartNewComposeAttempt" />
+                @if (CanStartFreshCompose)
+                {
+                    <p style="font-size:12px;line-height:1.9">برای پیام دیگری، فرم خالی باز کنید؛ نتیجهٔ این درخواست در «وضعیت ارسال و خطاها» باقی می‌ماند. گیرندگان، متن و فایل‌های قبلی به پیام تازه منتقل نمی‌شوند.</p>
+                    <button type="button" class="lbtn ghost compose-fresh" disabled="@(cpBusy || cpChecking)" @onclick="StartFreshCompose">ایمیل کاملاً جدید — فرم خالی</button>
+                }
+                @if (cpResult != null && cpSnapshot != null && !cpResult.SmtpAccepted && !cpResult.ResultPersisted)
+                {
+                    <p style="font-size:12px;line-height:1.9">در صورت قطع پاسخ، تکرار همین درخواست با کد ثابت ایمیل دوم نمی‌فرستد؛ فقط اگر درخواست قبلی به سرور نرسیده باشد، ارسال را آغاز می‌کند.</p>
+                    <button type="button" class="lbtn ghost compose-replay" disabled="@(cpBusy || cpChecking)" @onclick="ReplayCompose">تکرار امن همین درخواست — بدون تغییر کد</button>
+                }
+                @if (cpAttachmentError != null)
+                {
+                    <div class="alert alert-danger compose-attachment-error" role="alert">
+                        @cpAttachmentError
+                        <button type="button" class="lbtn ghost" disabled="@cpBusy" @onclick="ClearPendingAttachments">پاک کردن فایل‌های انتخاب‌شده و رفع خطا</button>
+                    </div>
+                }
+                <fieldset disabled="@(cpBusy || cpResult != null)" style="border:0;padding:0;margin:0;min-width:0">
                 <div class="fcard">
                     <label>از حساب <span class="req">*</span></label>
                     <select class="tin" @bind="cpAccountId">
@@ -608,26 +663,27 @@
                     <textarea class="tin" rows="8" style="min-height:140px" @bind="cpBody"></textarea>
                 </div>
                 <div class="fcard">
-                    <label>پیوست <span class="opt">بدون محدودیت حجم</span></label>
+                    <label>پیوست <span class="opt">۲۰ مگابایت هر فایل / ۱۰۰ مگابایت مجموع</span></label>
                     <InputFile OnChange="OnComposeFiles" multiple />
                     <div class="selpills">
                         @foreach (var f in _pendingBrowser)
                         {
                             var ff = f;
-                            <span class="spill"><i class="bi bi-paperclip"></i> @ff.Name <small>(@FmtSize(ff.Size))</small> <i class="bi bi-x-lg" @onclick="() => _pendingBrowser.Remove(ff)"></i></span>
+                            <span class="spill"><i class="bi bi-paperclip"></i> @ff.Name <small>(@FmtSize(ff.Size))</small> <i class="bi bi-x-lg" @onclick="() => RemoveComposeFile(ff)"></i></span>
                         }
                         @foreach (var vf in _virtualAtts)
                         {
                             var vff = vf;
-                            <span class="spill" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd"><i class="bi bi-file-earmark-pdf"></i> @vff.FileName <small>(@FmtSize(vff.Data.Length))</small> <i class="bi bi-x-lg" @onclick="() => _virtualAtts.Remove(vff)"></i></span>
+                            <span class="spill" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd"><i class="bi bi-file-earmark-pdf"></i> @vff.FileName <small>(@FmtSize(vff.Data.Length))</small> <i class="bi bi-x-lg" @onclick="() => RemoveVirtualFile(vff)"></i></span>
                         }
                     </div>
                 </div>
+                </fieldset>
             </div>
             <div class="sheet-f">
                 <span class="spacer"></span>
-                <button class="lbtn ghost" @onclick="() => composeOpen = false">انصراف</button>
-                <button class="lbtn pri" disabled="@cpBusy" @onclick="SubmitCompose">
+                <button class="lbtn ghost" disabled="@cpBusy" @onclick="CloseCompose">بستن</button>
+                <button class="lbtn pri" disabled="@(cpBusy || cpResult != null || cpAttachmentError != null)" @onclick="SubmitCompose">
                     @if (cpBusy) { <span class="spinner-border spinner-border-sm"></span> }
                     <i class="bi bi-send"></i> ارسال
                 </button>
@@ -635,6 +691,8 @@
         </div>
     </div>
 }
+
+<EmailDeliveryHistoryModal Open="deliveryHistoryOpen" SentId="deliveryHistorySentId" PersonalOnly="personalMode" OnClose="() => deliveryHistoryOpen = false" />
 
 @* ==================== مودال حساب ایمیل ==================== *@
 @if (accOpen)
@@ -985,8 +1043,25 @@
     }
 
     // ---------- مودال ارسال ----------
-    private bool composeOpen;
-    private bool cpBusy, cpErrTo, cpErrSubject;
+    private bool composeOpen, focusComposeResult;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (focusComposeResult && composeOpen && cpResult != null)
+        {
+            focusComposeResult = false;
+            try { await JS.InvokeVoidAsync("scrollIntoViewById", "compose-email-outcome", "start", "auto"); } catch { }
+        }
+    }
+    private bool cpBusy, cpErrTo, cpErrSubject, cpChecking;
+    private Guid cpRequestId = Guid.NewGuid();
+    private string ComposeMemoryScope => personalMode ? "personal" : "organizational";
+    private EmailDeliveryResultDto? cpResult;
+    private string? cpAttachmentError;
+    private sealed record ComposeSnapshot(int AccountId, string To, string Cc, string Subject, string Body, List<EmailOutAttachment> Files, Guid RequestId);
+    private ComposeSnapshot? cpSnapshot;
+    private bool deliveryHistoryOpen;
+    private int? deliveryHistorySentId;
+    private void OpenDeliveryHistory(int sentId) { deliveryHistorySentId = sentId; deliveryHistoryOpen = true; }
     private int cpAccountId;
     private string cpTo = "", cpCc = "", cpSubject = "", cpBody = "";
     private List<EmailOutAttachment> cpFiles = new();
@@ -1018,10 +1093,12 @@
 
         await LoadAccountsAsync();
         await ReloadAsync();
+        cpResult = await EmailRequestMemory.RestoreAsync(JS, Auth.UserId, ComposeMemoryScope);
+        if (cpResult != null) { cpRequestId = cpResult.RequestId; await CheckComposeDelivery(); }
 
         var uri = new Uri(Nav.Uri);
         var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        if (qs["compose"] == "1" && qs["attach"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
+        if (cpResult == null && qs["compose"] == "1" && qs["attach"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
         {
             _composeHandled = true;
             await OpenComposeFromMinutesAsync(minId);
@@ -1034,6 +1111,7 @@
     {
         showGuide = false;
         tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false; curPage = 1;
+        if (t == "delivery") { ++_reloadVersion; loading = false; messages = new(); return; }
         if (t == "accounts") await LoadAccountsAsync();
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
         // دریافتی/ارسالی/اسپم: اول فهرستِ صفحه‌بندی‌شده از بانک خوانده می‌شود تا کاربر
@@ -1153,6 +1231,7 @@
     /// </summary>
     private async Task ReloadAsync()
     {
+        if (tab == "delivery") { ++_reloadVersion; loading = false; return; }
         var version = ++_reloadVersion;
         loading = true;
         try
@@ -1496,6 +1575,10 @@
 
     private void OpenCompose()
     {
+        if (cpBusy) return;
+        // Closing the modal never discards an unresolved/observed outcome.
+        if (cpResult != null) { composeOpen = true; focusComposeResult = true; return; }
+        cpRequestId = Guid.NewGuid(); cpSnapshot = null; cpAttachmentError = null;
         composeReplyTo = null;
         cpTo = cpCc = cpSubject = cpBody = "";
         cpErrTo = cpErrSubject = false;
@@ -1509,7 +1592,10 @@
 
     private void ReplyTo()
     {
-        if (openMsg == null) return;
+        if (openMsg == null || cpBusy) return;
+        if (cpResult != null) { composeOpen = true; focusComposeResult = true; return; }
+        cpRequestId = Guid.NewGuid(); cpSnapshot = null; cpAttachmentError = null;
+        _virtualAtts.Clear();
         composeReplyTo = openMsg;
         cpAccountId = openMsg.EmailId;
         cpTo = openMsg.FromOrTo;
@@ -1553,7 +1639,8 @@
                         _virtualAtts.Add(new EmailOutAttachment(fname, pdfRes.ContentType ?? "application/pdf", pdfRes.Data));
                     }
                 }
-                catch { }
+                catch { cpAttachmentError = "PDF صورتجلسه دریافت نشد؛ ارسال ناقص متوقف شده است. PDF را دوباره دریافت کنید یا صریحاً انتخاب پیوست را پاک کنید."; }
+                if (_virtualAtts.Count == 0) cpAttachmentError ??= "PDF صورتجلسه خالی است؛ ارسال متوقف شد.";
                 StateHasChanged();
             }
         }
@@ -1568,49 +1655,132 @@
 
     private void OnComposeFiles(InputFileChangeEventArgs e)
     {
-        foreach (var f in e.GetMultipleFiles(int.MaxValue))
+        if (cpBusy || cpResult != null) return;
+        if (e.FileCount + _virtualAtts.Count > 100) { cpAttachmentError = "حداکثر ۱۰۰ پیوست را در یک انتخاب وارد کنید؛ هیچ فایل تازه‌ای پذیرفته نشد."; return; }
+        var selected = e.GetMultipleFiles(100);
+        var total = _virtualAtts.Sum(f => f.Data.LongLength) + selected.Sum(f => f.Size);
+        if (selected.Any(f => f.Size <= 0 || f.Size > 20 * 1024 * 1024 || f.Name.Length > 255) || total > 100 * 1024 * 1024)
         {
-            if (f.Size <= 0 || f.Size > 20 * 1024 * 1024)
+            cpAttachmentError = "فایل‌های این انتخاب پذیرفته نشدند؛ فایل غیرخالی و محدودیت ۲۰ مگابایت هر فایل، ۱۰۰ مگابایت مجموع و ۲۵۵ نویسه نام را رعایت کنید. تا رفع این خطا هیچ ایمیلی ارسال نمی‌شود.";
+            return;
+        }
+        // InputFile invalidates old browser file references on a new selection: replace, never append stale references.
+        _pendingBrowser = selected.ToList(); cpAttachmentError = null;
+    }
+
+    private void RemoveComposeFile(IBrowserFile file)
+    { if (!cpBusy && cpResult == null) { _pendingBrowser.Remove(file); cpAttachmentError = null; } }
+    private void RemoveVirtualFile(EmailOutAttachment file)
+    { if (!cpBusy && cpResult == null) { _virtualAtts.Remove(file); cpAttachmentError = null; } }
+    private void ClearPendingAttachments()
+    { if (!cpBusy && cpResult == null) { _pendingBrowser.Clear(); cpAttachmentError = null; } }
+    private void CloseCompose() { if (!cpBusy) composeOpen = false; }
+
+    private async Task CheckComposeDelivery()
+    {
+        if (cpResult == null || cpChecking || cpBusy) return;
+        cpChecking = true;
+        var key = cpResult.RequestId;
+        try
+        {
+            var result = await EmailSvc.GetDeliveryStatusAsync(key, personalMode);
+            if (cpResult?.RequestId == key && result != null)
             {
-                Toast.Error($"فایل {f.Name} پذیرفته نشد (حداکثر ۲۰ مگابایت).");
-                continue;
+                // A stale durable record must not erase acceptance observed in this browser.
+                if (!cpResult.SmtpAccepted || result.SmtpAccepted) cpResult = result;
+                else Toast.Error("سابقه هنوز با پاسخ پذیرش SMTP یکسان نیست؛ ارسال را تکرار نکنید.");
             }
-            _pendingBrowser.Add(f);
+        }
+        catch (Exception) { Toast.Error("وضعیت فعلاً قابل دریافت نیست؛ این خطا دلیل ارسال‌نشدن نیست و ارسال جدید انجام ندهید."); }
+        finally
+        {
+            if (cpResult != null) await EmailRequestMemory.RememberAsync(JS, Auth.UserId, ComposeMemoryScope, cpResult);
+            cpChecking = false;
         }
     }
 
+    private bool CanStartFreshCompose => cpResult is { ResultPersisted: true, AttemptId: not null }
+        && (cpResult.SmtpAccepted || cpResult.Status == EmailDeliveryStatus.Failed);
+
+    private async Task StartFreshCompose()
+    {
+        if (cpBusy || cpChecking || !CanStartFreshCompose) return;
+        // This is not a retry: no previous recipients/body/files are carried into a new message.
+        // Unresolved or unpersisted outcomes keep their recovery state until they are checked.
+        await EmailRequestMemory.ForgetAsync(JS, Auth.UserId, ComposeMemoryScope);
+        cpResult = null;
+        OpenCompose();
+    }
+
+    private async Task StartNewComposeAttempt(bool acceptRisk)
+    {
+        if (cpBusy || cpChecking || cpResult == null) return;
+        if (!cpResult.CanRetry && !(cpResult.ResultPersisted && cpResult.AttemptId.HasValue &&
+            (cpResult.SmtpAccepted || (cpResult.Status == EmailDeliveryStatus.Unknown && acceptRisk)))) return;
+        await EmailRequestMemory.ForgetAsync(JS, Auth.UserId, ComposeMemoryScope);
+        cpRequestId = Guid.NewGuid(); cpResult = null; cpSnapshot = null; cpAttachmentError = null;
+    }
+
+    private async Task ReplayCompose()
+    {
+        if (cpSnapshot == null || cpBusy || cpChecking || cpResult == null || cpResult.SmtpAccepted || cpResult.ResultPersisted) return;
+        cpBusy = true;
+        try { await SendComposeSnapshot(); }
+        finally { cpBusy = false; }
+    }
+    private async Task SendComposeSnapshot()
+    {
+        var request = cpSnapshot!;
+        var previous = cpResult;
+        if (!await EmailRequestMemory.RememberAsync(JS, Auth.UserId, ComposeMemoryScope, EmailDeliveryText.Uncertain(request.RequestId)))
+            Toast.Error("ذخیرهٔ کد در مرورگر ممکن نیست؛ کد پیگیری روی فرم را یادداشت کنید. سابقهٔ سرور همچنان قابل بررسی است.");
+        try
+        {
+            cpResult = await EmailSvc.SendAsync(request.AccountId, request.To, request.Cc, request.Subject, request.Body, request.Files, request.RequestId);
+            if (cpResult.SmtpAccepted) Toast.Success("سرور ایمیل پیام را پذیرفت؛ نتیجه و هشدارها در فرم و گزارش ارسال نمایش داده می‌شود.");
+        }
+        catch (ApiException ex) when (ex.RequestRejected) { cpResult = previous; Toast.Error(ex.Message); }
+        catch (Exception) { cpResult = EmailDeliveryText.Uncertain(request.RequestId); }
+        if (cpResult != null) await EmailRequestMemory.RememberAsync(JS, Auth.UserId, ComposeMemoryScope, cpResult);
+        else await EmailRequestMemory.ForgetAsync(JS, Auth.UserId, ComposeMemoryScope);
+        focusComposeResult = cpResult != null;
+        // Reload is a separate read. Its failure must not overwrite the send result.
+        if (tab == "sent") await ReloadAsync();
+    }
     private async Task SubmitCompose()
     {
+        if (cpBusy || cpResult != null || cpAttachmentError != null) return;
         cpErrTo = string.IsNullOrWhiteSpace(cpTo);
         cpErrSubject = string.IsNullOrWhiteSpace(cpSubject);
         if (cpErrTo || cpErrSubject) { Toast.Error("گیرنده و موضوع الزامی است."); return; }
         if (cpAccountId <= 0) { Toast.Error("حساب فرستنده را انتخاب کنید."); return; }
-
         cpBusy = true;
         try
         {
             var files = new List<EmailOutAttachment>();
-            foreach (var bf in _pendingBrowser)
+            long total = _virtualAtts.Sum(f => f.Data.LongLength);
+            foreach (var file in _pendingBrowser)
             {
                 try
                 {
-                    await using var s = bf.OpenReadStream(long.MaxValue);
-                    using var ms = new MemoryStream();
-                    await s.CopyToAsync(ms);
-                    files.Add(new EmailOutAttachment(bf.Name, bf.ContentType, ms.ToArray()));
+                    await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+                    using var memory = new MemoryStream();
+                    await stream.CopyToAsync(memory);
+                    total += memory.Length;
+                    if (memory.Length == 0 || memory.Length != file.Size || total > 100 * 1024 * 1024)
+                        throw new IOException("Attachment empty/truncated/total limit.");
+                    files.Add(new EmailOutAttachment(file.Name, file.ContentType, memory.ToArray()));
                 }
-                catch (Exception ex) { Toast.Error($"خواندن {bf.Name}: {ex.Message}"); }
+                catch (Exception)
+                {
+                    cpAttachmentError = $"خواندن پیوست «{file.Name}» یا بررسی حجم آن انجام نشد؛ برای جلوگیری از ارسال ناقص، هیچ درخواستی برای ارسال ایمیل فرستاده نشد. فایل را اصلاح یا صریحاً حذف کنید.";
+                    return;
+                }
             }
             files.AddRange(_virtualAtts);
-            await EmailSvc.SendAsync(cpAccountId, cpTo, cpCc, cpSubject, cpBody, files);
-            Toast.Success("ایمیل ارسال شد.");
-            composeOpen = false;
-            _pendingBrowser.Clear();
-            cpFiles.Clear();
-            _virtualAtts.Clear();
-            if (tab == "sent") await ReloadAsync();
+            cpSnapshot = new(cpAccountId, cpTo, cpCc, cpSubject, cpBody, files, cpRequestId);
+            await SendComposeSnapshot();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
         finally { cpBusy = false; }
     }
 

@@ -18,10 +18,12 @@ public class EmailController : RbacControllerBase
 {
     private const string Module = "Email";
     private readonly IEmailService _email;
+    private readonly ILogger<EmailController> _deliveryLog;
 
-    public EmailController(AppDbContext db, IEmailService email) : base(db)
+    public EmailController(AppDbContext db, IEmailService email, ILogger<EmailController> deliveryLog) : base(db)
     {
         _email = email;
+        _deliveryLog = deliveryLog;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -102,32 +104,96 @@ public class EmailController : RbacControllerBase
 
     /// <summary>ارسال ایمیل از حساب کاربر (یا حساب دبیرخانه) — multipart با پیوست</summary>
     [HttpPost("send")]
-    [DisableRequestSizeLimit]
+    [RequestSizeLimit(110 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 110 * 1024 * 1024)]
     public async Task<IActionResult> Send([FromForm] int emailAccountId, [FromForm] string to, [FromForm] string? cc,
-        [FromForm] string subject, [FromForm] string? body, List<IFormFile> files)
+        [FromForm] string subject, [FromForm] string? body, [FromForm] Guid requestId, List<IFormFile> files)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-
-        var attachments = new List<(string, string, byte[])>();
-        foreach (var f in files ?? new List<IFormFile>())
+        if (requestId == Guid.Empty)
+            return BadRequest(new { message = "کد پیگیری ارسال موجود نیست؛ صفحه را کامل بازخوانی کنید. هیچ ایمیل جدیدی ارسال نشده است.", requestRejected = true });
+        try
         {
-            if (f == null || f.Length <= 0) continue;
-            if (f.Length > 20 * 1024 * 1024)
-                return BadRequest(new { message = $"حجم فایل {f.FileName} بیش از ۲۰ مگابایت است." });
-            using var ms = new MemoryStream();
-            await f.CopyToAsync(ms);
-            attachments.Add((f.FileName, f.ContentType ?? "application/octet-stream", ms.ToArray()));
+            if (files?.Count > 100)
+                return BadRequest(new { message = "حداکثر ۱۰۰ پیوست در هر درخواست مجاز است؛ ایمیلی ارسال نشده است.", requestRejected = true });
+            var attachments = new List<(string, string, byte[])>();
+            long total = 0;
+            foreach (var f in files ?? new List<IFormFile>())
+            {
+                if (f == null)
+                    return BadRequest(new { message = "یکی از پیوست‌های درخواست قابل دریافت نیست؛ ایمیل ناقص ارسال نمی‌شود.", requestRejected = true });
+                total += f.Length;
+                if (f.Length <= 0 || string.IsNullOrWhiteSpace(f.FileName) || f.Length > 20 * 1024 * 1024 || total > 100 * 1024 * 1024 || f.FileName.Length > 255)
+                    return BadRequest(new { message = "پیوست خالی است یا از محدودیت نام یا حجم مجاز عبور کرده‌است (۲۰ مگابایت هر فایل، ۱۰۰ مگابایت مجموع)؛ ایمیلی ارسال نشده است.", requestRejected = true });
+                using var ms = new MemoryStream();
+                try { await f.CopyToAsync(ms); }
+                catch (Exception)
+                {
+                    return BadRequest(new { message = "خواندن یکی از پیوست‌ها انجام نشد؛ ایمیل ناقص ارسال نمی‌شود.", requestRejected = true });
+                }
+                if (ms.Length != f.Length)
+                    return BadRequest(new { message = "حجم پیوست دریافت‌شده کامل نیست؛ ایمیل ناقص ارسال نمی‌شود.", requestRejected = true });
+                attachments.Add((f.FileName, f.ContentType ?? "application/octet-stream", ms.ToArray()));
+            }
+            var result = await _email.SendAsync(new EmailComposeDto
+            {
+                RequestId = requestId, EmailAccountId = emailAccountId, To = to, Cc = cc, Subject = subject, Body = body ?? ""
+            }, MyUserId, await IsDabirkhaneAsync(), attachments.ToArray());
+            // A completed HTTP operation is not necessarily a successful delivery: clients inspect Status.
+            return Ok(result);
         }
-
-        await _email.SendAsync(new EmailComposeDto
+        catch (EmailPreparationException ex)
         {
-            EmailAccountId = emailAccountId,
-            To = to,
-            Cc = cc,
-            Subject = subject,
-            Body = body ?? ""
-        }, MyUserId, await IsDabirkhaneAsync(), attachments.ToArray());
-        return Ok(new { message = "ایمیل ارسال شد." });
+            return BadRequest(new { message = ex.Message, code = ex.Code, requestId, requestRejected = true });
+        }
+        catch (Exception ex)
+        {
+            _deliveryLog.LogError("Email request {RequestId}: HTTP result unavailable ({ErrorType}); no automatic resend.", requestId, ex.GetType().Name);
+            return StatusCode(503, EmailDeliveryText.Uncertain(requestId));
+        }
+    }
+
+    /// <summary>Read-only, account-scoped history; never contacts SMTP or marks messages read.</summary>
+    [HttpGet("delivery-history")]
+    public async Task<IActionResult> DeliveryHistory([FromQuery] int? accountId, [FromQuery] int? letterId,
+        [FromQuery] int? sentId, [FromQuery] EmailDeliveryStatus? status, [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 15, [FromQuery] bool personal = false)
+    {
+        var canRead = await HasAsync(Module, "Read");
+        var dabir = await IsDabirkhaneAsync();
+        if (!canRead && !(letterId is > 0 && dabir))
+            return StatusCode(403, new { message = "شما به گزارش ارسال دسترسی ندارید." });
+        if (await PersonalAccessAsync(personal) is { } denied) return denied;
+        try
+        {
+            return Ok(await _email.GetDeliveryHistoryAsync(MyUserId, dabir, personal, accountId, letterId, sentId, status, page, pageSize));
+        }
+        catch (Exception ex)
+        {
+            _deliveryLog.LogWarning("Email history unavailable ({ErrorType}).", ex.GetType().Name);
+            return StatusCode(503, new { message = "گزارش ارسال در دسترس نیست؛ این خطا به معنی شکست ارسال نیست. آماده‌بودن جدول سابقه را بررسی کنید." });
+        }
+    }
+
+    [HttpGet("delivery-status/{requestId:guid}")]
+    public async Task<IActionResult> DeliveryStatus(Guid requestId, [FromQuery] bool personal = false)
+    {
+        var emailAccess = await HasAsync(Module, "Read") || await HasAsync(Module, "Create");
+        var dabir = await IsDabirkhaneAsync();
+        if (!emailAccess && !dabir) return StatusCode(403, new { message = "شما به پیگیری ارسال دسترسی ندارید." });
+        if (await PersonalAccessAsync(personal) is { } denied) return denied;
+        try
+        {
+            var result = await _email.GetDeliveryStatusAsync(requestId, MyUserId, dabir, personal);
+            if (result == null || (!emailAccess && !result.LetterSourceId.HasValue))
+                return NotFound(new { message = "این کد پیگیری در حساب‌های قابل دسترس یافت نشد؛ عدم مشاهدهٔ رکورد به‌تنهایی دلیل ارسال‌نشدن نیست." });
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _deliveryLog.LogWarning("Email status {RequestId} unavailable ({ErrorType}).", requestId, ex.GetType().Name);
+            return StatusCode(503, new { message = "وضعیت فعلی قابل دریافت نیست؛ بدون بررسی ارسال جدید انجام ندهید." });
+        }
     }
 
     /// <summary>همگام‌سازی صندوق (IMAP) — box: Inbox | Sent | Junk (پیش‌فرض: Inbox)</summary>

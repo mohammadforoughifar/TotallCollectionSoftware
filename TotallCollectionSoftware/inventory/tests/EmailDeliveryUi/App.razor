@@ -1,0 +1,35 @@
+@page "/"
+@page "/probe/email"
+@page "/probe/personal-email"
+@page "/probe/dabirkhane"
+@namespace EmailDeliveryUiTests
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
+@inject NavigationManager Navigation
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <title>آزمون ایمن ارسال ایمیل</title>
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="icons/bootstrap-icons.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/letters.css" />
+    <style>body{margin:0;padding:8px;background:#f5f7fb}.fixture-notice{font-size:12px;padding:8px;background:#dbeafe;color:#1e40af}.email-delivery-result code{color:inherit}code{overflow-wrap:anywhere}</style>
+</head>
+<body>
+    <div class="fixture-notice">آزمون ساختگی — هیچ ایمیل واقعی، حساب خارجی یا پایگاه اصلی استفاده نمی‌شود.</div>
+    @if (Navigation.Uri.Contains("dabirkhane"))
+    {
+        <Inventory.Client.Pages.Office.Letters.Outgoing.OutgoingDabirkhane @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    }
+    else
+    {
+        <Inventory.Client.Pages.Office.Email @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    }
+    <script src="js/ui.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

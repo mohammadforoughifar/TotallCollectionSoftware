@@ -43,7 +43,7 @@ public interface IOutgoingLetterService
     // ==================== دبیرخانه نامه صادره ====================
     Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter, Paging.Request? pagination = null);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
-    Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
+    Task<DabirkhaneRegisterResultDto> DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
 
     /// <summary>فهرست ثبت‌کنندگان نامه (برای فیلتر جستجوی پیشرفتهٔ دبیرخانه)</summary>
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync(Paging.Request? pagination = null);
@@ -60,21 +60,23 @@ public interface IOutgoingLetterService
         int letterId, List<SaveOutgoingLetterCopyToDto> items, int userId, bool isAdmin);
 }
 
-public class OutgoingLetterService : IOutgoingLetterService
+public partial class OutgoingLetterService : IOutgoingLetterService
 {
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
     private readonly ILetterStratureService _strature;
     private readonly IEmailService _email;
+    private readonly ILogger<OutgoingLetterService> _deliveryLog;
 
-    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature, IEmailService email)
+    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature, IEmailService email, ILogger<OutgoingLetterService>? deliveryLog = null)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
         _strature = strature;
         _email = email;
+        _deliveryLog = deliveryLog ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<OutgoingLetterService>.Instance;
     }
 
     private async Task<int> NextNumberAsync()
@@ -1809,101 +1811,6 @@ public class OutgoingLetterService : IOutgoingLetterService
                     : $"{u.FirstName} {u.LastName}".Trim()
             })
             .ToPageListAsync(pagination);
-    }
-
-    /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال — فقط برای نامه‌های امضا شده</summary>
-    public async Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName)
-    {
-        var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
-            ?? throw new Exception("نامه پیدا نشد.");
-
-        // 🔒 شرط کارفرما: نامه فقط وقتی در دبیرخانه ثبت می‌شود که امضا شده باشد (SadereNumber مقدار گرفته)
-        if (string.IsNullOrWhiteSpace(letter.SadereNumber))
-            throw new Exception("این نامه هنوز امضا نشده است — فقط نامه‌های امضا شده (دارای شماره صادره) در دبیرخانه ثبت می‌شوند.");
-
-        if (string.IsNullOrWhiteSpace(dto.SendMethod))
-            throw new Exception("روش ارسال نامه الزامی است.");
-
-        var method = dto.SendMethod.Trim();
-
-        // ==================== اعتبارسنجی فیلدهای وابسته به روش ارسال ====================
-        // هر روش ارسال اطلاعات متفاوتی لازم دارد:
-        //   • ایمیل            → کدوم ایمیل (آدرس ایمیل مقصد)
-        //   • پست / پست پیشتاز  → نام تحویل گیرنده (+ کد رهگیری)
-        //   • پیک / تحویل حضوری → نام تحویل گیرنده
-        //   • فکس              → شماره فکس مقصد
-        //   • اتوماسیون (ECE)  → شماره ثبت مقصد
-        var spec = LetterSendMethods.Spec(method);
-
-        bool byEmail = dto.SendByEmail || spec.NeedsDestEmail;
-        string? destEmail = dto.DestEmail?.Trim();
-        string? delivererName = dto.DelivererName?.Trim();
-        string? trackingCode = dto.TrackingCode?.Trim();
-        string? destFax = dto.DestFax?.Trim();
-        string? destRegNumber = dto.DestRegNumber?.Trim();
-
-        if (byEmail && string.IsNullOrWhiteSpace(destEmail))
-            throw new Exception("آدرس ایمیل مقصد را وارد کنید (مشخص کنید نامه به کدوم ایمیل ارسال شود).");
-
-        if (byEmail && !string.IsNullOrWhiteSpace(destEmail) && !destEmail.Contains('@'))
-            throw new Exception("آدرس ایمیل مقصد معتبر نیست.");
-
-        if (spec.NeedsDelivererName && string.IsNullOrWhiteSpace(delivererName))
-            throw new Exception("نام تحویل گیرنده را وارد کنید.");
-
-        if (spec.TrackingCodeRequired && string.IsNullOrWhiteSpace(trackingCode))
-            throw new Exception("کد رهگیری مرسوله را وارد کنید.");
-
-        if (spec.NeedsFax && string.IsNullOrWhiteSpace(destFax))
-            throw new Exception("شماره فکس مقصد را وارد کنید.");
-
-        if (spec.NeedsDestRegNumber && string.IsNullOrWhiteSpace(destRegNumber))
-            throw new Exception("شماره ثبت مقصد (ECE) را وارد کنید.");
-
-        letter.DabirkhaneSabt = true;
-        letter.DabirkhaneUserId = userId;
-        letter.DateDabirkhane ??= DateTime.Now;
-        letter.DestRegNumber = destRegNumber;
-        letter.SendMethod = method;
-        letter.DabirkhaneNote = dto.Note?.Trim();
-        if (byEmail) letter.DestEmail = destEmail;
-
-        // فیلدهای وابسته به روش ارسال — فقط مقادیر مرتبط با روش انتخابی ذخیره می‌شوند
-        letter.DelivererName = spec.NeedsDelivererName ? delivererName : null;
-        letter.TrackingCode = spec.NeedsTrackingCode ? trackingCode : null;
-        letter.DestFax = spec.NeedsFax ? destFax : null;
-
-        await _db.SaveChangesAsync();
-
-        // ==================== ارسال نامه با پست الکترونیک ====================
-        // دبیرخانه نامه امضا شده را (PDF روی سربرگ + پیوست‌ها) به ایمیل مقصد می‌فرستد.
-        // اگر ارسال ایمیل ناموفق باشد، ثبت دبیرخانه حفظ می‌شود اما خطا به کاربر نمایش داده می‌شود.
-        string? emailError = null;
-        if (byEmail)
-        {
-            try
-            {
-                await _email.SendLetterEmailAsync(letterId, dto, userName);
-            }
-            catch (Exception ex)
-            {
-                emailError = ex.Message;
-            }
-        }
-
-        // اطلاع به ایجادکننده نامه
-        await _notify.SendAsync(letter.CreatorUserId,
-            $"نامه صادره در دبیرخانه ثبت شد: {letter.Title}",
-            $"شماره صادره: {letter.SadereNumber} — روش ارسال: {letter.SendMethod}" +
-            (string.IsNullOrWhiteSpace(letter.DestRegNumber) ? "" : $" — شماره ثبت مقصد: {letter.DestRegNumber}") +
-            (byEmail && emailError == null && !string.IsNullOrWhiteSpace(destEmail) ? $" — ارسال با ایمیل به {destEmail}" : "") +
-            (emailError != null ? $" — ⚠️ ارسال ایمیل ناموفق: {emailError}" : ""),
-            userName, "دبیرخانه صادره", $"outgoing-letters/view/{letterId}");
-
-        await _notify.BroadcastChangedAsync("outgoing-letters");
-
-        if (emailError != null)
-            throw new Exception($"نامه در دبیرخانه ثبت شد اما ارسال ایمیل ناموفق بود: {emailError}");
     }
 
     /// <summary>شرکت‌های فعال برای انتخاب سربرگ نامه صادره</summary>
