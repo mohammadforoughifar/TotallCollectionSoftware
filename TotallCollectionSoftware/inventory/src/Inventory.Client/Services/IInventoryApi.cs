@@ -130,6 +130,12 @@ public interface IOrderService
     Task<Order?> GetAsync(int id);
     Task<Order> CreateAsync(OrderCommand cmd);
     Task<Order> UpdateAsync(int id, OrderCommand cmd);
+
+    /// <summary>وضعیت ویرایش یک سند ماندهٔ اول دوره؛ منبع فعال/غیرفعال بودن دکمهٔ ویرایش.</summary>
+    Task<OpeningBalanceEditState> GetOpeningEditStateAsync(int id);
+
+    /// <summary>ویرایش سند ماندهٔ اول دوره با حفظ شناسهٔ همان سند.</summary>
+    Task<Order> UpdateOpeningBalanceAsync(int id, OpeningBalanceEditCommand cmd);
     Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd);
     Task<ShopOrderCreditState> GetCreditStateAsync(int id);
     Task ReceiveCreditAsync(int id, ShopOrderCreditReceiptCommand cmd);

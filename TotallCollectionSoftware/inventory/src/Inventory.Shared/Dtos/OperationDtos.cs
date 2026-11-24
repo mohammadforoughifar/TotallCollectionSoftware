@@ -853,3 +853,68 @@ public class PartyStatementDetailDto
     public decimal ClosingBalance { get; set; }
     public List<PartyStatementRowDto> Rows { get; set; } = new();
 }
+
+/// <summary>
+/// وضعیت ویرایش‌پذیری یک سند ماندهٔ اول دوره. با همان سندی که در سابقهٔ ماژول
+/// «افتتاح حساب و ثبت مانده‌های اولیه» دیده می‌شود برگردانده می‌شود تا دکمهٔ ویرایش
+/// بدون یک فراخوانی اضافه، دقیقاً همان تصمیمی را بگیرد که سرور می‌گیرد.
+/// </summary>
+public class OpeningBalanceEditState
+{
+    /// <summary>ویرایش آزاد است؟</summary>
+    public bool CanEdit { get; set; }
+    /// <summary>علت غیرفعال بودن ویرایش؛ null یعنی آزاد است.</summary>
+    public string? BlockedReason { get; set; }
+    /// <summary>سند ابطال شده است.</summary>
+    public bool IsCancelled { get; set; }
+    /// <summary>گردش نقدی، دریافت نسیه، وصول چک یا پرداخت قسط روی سند ثبت شده است.</summary>
+    public bool HasSettlementHistory { get; set; }
+    /// <summary>ماهیت مانده و نوع چک قابل تغییر نیست (مبلغ، تاریخ و شرح آزادند).</summary>
+    public bool NatureLocked { get; set; }
+}
+
+/// <summary>
+/// ویرایش یک سند ماندهٔ اول دوره در هر چهار بخش ماژول افتتاحیه.
+/// فقط «مقدار» سند (مبلغ، تاریخ، طرف حساب، شرح، تعداد اقساط، تعداد موجودی و…)
+/// قابل ویرایش است؛ ماهیت (بدهکار/بستانکار) و نوع چک تغییر نمی‌کند.
+/// </summary>
+public class OpeningBalanceEditCommand
+{
+    /// <summary>طرف حساب؛ برای بخش موجودی کالا صفر مجاز است و سند بدون طرف حساب می‌ماند.</summary>
+    public int PartyId { get; set; }
+
+    /// <summary>مبلغ سند افتتاحیه (ریال).</summary>
+    public decimal Amount { get; set; }
+
+    public DateTime Date { get; set; }
+
+    /// <summary>تاریخ سررسید نسیه؛ برای بخش موجودی کالا بی‌استفاده است.</summary>
+    public DateTime? DueDate { get; set; }
+
+    /// <summary>شرح بی‌پیشوند؛ پیشوند بخش در سرور اضافه می‌شود.</summary>
+    public string? Description { get; set; }
+
+    /// <summary>انبار سند؛ فقط بخش موجودی کالا.</summary>
+    public int WarehouseId { get; set; }
+
+    /// <summary>کالای سند؛ فقط بخش موجودی کالا.</summary>
+    public int ProductId { get; set; }
+
+    /// <summary>تعداد موجودی؛ فقط بخش موجودی کالا.</summary>
+    public decimal Quantity { get; set; }
+
+    /// <summary>تعداد اقساط؛ فقط بخش دفترچهٔ اقساط.</summary>
+    public int InstallmentCount { get; set; }
+
+    public DateTime? FirstDueDate { get; set; }
+
+    /// <summary>فاصلهٔ ماهانهٔ اقساط.</summary>
+    public int IntervalMonths { get; set; } = 1;
+
+    /// <summary>مشخصات چک؛ فقط بخش چک‌های اول دوره.</summary>
+    public string? ChequeNumber { get; set; }
+    public string? ChequeBankName { get; set; }
+    public string? ChequeBranchName { get; set; }
+    public string? ChequeSayadId { get; set; }
+    public int? ChequeAccountId { get; set; }
+}

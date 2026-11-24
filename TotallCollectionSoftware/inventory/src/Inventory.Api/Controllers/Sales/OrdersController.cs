@@ -509,6 +509,48 @@ public class OrdersController : ApiControllerBase
         return Ok(revealProfit ? saved : RemoveSaleProfit(saved));
     }
 
+    /// <summary>
+    /// وضعیت ویرایش یک سند ماندهٔ اول دوره (چهار بخش ماژول افتتاحیه).
+    /// همین پاسخ تعیین می‌کند دکمهٔ «ویرایش» در سابقه فعال باشد یا با علت غیرفعال شود.
+    /// </summary>
+    [HttpGet("{id:int}/opening-edit-state")]
+    public async Task<ActionResult<OpeningBalanceEditState>> OpeningEditState(int id)
+    {
+        try
+        {
+            return Ok(await _service.GetOpeningBalanceEditStateAsync(id));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// ویرایش سند ماندهٔ اول دوره در همان سند. سند دارای گردش نقدی، دریافت نسیه،
+    /// وصول چک، خرج چک یا پرداخت قسط با 400 و متن علت رد می‌شود.
+    /// </summary>
+    [HttpPut("{id:int}/opening-balance")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Update")]
+    public async Task<ActionResult<Order>> UpdateOpeningBalance(int id, [FromBody] OpeningBalanceEditCommand cmd)
+    {
+        var existing = await _service.GetOrderAsync(id);
+        if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        // ویرایش سند تاریخ‌گذشته مبنای قیمت را تغییر می‌دهد؛ همان قاعدهٔ بقیهٔ ویرایش‌ها.
+        var permissionError = await PricingPermissionErrorAsync(new OrderCommand { Date = cmd.Date }, existing);
+        if (permissionError is not null) return StatusCode(403, new { message = permissionError });
+        try
+        {
+            var saved = await _service.UpdateOpeningBalanceAsync(id, cmd, CurrentActor);
+            return saved.Type == TransactionType.Sale && !await CanSeeProfitAsync()
+                ? Ok(RemoveSaleProfit(saved)) : Ok(saved);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     /// <summary>حساب‌های فعال خزانه/بانک متعلق به شرکت فعال برای عملیات فروش و وصول.</summary>
     [HttpGet("active-treasury-accounts")]
     public async Task<ActionResult<List<TrsAccount>>> ActiveTreasuryAccounts([FromQuery] TreasuryAccountKind? kind = null)
