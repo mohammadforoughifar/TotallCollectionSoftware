@@ -1238,6 +1238,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             size.ToUpperInvariant(),
             withCopy ? "1" : "0", withMargin ? "1" : "0", withLetterhead ? "1" : "0", requireSignatures ? "1" : "0",
             row.CompanyId?.ToString(CultureInfo.InvariantCulture) ?? "-",
+            withLetterhead ? PrintTemplateCacheStamp(row.CompanyId, size) : "no-letterhead",
             row.SadereNumber, row.LetterNumber,
             row.DateSadere?.Ticks.ToString(CultureInfo.InvariantCulture) ?? "-",
             row.DateSabt.Ticks.ToString(CultureInfo.InvariantCulture),
@@ -1250,7 +1251,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             row.CopyToLastId.ToString(CultureInfo.InvariantCulture),
             row.AttachmentCount.ToString(CultureInfo.InvariantCulture));
 
-        return "outgoing-print-v2:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+        return "outgoing-print-v3-mrt-meta:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material)));
+    }
+
+    // Include the same file revision used by the parsed-field cache, not only letter data.
+    private string PrintTemplateCacheStamp(int? companyId, string size)
+    {
+        if (companyId is not > 0) return "no-company-template";
+        var path = FindCompanyTemplate(companyId.Value, size.ToUpperInvariant());
+        if (path == null) return "missing-template";
+        var info = new FileInfo(path);
+        return info.Exists
+            ? $"{path}:{info.Length}:{info.LastWriteTimeUtc.Ticks}"
+            : $"{path}:missing";
     }
 
     /// <summary>رندر واقعی نامه (بدون کش) — همان پیاده‌سازی قبلی GeneratePdfAsync.</summary>
@@ -2772,11 +2785,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 // مختصات از گوشهٔ بالا-چپ «خودِ صفحه» است، نه داخل حاشیه‌ها؛ وگرنه در A5 که
                 // برچسب‌های چاپ‌شده نزدیک لبه‌اند، مقدارها به سمت راست رانده می‌شدند و روی
                 // برچسب‌ها می‌افتادند.
-                // شرکت ۱ (فروغ آریا): برچسب‌های نقطه‌چین روی خودِ هنر سربرگ چاپ شده‌اند و
-                // مختصات کادرهای قالب برای آن هنر کالیبره نیست؛ مقدارها مستقیم روی همان
-                // نقطه‌چین‌ها نوشته می‌شوند.
+                // فروغ آریا: مختصات/ظاهر سه مقدار از MRT همان شرکت خوانده می‌شود؛
+                // فقط اگر این کادرها در قالب موجود نباشند از هندسهٔ کالیبره استفاده می‌کنیم.
+                // برچسب‌ها بخشی از تصویرند و نباید دوباره چاپ یا با مقدار پوشانده شوند.
                 if (alignMetaToArtwork)
-                    page.Foreground().Element(fg => AddArtworkMetaValues(fg, isA5, number, date, attachment));
+                    page.Foreground().Element(fg => AddArtworkMetaValues(fg, isA5, number, date, attachment, letterheadCompanyId));
                 else
                     page.Foreground().Element(fg => AddDesignMetaGrid(fg, design, number, date,
                         attachment, sideMargin));
@@ -2832,9 +2845,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// <list type="bullet">
     ///   <item>خط‌چین ردیف‌ها روی y = <b>۳۵٫۴</b> / <b>۶۳٫۱</b> / <b>۸۹٫۷</b>pt (فاصله ≈۲۷٫۲)</item>
     ///   <item>متن برچسب‌های «تاریخ/شماره/پیوست»: ۲۹٫۶–۴۰٫۶ / ۵۷٫۲–۶۶٫۰ / ۸۵٫۲–۹۳٫۹pt</item>
-    ///   <item>خط‌چین از x≈۲۴ تا x≈۸۵ و برچسب‌ها از x≈۹۲ — پس ناحیهٔ مقدار x = ۲۴..۸۴ است
-    ///   (همان کادر متای <c>Inner-A4.mrt</c> و <c>Outgoing-A4.mrt</c> شرکت ۱:
-    ///   ۰٫۳۶۱/۰٫۷۳۶/۱٫۱۱۱ اینچ با عرض ۰٫۸۳۳ اینچ از x=۰٫۳۳۳ اینچ).</item>
+    ///   <item>خط‌چین از x≈۲۳ تا x≈۸۵ و کپشن از x≈۸۷ شروع می‌شود. کادر مقدار از x=۲۲
+    ///   تا x=۸۴ است: زمینهٔ سفید تمام نقطه‌های پشت مقدار را می‌پوشاند، نه خودِ کپشن را.</item>
     /// </list>
     /// <para>یعنی کادر <c>FirstRowTop + RowHeight/2</c> دقیقاً روی خط‌چین می‌افتد:
     /// ۲۸ + ۷٫۵ = ۳۵٫۵ و ۲۸ + ۲۷٫۲ + ۷٫۵ = ۶۲٫۷ و ۲۸ + ۵۴٫۴ + ۷٫۵ = ۸۹٫۹.</para>
@@ -2853,46 +2865,33 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                 FirstRowTop: 28f * scale,
                 RowPitch: 27.2f * scale,
                 RowHeight: 15f * scale,
-                ValueLeft: 24f * scale,
+                ValueLeft: 22f * scale,
                 ValueRight: 84f * scale,
                 Bottom: 95f * scale);
         }
     }
 
     /// <summary>
-    /// مقدارهای شماره/تاریخ/پیوست روی خط‌های نقطه‌چینِ چاپ‌شدهٔ هنر سربرگ فروغ آریا.
-    /// برچسب‌ها («تاریخ:»، «شماره:»، «پیوست:») بخشی از خودِ تصویرند، پس فقط مقدار نوشته
-    /// می‌شود: راست‌چین روی خط‌چین، هر ردیف در کادر هم‌ارتفاع خودش.
-    ///
-    /// <para>عرض: <c>PaddingLeft(ValueLeft)</c> از عرض کل کادر کم می‌شود، پس
-    /// <c>Width(ValueRight)</c> یعنی «از x=۲۴ تا x=۸۴» — همان کادر متای قالب (و ۴pt پیش از
-    /// انتهای خط‌چین، مثل <see cref="HeaderMetaPainter"/>).</para>
+    /// مقدارهای سربرگ فروغ آریا از مختصات خودِ MRT چاپ می‌شوند؛ هندسهٔ ثابت فقط fallback است.
+    /// عرض کادر = لبهٔ راست منهای لبهٔ چپ، نه خودِ لبهٔ راست؛ PaddingLeft عرض داخلی را کم نمی‌کند.
+    /// کادر مستقل و زمینهٔ اعلام‌شده در قالب، از برخورد رقم‌ها با برچسب/نقطه‌چین جلوگیری می‌کند.
     /// </summary>
-    private void AddArtworkMetaValues(IContainer host, bool isA5, string number, string date, string attachment)
+    private void AddArtworkMetaValues(IContainer host, bool isA5, string number, string date, string attachment,
+        int? companyId = null)
     {
-        var geometry = ArtworkMetaGeometry.For(isA5);
-        var values = new[] { date, number, attachment };
-        host.AlignLeft().AlignTop().Column(column =>
+        var fields = ReadDeclaredMetaFields(companyId is > 0
+            ? FindCompanyTemplate(companyId.Value, isA5 ? "A5" : "A4")
+            : null);
+        if (fields == null)
         {
-            var cursor = 0f;
-            for (var row = 0; row < values.Length; row++)
-            {
-                var rowTop = geometry.FirstRowTop + row * geometry.RowPitch;
-                var spacer = rowTop - cursor;
-                if (spacer > 0.1f) column.Item().Height(spacer);
-                // PaddingLeft داخل عرض می‌نشیند، پس عرض کل کادر = لبهٔ راستِ ناحیهٔ مقدار و
-                // متن دقیقاً تا x=۸۴pt راست‌چین تمام می‌شود. MinHeight (نه
-                // Height) به‌اندازهٔ کادر متای قالب: مقدار خیلی بلند یک خط اضافه می‌گیرد و
-                // کل چاپ را با «تضاد محدودیت» رد نمی‌کند.
-                column.Item().PaddingLeft(geometry.ValueLeft).Width(geometry.ValueRight)
-                    .MinHeight(geometry.RowHeight).AlignMiddle()
-                    .Text(string.IsNullOrWhiteSpace(values[row]) ? "—" : values[row])
-                    .FontFamily("Vazirmatn").FontSize(7f)
-                    .FontColor(Colors.Black).LineHeight(1f)
-                    .AlignRight().DirectionFromRightToLeft();
-                cursor = rowTop + geometry.RowHeight;
-            }
-        });
+            var geometry = ArtworkMetaGeometry.For(isA5);
+            LetterheadMetaFields.Field Field(int row, bool ltr) => new(
+                geometry.ValueLeft, geometry.FirstRowTop + row * geometry.RowPitch,
+                geometry.ValueRight - geometry.ValueLeft, geometry.RowHeight,
+                "#000000", isA5 ? 6.4f : 9f, false, false, ltr, "#FFFFFF");
+            fields = new(Field(1, true), Field(0, true), Field(2, false));
+        }
+        OutgoingLetterMetaPainter.Draw(host, fields, number, date, attachment);
     }
 
     /// <summary>

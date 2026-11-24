@@ -129,11 +129,11 @@
           <VertAlignment>Center</VertAlignment>
         </Text8>
         <Text1 Ref="9" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>-0.4,-0.2,0.9,0.2</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>-0.1739,-0.115,0.6089,0.1473</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,10</Font>
+          <Font>Vazirmatn,6.4</Font>
           <Margins>0,0,0,0</Margins>
           <Name>Text1</Name>
           <Page isRef="4" />
@@ -141,13 +141,19 @@
           <Text>{DataSource1.DateShams}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
+          <HorAlignment>Right</HorAlignment>
+          <VertAlignment>Center</VertAlignment>
+          <CanGrow>False</CanGrow>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>1</ShrinkFontToFitMinimumSize>
+          <TextOptions>,,RightToLeft=False,,WordWrap=False,A=0</TextOptions>
         </Text1>
         <Text2 Ref="10" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>-0.5,0.1,1,0.2</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>-0.1739,0.1521,0.6089,0.1473</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,10</Font>
+          <Font>Vazirmatn,6.4</Font>
           <Margins>0,0,0,0</Margins>
           <Name>Text2</Name>
           <Page isRef="4" />
@@ -155,14 +161,20 @@
           <Text>{DataSource1.LetterNumber}</Text>
           <TextBrush>Black</TextBrush>
           <Type>DataColumn</Type>
+          <HorAlignment>Right</HorAlignment>
+          <VertAlignment>Center</VertAlignment>
+          <CanGrow>False</CanGrow>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>1</ShrinkFontToFitMinimumSize>
+          <TextOptions>,,RightToLeft=False,,WordWrap=False,A=0</TextOptions>
         </Text2>
         <Text3 Ref="11" type="Text" isKey="true">
-          <Brush>Transparent</Brush>
-          <ClientRectangle>-0.5,0.3,1,0.2</ClientRectangle>
+          <Brush>White</Brush>
+          <ClientRectangle>-0.1739,0.4192,0.6089,0.1473</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
-          <Font>Vazirmatn,12</Font>
-          <HorAlignment>Center</HorAlignment>
+          <Font>Vazirmatn,6.4</Font>
+          <HorAlignment>Right</HorAlignment>
           <Margins>0,0,0,0</Margins>
           <Name>Text3</Name>
           <Page isRef="4" />
@@ -170,6 +182,11 @@
           <Text>{DataSource1.Peyvast}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
+          <VertAlignment>Center</VertAlignment>
+          <CanGrow>False</CanGrow>
+          <ShrinkFontToFit>True</ShrinkFontToFit>
+          <ShrinkFontToFitMinimumSize>1</ShrinkFontToFitMinimumSize>
+          <TextOptions>,,RightToLeft=True,,WordWrap=False,A=0</TextOptions>
         </Text3>
         <Text11 Ref="12" type="Text" isKey="true">
           <Brush>Transparent</Brush>

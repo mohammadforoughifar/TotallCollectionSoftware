@@ -101,10 +101,16 @@ class ForoughFamilyTests(SourceCase):
                 self.has("private readonly record struct ArtworkMetaGeometry(", service)
                 self.has("FirstRowTop: 28f * scale,", service)
                 self.has("RowPitch: 27.2f * scale,", service)
-                self.has("ValueLeft: 24f * scale,", service)
+                self.has("ValueLeft: 22f * scale,", service)
                 self.has("ValueRight: 84f * scale,", service)
-                # عرض کادر: از x=ValueLeft تا x=ValueRight (PaddingLeft از عرض کل کم می‌شود).
-                self.has("column.Item().PaddingLeft(geometry.ValueLeft).Width(geometry.ValueRight)", service)
+                # PaddingLeft بیرون عرض داخلی است؛ لبهٔ راست نباید به‌جای عرض استفاده شود.
+                self.lacks(".PaddingLeft(geometry.ValueLeft).Width(geometry.ValueRight)", service)
+                self.has("geometry.ValueRight - geometry.ValueLeft", service)
+                self.has("var fields = ReadDeclaredMetaFields(companyId is > 0", service)
+                self.has("OutgoingLetterMetaPainter.Draw(host, fields, number, date, attachment);", service)
+                painter = read(office(tree) / "Outgoing" / "OutgoingLetterMetaPainter.cs")
+                self.has(".Width(field.Width).Height(field.Height)", painter)
+                self.has("text.DirectionFromLeftToRight()", painter)
                 self.has("private void AddArtworkMetaValues(IContainer host, bool isA5,", service)
                 # فقط برای فروغ آریا؛ شرکت‌های دیگر همان مسیر کالیبره را دارند.
                 self.has("var alignMetaToArtwork = hasLetterhead && letterheadCompanyId is int metaCompany", service)
