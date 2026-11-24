@@ -81,7 +81,7 @@ public class IncomingLetter
     /// <summary>نشان‌شده / ستاره‌دار توسط فرستنده/ثبت‌کننده</summary>
     public bool IsNeshan { get; set; }
 
-    /// <summary>بایگانی‌شده</summary>
+    /// <summary>بایگانی مشترک دبیرخانه؛ بایگانی شخصی گیرنده روی Erja.IsBayegani است.</summary>
     public bool IsBayegani { get; set; }
 
     /// <summary>حذف منطقی</summary>

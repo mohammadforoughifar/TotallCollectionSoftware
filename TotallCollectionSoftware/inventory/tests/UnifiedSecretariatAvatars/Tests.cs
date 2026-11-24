@@ -111,7 +111,7 @@ public static class Tests
         Photo(inRows[1], 22, "same-name incoming users keep separate login identities");
         Check(inRows[0].Contains("ثبت‌کننده:") && inRows[0].Contains("فرستندهٔ مبدأ:") && !inRows[0].Contains("ارجاع‌دهنده:"), "incoming registrar is visibly separate from external origin");
         Check(inRows[3].Contains("کاربر نامشخص") && inRows[3].Contains("user-avatar-default"), "unknown incoming registrar uses the shared default without guessing from current user");
-        Check(fixture.IncomingDetailReads == 0 && fixture.Calls.All(c => c.Method is "GetSentAsync" or "GetArchiveAsync"), "incoming list images add no per-row detail requests or unread side effects");
+        Check(fixture.IncomingDetailReads == 0 && fixture.Calls.All(c => c.Method == "GetSecretariatAsync"), "incoming list images add no per-row detail requests or unread side effects");
         await Act(panel, "GoPage", 2); inRows = InRows(await Html(root));
         Check(inRows.Count == 4 && HasPhoto(inRows[0], 118), "incoming page change displays the new page's registrar photos");
         await Act(panel, "ToggleSelected", 2108);
@@ -121,8 +121,8 @@ public static class Tests
         Check(ReferenceEquals(panel, Probe.Get<IntegratedIncomingPanel>(page, "incomingPanel")) && Probe.Get<HashSet<int>>(panel, "selectedIds").Contains(2108), "help visibility preserves the mounted panel, page and selection state");
         await Act(page, "OpenIncomingView", "archived"); inRows = InRows(await Html(root));
         Photo(inRows[0], 25, "direct incoming archive shows the actual letter registrar supplied by the corrected read projection");
-        Photo(inRows[1], 61, "referral-based incoming archive shows that referral's direct sender");
-        Check(inRows[0].Contains("ثبت‌کننده:") && inRows[1].Contains("ارجاع‌دهنده:"), "mixed incoming archive labels roles by row type rather than treating every sender as registrar");
+        Photo(inRows[1], 61, "shared incoming archive shows its returned registrar, not a private referral");
+        Check(inRows[0].Contains("ثبت‌کننده:") && inRows[1].Contains("ثبت‌کننده:"), "shared incoming archive labels each row as the registrar; private referral rows are not imported");
         Check(inRows[2].Contains("user-avatar-default") && inRows[2].Contains("کاربر نامشخص") && !Regex.Match(inRows[2], @"<span class=""iin-person-name"">[\s\S]*?</span>").Value.Contains(Fixture.Outside),
             "legacy direct archive external text is not mislabelled as an internal user");
         Check(inRows[3].Contains("user-avatar-default") && !inRows[3].Contains("/photo/-8"), "invalid archived referral identity uses a default photo without an invalid request");
@@ -152,6 +152,46 @@ public static class Tests
         html = await Html(root);
         Check(!Regex.IsMatch(html, @"<button class=""iin-btn incoming-create""") && !html.Contains("title=\"ویرایش نامه (حتی پس از رویت گیرندگان)\""), "existing incoming register/edit permission gates are unchanged by photo rendering");
         Check(!html.Contains("/api/SystemUsers/photo/") && !html.Contains("/photo/0?") && !html.Contains("/photo/900?"), "all unified user photos retain login-ID namespace without fallback identity substitution");
+        // Exercise actual shared-archive UI handlers; a call to any personal archive
+        // service method now fails the fixture instead of being silently accepted.
+        fixture.Auth.CanRegister = true;
+        await Change(panel, () => Probe.Set(panel, "search", ""));
+        await Act(panel, "ResetAndReloadAsync");
+        await Act(panel, "ToggleSelected", 2000);
+        fixture.Calls.Clear(); fixture.ArchiveCommands.Clear();
+        var archiveTask = Act(panel, "ArchiveSelected");
+        var picker = Probe.Get<DabirkhaneArchivePicker>(panel, "folderPicker");
+        Check(Probe.Get<bool>(picker, "visible") && picker.Incoming, "incoming shared picker opens in incoming scope");
+        Check(fixture.Calls.Any(c => c.Method == "GetSecretariatTreeAsync") && !fixture.Calls.Any(c => c.Method.Contains("DabirkhaneBayegani")), "incoming picker never loads outgoing or personal folders");
+        await Change(picker, () => Probe.Set(picker, "selectedId", (int?)0));
+        await Act(picker, "Confirm"); await archiveTask;
+        var archivedCommand = (ArchiveSecretariatLettersDto)fixture.ArchiveCommands.Single(c => c.Method == "ArchiveSecretariatLettersAsync").Payload!;
+        Check(archivedCommand.FolderId == 0 && archivedCommand.LetterIds.SequenceEqual(new[] { 2000 }), "incoming group archive accepts root and sends letter IDs to the shared endpoint");
+        Check(!Probe.Get<bool>(panel, "archiveBusy") && Probe.Get<HashSet<int>>(panel, "selectedIds").Count == 0, "shared group archive releases busy state and clears selection");
+        await Act(page, "OpenIncomingView", "archived");
+        html = await Html(root);
+        Check(html.Contains("خروج از بایگانی") && html.Contains("پوشه‌های مشترک"), "shared incoming archive has explicit unarchive and folder-management controls");
+        var justArchived = fixture.Archived.Single(l => l.LetterId == 2000);
+        await Act(panel, "Archive", justArchived);
+        Check(fixture.ArchiveCommands.Any(c => c.Method == "UnarchiveSecretariatLetterAsync" && (int)c.Payload! == 2000), "incoming unarchive is explicit and letter-scoped, never a personal toggle");
+        var moveTask = Act(panel, "MoveArchivedLetter", 8200);
+        await Change(picker, () => Probe.Set(picker, "selectedId", (int?)0));
+        await Act(picker, "Confirm"); await moveTask;
+        var moveCommand = (MoveArchivedLetterDto)fixture.ArchiveCommands.Single(c => c.Method == "MoveSecretariatLetterAsync").Payload!;
+        Check(moveCommand.BayeganiId == 8200 && moveCommand.NewParentId == 0, "incoming shared letter move keeps archive node identity and supports root");
+        await Act(panel, "ToggleFolders");
+        var sharedTree = capture.Last<DabirkhaneArchiveTree>();
+        Check(sharedTree.Incoming && (await Html(root)).Contains("پوشه مشترک وارده"), "folder manager renders the incoming shared tree");
+        await Change(sharedTree, () => Probe.Set(sharedTree, "newFolderName", "پوشه آزمون مشترک"));
+        await Act(sharedTree, "CreateRoot");
+        Check(fixture.ArchiveCommands.Any(c => c.Method == "AddSecretariatMainCategoryAsync"), "shared incoming folder creation uses the correct API");
+        await Change(sharedTree, () => Probe.Set(sharedTree, "renameValue", "نام جدید مشترک"));
+        await Act(sharedTree, "SaveRename", 9100);
+        Check(fixture.IncomingFolders.Single(f => f.BayeganiId == 9100).Title == "نام جدید مشترک", "shared incoming folder rename is not owner-bound in the UI");
+        fixture.Calls.Clear();
+        await Act(panel, "OnDataChanged", "incoming-letters");
+        Check(fixture.Calls.Any(c => c.Method == "GetSecretariatAsync"), "incoming shared archive subscribes to the existing live refresh channel");
+        Check(!fixture.ArchiveCommands.Any(c => c.Method is "ToggleLetterBayeganiAsync" or "ArchiveLettersAsync" or "UnarchiveByErjaAsync"), "unified incoming archive never calls personal cartable mutation routes");
         Console.WriteLine($"ALL {checks} UNIFIED-SECRETARIAT RAZOR CHECKS PASSED.");
     }
     private sealed class Capture : IComponentActivator

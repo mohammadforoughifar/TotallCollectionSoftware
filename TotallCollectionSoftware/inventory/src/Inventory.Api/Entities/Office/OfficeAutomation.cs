@@ -215,7 +215,7 @@ public class RelatedLetter
 /// <summary>
 /// بایگانی درختی نامه‌ها — ساختار جدول از الان آماده است؛
 /// سرویس و UI آن در فاز بعد اضافه می‌شود.
-/// TypeBayegani: 0=نامه داخلی
+/// TypeBayegani: 0/1=شخصی، 2=دبیرخانهٔ مشترک صادره، 3=دبیرخانهٔ مشترک وارده
 /// </summary>
 public class LetterBayegani
 {

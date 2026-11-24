@@ -1,5 +1,6 @@
 @using Inventory.Shared.Dtos
 @inject IOutgoingLetterService OutgoingSvc
+@inject IIncomingLetterService IncomingSvc
 @inject IToastService Toast
 
 @* ============================================================
@@ -10,7 +11,7 @@
 
 <div class="scard secretariat-archive">
     <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
-        <b style="font-size:14px"><i class="bi bi-archive" style="color:#7c3aed"></i> بایگانی دبیرخانه</b>
+        <b style="font-size:14px"><i class="bi bi-archive" style="color:#7c3aed"></i> بایگانی مشترک دبیرخانه — @(Incoming ? "وارده" : "صادره")</b>
         <span style="font-size:12px;color:#64748b">@CountLetters(Tree).FaDigits() نامه در @CountFolders(Tree).FaDigits() پوشه</span>
         <button class="lbtn ghost" style="margin-inline-start:auto" @onclick="StartCreateRoot">
             <i class="bi bi-folder-plus"></i> پوشه جدید
@@ -43,7 +44,11 @@
     }
 </div>
 
+<DabirkhaneArchivePicker @ref="folderMover" Incoming="Incoming" />
+
 @code {
+    [Parameter] public bool Incoming { get; set; }
+    private DabirkhaneArchivePicker? folderMover;
     [Parameter] public List<BayeganiNodeDto> Tree { get; set; } = new();
     [Parameter] public EventCallback<int> OnOpen { get; set; }
     [Parameter] public EventCallback<int> OnUnarchive { get; set; }
@@ -96,7 +101,9 @@
         if (string.IsNullOrWhiteSpace(newFolderName)) { Toast.Error("نام پوشه را وارد کنید."); return; }
         try
         {
-            await OutgoingSvc.AddDabirkhaneMainCategoryAsync(new SaveBayeganiFolderDto { Title = newFolderName.Trim() });
+            var dto = new SaveBayeganiFolderDto { Title = newFolderName.Trim() };
+            if (Incoming) await IncomingSvc.AddSecretariatMainCategoryAsync(dto);
+            else await OutgoingSvc.AddDabirkhaneMainCategoryAsync(dto);
             creatingRoot = false;
             await OnRefresh.InvokeAsync();
         }
@@ -110,11 +117,9 @@
         if (string.IsNullOrWhiteSpace(subName)) { Toast.Error("نام زیرپوشه را وارد کنید."); return; }
         try
         {
-            await OutgoingSvc.AddDabirkhaneSubCategoryAsync(new SaveBayeganiFolderDto
-            {
-                Title = subName.Trim(),
-                ParentId = parentId
-            });
+            var dto = new SaveBayeganiFolderDto { Title = subName.Trim(), ParentId = parentId };
+            if (Incoming) await IncomingSvc.AddSecretariatSubCategoryAsync(dto);
+            else await OutgoingSvc.AddDabirkhaneSubCategoryAsync(dto);
             addingSubId = null;
             await OnRefresh.InvokeAsync();
         }
@@ -128,7 +133,9 @@
         if (string.IsNullOrWhiteSpace(renameValue)) { Toast.Error("عنوان را وارد کنید."); return; }
         try
         {
-            await OutgoingSvc.EditDabirkhaneFolderAsync(id, new SaveBayeganiFolderDto { Title = renameValue.Trim() });
+            var dto = new SaveBayeganiFolderDto { Title = renameValue.Trim() };
+            if (Incoming) await IncomingSvc.EditSecretariatFolderAsync(id, dto);
+            else await OutgoingSvc.EditDabirkhaneFolderAsync(id, dto);
             renamingId = null;
             await OnRefresh.InvokeAsync();
         }
@@ -139,8 +146,23 @@
     {
         try
         {
-            await OutgoingSvc.DeleteDabirkhaneBayeganiAsync(n.BayeganiId);
+            if (Incoming) await IncomingSvc.DeleteSecretariatNodeAsync(n.BayeganiId);
+            else await OutgoingSvc.DeleteDabirkhaneBayeganiAsync(n.BayeganiId);
             Toast.Success("پوشه حذف شد.");
+            await OnRefresh.InvokeAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task MoveFolder(BayeganiNodeDto node)
+    {
+        if (folderMover == null) return;
+        var parentId = await folderMover.PickAsync("انتقال پوشهٔ مشترک", "پوشه مقصد یا ریشه را انتخاب کنید.", node.BayeganiId);
+        if (parentId == null) return;
+        try
+        {
+            if (Incoming) await IncomingSvc.MoveSecretariatFolderAsync(node.BayeganiId, parentId.Value);
+            else await OutgoingSvc.MoveDabirkhaneFolderAsync(node.BayeganiId, parentId.Value);
             await OnRefresh.InvokeAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -179,6 +201,8 @@
                                 @onclick="() => StartSub(n.BayeganiId)"><i class="bi bi-folder-plus"></i></button>
                         <button class="lbtn ghost" style="padding:1px 6px;font-size:11px" title="تغییر نام"
                                 @onclick="() => StartRename(n)"><i class="bi bi-pencil"></i></button>
+                        <button class="lbtn ghost" style="padding:1px 6px;font-size:11px" title="انتقال پوشه"
+                                @onclick="() => MoveFolder(n)"><i class="bi bi-folder-symlink"></i></button>
                         <button class="lbtn ghost" style="padding:1px 6px;font-size:11px" title="حذف پوشه"
                                 @onclick="() => DeleteFolder(n)"><i class="bi bi-trash"></i></button>
                     </span>

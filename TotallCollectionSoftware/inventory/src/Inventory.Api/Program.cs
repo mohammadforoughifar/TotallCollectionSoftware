@@ -255,6 +255,7 @@ builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 // ساختار شماره اندیکاتور (LetterStrature) و بایگانی درختی نامه‌ها
 builder.Services.AddScoped<ILetterStratureService, LetterStratureService>();
 builder.Services.AddScoped<IArchiveService, ArchiveService>();
+builder.Services.AddScoped<IIncomingSecretariatArchiveService, ArchiveService>();
 // سازمان‌ها/سمت‌ها — مبنای جزء «واحد» در شماره نامه (Organization.NameUniq)
 builder.Services.AddScoped<IOrganizationServices, OrganizationServices>();
 

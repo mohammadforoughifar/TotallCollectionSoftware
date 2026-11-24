@@ -16,6 +16,15 @@ public sealed class Fixture
     public List<DabirkhaneListItemDto> Outgoing { get; } = new();
     public List<IncomingLetterListItemDto> Registered { get; } = new();
     public List<IncomingLetterListItemDto> Archived { get; } = new();
+    public List<(string Method, object? Payload)> ArchiveCommands { get; } = new();
+    public List<BayeganiNodeDto> IncomingFolders { get; } = new();
+    public List<BayeganiNodeDto> IncomingArchiveTree() => IncomingFolders.Select(f => new BayeganiNodeDto
+    {
+        BayeganiId = f.BayeganiId, Title = f.Title, ParentId = f.ParentId, TypeBayegani = 3, SourceType = 3, IsFolder = true,
+        Children = f.BayeganiId == 9100 ? Archived.Select(l => new BayeganiNodeDto
+        { BayeganiId = l.SecretariatBayeganiId ?? 0, ParentId = 9100, LetterId = l.LetterId, Title = l.Title,
+            LetterNumber = l.LetterNumber, SourceType = 3, TypeBayegani = 3, CreatorUserId = l.SenderUserId, Sender = l.Sender }).ToList() : new()
+    }).ToList();
     public List<BayeganiNodeDto> ArchiveTree { get; private set; } = new();
     public int IncomingDetailReads { get; set; }
     public int OutgoingReadWrites { get; set; }
@@ -34,6 +43,8 @@ public sealed class Fixture
     }
     public void Reset()
     {
+        ArchiveCommands.Clear(); IncomingFolders.Clear();
+        IncomingFolders.Add(new() { BayeganiId = 9100, Title = "پوشه مشترک وارده", IsFolder = true, TypeBayegani = 3, SourceType = 3 });
         Calls.Clear(); IncomingDetailReads = 0; OutgoingReadWrites = 0; Outgoing.Clear(); Registered.Clear(); Archived.Clear(); Auth.CanRegister = true;
         void Out(int id, int? creator, string creatorName, bool registered = false, int? registrar = null, string? registrarName = null, bool archived = false)
             => Outgoing.Add(new()
@@ -72,7 +83,7 @@ public sealed class Fixture
         static IncomingLetterListItemDto In(int id, int sender, string name, int? erja = null, bool archived = false) => new()
         {
             LetterId = id, ErjaId = erja, NumberSabt = id, LetterNumber = id.ToString(), Title = "نامه وارده آزمایشی " + id,
-            Ferestande = Outside, SenderUserId = sender, Sender = name, Date = Created, DateErsal = Created.AddDays(1), IsBayegani = archived
+            Ferestande = Outside, SenderUserId = sender, Sender = name, Date = Created, DateErsal = Created.AddDays(1), IsBayegani = archived, SecretariatBayeganiId = archived ? id + 6000 : null
         };
         Registered.Add(In(2000, 21, "ثبت‌کننده وارده هم‌نام"));
         Registered.Add(In(2001, 22, "ثبت‌کننده وارده هم‌نام"));
@@ -80,9 +91,9 @@ public sealed class Fixture
         Registered.Add(In(2003, 0, ""));
         for (var i = 0; i < 12; i++) Registered.Add(In(2100 + i, 110 + i, "ثبت‌کننده با نام طولانی برای آزمون عکس " + (i + 1)));
         Archived.Add(In(2200, 25, "ثبت‌کننده بایگانی مستقیم", archived: true));
-        Archived.Add(In(2201, 61, "ارجاع‌دهنده بایگانی", 701, true));
+        Archived.Add(In(2201, 61, "ثبت‌کننده بایگانی مشترک", archived: true));
         Archived.Add(In(2202, 0, Outside, archived: true)); // Old API: external text is not an internal name.
-        Archived.Add(In(2203, -8, "ارجاع‌دهنده با شناسه نامعتبر", 703, true));
+        Archived.Add(In(2203, -8, "ثبت‌کننده با شناسه نامعتبر", archived: true));
     }
     public OutgoingLetterDetailDto OutgoingDetail(int id)
     {
@@ -177,16 +188,58 @@ public class IncomingProxy : DispatchProxy
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         var name = method!.Name;
-        if (name is nameof(IIncomingLetterService.GetSentAsync) or nameof(IIncomingLetterService.GetArchiveAsync))
+        if (name == nameof(IIncomingLetterService.GetSecretariatAsync))
         {
-            var search = (string?)args![0]; var page = (int)args[1]!; var size = (int)args[2]!;
+            var archived = (bool)args![0]!; var search = (string?)args[1]; var page = (int)args[2]!; var size = (int)args[3]!;
             Fixture.Calls.Enqueue(new("incoming", name, Page: page, Size: size, Search: search));
-            IEnumerable<IncomingLetterListItemDto> rows = name == nameof(IIncomingLetterService.GetSentAsync) ? Fixture.Registered : Fixture.Archived;
+            IEnumerable<IncomingLetterListItemDto> rows = archived ? Fixture.Archived : Fixture.Registered;
             if (!string.IsNullOrWhiteSpace(search)) rows = rows.Where(r => (r.Title + r.Ferestande).Contains(search));
             return Task.FromResult(UnifiedSecretariatAvatarTests.Fixture.Page(rows, page, size));
         }
         var id = args?.FirstOrDefault() is int n ? n : 0;
         Fixture.Calls.Enqueue(new("incoming", name, id));
+        if (name == nameof(IIncomingLetterService.GetSecretariatTreeAsync)) return Task.FromResult(Fixture.IncomingArchiveTree());
+        if (name.Contains("Secretariat"))
+        {
+            Fixture.ArchiveCommands.Add((name, args?.FirstOrDefault()));
+            if (name == nameof(IIncomingLetterService.ArchiveSecretariatLettersAsync))
+            {
+                var command = (ArchiveSecretariatLettersDto)args![0]!;
+                foreach (var letterId in command.LetterIds)
+                {
+                    var row = Fixture.Registered.Single(l => l.LetterId == letterId);
+                    Fixture.Registered.Remove(row); row.IsBayegani = true; row.SecretariatBayeganiId = row.LetterId + 6000; Fixture.Archived.Add(row);
+                }
+                return Task.CompletedTask;
+            }
+            if (name == nameof(IIncomingLetterService.UnarchiveSecretariatLetterAsync))
+            {
+                var row = Fixture.Archived.Single(l => l.LetterId == id);
+                Fixture.Archived.Remove(row); row.IsBayegani = false; row.SecretariatBayeganiId = null; Fixture.Registered.Add(row);
+                return Task.CompletedTask;
+            }
+            if (name == nameof(IIncomingLetterService.MoveSecretariatLetterAsync))
+            {
+                var command = (MoveArchivedLetterDto)args![0]!;
+                return Task.FromResult(new BayeganiNodeDto { BayeganiId = command.BayeganiId, ParentId = command.NewParentId, TypeBayegani = 3 });
+            }
+            if (name is nameof(IIncomingLetterService.AddSecretariatMainCategoryAsync) or nameof(IIncomingLetterService.AddSecretariatSubCategoryAsync))
+            {
+                var command = (SaveBayeganiFolderDto)args![0]!;
+                var folder = new BayeganiNodeDto { BayeganiId = 9100 + Fixture.IncomingFolders.Count, Title = command.Title, ParentId = command.ParentId, TypeBayegani = 3, SourceType = 3, IsFolder = true };
+                Fixture.IncomingFolders.Add(folder); return Task.FromResult(folder);
+            }
+            if (name == nameof(IIncomingLetterService.EditSecretariatFolderAsync))
+            {
+                var folder = Fixture.IncomingFolders.Single(f => f.BayeganiId == id);
+                folder.Title = ((SaveBayeganiFolderDto)args![1]!).Title;
+                return Task.FromResult(folder);
+            }
+            if (name == nameof(IIncomingLetterService.DeleteSecretariatNodeAsync))
+            {
+                Fixture.IncomingFolders.RemoveAll(f => f.BayeganiId == id); return Task.CompletedTask;
+            }
+        }
         return name switch
         {
             nameof(IIncomingLetterService.GetDetailAsync) => Task.FromResult(Fixture.IncomingDetail(id)),

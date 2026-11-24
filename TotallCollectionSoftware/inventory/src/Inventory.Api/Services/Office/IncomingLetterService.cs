@@ -16,7 +16,7 @@ public interface IIncomingLetterService
     Task<PagedResult<IncomingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 15);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 15,
         bool? starredOnly = null, bool? attachOnly = null);
-    Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false);
+    Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false, bool canViewSecretariat = false);
     Task<IncomingLetterCartableStatsDto> GetStatsAsync(int userId);
     Task<int> AddAsync(AddIncomingLetterDto dto, int userId);
     Task<int> FinalizeAsync(int letterId, int userId, bool isAdmin);
@@ -170,11 +170,13 @@ public class IncomingLetterService : IIncomingLetterService
                              || e.Source.IncomingLetter!.Ferestande.Contains(s));
         }
 
-        // نامه‌ای که هم با پرچم ارجاع و هم با پرچم ثبت‌کننده بایگانی شده، دو بار در
-        // فهرست نمی‌آید؛ ردیف «ثبت‌کننده» فقط وقتی نمایش داده می‌شود که ردیف ارجاعی
-        // برای همین کاربر وجود نداشته باشد.
+        // فقط وضعیت شخصی: ارجاع خود کاربر یا گرهٔ مستقیم شخصی او. پرچم خود نامه
+        // متعلق به دبیرخانهٔ مشترک است. نامهٔ دارای هر دو مسیر شخصی دوبار نمایش داده نمی‌شود.
         var direct = _db.IncomingLetters.AsNoTracking()
-            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete
+            .Where(l => !l.IsDelete && !l.Source.IsDelete
+                        && _db.LetterBayeganis.Any(b => b.LetterId == l.Id && b.ErjaId == null
+                            && b.UserId == userId && !b.IsFolder && !b.IsDelete
+                            && (b.TypeBayegani == 0 || b.TypeBayegani == 1))
                         && !_db.Erjas.Any(e => e.SourceId == l.Id && e.ReciverUserId == userId
                                                && !e.IsDelete && e.IsBayegani == true));
         if (!string.IsNullOrWhiteSpace(search))
@@ -245,7 +247,10 @@ public class IncomingLetterService : IIncomingLetterService
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
         var q = _db.IncomingLetters.AsNoTracking()
-            .Where(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete && !l.IsBayegani);
+            .Where(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete
+                        && !_db.LetterBayeganis.Any(b => b.LetterId == l.Id && b.ErjaId == null
+                            && b.UserId == userId && !b.IsFolder && !b.IsDelete
+                            && (b.TypeBayegani == 0 || b.TypeBayegani == 1)));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -286,7 +291,7 @@ public class IncomingLetterService : IIncomingLetterService
                 Foriat = l.Foriat,
                 IsNeshan = l.IsNeshan,
                 IsRead = true,
-                IsBayegani = l.IsBayegani,
+                IsBayegani = false,
                 ReciverCount = l.Source.Erjas.Count(x => !x.IsDelete),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
             })
@@ -319,6 +324,11 @@ public class IncomingLetterService : IIncomingLetterService
                              && e.Source.IncomingLetter != null && !e.Source.IncomingLetter.IsDelete
                              && e.IsBayegani == true);
 
+        totalArchive += await _db.IncomingLetters.AsNoTracking().CountAsync(l => !l.IsDelete && !l.Source.IsDelete
+            && _db.LetterBayeganis.Any(b => b.UserId == userId && b.LetterId == l.Id && b.ErjaId == null
+                && !b.IsDelete && !b.IsFolder && (b.TypeBayegani == 0 || b.TypeBayegani == 1))
+            && !_db.Erjas.Any(e => e.SourceId == l.Id && e.ReciverUserId == userId && !e.IsDelete && e.IsBayegani == true));
+
         var totalStarred = await inboxQuery.CountAsync(e => e.IsNeshan);
 
         // عدد روی چیپ‌های «پیوست‌دار» و «دستورکارشده» — از همان کوئری «دریافتی» تا
@@ -340,11 +350,11 @@ public class IncomingLetterService : IIncomingLetterService
         };
     }
 
-    public async Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false)
+    public async Task<IncomingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin, bool canDabirkhane = false, bool canViewSecretariat = false)
     {
         var letter = await _db.IncomingLetters
             .Include(l => l.Source)
-            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete && !l.Source.IsDelete);
 
         if (letter == null) return null;
 
@@ -362,7 +372,7 @@ public class IncomingLetterService : IIncomingLetterService
         // غیرمجاز هم نامه را برای خودش خوانده‌شده علامت می‌زد.
         var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
         var inFlow = myErjas.Count > 0;
-        if (!inFlow && letter.CreateUserId != userId && !isAdmin)
+        if (!inFlow && letter.CreateUserId != userId && !isAdmin && !canViewSecretariat)
             throw new UnauthorizedAccessException("شما در گردش این نامه نیستید و اجازهٔ مشاهدهٔ آن را ندارید.");
 
         // علامت‌گذاری «رویت شد» برای ارجاع‌های همین کاربر
@@ -404,8 +414,8 @@ public class IncomingLetterService : IIncomingLetterService
                 MohlatPasokh = e.MohlatPasokh,
                 IsRead = e.IsRead,
                 DateRead = e.DateRead,
-                Answer = e.Answer,
-                DateAnswer = e.DateAnswer,
+                Answer = (e.ShowForAll || e.SenderUserId == userId || e.ReciverUserId == userId || isAdmin) ? e.Answer : "",
+                DateAnswer = (e.ShowForAll || e.SenderUserId == userId || e.ReciverUserId == userId || isAdmin) ? e.DateAnswer : null,
                 // تأیید/رد پاسخ و نام اقدام‌کننده — ریدر کارتابل بر همین‌ها نشان «تایید ✓/رد ✗» را
                 // می‌سازد. پیش‌تر پر نمی‌شد و پاسخ‌ها همیشه بی‌نشان دیده می‌شدند.
                 TypeTaeed = e.TypeTaeed,
@@ -415,6 +425,10 @@ public class IncomingLetterService : IIncomingLetterService
             .ToListAsync();
 
         var curErja = allErjas.LastOrDefault(e => e.ReciverUserId == userId);
+
+        var hasPersonalDirectArchive = await _db.LetterBayeganis.AsNoTracking().AnyAsync(b =>
+            b.UserId == userId && b.LetterId == letterId && b.ErjaId == null && !b.IsDelete && !b.IsFolder
+            && (b.TypeBayegani == 0 || b.TypeBayegani == 1));
 
         var dto = new IncomingLetterDetailDto
         {
@@ -475,7 +489,7 @@ public class IncomingLetterService : IIncomingLetterService
 
             // «آیا نامه نزد کاربر جاری بایگانی شده» — پرچم روی ارجاعِ خود کاربر است،
             // نه روی نامه. (نامه می‌تواند برای یک کاربر بایگانی و برای دیگری فعال باشد.)
-            IsBayegani = myErjas.Any(e => e.IsBayegani == true)
+            IsBayegani = hasPersonalDirectArchive || myErjas.Any(e => e.IsBayegani == true)
         };
 
         // پیوست‌های نامه — بدون این، بخش «پیوست‌های نامه» در پانل خواننده همیشه خالی بود.

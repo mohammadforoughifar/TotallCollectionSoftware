@@ -1709,11 +1709,12 @@ public partial class OutgoingLetterService : IOutgoingLetterService
             var folderIds = nodes.Select(n => n.ParentId).Where(p => p > 0).Distinct().ToList();
             var folderTitles = folderIds.Count > 0
                 ? await _db.LetterBayeganis.AsNoTracking()
-                    .Where(b => folderIds.Contains(b.BayeganiId))
+                    .Where(b => folderIds.Contains(b.BayeganiId) && b.IsFolder && !b.IsDelete && b.TypeBayegani == 2)
                     .ToDictionaryAsync(b => b.BayeganiId, b => b.Title)
                 : new Dictionary<int, string>();
 
-            var byLetter = nodes.ToDictionary(n => n.LetterId!.Value);
+            var byLetter = nodes.GroupBy(n => n.LetterId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(n => n.BayeganiId).First());
             foreach (var item in list)
             {
                 if (!byLetter.TryGetValue(item.LetterId, out var node)) continue;

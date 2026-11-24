@@ -1,6 +1,8 @@
 @using Inventory.Shared.Dtos
+@using Inventory.Client.Pages.Office.Letters.Outgoing
 @inject IIncomingLetterService IncomingSvc
-@inject ILetterService LetterSvc
+@inject RealtimeService Rt
+@implements IDisposable
 @inject IAuthState Auth
 @inject IToastService Toast
 
@@ -22,11 +24,11 @@
     </style>
     <div class="iin">
         <div class="iin-top">
-            <div><div class="iin-title"><i class="bi bi-inbox-fill"></i> نامه‌های وارده</div><div class="iin-sub">دبیرخانه یکپارچه اتوماسیون اداری</div></div>
+            <div><div class="iin-title"><i class="bi bi-inbox-fill"></i> نامه‌های وارده</div><div class="iin-sub">دبیرخانه یکپارچه — بایگانی مشترک همکاران؛ مستقل از بایگانی شخصی کارتابل</div></div>
             <div class="iin-actions">
                 @if (selectedIds.Count > 0 && view == "registered")
                 {
-                    <button class="iin-btn primary" @onclick="ArchiveSelected">بایگانی گروهی (@selectedIds.Count.FaDigits())</button>
+                    <button class="iin-btn primary" disabled="@archiveBusy" @onclick="ArchiveSelected">بایگانی گروهی (@selectedIds.Count.FaDigits())</button>
                 }
                 <button class="iin-btn @(view == "registered" ? "active" : "")" @onclick='() => SetViewFromNavigation("registered")'><i class="bi bi-check2-circle"></i>ثبت‌شده‌ها</button>
                 <button class="iin-btn @(view == "archived" ? "active" : "")" @onclick='() => SetViewFromNavigation("archived")'><i class="bi bi-archive"></i>بایگانی‌شده‌ها</button>
@@ -42,7 +44,13 @@
         <div class="iin-filter">
             <input class="iin-search" placeholder="جستجو: عنوان، شماره ثبت، فرستنده، کد رهگیری…" @bind="search" @bind:event="oninput" @bind:after="ResetAndReloadAsync" />
             <button class="iin-btn" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i>بروزرسانی</button>
+            <button class="iin-btn" @onclick="ToggleFolders"><i class="bi bi-folder2-open"></i>پوشه‌های مشترک</button>
         </div>
+        @if (showFolders)
+        {
+            <DabirkhaneArchiveTree Incoming="true" Tree="sharedTree" OnOpen="OpenArchivedLetter"
+                OnMove="MoveArchivedLetter" OnUnarchive="UnarchiveById" OnRefresh="ReloadAsync" />
+        }
         @if (loading) { <div class="iin-empty"><div class="spinner-border spinner-border-sm text-primary"></div><div>در حال بارگذاری…</div></div> }
         else if (items.Count == 0) { <div class="iin-empty"><i class="bi bi-inbox fs-3 d-block mb-2"></i>نامه‌ای در این بخش یافت نشد.</div> }
         else
@@ -64,8 +72,12 @@
                             </span>
                         </div>
                         <div class="iin-meta"><span class="letter-external-party"><b>فرستندهٔ مبدأ:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
+                        @if (!string.IsNullOrWhiteSpace(l.SecretariatFolderTitle))
+                        { <div class="iin-meta"><b>پوشهٔ مشترک:</b> @l.SecretariatFolderTitle</div> }
                     </div>
-                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button>@if (CanRegister){<button class="iin-mini" title="ویرایش نامه (حتی پس از رویت گیرندگان)" @onclick="() => OpenEditRow(l)"><i class="bi bi-pencil"></i> ویرایش</button>}<button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
+                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button>@if (CanRegister){<button class="iin-mini" title="ویرایش نامه (حتی پس از رویت گیرندگان)" @onclick="() => OpenEditRow(l)"><i class="bi bi-pencil"></i> ویرایش</button>}@if (view == "archived" && l.SecretariatBayeganiId is { } nodeId)
+                        { <button class="iin-mini" disabled="@archiveBusy" @onclick="() => MoveArchivedLetter(nodeId)"><i class="bi bi-arrow-left-right"></i> انتقال</button> }
+                        <button class="iin-mini" disabled="@archiveBusy" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> @(view == "archived" ? "خروج از بایگانی" : "بایگانی")</button></div>
                 </div>
             }
 
@@ -92,7 +104,7 @@
 <IncomingLetterViewModal @ref="viewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadAsync" />
 <IncomingGardeshModal @ref="flowModal" />
-<BayeganiFolderPickerModal @ref="folderPicker" />
+<DabirkhaneArchivePicker @ref="folderPicker" Incoming="true" />
 @code {
     // پاسخ قدیمیِ بایگانی مستقیم، Sender را نام مبدأ می‌گذاشت و شناسه نداشت؛ آن را کاربر فرض نکنیم.
     private static string RowUserName(IncomingLetterListItemDto row) =>
@@ -101,7 +113,10 @@
 
     private string view = "registered", search = "";
     private readonly HashSet<int> selectedIds = new();
-    private bool loading; private List<IncomingLetterListItemDto> items = new();
+    private bool loading, archiveBusy, showFolders, disposed;
+    private int loadVersion;
+    private List<BayeganiNodeDto> sharedTree = new();
+    private List<IncomingLetterListItemDto> items = new();
     private int registeredTotal, archivedTotal; private ComposeIncomingModal? compose;
 
     // ---------- صفحه‌بندی سمت سرور (هر تب صفحهٔ مستقل) ----------
@@ -120,9 +135,23 @@
             return Enumerable.Range(from, to - from + 1);
         }
     }
-    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet; private BayeganiFolderPickerModal? folderPicker;
+    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet; private DabirkhaneArchivePicker? folderPicker;
     private bool CanRegister => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
-    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        Rt.DataChanged += OnDataChanged;
+        await ReloadAsync();
+    }
+    public void Dispose() { disposed = true; ++loadVersion; Rt.DataChanged -= OnDataChanged; }
+    private void OnDataChanged(string scope)
+    {
+        if (scope == "incoming-letters" && !disposed)
+            _ = InvokeAsync(async () => { await ReloadAsync(); if (!disposed) StateHasChanged(); });
+    }
+    public Task RefreshAsync() => ReloadAsync();
+    private async Task ToggleFolders() { showFolders = !showFolders; await ReloadAsync(); }
+    private Task OpenArchivedLetter(int id) => viewModal!.Open(id);
+
     public async Task OpenCreateFromNavigation()
     {
         if (compose is not null) await compose.OpenCreate();
@@ -134,6 +163,7 @@
     public async Task SetViewFromNavigation(string value)
     {
         view = value;
+        selectedIds.Clear();
         if (value == "archived") archivedPage = 1; else registeredPage = 1;
         await ReloadAsync();
         // فراخوانی از ریلِ والد، رویداد خود این کامپوننت نیست؛ ردیف‌ها/عکس‌های تب تازه را رندر کنیم.
@@ -144,6 +174,7 @@
     {
         registeredPage = 1;
         archivedPage = 1;
+        selectedIds.Clear();
         await ReloadAsync();
     }
 
@@ -151,6 +182,7 @@
     {
         if (p < 1 || p > PageCount || p == Page) return;
         if (view == "archived") archivedPage = p; else registeredPage = p;
+        selectedIds.Clear();
         await ReloadAsync();
     }
     private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
@@ -163,23 +195,22 @@
 
     private async Task ArchiveSelected()
     {
-        if (folderPicker == null || selectedIds.Count == 0) return;
+        if (folderPicker == null || selectedIds.Count == 0 || archiveBusy) return;
+        archiveBusy = true;
+        // Capture IDs before opening the picker: live refresh must not alter the command.
+        var ids = items.Where(l => selectedIds.Contains(l.LetterId)).Select(l => l.LetterId).Distinct().ToList();
         try
         {
-            var folderId = await folderPicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
-            if (folderId is not { } destination || destination <= 0) return;
-            var selected = items.Where(x => selectedIds.Contains(x.LetterId)).ToList();
-            var erjaIds = selected.Where(x => x.ErjaId.HasValue).Select(x => x.ErjaId!.Value).ToList();
-            var directIds = selected.Where(x => !x.ErjaId.HasValue).Select(x => x.LetterId).ToList();
-            if (erjaIds.Count > 0)
-                await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto { FolderId = destination, ErjaIds = erjaIds });
-            foreach (var letterId in directIds)
-                await IncomingSvc.ToggleLetterBayeganiAsync(letterId);
-            Toast.Success($"{selected.Count.FaDigits()} نامه بایگانی شد.");
+            var folderId = await folderPicker.PickAsync("بایگانی گروهی در دبیرخانهٔ مشترک");
+            if (folderId == null || ids.Count == 0) return;
+            await IncomingSvc.ArchiveSecretariatLettersAsync(new ArchiveSecretariatLettersDto
+            { FolderId = folderId.Value, LetterIds = ids });
+            Toast.Success($"{ids.Count.FaDigits()} نامه در دبیرخانه بایگانی شد.");
             selectedIds.Clear();
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { archiveBusy = false; }
     }
 
     private void HandleErjaFromView((int LetterId, int SabtNumber) args) => erjaSheet?.OpenErja(args.LetterId, args.SabtNumber);
@@ -214,60 +245,74 @@
 
     private async Task Archive(IncomingLetterListItemDto l)
     {
+        if (archiveBusy) return;
+        if (l.IsBayegani) { await UnarchiveById(l.LetterId); return; }
+        if (folderPicker == null) return;
+        archiveBusy = true;
         try
         {
-            if (view == "archived")
-            {
-                if (l.ErjaId is { } archivedErja) await LetterSvc.UnarchiveByErjaAsync(archivedErja);
-                else await LetterSvc.UnarchiveByLetterAsync(l.LetterId);
-                Toast.Success("نامه از بایگانی خارج شد.");
-            }
-            else
-            {
-                if (folderPicker == null) return;
-                var folderId = await folderPicker.PickAsync($"بایگانی نامه «{l.Title}»");
-                if (folderId is not { } selectedFolder || selectedFolder <= 0) return;
-                if (l.ErjaId is { } erjaId)
-                    await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto { FolderId = selectedFolder, ErjaIds = new() { erjaId } });
-                else
-                    await IncomingSvc.ToggleLetterBayeganiAsync(l.LetterId);
-                Toast.Success("نامه بایگانی شد.");
-            }
+            var folderId = await folderPicker.PickAsync($"بایگانی مشترک نامه «{l.Title}»");
+            if (folderId == null) return;
+            await IncomingSvc.ArchiveSecretariatLettersAsync(new ArchiveSecretariatLettersDto
+            { FolderId = folderId.Value, LetterIds = new() { l.LetterId } });
+            Toast.Success("نامه در دبیرخانه بایگانی شد.");
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { archiveBusy = false; }
+    }
+    private async Task UnarchiveById(int id)
+    {
+        if (archiveBusy) return;
+        archiveBusy = true;
+        try
+        {
+            await IncomingSvc.UnarchiveSecretariatLetterAsync(id);
+            Toast.Success("نامه از بایگانی مشترک خارج شد؛ بایگانی شخصی کاربران تغییر نکرد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { archiveBusy = false; }
+    }
+    private async Task MoveArchivedLetter(int nodeId)
+    {
+        if (folderPicker == null || archiveBusy) return;
+        archiveBusy = true;
+        try
+        {
+            var folderId = await folderPicker.PickAsync("انتقال نامه به پوشهٔ مشترک");
+            if (folderId == null) return;
+            await IncomingSvc.MoveSecretariatLetterAsync(new MoveArchivedLetterDto
+            { BayeganiId = nodeId, NewParentId = folderId.Value });
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { archiveBusy = false; }
     }
     private async Task ReloadAsync()
     {
+        var version = ++loadVersion;
         loading = true;
         try
         {
             var term = string.IsNullOrWhiteSpace(search) ? null : search;
-            // فقط تب فعال با صفحهٔ جاری واکشی می‌شود؛ تب دیگر برای شمارندهٔ بالای صفحه با صفحهٔ ۱
-            if (view == "archived")
-            {
-                var a = await IncomingSvc.GetArchiveAsync(term, archivedPage, PageSize);
-                archivedTotal = a.TotalCount;
-                items = a.Items.ToList();
-                var r = await IncomingSvc.GetSentAsync(term, 1, 1);
-                registeredTotal = r.TotalCount;
-            }
-            else
-            {
-                var r = await IncomingSvc.GetSentAsync(term, registeredPage, PageSize);
-                registeredTotal = r.TotalCount;
-                items = r.Items.ToList();
-                var a = await IncomingSvc.GetArchiveAsync(term, 1, 1);
-                archivedTotal = a.TotalCount;
-            }
-            // اگر بعد از تغییر جستجو صفحهٔ جاری از محدوده خارج شد
+            var archived = view == "archived";
+            var current = await IncomingSvc.GetSecretariatAsync(archived, term, Page, PageSize);
+            var other = await IncomingSvc.GetSecretariatAsync(!archived, term, 1, 1);
+            var tree = showFolders ? await IncomingSvc.GetSecretariatTreeAsync() : new List<BayeganiNodeDto>();
+            if (version != loadVersion || disposed) return;
+            items = current.Items.ToList();
+            registeredTotal = archived ? other.TotalCount : current.TotalCount;
+            archivedTotal = archived ? current.TotalCount : other.TotalCount;
+            sharedTree = tree;
+            selectedIds.IntersectWith(items.Select(l => l.LetterId));
             if (Page > PageCount)
             {
-                if (view == "archived") archivedPage = PageCount; else registeredPage = PageCount;
+                if (archived) archivedPage = PageCount; else registeredPage = PageCount;
                 await ReloadAsync();
             }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion && !disposed) { items = new(); sharedTree = new(); Toast.Error(ex.Message); } }
+        finally { if (version == loadVersion && !disposed) loading = false; }
     }
 }

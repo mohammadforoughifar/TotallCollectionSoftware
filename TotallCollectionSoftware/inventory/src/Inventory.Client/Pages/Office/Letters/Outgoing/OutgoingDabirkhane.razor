@@ -38,7 +38,7 @@
                 <div class="grow"></div>
                 <button title="ثبت نامه وارده جدید" @onclick="OpenIncomingCreate"><i class="bi bi-plus-lg"></i></button>
                 <span class="rlbl">ثبت نامه</span>
-                <button title="بروزرسانی" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
+                <button title="بروزرسانی" @onclick="RefreshIncomingAsync"><i class="bi bi-arrow-clockwise"></i></button>
                 <span class="rlbl">بروزرسانی</span>
             }
             else
@@ -673,6 +673,8 @@
         if (incomingPanel is not null)
             await incomingPanel.OpenCreateFromNavigation();
     }
+
+    private Task RefreshIncomingAsync() => incomingPanel?.RefreshAsync() ?? Task.CompletedTask;
 
     private async Task OpenIncomingView(string view)
     {

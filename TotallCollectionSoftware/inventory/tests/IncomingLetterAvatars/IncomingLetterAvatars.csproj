@@ -17,6 +17,9 @@
     <RazorComponent Include="../../src/Inventory.Client/_Imports.razor" Link="_Imports.razor" />
     <RazorComponent Include="../../src/Inventory.Client/Pages/Office/_Imports.razor" Link="Pages/Office/_Imports.razor" />
     <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Guides/IncomingLetterGuide.razor" Link="Pages/Office/Guides/IncomingLetterGuide.razor" />
+    <!-- The integrated incoming panel now uses these scope-aware shared archive components. -->
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Letters/Outgoing/DabirkhaneArchivePicker.razor" Link="Pages/Office/Letters/Outgoing/DabirkhaneArchivePicker.razor" />
+    <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Letters/Outgoing/DabirkhaneArchiveTree.razor" Link="Pages/Office/Letters/Outgoing/DabirkhaneArchiveTree.razor" />
     <RazorComponent Include="../../src/Inventory.Client/Pages/Office/Letters/Incoming/*.razor"
                     Exclude="../../src/Inventory.Client/Pages/Office/Letters/Incoming/ComposeIncomingModal.razor;../../src/Inventory.Client/Pages/Office/Letters/Incoming/IncomingErjaSheet.razor"
                     Link="Pages/Office/Letters/Incoming/%(Filename)%(Extension)" />

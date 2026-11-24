@@ -425,7 +425,7 @@ public class BayeganiNodeDto
     public string Title { get; set; } = "";
     public int ParentId { get; set; }
 
-    /// <summary>نوع بایگانی — ۱ = بایگانی شخصی</summary>
+    /// <summary>نوع بایگانی — ۰/۱ = شخصی، ۲ = دبیرخانهٔ مشترک صادره، ۳ = دبیرخانهٔ مشترک وارده</summary>
     public int TypeBayegani { get; set; } = 1;
     public bool IsFolder { get; set; }
 
@@ -443,10 +443,10 @@ public class BayeganiNodeDto
 
     // ==================== ویژهٔ بایگانی دبیرخانه (نامه صادره) ====================
 
-    /// <summary>1 = نامه داخلی، 2 = نامه صادره (بایگانی دبیرخانه)</summary>
+    /// <summary>1 = داخلی، 2 = صادره، 3 = وارده</summary>
     public int SourceType { get; set; } = 1;
 
-    /// <summary>شناسهٔ ایجادکنندهٔ نامهٔ صادره در بایگانی دبیرخانه؛ نه صاحب پوشه یا بایگانی‌کننده.</summary>
+    /// <summary>شناسهٔ ایجادکنندهٔ نامه در بایگانی دبیرخانه؛ نه صاحب پوشه یا بایگانی‌کننده.</summary>
     public int? CreatorUserId { get; set; }
 
     /// <summary>سازمان/شرکت مقصد نامه صادره</summary>

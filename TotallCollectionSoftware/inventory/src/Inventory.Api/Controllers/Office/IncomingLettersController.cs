@@ -16,7 +16,7 @@ namespace Inventory.Api.Controllers;
 [ApiController]
 [Route("api/incoming-letters")]
 [Authorize]
-public class IncomingLettersController : RbacControllerBase
+public partial class IncomingLettersController : RbacControllerBase
 {
     private const string Module = "IncomingLetters";
 
@@ -40,18 +40,19 @@ public class IncomingLettersController : RbacControllerBase
     ///
     /// نامهٔ حذف‌شده یا ناموجود → false (نه استثنا)، تا endpoint همان 404 قبلی را بدهد.
     /// </summary>
-    private async Task<bool> CanAccessLetterAsync(int letterId)
+    private async Task<bool> CanAccessLetterAsync(int letterId, bool allowSecretariat = false)
     {
         if (letterId <= 0) return false;
 
         var creatorUserId = await Db.IncomingLetters.AsNoTracking()
-            .Where(x => x.Id == letterId && !x.IsDelete)
+            .Where(x => x.Id == letterId && !x.IsDelete && !x.Source.IsDelete)
             .Select(x => (int?)x.CreateUserId)
             .FirstOrDefaultAsync();
         if (creatorUserId == null) return false;
 
         if (creatorUserId.Value == MyUserId) return true;
         if (await IsAdminAsync()) return true;
+        if (allowSecretariat && await HasSecretariatAccessAsync()) return true;
 
         return await Db.Erjas.AnyAsync(e =>
             e.SourceId == letterId && e.ReciverUserId == MyUserId && !e.IsDelete);
@@ -124,12 +125,12 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetDetail(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await HasSecretariatAccessAsync() && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         try
         {
             // پرچمِ «دبیرخانه» هم پاس می‌شود تا همکارِ دبیرخانه بتواند نامهٔ ثبت‌شده توسط
             // دیگری را (حتی پس از رویتِ گیرندگان) ویرایش کند.
-            var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync(), await HasDabirkhaneAsync());
+            var detail = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync(), await HasDabirkhaneAsync(), await HasSecretariatAccessAsync());
             if (detail == null) return NotFound(new { message = "نامه وارده یافت نشد." });
             return Ok(detail);
         }
@@ -237,8 +238,8 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/gardesh")]
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take));
+        if (!await HasSecretariatAccessAsync() && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination, await HasSecretariatAccessAsync()), skip, take));
     }
 
     [HttpPost("erja/{erjaId:int}/answer")]
@@ -294,65 +295,35 @@ public class IncomingLettersController : RbacControllerBase
     [HttpPost("{id:int}/bayegani")]
     public async Task<IActionResult> ToggleLetterBayegani(int id)
     {
+        // Legacy cartable route: always personal. Shared archive changes use the
+        // explicit /dabirkhane/bayegani endpoints, never a personal toggle.
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var letter = await Db.IncomingLetters.FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
+        var letter = await Db.IncomingLetters.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == id && !l.IsDelete && !l.Source.IsDelete);
         if (letter == null) return NotFound(new { message = "نامه وارده پیدا نشد." });
-        if (letter.CreateUserId != MyUserId && !await IsAdminAsync() && !await HasDabirkhaneAsync()) return StatusCode(403, new { message = "فقط ثبت‌کننده، دبیرخانه یا مدیر می‌تواند نامه را بایگانی کند." });
-        letter.IsBayegani = !letter.IsBayegani;
-
-        // رکورد درخت بایگانی هم هم‌زمان ساخته/حذف می‌شود؛ وگرنه نامه از دریافتی خارج
-        // می‌شود ولی در ریل «بایگانی» (که از درخت خوانده می‌شود) هیچ اثری نمی‌گذارد.
-        // کلید مشترک IncomingLetter با LetterSource همان Id است (SourceId وجود ندارد)
-        var myErja = await Db.Erjas.AsNoTracking()
-            .Where(e => e.SourceId == letter.Id && e.ReciverUserId == MyUserId && !e.IsDelete)
-            .OrderByDescending(e => e.ErjaId)
-            .Select(e => new { e.ErjaId })
-            .FirstOrDefaultAsync();
-        if (myErja != null)
+        var myErja = await Db.Erjas.Where(e => e.SourceId == id && e.ReciverUserId == MyUserId && !e.IsDelete)
+            .OrderByDescending(e => e.ErjaId).FirstOrDefaultAsync();
+        if (letter.CreateUserId != MyUserId && myErja == null)
+            return StatusCode(403, new { message = "این نامه در کارتابل شخصی شما نیست." });
+        var archived = await Db.LetterBayeganis.AnyAsync(b => b.UserId == MyUserId && !b.IsFolder && !b.IsDelete
+            && (b.TypeBayegani == 0 || b.TypeBayegani == 1)
+            && (b.LetterId == id || (myErja != null && b.ErjaId == myErja.ErjaId)));
+        archived = archived || myErja?.IsBayegani == true;
+        if (archived)
+            await _archive.UnarchiveIncomingLetterAsync(id, MyUserId);
+        else
         {
-            var row = await Db.LetterBayeganis.FirstOrDefaultAsync(b =>
-                b.ErjaId == myErja.ErjaId && b.UserId == MyUserId && !b.IsFolder && !b.IsDelete);
-            if (letter.IsBayegani)
+            Db.LetterBayeganis.Add(new LetterBayegani
             {
-                if (row == null)
-                    Db.LetterBayeganis.Add(new LetterBayegani
-                    {
-                        Title = (letter.Title ?? "نامه").Length > 200 ? letter.Title![..200] : (letter.Title ?? "نامه"),
-                        ErjaId = myErja.ErjaId,
-                        // شناسهٔ نامه هم ثبت می‌شود تا هنگام خروج از بایگانی، گره درختی
-                        // با اطمینان پیدا و بسته شود (پیش‌تر فقط ErjaId ذخیره می‌شد).
-                        LetterId = letter.Id,
-                        ParentId = 0,
-                        UserId = MyUserId,
-                        TypeBayegani = 1,
-                        IsFolder = false,
-                        IsDelete = false
-                    });
-            }
-            else if (row != null)
-            {
-                row.IsDelete = true;
-            }
-
-            // وضعیت ارجاع هم همان ما بماند تا فهرست دریافتی/بایگانی هم‌خوان باشد
-            var erja = await Db.Erjas.FirstOrDefaultAsync(e => e.ErjaId == myErja.ErjaId);
-            if (erja != null) erja.IsBayegani = letter.IsBayegani;
+                Title = letter.Title.Length > 200 ? letter.Title[..200] : letter.Title,
+                LetterId = id, ErjaId = myErja?.ErjaId, ParentId = 0,
+                UserId = MyUserId, TypeBayegani = 1
+            });
+            if (myErja != null) myErja.IsBayegani = true;
+            await Db.SaveChangesAsync();
+            await _notify.BroadcastChangedAsync("incoming-letters");
         }
-
-        // خروج از بایگانی: هر گره درختیِ همین نامه/ارجاع برای همین کاربر بسته می‌شود.
-        // پیش‌تر فقط رکوردی که با ErjaId ساخته شده بود بسته می‌شد و گره‌های کلیدخورده با
-        // شناسهٔ نامه (ثبت‌کننده/دبیرخانه) در درخت می‌ماندند — نامه از «دریافتی/ارسالی»
-        // بیرون می‌رفت ولی در بایگانی می‌ماند (یا برعکس، گم می‌شد).
-        if (!letter.IsBayegani)
-        {
-            var letterNodes = await Db.LetterBayeganis
-                .Where(b => b.UserId == MyUserId && !b.IsFolder && !b.IsDelete && b.LetterId == letter.Id)
-                .ToListAsync();
-            foreach (var node in letterNodes) node.IsDelete = true;
-        }
-
-        await Db.SaveChangesAsync();
-        return Ok(new { isBayegani = letter.IsBayegani });
+        return Ok(new { isBayegani = !archived });
     }
 
     /// <summary>
@@ -451,9 +422,9 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pagination = new Paging.Request(skip, take);
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await HasSecretariatAccessAsync() && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         // مجوز ماژول به‌تنهایی کافی نیست — باید در گردشِ همین نامه هم باشد
-        if (!await CanAccessLetterAsync(id))
+        if (!await CanAccessLetterAsync(id, allowSecretariat: true))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دیدن پیوست‌های آن را ندارید." });
 
         // ⚠ ستون Data (بایت‌های فایل) عمداً select نمی‌شود؛ فقط طول آن در SQL حساب
@@ -561,14 +532,14 @@ public class IncomingLettersController : RbacControllerBase
         // باگ قبلی: این endpoint «هیچ» بررسی نداشت — نه مجوز ماژول، نه مالکیت.
         // با پیمایش attId هر پیوستی (از جمله پیوست نامهٔ سرّی) قابل دانلود بود (IDOR).
         // نمونهٔ همسان در EmailController.DownloadAttachment این گارد را دارد.
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await HasSecretariatAccessAsync() && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
         var a = await Db.AppAttachments.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == attId && x.Module == Module);
         if (a == null) return NotFound();
 
         // دسترسی به «فایل» از دسترسی به «نامه» مشتق می‌شود، نه از بارگذارندهٔ فایل
-        if (!await CanAccessLetterAsync(a.RefId))
+        if (!await CanAccessLetterAsync(a.RefId, allowSecretariat: true))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید و اجازهٔ دانلود پیوست را ندارید." });
 
         var bytes = (a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null) ?? (a.Data is { Length: > 0 } ? a.Data : null);
@@ -580,8 +551,8 @@ public class IncomingLettersController : RbacControllerBase
     [HttpGet("{id:int}/attachments/download-zip")]
     public async Task<IActionResult> DownloadAttachmentsZip(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        if (!await CanAccessLetterAsync(id))
+        if (!await HasSecretariatAccessAsync() && await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await CanAccessLetterAsync(id, allowSecretariat: true))
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
 
         // فهرست بدون ستون Data؛ فایلِ رکوردهای قدیمی (که داخل دیتابیس است) تک‌تک

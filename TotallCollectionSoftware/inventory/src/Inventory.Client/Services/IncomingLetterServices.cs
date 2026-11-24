@@ -4,6 +4,18 @@ namespace Inventory.Client.Services;
 
 public interface IIncomingLetterService
 {
+    // Shared secretariat routes are deliberately separate from GetArchive/GetSent and private toggles.
+    Task<PagedResult<IncomingLetterListItemDto>> GetSecretariatAsync(bool archived, string? search = null, int page = 1, int pageSize = 15);
+    Task<List<BayeganiNodeDto>> GetSecretariatTreeAsync();
+    Task<BayeganiNodeDto> AddSecretariatMainCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> AddSecretariatSubCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> EditSecretariatFolderAsync(int id, SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> MoveSecretariatFolderAsync(int id, int newParentId);
+    Task DeleteSecretariatNodeAsync(int id);
+    Task ArchiveSecretariatLettersAsync(ArchiveSecretariatLettersDto dto);
+    Task UnarchiveSecretariatLetterAsync(int letterId);
+    Task<BayeganiNodeDto> MoveSecretariatLetterAsync(MoveArchivedLetterDto dto);
+
     Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15, bool? starredOnly = null,
         bool? attachOnly = null, bool? workOrderOnly = null);
     Task<PagedResult<IncomingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15,
@@ -103,6 +115,31 @@ public class IncomingLetterService : IIncomingLetterService
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         return ListOrPaged.GetPagedAsync<IncomingLetterListItemDto>(_api, $"api/incoming-letters/archive?{string.Join("&", qs)}");
     }
+
+    public Task<PagedResult<IncomingLetterListItemDto>> GetSecretariatAsync(bool archived, string? search = null, int page = 1, int pageSize = 15)
+    {
+        var qs = $"archived={archived.ToString().ToLowerInvariant()}&page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(search)) qs += $"&search={Uri.EscapeDataString(search)}";
+        return ListOrPaged.GetPagedAsync<IncomingLetterListItemDto>(_api, $"api/incoming-letters/dabirkhane?{qs}");
+    }
+    public Task<List<BayeganiNodeDto>> GetSecretariatTreeAsync() =>
+        ListOrPaged.GetAsync<BayeganiNodeDto>(_api, "api/incoming-letters/dabirkhane/bayegani/tree");
+    public Task<BayeganiNodeDto> AddSecretariatMainCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/incoming-letters/dabirkhane/bayegani/main-category", dto);
+    public Task<BayeganiNodeDto> AddSecretariatSubCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/incoming-letters/dabirkhane/bayegani/sub-category", dto);
+    public Task<BayeganiNodeDto> EditSecretariatFolderAsync(int id, SaveBayeganiFolderDto dto) =>
+        _api.PutAsync<BayeganiNodeDto>($"api/incoming-letters/dabirkhane/bayegani/folder/{id}", dto);
+    public Task<BayeganiNodeDto> MoveSecretariatFolderAsync(int id, int newParentId) =>
+        _api.PostAsync<BayeganiNodeDto>($"api/incoming-letters/dabirkhane/bayegani/folder/{id}/move?newParentId={newParentId}");
+    public Task DeleteSecretariatNodeAsync(int id) =>
+        _api.DeleteAsync($"api/incoming-letters/dabirkhane/bayegani/{id}");
+    public Task ArchiveSecretariatLettersAsync(ArchiveSecretariatLettersDto dto) =>
+        _api.PostAsync<object>("api/incoming-letters/dabirkhane/bayegani/letters", dto);
+    public Task UnarchiveSecretariatLetterAsync(int letterId) =>
+        _api.DeleteAsync($"api/incoming-letters/dabirkhane/bayegani/letter/{letterId}");
+    public Task<BayeganiNodeDto> MoveSecretariatLetterAsync(MoveArchivedLetterDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/incoming-letters/dabirkhane/bayegani/move-letter", dto);
 
     public Task<IncomingLetterCartableStatsDto> GetStatsAsync() =>
         _api.GetAsync<IncomingLetterCartableStatsDto>("api/incoming-letters/stats");

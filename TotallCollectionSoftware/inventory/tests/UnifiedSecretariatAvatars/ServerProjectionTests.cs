@@ -30,12 +30,13 @@ public static class ServerProjectionTests
         var incoming = Read("src/Inventory.Api/Services/Office/IncomingLetterService.cs");
         var outgoing = Read("src/Inventory.Api/Services/Office/Outgoing/OutgoingLetterService.cs");
         var archive = Read("src/Inventory.Api/Services/Office/ArchiveService.cs");
+        var sharedArchive = Read("src/Inventory.Api/Services/Office/ArchiveService.Secretariat.cs");
         static MethodDeclarationSyntax Method(SyntaxNode node, string name) => node.DescendantNodes().OfType<MethodDeclarationSyntax>().Single(m => m.Identifier.ValueText == name && m.Body != null);
         static IEnumerable<ObjectCreationExpressionSyntax> Objects(SyntaxNode node, string dto) => node.DescendantNodes().OfType<ObjectCreationExpressionSyntax>().Where(n => n.Type.ToString() == dto);
         static string Expr(ObjectCreationExpressionSyntax node, string field) => node.Initializer!.Expressions.OfType<AssignmentExpressionSyntax>().Single(a => a.Left.ToString() == field).Right.ToString();
         var sent = Method(incoming, "GetSentAsync");
         var archived = Method(incoming, "GetArchiveAsync");
-        foreach (var pair in new[] { ("registered", sent), ("direct archive", archived) })
+        foreach (var pair in new[] { ("registered", sent), ("direct archive", archived), ("shared secretariat", Method(sharedArchive, "GetIncomingSecretariatAsync")) })
         {
             var node = Objects(pair.Item2, nameof(IncomingLetterListItemDto)).Single(n => Expr(n, "SenderUserId") == "l.CreateUserId");
             var project = Compile<Func<IncomingSeed, UserContext, IncomingLetterListItemDto>>(
@@ -56,7 +57,7 @@ public static class ServerProjectionTests
             Check(result.SenderUserId == 999 && result.Sender == "", pair.Item1 + ": missing user is never resolved from matching external/display text");
             Check(!pair.Item2.ToString().Contains("SaveChanges") && !pair.Item2.ToString().Contains("GetDetailAsync"), pair.Item1 + ": identity projection performs no read-state save or detail retrieval");
         }
-        Check(sent.ToString().Contains("l.CreateUserId == userId") && archived.ToString().Contains("e.ReciverUserId == userId") && archived.ToString().Contains("l.CreateUserId == userId"),
+        Check(sent.ToString().Contains("l.CreateUserId == userId") && archived.ToString().Contains("e.ReciverUserId == userId") && archived.ToString().Contains("b.UserId == userId"),
             "incoming registered/archive access scopes remain user-bound");
         var inboxNode = Objects(Method(incoming, "GetInboxAsync"), nameof(IncomingLetterListItemDto)).Single();
         Check(Expr(inboxNode, "SenderUserId") == "e.SenderUserId", "received inbox still uses the referral's sender, never the original registrar");
@@ -78,7 +79,7 @@ public static class ServerProjectionTests
         var treeNode = Objects(tree, nameof(BayeganiNodeDto)).Single();
         var archiveProject = Compile<Func<OutgoingSeed, BayeganiNodeDto>>("BayeganiNodeDto", "OutgoingSeed l", $"CreatorUserId = {Expr(treeNode, "CreatorUserId")}");
         Check(archiveProject(new(13, 53)).CreatorUserId == 13 && tree.ToString().Contains("n.CreatorUserId = li.CreatorUserId;"), "archive carries the letter creator ID through final tree-node hydration");
-        Check(tree.ToString().Contains("b.UserId == userId") && tree.ToString().Contains("ReadTreePageAsync") && !tree.ToString().Contains("SaveChanges"), "archive ownership, tree paging and read-only behavior stay intact");
+        Check(!tree.ToString().Contains("b.UserId == userId") && tree.ToString().Contains("SharedArchiveRows(TypeOutgoing)") && tree.ToString().Contains("ReadTreePageAsync") && !tree.ToString().Contains("SaveChanges"), "shared archive has no per-user ownership filter; type scope, tree paging and read-only behavior stay intact");
 
         var old = System.Text.Json.JsonSerializer.Deserialize<DabirkhaneListItemDto>("{\"CreatorUserId\":11,\"DabirkhaneUserName\":\"same name\"}")!;
         Check(old.DabirkhaneUserId == null, "old API JSON without the new optional ID safely yields a default avatar");

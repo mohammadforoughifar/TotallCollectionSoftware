@@ -1,5 +1,6 @@
 @using Inventory.Shared.Dtos
 @inject IOutgoingLetterService OutgoingSvc
+@inject IIncomingLetterService IncomingSvc
 @inject IToastService Toast
 
 @* ============================================================
@@ -35,11 +36,11 @@
                         {
                             <div class="pk-row @(selectedId == 0 ? "sel" : "")" @onclick="() => selectedId = 0">
                                 <span class="chev-ph"></span>
-                                <i class="bi bi-house fld"></i> ریشه بایگانی دبیرخانه
+                                <i class="bi bi-house fld"></i> ریشه بایگانی مشترک دبیرخانه
                             </div>
                             @if (Folders.Count == 0)
                             {
-                                <div class="empty" style="padding:18px 0"><i class="bi bi-folder-x"></i> هنوز پوشه‌ای ندارید — از پایین یک پوشه بسازید</div>
+                                <div class="empty" style="padding:18px 0"><i class="bi bi-folder-x"></i> هنوز پوشه‌ای ساخته نشده است — از پایین یک پوشه بسازید</div>
                             }
                             @foreach (var f in Folders)
                             {
@@ -75,6 +76,7 @@
 }
 
 @code {
+    [Parameter] public bool Incoming { get; set; }
     private bool visible;
     private bool loading;
     private string title = "";
@@ -112,7 +114,7 @@
     {
         try
         {
-            tree = await OutgoingSvc.GetDabirkhaneBayeganiTreeAsync();
+            tree = Incoming ? await IncomingSvc.GetSecretariatTreeAsync() : await OutgoingSvc.GetDabirkhaneBayeganiTreeAsync();
             open.Clear();
             AddOpen(tree);
         }
@@ -152,8 +154,9 @@
         if (string.IsNullOrWhiteSpace(quickName)) { Toast.Error("نام دسته را وارد کنید."); return; }
         try
         {
-            var created = await OutgoingSvc.AddDabirkhaneMainCategoryAsync(
-                new SaveBayeganiFolderDto { Title = quickName.Trim() });
+            var dto = new SaveBayeganiFolderDto { Title = quickName.Trim() };
+            var created = Incoming ? await IncomingSvc.AddSecretariatMainCategoryAsync(dto)
+                : await OutgoingSvc.AddDabirkhaneMainCategoryAsync(dto);
             quickCreating = false;
             selectedId = created.BayeganiId;
             await LoadAsync();

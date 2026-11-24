@@ -21,7 +21,7 @@ public interface IErjaService
     /// </summary>
     Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName, bool allowSelfReferral = false);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto, int userId, string userName);
-    Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null);
+    Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null, bool canViewIncomingSecretariat = false);
     Task MarkReadAsync(int erjaId, int userId);
     Task<bool> ToggleNeshanAsync(int erjaId, int userId);
     Task<bool> ToggleBayeganiAsync(int erjaId, int userId);
@@ -281,7 +281,7 @@ public class ErjaService : IErjaService
         await _notify.BroadcastChangedAsync(answerRoute);
     }
 
-    public async Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null)
+    public async Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null, bool canViewIncomingSecretariat = false)
     {
         var source = await _db.LetterSources.AsNoTracking()
             .Include(s => s.InnerLetter)
@@ -302,7 +302,7 @@ public class ErjaService : IErjaService
 
         bool inFlow = creatorUserId == userId ||
                       await _db.Erjas.AnyAsync(e => e.SourceId == sourceId && e.ReciverUserId == userId && !e.IsDelete);
-        if (!inFlow && !isAdmin)
+        if (!inFlow && !isAdmin && !(isIncoming && canViewIncomingSecretariat))
             throw new Exception("شما در گردش این نامه نیستید.");
 
         var scope = _db.Erjas.AsNoTracking()

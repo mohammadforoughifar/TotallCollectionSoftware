@@ -33,6 +33,9 @@ public class IncomingLetterListItemDto
     public bool HasAnswer { get; set; }
     public int ReciverCount { get; set; }
     public bool HasAttachment { get; set; }
+    /// <summary>Only populated by the shared secretariat list; never a personal archive node.</summary>
+    public int? SecretariatBayeganiId { get; set; }
+    public string? SecretariatFolderTitle { get; set; }
 }
 
 /// <summary>جزئیات کامل نامه وارده جهت نمایش در ریدر</summary>
@@ -235,4 +238,12 @@ public class ReserveNumberRequestDto
 {
     public int TypeForm { get; set; } = 3; // پیش‌فرض 3 = وارده
     public int Count { get; set; } = 1;
+}
+
+/// <summary>Explicit, non-toggle archive command for incoming secretariat letters.</summary>
+public class ArchiveSecretariatLettersDto
+{
+    public List<int> LetterIds { get; set; } = new();
+    public int FolderId { get; set; }
+    public string? Title { get; set; }
 }

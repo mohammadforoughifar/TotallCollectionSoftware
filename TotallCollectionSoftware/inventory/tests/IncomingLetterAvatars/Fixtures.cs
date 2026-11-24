@@ -118,6 +118,10 @@ public class IncomingProxy : DispatchProxy
         {
             nameof(IIncomingLetterService.GetDetailAsync) => Task.FromResult(Fixture.ReadDetail((int)args![0]!)),
             nameof(IIncomingLetterService.GetGardeshAsync) => Fixture.TreeLoader((int)args![0]!),
+            nameof(IIncomingLetterService.GetSecretariatAsync) => Task.FromResult(Page(
+                (bool)args![0]! ? Array.Empty<IncomingLetterListItemDto>()
+                    : new[] { new IncomingLetterListItemDto { LetterId = 100, NumberSabt = 100, SenderUserId = 77, Sender = "ثبت‌کننده آزمایشی", Ferestande = IncomingLetterAvatarTests.Fixture.ExternalSender, Title = "نامه ثبت‌شده مشترک", DateErsal = IncomingLetterAvatarTests.Fixture.Entered } },
+                (int)args[2]!, (int)args[3]!)),
             nameof(IIncomingLetterService.GetSentAsync) => Task.FromResult(Page(new[] { new IncomingLetterListItemDto { LetterId = 100, NumberSabt = 100, SenderUserId = 77, Sender = "ثبت‌کننده آزمایشی", Ferestande = IncomingLetterAvatarTests.Fixture.ExternalSender, Title = "نامه ثبت‌شده", DateErsal = IncomingLetterAvatarTests.Fixture.Entered } }, (int)args![1]!, (int)args[2]!)),
             nameof(IIncomingLetterService.GetArchiveAsync) => Task.FromResult(Page(Fixture.Inbox, (int)args![1]!, (int)args[2]!)),
             nameof(IIncomingLetterService.GetStatsAsync) => Task.FromResult(new IncomingLetterCartableStatsDto { TotalInbox = Fixture.Inbox.Count, UnreadCount = Fixture.Inbox.Count(r => !r.IsRead), TotalStarred = Fixture.Inbox.Count(r => r.IsNeshan), TotalSent = 1 }),
