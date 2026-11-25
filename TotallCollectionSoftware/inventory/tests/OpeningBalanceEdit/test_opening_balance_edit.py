@@ -30,6 +30,8 @@ CLIENT_SVC = read('Inventory.Client/Services/InventoryApiServices.cs')
 CLIENT_API = read('Inventory.Client/Services/IInventoryApi.cs')
 DTOS = read('Inventory.Shared/Dtos/OperationDtos.cs')
 IFACE = read('Inventory.Api/Services/Catalog/IInventoryService.cs')
+SEARCH = read('Inventory.Shared/PersianSearch.cs')
+INDEX = read('Inventory.Client/wwwroot/index.html')
 
 # پیام در C# روی دو خط با «+» به هم چسبیده است؛ هر دو نیمه جدا بررسی می‌شوند.
 LOCKED_HEAD = 'این مانده اول دوره گردش تسویه، دریافت یا وصول دارد؛ ویرایش آن غیرفعال است. '
@@ -228,6 +230,139 @@ class WizardContract(unittest.TestCase):
         cheque = PAGE.split('private async Task SaveChequeEditAsync()', 1)[1]
         self.assertIn('ShopIdentifierRules.ValidateCheque(editCheque)', cheque)
         self.assertIn('await ChequeSvc.SaveShopAsync(editCheque);', cheque)
+
+
+class SelectArrowContract(unittest.TestCase):
+    """فلش کمبوباکس نباید روی متن فارسی بیفتد (صفحه RTL است، بوت‌استرپ LTR)."""
+
+    def test_every_select_in_the_module_uses_the_module_class(self):
+        body = PAGE.split('<style>', 1)[0]
+        self.assertEqual(body.count('<select'), 5)
+        for chunk in body.split('<select')[1:]:
+            tag = chunk.split('>', 1)[0]
+            self.assertIn('op-input', tag, tag)
+
+    def test_arrow_is_mirrored_to_the_left_and_text_is_padded(self):
+        css = PAGE.split('<style>', 1)[1]
+        rule = css.split('select.op-input,', 1)[1].split('}', 1)[0]
+        self.assertIn('background-position: left 0.75rem center;', rule)
+        # در RTL padding-inline-end سمت چپ است؛ همان‌جا باید جای فلش خالی شود.
+        self.assertIn('padding-inline-start: 0.75rem;', rule)
+        self.assertIn('padding-inline-end: 2.25rem;', rule)
+        self.assertIn('direction: rtl;', rule)
+        # رفع اشکال فقط داخل ماژول است؛ فایل بوت‌استرپ جهانی دست نمی‌خورد.
+        self.assertNotIn('bootstrap.rtl', INDEX)
+
+    def test_module_keeps_one_style_block(self):
+        self.assertEqual(PAGE.count('<style>'), 1)
+        self.assertEqual(PAGE.count('</style>'), 1)
+
+
+class FormParityContract(unittest.TestCase):
+    """هر چیزی که در فرم افزودن هست، در فرم ویرایش همان بخش هم باید باشد."""
+
+    def setUp(self):
+        self.modal = PAGE.split('Visible="showEditModal"', 1)[1].split('<style>', 1)[0]
+
+    def test_party_edit_has_every_create_field(self):
+        for snippet in ('مبلغ مانده افتتاحیه (ریال)',
+                        'op-money-wrapper @(editParty.IsDebtor ? "border-danger-glow" : "border-success-glow")',
+                        'op-currency-tag">ریال',
+                        '(editParty.Amount / 10).ToString("N0")',
+                        'تاریخ سند افتتاحیه',
+                        'سررسید تسویه نسیه',
+                        'placeholder="مثال: مانده افتتاحیه انتقال از سال مالی قبل / طلب قدیمی"'):
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.modal)
+
+    def test_cheque_edit_has_every_create_field(self):
+        for snippet in ('شناسه صیادی (۱۶ رقم)',
+                        'ShopDigitsInput @bind-Value="editCheque.SayadId"',
+                        'MaxDigits="16" ValidLengths="@(new[] { 16 })"',
+                        'data-opening-edit-bank',
+                        'حساب بانکی صادرکننده (دسته چک شرکت)',
+                        'مبلغ این چک در زمان وصول از موجودی این حساب بانکی کسر خواهد شد.',
+                        'تاریخ سررسید',
+                        'نام یا کد شعبه',
+                        'placeholder="بابت مانده حساب اول دوره / فاکتورهای سال قبل"'):
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.modal)
+
+    def test_installment_edit_matches_the_create_layout(self):
+        for snippet in ('مبلغ میانگین هر قسط:',
+                        'data-opening-edit-preview',
+                        '(editInstallmentTotal / editInstallmentCount).ToString("N0")',
+                        'فاصله زمانی اقساط',
+                        'ماهانه (هر ۱ ماه)',
+                        'تعداد اقساط',
+                        'placeholder="مثال: اقساط باقی‌مانده خرید کالای سال قبل"',
+                        'maxlength="400"'):
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.modal)
+
+    def test_stock_edit_matches_the_create_layout(self):
+        for snippet in ('انبار مقصد کالا',
+                        'کالای مورد نظر',
+                        'بهای تمام‌شده واحد (ریال)',
+                        '@EditStockQuantityHint',
+                        'placeholder="ثبت موجودی افتتاحیه اول دوره انبار"'):
+            with self.subTest(snippet=snippet):
+                self.assertIn(snippet, self.modal)
+
+    def test_quantity_hint_uses_the_selected_product(self):
+        self.assertIn('private string EditStockQuantityHint => stockProducts.FirstOrDefault(p => p.Id == editStockProductId)', PAGE)
+
+
+class SearchContract(unittest.TestCase):
+    """جست‌وجو در هر چهار بخش: کادر، فیلتر و شمارش نتیجه."""
+
+    TABS = ('parties', 'cheques', 'installments', 'stock')
+
+    def test_each_section_has_a_search_box(self):
+        for tab in self.TABS:
+            with self.subTest(tab=tab):
+                self.assertIn(f'data-opening-search="{tab}"', PAGE)
+
+    def test_each_section_filters_its_own_history(self):
+        for filtered, declaration in (
+                ('FilteredPartyBalances', 'private List<PartyBalanceItem> FilteredPartyBalances => recentPartyBalances.Where('),
+                ('FilteredCheques', 'private List<TrsCheque> FilteredCheques => chequesList.Where('),
+                ('FilteredInstallmentOrders', 'private List<Order> FilteredInstallmentOrders => recentInstallmentOrders.Where('),
+                ('FilteredStockLines', 'private List<OpeningStockLine> FilteredStockLines => recentStockLines.Where(')):
+            with self.subTest(filtered=filtered):
+                self.assertIn(declaration, PAGE)
+                # جدول هم همان فهرست فیلترشده را رندر می‌کند، نه فهرست کامل را.
+                self.assertIn(f'@foreach (var ', PAGE)
+                self.assertIn(f' in {filtered})', PAGE)
+
+    def test_search_uses_the_shared_persian_normaliser(self):
+        self.assertIn('PersianSearch.Matches(', PAGE)
+        self.assertIn('namespace Inventory.Shared;', SEARCH)
+        self.assertIn('public static class PersianSearch', SEARCH)
+        self.assertIn("'\\u064a' or '\\u0649' => '\\u06cc'", SEARCH)
+        self.assertIn("'\\u0643' => '\\u06a9'", SEARCH)
+
+    def test_empty_query_shows_everything(self):
+        self.assertIn('var tokens = Tokenize(query);\n        if (tokens.Length == 0) return true;', SEARCH)
+
+    def test_clear_button_and_result_count(self):
+        body = PAGE.split('<style>', 1)[0]
+        self.assertEqual(body.count('class="op-search-clear"'), 4)
+        self.assertEqual(body.count('op-search-box'), 4)
+        self.assertEqual(PAGE.count('SearchSummary(Filtered'), 4)
+        for tab in ('Party', 'Cheque', 'Installment', 'Stock'):
+            with self.subTest(tab=tab):
+                self.assertIn(f'Clear{tab}Search', PAGE)
+
+    def test_search_text_is_normalised_for_money_and_dates(self):
+        self.assertIn('case DateTime date:', SEARCH)
+        self.assertIn('case decimal money:', SEARCH)
+        self.assertIn('money.ToString("#,0.##", CultureInfo.InvariantCulture)', SEARCH)
+        self.assertIn('Fa.Digits(shown)', PAGE)
+
+    def test_cheque_history_is_not_truncated_behind_the_search(self):
+        self.assertNotIn('FilteredCheques.Take(10)', PAGE)
+        self.assertIn('ChequeSvc.GetAllAsync(pageSize: 200)', PAGE)
 
 
 class ExistingBehaviourIsUntouched(unittest.TestCase):
