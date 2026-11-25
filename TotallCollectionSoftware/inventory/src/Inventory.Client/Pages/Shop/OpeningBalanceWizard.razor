@@ -241,6 +241,23 @@
                                 <i class="bi bi-file-earmark-spreadsheet me-1"></i> گزارش جامع طلب و بدهی
                             </a>
                         </div>
+                        <div class="op-table-search">
+                            <div class="op-search-box">
+                                <i class="bi bi-search op-search-icon"></i>
+                                <input type="text" class="form-control form-control-sm op-search-input"
+                                       data-opening-search="parties"
+                                       placeholder="جست‌وجو در افتتاح حساب‌های ثبت‌شده — نام طرف حساب، شرح، مبلغ یا تاریخ…"
+                                       @bind="partySearch" @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(partySearch))
+                                {
+                                    <button type="button" class="op-search-clear" title="پاک کردن جستجو"
+                                            @onclick="ClearPartySearch">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                            </div>
+                            <span class="op-search-count num">@SearchSummary(FilteredPartyBalances.Count, recentPartyBalances.Count)</span>
+                        </div>
 
                         <div class="table-responsive">
                             <table class="table op-table align-middle">
@@ -255,20 +272,22 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @if (recentPartyBalances.Count == 0)
+                                    @if (FilteredPartyBalances.Count == 0)
                                     {
                                         <tr>
                                             <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-inbox fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">هنوز افتتاح حسابی در سوابق ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">
+                                                        @(string.IsNullOrWhiteSpace(partySearch) ? "هنوز افتتاح حسابی در سوابق ثبت نشده است" : "چیزی با این جست‌وجو پیدا نشد")
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
                                     }
                                     else
                                     {
-                                        @foreach (var item in recentPartyBalances)
+                                        @foreach (var item in FilteredPartyBalances)
                                         {
                                             <tr class="op-table-row">
                                                 <td class="fw-bold text-dark">
@@ -456,6 +475,23 @@
                                 <i class="bi bi-box-arrow-up-right me-1"></i> مشاهده کل دفتر چک
                             </a>
                         </div>
+                        <div class="op-table-search">
+                            <div class="op-search-box">
+                                <i class="bi bi-search op-search-icon"></i>
+                                <input type="text" class="form-control form-control-sm op-search-input"
+                                       data-opening-search="cheques"
+                                       placeholder="جست‌وجو در چک‌ها — شماره، صیاد، طرف حساب، بانک، مبلغ یا سررسید…"
+                                       @bind="chequeSearch" @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(chequeSearch))
+                                {
+                                    <button type="button" class="op-search-clear" title="پاک کردن جستجو"
+                                            @onclick="ClearChequeSearch">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                            </div>
+                            <span class="op-search-count num">@SearchSummary(FilteredCheques.Count, chequesList.Count)</span>
+                        </div>
 
                         <div class="table-responsive">
                             <table class="table op-table align-middle">
@@ -471,20 +507,22 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @if (chequesList.Count == 0)
+                                    @if (FilteredCheques.Count == 0)
                                     {
                                         <tr>
                                             <td colspan="7" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-credit-card fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">چکی در سامانه ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">
+                                                        @(string.IsNullOrWhiteSpace(chequeSearch) ? "چکی در سامانه ثبت نشده است" : "چیزی با این جست‌وجو پیدا نشد")
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
                                     }
                                     else
                                     {
-                                        @foreach (var ch in chequesList.Take(10))
+                                        @foreach (var ch in FilteredCheques)
                                         {
                                             <tr class="op-table-row">
                                                 <td>
@@ -623,6 +661,23 @@
                                 <i class="bi bi-wallet2 me-1"></i> پیگیری و وصول اقساط
                             </a>
                         </div>
+                        <div class="op-table-search">
+                            <div class="op-search-box">
+                                <i class="bi bi-search op-search-icon"></i>
+                                <input type="text" class="form-control form-control-sm op-search-input"
+                                       data-opening-search="installments"
+                                       placeholder="جست‌وجو در دفترچه‌ها — شمارهٔ سند، مشتری، مبلغ، تاریخ یا تعداد اقساط…"
+                                       @bind="installmentSearch" @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(installmentSearch))
+                                {
+                                    <button type="button" class="op-search-clear" title="پاک کردن جستجو"
+                                            @onclick="ClearInstallmentSearch">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                            </div>
+                            <span class="op-search-count num">@SearchSummary(FilteredInstallmentOrders.Count, recentInstallmentOrders.Count)</span>
+                        </div>
 
                         <div class="table-responsive">
                             <table class="table op-table align-middle">
@@ -637,20 +692,22 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @if (recentInstallmentOrders.Count == 0)
+                                    @if (FilteredInstallmentOrders.Count == 0)
                                     {
                                         <tr>
                                             <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-calendar-x fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">هنوز اقساط اولیه‌ای در این بخش ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">
+                                                        @(string.IsNullOrWhiteSpace(installmentSearch) ? "هنوز اقساط اولیه‌ای در این بخش ثبت نشده است" : "چیزی با این جست‌وجو پیدا نشد")
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
                                     }
                                     else
                                     {
-                                        @foreach (var o in recentInstallmentOrders)
+                                        @foreach (var o in FilteredInstallmentOrders)
                                         {
                                             <tr class="op-table-row">
                                                 <td class="fw-bold num text-dark">#@o.Id</td>
@@ -766,6 +823,23 @@
                                 <i class="bi bi-file-earmark-excel me-1"></i> ورود گروهی از اکسل
                             </button>
                         </div>
+                        <div class="op-table-search">
+                            <div class="op-search-box">
+                                <i class="bi bi-search op-search-icon"></i>
+                                <input type="text" class="form-control form-control-sm op-search-input"
+                                       data-opening-search="stock"
+                                       placeholder="جست‌وجو در کالاهای اول دوره — نام کالا، انبار، تعداد، فی یا تاریخ…"
+                                       @bind="stockSearch" @bind:event="oninput" />
+                                @if (!string.IsNullOrEmpty(stockSearch))
+                                {
+                                    <button type="button" class="op-search-clear" title="پاک کردن جستجو"
+                                            @onclick="ClearStockSearch">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                }
+                            </div>
+                            <span class="op-search-count num">@SearchSummary(FilteredStockLines.Count, recentStockLines.Count)</span>
+                        </div>
 
                         <div class="table-responsive">
                             <table class="table op-table align-middle">
@@ -780,20 +854,22 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @if (recentStockLines.Count == 0)
+                                    @if (FilteredStockLines.Count == 0)
                                     {
                                         <tr>
                                             <td colspan="6" class="text-center py-5">
                                                 <div class="op-empty-state">
                                                     <i class="bi bi-boxes fs-1 text-muted opacity-50"></i>
-                                                    <div class="fw-bold text-secondary mt-2">هنوز کالای اول دوره‌ای در سوابق ثبت نشده است</div>
+                                                    <div class="fw-bold text-secondary mt-2">
+                                                        @(string.IsNullOrWhiteSpace(stockSearch) ? "هنوز کالای اول دوره‌ای در سوابق ثبت نشده است" : "چیزی با این جست‌وجو پیدا نشد")
+                                                    </div>
                                                 </div>
                                             </td>
                                         </tr>
                                     }
                                     else
                                     {
-                                        @foreach (var sl in recentStockLines)
+                                        @foreach (var sl in FilteredStockLines)
                                         {
                                             <tr class="op-table-row">
                                                 <td class="text-secondary fw-500">@sl.WarehouseName</td>
@@ -843,7 +919,7 @@
 
             <div class="col-12">
                 <label class="form-label fw-bold fs-8">۱. انتخاب انبار مقصد کالاها <span class="text-danger">*</span></label>
-                <select class="form-select @(excelWarehouseId == 0 ? "border-danger" : "")" @bind="excelWarehouseId">
+                <select class="form-select op-input @(excelWarehouseId == 0 ? "border-danger" : "")" @bind="excelWarehouseId">
                     <option value="0">— انبار مورد نظر را انتخاب کنید (الزامی) —</option>
                     @foreach (var w in warehouseLookup)
                     {
@@ -936,19 +1012,23 @@
                         </div>
                         <div class="op-helper-text text-secondary">ماهیت مانده پس از ثبت تغییر نمی‌کند.</div>
                     </div>
-                    <div class="col-12 col-md-6">
+                    <div class="col-12">
                         <label class="op-label">مبلغ مانده افتتاحیه (ریال) <span class="text-danger">*</span></label>
                         <div class="op-money-wrapper @(editParty.IsDebtor ? "border-danger-glow" : "border-success-glow")">
                             <MoneyInput @bind-Value="editParty.Amount" CssClass="form-control op-money-input num" />
                             <span class="op-currency-tag">ریال</span>
                         </div>
+                        @if (editParty.Amount > 0)
+                        {
+                            <div class="op-helper-text text-secondary">معادل: <b>@((editParty.Amount / 10).ToString("N0")) تومان</b></div>
+                        }
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="op-label">تاریخ سند</label>
-                        <DatePicker @bind-Value="editParty.Date" CssClass="op-input" />
+                    <div class="col-6">
+                        <label class="op-label">تاریخ سند افتتاحیه</label>
+                        <DatePicker @bind-Value="editParty.Date" />
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="op-label">سررسید نسیه</label>
+                    <div class="col-6">
+                        <label class="op-label">سررسید تسویه نسیه <span class="text-danger">*</span></label>
                         <DatePicker @bind-Value="editParty.DueDate" />
                     </div>
                     <div class="col-12">
@@ -960,68 +1040,94 @@
             }
             else if (editKind == "installments")
             {
-                <div class="row g-3">
-                    <div class="col-12 col-md-7">
-                        <label class="op-label">مشتری بدهکار <span class="text-danger">*</span></label>
-                        <SearchSelect Items="customersLookup" Value="editInstallmentPartyId"
-                                      ValueChanged="id => editInstallmentPartyId = id" Placeholder="انتخاب یا جستجوی مشتری…" />
-                    </div>
-                    <div class="col-6 col-md-5">
-                        <label class="op-label">شمارهٔ سند</label>
-                        <div class="form-control form-control-sm bg-light num" data-opening-edit-doc>#@editOrderId</div>
-                    </div>
-                    <div class="col-12 col-md-7">
+                @* چیدمان و برچسب‌ها عیناً مثل فرم ثبت (تب اقساط) است تا کاربر همان
+                   چیزهایی را که در افزودن دیده، در ویرایش هم ببیند و اصلاح کند. *@
+                <div class="mb-3">
+                    <label class="op-label">مشتری بدهکار <span class="text-danger">*</span></label>
+                    <SearchSelect Items="customersLookup" Value="editInstallmentPartyId"
+                                  ValueChanged="id => editInstallmentPartyId = id"
+                                  Placeholder="انتخاب یا جستجوی مشتری — نام، موبایل یا تلفن…" />
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-7">
                         <label class="op-label">کل مبلغ بدهی (ریال) <span class="text-danger">*</span></label>
-                        <MoneyInput @bind-Value="editInstallmentTotal" CssClass="form-control form-control-sm num op-input" />
+                        <MoneyInput @bind-Value="editInstallmentTotal" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
                     </div>
-                    <div class="col-6 col-md-5">
+                    <div class="col-5">
                         <label class="op-label">تعداد اقساط <span class="text-danger">*</span></label>
-                        <input type="number" min="1" max="60" class="form-control form-control-sm num op-input"
+                        <input type="number" min="1" max="60" class="form-control form-control-sm num text-center op-input"
                                @bind="editInstallmentCount" />
                     </div>
-                    <div class="col-6 col-md-4">
-                        <label class="op-label">سررسید اولین قسط</label>
+                </div>
+
+                @if (editInstallmentTotal > 0 && editInstallmentCount > 0)
+                {
+                    <div class="p-2 mb-3 bg-light rounded-3 border d-flex justify-content-between align-items-center fs-8"
+                         data-opening-edit-preview>
+                        <span class="text-secondary">مبلغ میانگین هر قسط:</span>
+                        <span class="fw-bold text-primary num fs-7">@((editInstallmentTotal / editInstallmentCount).ToString("N0")) ریال</span>
+                    </div>
+                }
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="op-label">سررسید اولین قسط <span class="text-danger">*</span></label>
                         <DatePicker @bind-Value="editInstallmentFirstDue" />
                     </div>
-                    <div class="col-6 col-md-4">
-                        <label class="op-label">فاصلهٔ اقساط</label>
+                    <div class="col-6">
+                        <label class="op-label">فاصله زمانی اقساط</label>
                         <select class="form-select form-select-sm op-input" @bind="editInstallmentInterval">
-                            <option value="1">ماهانه</option>
-                            <option value="2">دوماهه</option>
-                            <option value="3">فصلی</option>
+                            <option value="1">ماهانه (هر ۱ ماه)</option>
+                            <option value="2">دوماهه (هر ۲ ماه)</option>
+                            <option value="3">فصلی (هر ۳ ماه)</option>
                         </select>
                     </div>
-                    <div class="col-12 col-md-4">
-                        <label class="op-label">تاریخ سند</label>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="op-label">تاریخ ثبت سند</label>
                         <DatePicker @bind-Value="editInstallmentDate" />
                     </div>
-                    <div class="col-12">
-                        <label class="op-label">شرح دفترچه</label>
-                        <input class="form-control form-control-sm op-input" @bind="editInstallmentNote" maxlength="400" />
+                    <div class="col-6">
+                        <label class="op-label">شمارهٔ سند</label>
+                        <div class="form-control form-control-sm bg-light num text-center" data-opening-edit-doc>#@editOrderId</div>
                     </div>
+                </div>
+
+                <div class="mb-0">
+                    <label class="op-label">شرح و توضیحات دفترچه</label>
+                    <input class="form-control form-control-sm op-input" @bind="editInstallmentNote" maxlength="400"
+                           placeholder="مثال: اقساط باقی‌مانده خرید کالای سال قبل" />
                 </div>
             }
             else if (editKind == "stock")
             {
+                @* همان چیدمان فرم ثبت موجودی اولیه: انبار و کالا تمام‌عرض، سپس
+                   تعداد/فی/تاریخ/شمارهٔ سند و در پایان شرح. *@
                 <div class="row g-3">
-                    <div class="col-12 col-md-6">
-                        <label class="op-label">انبار <span class="text-danger">*</span></label>
+                    <div class="col-12">
+                        <label class="op-label">انبار مقصد کالا <span class="text-danger">*</span></label>
                         <SearchSelect Items="warehouseLookup" Value="editStockWarehouseId"
                                       ValueChanged="id => editStockWarehouseId = id" Placeholder="انتخاب انبار…" />
                     </div>
-                    <div class="col-12 col-md-6">
-                        <label class="op-label">کالا <span class="text-danger">*</span></label>
+                    <div class="col-12">
+                        <label class="op-label">کالای مورد نظر <span class="text-danger">*</span></label>
                         <SearchSelect Items="productLookup" Value="editStockProductId"
-                                      ValueChanged="id => editStockProductId = id" Placeholder="انتخاب یا جستجوی کالا…" />
+                                      ValueChanged="id => editStockProductId = id"
+                                      Placeholder="انتخاب یا جستجوی کالا بر اساس نام یا بارکد…" />
                     </div>
                     <div class="col-6 col-md-3">
-                        <label class="op-label">تعداد <span class="text-danger">*</span></label>
-                        <input type="number" step="any" min="0.01" class="form-control form-control-sm num op-input"
+                        <label class="op-label">تعداد موجودی اولیه <span class="text-danger">*</span></label>
+                        <input type="number" step="any" min="0.01" class="form-control form-control-sm text-center fw-bold num op-input"
                                @bind="editStockQuantity" />
+                        <div class="op-helper-text text-secondary">@EditStockQuantityHint</div>
                     </div>
                     <div class="col-6 col-md-3">
-                        <label class="op-label">بهای واحد (ریال)</label>
-                        <input type="text" inputmode="numeric" dir="ltr" class="form-control form-control-sm num op-input"
+                        <label class="op-label">بهای تمام‌شده واحد (ریال)</label>
+                        <input type="text" inputmode="numeric" dir="ltr" class="form-control form-control-sm text-center fw-bold num op-input"
+                               title="بهای واحد به ریال صحیح و بدون اعشار"
                                value="@editStockPriceText"
                                @oninput="@(e => editStockPriceText = PurchaseSalePriceInput.Format(e.Value?.ToString()))" />
                     </div>
@@ -1031,11 +1137,12 @@
                     </div>
                     <div class="col-6 col-md-3">
                         <label class="op-label">شمارهٔ سند</label>
-                        <div class="form-control form-control-sm bg-light num" data-opening-edit-doc>#@editOrderId</div>
+                        <div class="form-control form-control-sm bg-light num text-center" data-opening-edit-doc>#@editOrderId</div>
                     </div>
                     <div class="col-12">
                         <label class="op-label">شرح سند انبار</label>
-                        <input class="form-control form-control-sm op-input" @bind="editStockDescription" maxlength="400" />
+                        <input class="form-control form-control-sm op-input" @bind="editStockDescription" maxlength="400"
+                               placeholder="ثبت موجودی افتتاحیه اول دوره انبار" />
                     </div>
                 </div>
             }
@@ -1057,42 +1164,57 @@
                         </div>
                         <div class="op-helper-text text-secondary">نوع چک پس از ثبت تغییر نمی‌کند.</div>
                     </div>
-                    <div class="col-6 col-md-4">
+
+                    @if (editCheque.Kind == ChequeKind.Issued)
+                    {
+                        <div class="col-12">
+                            <div class="p-2.5 bg-danger-subtle rounded-3 border border-danger-subtle">
+                                <label class="op-label text-danger">حساب بانکی صادرکننده (دسته چک شرکت) <span class="text-danger">*</span></label>
+                                <select class="form-select form-select-sm op-input" data-opening-edit-bank @bind="editCheque.TrsAccountId">
+                                    <option value="0">— انتخاب حساب بانکی صادرکننده —</option>
+                                    @foreach (var b in myBankAccounts)
+                                    {
+                                        <option value="@b.Id">@b.DisplayName</option>
+                                    }
+                                </select>
+                                <div class="fs-9 text-secondary mt-1">مبلغ این چک در زمان وصول از موجودی این حساب بانکی کسر خواهد شد.</div>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="col-7">
                         <label class="op-label">مبلغ چک (ریال) <span class="text-danger">*</span></label>
-                        <MoneyInput @bind-Value="editCheque.Amount" CssClass="form-control form-control-sm num op-input" />
+                        <MoneyInput @bind-Value="editCheque.Amount" CssClass="form-control form-control-sm text-center fw-bold num op-input" />
                     </div>
-                    <div class="col-6 col-md-4">
+                    <div class="col-5">
                         <label class="op-label">تاریخ سررسید <span class="text-danger">*</span></label>
                         <DatePicker @bind-Value="editChequeDueDate" />
                     </div>
-                    <div class="col-12 col-md-4">
-                        <label class="op-label">شماره سریال چک <span class="text-danger">*</span></label>
-                        <input class="form-control form-control-sm num op-input" @bind="editCheque.Number" maxlength="40" />
+
+                    <div class="col-6">
+                        <label class="op-label">شماره سریال چک</label>
+                        <input class="form-control form-control-sm num text-center op-input" @bind="editCheque.Number"
+                               maxlength="40" placeholder="مثال: ۱۲۳۴۵۶" />
                     </div>
-                    @if (editCheque.Kind == ChequeKind.Issued)
-                    {
-                        <div class="col-12 col-md-6">
-                            <label class="op-label">حساب بانکی صادرکننده <span class="text-danger">*</span></label>
-                            <select class="form-select form-select-sm op-input" @bind="editCheque.TrsAccountId">
-                                <option value="0">— انتخاب حساب بانکی صادرکننده —</option>
-                                @foreach (var b in myBankAccounts)
-                                {
-                                    <option value="@b.Id">@b.DisplayName</option>
-                                }
-                            </select>
-                        </div>
-                    }
-                    <div class="col-6 col-md-3">
+                    <div class="col-6">
+                        <label class="op-label">شناسه صیادی (۱۶ رقم)</label>
+                        <ShopDigitsInput @bind-Value="editCheque.SayadId" CssClass="form-control form-control-sm num text-center op-input"
+                                         MaxDigits="16" ValidLengths="@(new[] { 16 })" ErrorMessage="شناسه صیاد باید دقیقاً ۱۶ رقم باشد." />
+                    </div>
+
+                    <div class="col-6">
                         <label class="op-label">نام بانک</label>
-                        <input class="form-control form-control-sm op-input" @bind="editCheque.BankName" />
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.BankName" placeholder="مثال: صادرات، ملت، ملی…" />
                     </div>
-                    <div class="col-6 col-md-3">
-                        <label class="op-label">شعبه</label>
-                        <input class="form-control form-control-sm op-input" @bind="editCheque.BranchName" />
+                    <div class="col-6">
+                        <label class="op-label">نام یا کد شعبه</label>
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.BranchName" placeholder="مثال: شعبه مرکزی کد ۲۱" />
                     </div>
+
                     <div class="col-12">
                         <label class="op-label">بابت / توضیحات</label>
-                        <input class="form-control form-control-sm op-input" @bind="editCheque.Description" />
+                        <input class="form-control form-control-sm op-input" @bind="editCheque.Description"
+                               maxlength="400" placeholder="بابت مانده حساب اول دوره / فاکتورهای سال قبل" />
                     </div>
                 </div>
             }
@@ -1358,6 +1480,87 @@
 }
 .op-table-header {
     justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+/* کادر جست‌وجوی سابقهٔ هر بخش */
+.op-table-search {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.75rem 1.1rem;
+    background: #fbfcfe;
+    border-bottom: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+}
+.op-search-box {
+    position: relative;
+    flex: 1 1 16rem;
+    min-width: 12rem;
+}
+.op-search-input {
+    padding-inline-start: 2.1rem;
+    padding-inline-end: 2rem;
+    border-radius: 10px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+}
+.op-search-input:focus {
+    border-color: #4f46e5;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+.op-search-icon {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 0.82rem;
+    pointer-events: none;
+}
+.op-search-clear {
+    position: absolute;
+    inset-inline-end: 0.45rem;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 0.72rem;
+    line-height: 1;
+    padding: 0.25rem;
+    border-radius: 6px;
+}
+.op-search-clear:hover {
+    color: #ef4444;
+    background: #fef2f2;
+}
+.op-search-count {
+    font-size: 0.74rem;
+    color: #64748b;
+    white-space: nowrap;
+}
+
+/* ================== کمبوباکس‌های بومی (select) ==================
+   صفحه RTL است ولی css/bootstrap.min.css نسخهٔ LTR بارگذاری می‌شود؛ بنابراین
+   بوت‌استرپ فلش را سمت راست می‌گذارد و متن فارسی که از راست شروع می‌شود
+   دقیقاً روی فلش می‌افتد. این‌جا فلش به سمت چپ (پایان متن) منتقل و از متن
+   فاصله می‌گیرد؛ فقط روی کمبوباکس‌های همین ماژول اثر دارد. */
+select.op-input,
+.opening-balance-container select.form-select {
+    direction: rtl;
+    text-align: right;
+    /* در RTL «inline-start» سمت راست و «inline-end» سمت چپ است؛ فلش سمت چپ
+       نشسته، پس فقط همان سمت باید جای خالی بگیرد و متن از راست شروع شود. */
+    padding-inline-start: 0.75rem;
+    padding-inline-end: 2.25rem;
+    background-position: left 0.75rem center;
+    background-size: 12px 10px;
+    background-repeat: no-repeat;
+}
+.opening-balance-container select.form-select option {
+    direction: rtl;
+    text-align: right;
 }
 .op-form-header-icon, .op-icon-badge {
     width: 44px;
@@ -1704,6 +1907,44 @@
     private string stockDescription = "موجودی اولیه اول دوره انبار";
     private List<OpeningStockLine> recentStockLines = new();
 
+    // ---------- جست‌وجوی جدول سابقه در هر چهار بخش ----------
+    // عبارت خالی یعنی «همه»؛ فیلتر فقط روی نمایش اثر می‌گذارد و هیچ سندی را تغییر نمی‌دهد.
+    private string partySearch = "";
+    private string chequeSearch = "";
+    private string installmentSearch = "";
+    private string stockSearch = "";
+
+    private List<PartyBalanceItem> FilteredPartyBalances => recentPartyBalances.Where(p =>
+        PersianSearch.Matches(partySearch, p.PartyName, p.Description,
+            p.Amount, p.Date, p.DueDate,
+            p.IsDebtor ? "بدهکار بدهی طلب" : "بستانکار اعتبار",
+            p.PartyType == PartyType.Customer ? "مشتری" : "تأمین‌کننده")).ToList();
+
+    private List<TrsCheque> FilteredCheques => chequesList.Where(c =>
+        PersianSearch.Matches(chequeSearch, c.Number, c.SayadId, c.PartyName, c.BankName,
+            c.BranchName, c.OwnerName, c.Description, c.Amount, c.DueDate, GetChequeStatusName(c.Status),
+            c.Kind == ChequeKind.Received ? "دریافتی" : "پرداختی")).ToList();
+
+    private List<Order> FilteredInstallmentOrders => recentInstallmentOrders.Where(o =>
+        PersianSearch.Matches(installmentSearch, o.Number, o.PartyName, o.Description,
+            o.TotalAmount, o.Date, o.DueDate, o.Installments.Count)).ToList();
+
+    private List<OpeningStockLine> FilteredStockLines => recentStockLines.Where(l =>
+        PersianSearch.Matches(stockSearch, l.WarehouseName, l.ProductName, l.Description,
+            l.Quantity, l.UnitPrice, l.Date)).ToList();
+
+    /// <summary>پاک کردن جست‌وجوی همان بخش؛ برای دکمهٔ ضربدر داخل کادر.</summary>
+    private void ClearPartySearch() => partySearch = "";
+    private void ClearChequeSearch() => chequeSearch = "";
+    private void ClearInstallmentSearch() => installmentSearch = "";
+    private void ClearStockSearch() => stockSearch = "";
+
+    /// <summary>
+    /// متن راهنمای زیر جدول وقتی جست‌وجو فعال است: «۳ از ۱۲ ردیف».
+    /// </summary>
+    private static string SearchSummary(int shown, int total) =>
+        shown == total ? $"{Fa.Digits(total)} ردیف" : $"{Fa.Digits(shown)} از {Fa.Digits(total)} ردیف";
+
     // ---------- ویرایش مانده‌های اول دوره (هر چهار تب) ----------
     private bool showEditModal;
     private string editKind = "";
@@ -1732,6 +1973,15 @@
 
     private TrsCheque editCheque = new();
     private DateTime? editChequeDueDate;
+
+    /// <summary>همان راهنمای واحد شمارش فرم ثبت، برای کالای انتخاب‌شده در ویرایش.</summary>
+    private string EditStockQuantityHint => stockProducts.FirstOrDefault(p => p.Id == editStockProductId)
+        ?.AllowsFractionalQuantity switch
+    {
+        true => "این واحد مقدار اعشاری تا دو رقم می‌پذیرد.",
+        false => "این واحد فقط مقدار صحیح می‌پذیرد.",
+        _ => "نوع مقدار واحد را در واحدهای شمارش تعیین کنید."
+    };
 
     private string EditModalTitle => editState is { CanEdit: true } ? "ویرایش مانده اول دوره" : OpeningBalanceEdit.NotEditableTitle;
 
@@ -1992,7 +2242,7 @@
         Toast.Success($"چک شماره {editCheque.Number} ویرایش شد.");
         showEditModal = false;
         editState = null;
-        var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+        var chqRes = await ChequeSvc.GetAllAsync(pageSize: 200);
         chequesList = chqRes.Items;
     }
 
@@ -2054,7 +2304,7 @@
             }
             catch { myBankAccounts = new(); }
 
-            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 200);
             chequesList = chqRes.Items;
             await LoadOpeningHistoryAsync();
         }
@@ -2297,7 +2547,7 @@
             }
             catch { myBankAccounts = new(); }
 
-            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 20);
+            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 200);
             chequesList = chqRes.Items;
 
             newCheque = new TrsCheque { Kind = newCheque.Kind, DueDate = DateTime.Today.AddMonths(1) };
