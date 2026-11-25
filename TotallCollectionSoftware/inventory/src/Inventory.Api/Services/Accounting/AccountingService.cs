@@ -414,6 +414,7 @@ public class AccountingService : IAccountingService
     public async Task<PagedResult<AccVoucher>> GetVouchersAsync(int? fiscalYearId, VoucherStatus? status,
         VoucherSource? source, string? search, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.AccVouchers.AsNoTracking().Include(v => v.FiscalYear).AsQueryable();
 
         if (fiscalYearId is > 0) q = q.Where(v => v.FiscalYearId == fiscalYearId);
@@ -737,6 +738,7 @@ public class AccountingService : IAccountingService
 
     public async Task<AccLedgerResult> GetLedgerAsync(int accountId, DateTime? from, DateTime? to, bool includeChildren)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var acc = await _db.AccAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.Id == accountId)
                   ?? throw new InvalidOperationException("حساب یافت نشد.");
 
@@ -848,6 +850,7 @@ public class AccountingService : IAccountingService
 
     public async Task<PagedResult<AccLedgerRow>> GetJournalAsync(DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.AccVoucherLines.AsNoTracking()
             .Include(l => l.Voucher).Include(l => l.Account).Include(l => l.DimensionValue)
             .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed);
@@ -879,6 +882,7 @@ public class AccountingService : IAccountingService
 
     public async Task<AccTrialBalanceResult> GetTrialBalanceAsync(AccountLevel level, DateTime? from, DateTime? to, bool hideZero)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var accounts = await _db.AccAccounts.AsNoTracking().ToListAsync();
         var byId = accounts.ToDictionary(a => a.Id);
 

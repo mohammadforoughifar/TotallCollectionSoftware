@@ -163,6 +163,8 @@ else
 
     private async Task Load()
     {
+        // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
+        if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
         loading = true;
         try { result = await ReportSvc.GetTrialBalanceAsync(level, from, to, hideZero); }
         catch (Exception ex) { Toast.Error(ex.Message); }

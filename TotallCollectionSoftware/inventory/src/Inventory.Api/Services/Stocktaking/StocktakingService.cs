@@ -306,6 +306,7 @@ public class StocktakingService : IStocktakingService
     public async Task<PagedResult<StkSession>> GetSessionsAsync(int? warehouseId, StocktakeStatus? status,
         string? search, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.StkSessions.AsNoTracking().AsQueryable();
 
         if (warehouseId is > 0) q = q.Where(s => s.WarehouseId == warehouseId);

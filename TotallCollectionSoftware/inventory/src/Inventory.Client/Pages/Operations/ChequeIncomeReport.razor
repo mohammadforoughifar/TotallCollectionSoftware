@@ -97,6 +97,8 @@ else
 
     private async Task Load()
     {
+        // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
+        if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
         loading = true;
         try { report = await OrderSvc.GetChequeIncomeReportAsync(from, to, partyId); }
         catch (Exception ex) { report = null; Toast.Error(ex.Message); }

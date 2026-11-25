@@ -307,6 +307,7 @@ public class TreasuryService : ITreasuryService
     public async Task<PagedResult<TrsVoucher>> GetVouchersAsync(TreasuryKind? kind, TreasuryStatus? status,
         int? partyId, int? trsAccountId, string? search, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.TrsVouchers.AsNoTracking().AsQueryable();
 
         if (kind is not null) q = q.Where(v => v.Kind == kind);
@@ -1570,6 +1571,7 @@ public class TreasuryService : ITreasuryService
         int? partyId, int? trsAccountId, string? search, DateTime? from, DateTime? to, bool onlyOpen,
         int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.TrsCheques.AsNoTracking().AsQueryable();
 
         if (kind is not null) q = q.Where(c => c.Kind == kind);
@@ -2071,6 +2073,7 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsFlowResult> GetFlowAsync(int trsAccountId, DateTime? from, DateTime? to)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var acc = await VisibleAccounts().AsNoTracking().FirstOrDefaultAsync(a => a.Id == trsAccountId)
                   ?? throw new InvalidOperationException("صندوق/بانک یافت نشد.");
 
@@ -2352,6 +2355,7 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsDashboard> GetDashboardAsync(DateTime? from, DateTime? to)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var d = new TrsDashboard();
 
         d.Accounts = await GetAccountsAsync(true, true);

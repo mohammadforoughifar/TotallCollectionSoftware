@@ -267,6 +267,20 @@ public class VisProductLite
     public decimal SalePrice { get; set; }
     public decimal Stock { get; set; }
     public bool IsService { get; set; }
+
+    /// <summary>
+    /// نوع مقدار واحد کالا از «واحدهای شمارش»؛ null یعنی هنوز تعیین نشده است.
+    /// مقادیر صحیح (مثل «عدد») مقدار اعشاری نمی‌پذیرند.
+    /// </summary>
+    public bool? AllowsFractionalQuantity { get; set; }
+
+    /// <summary>متن فارسی نوع مقدار برای نمایش در فرم سفارش.</summary>
+    public string QuantityKindText => AllowsFractionalQuantity switch
+    {
+        true => "مقدار اعشاری مجاز",
+        false => "فقط مقدار صحیح",
+        null => "نوع مقدار نامشخص"
+    };
 }
 
 /// <summary>انبار سبک.</summary>

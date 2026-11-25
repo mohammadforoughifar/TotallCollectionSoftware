@@ -92,6 +92,29 @@ public abstract class RbacControllerBase : ApiControllerBase
             requested, $"{Inventory.Shared.BonHrSections.Module}.{a}"));
     }
 
+    /// <summary>
+    /// آیا کاربر جاری مجوز یکی از «بخش‌های سامانه فروشگاهی» (<c>Shop.{section}.View/Manage</c>) را دارد؟
+    /// <para>
+    /// این بررسی برای endpointهایی است که مجوز قدیمی ندارند ولی همان صفحه در سامانهٔ فروشگاهی
+    /// نیز نمایش داده می‌شود (مثل کاردکس ریالی) — قاعدهٔ «اگر صفحه باز است، API آن هم باز باشد».
+    /// </para>
+    /// </summary>
+    protected async Task<bool> ShopSectionPermissionAsync(string sectionKey, bool write)
+    {
+        var section = Inventory.Shared.ShopSections.ByKey(sectionKey);
+        if (section is null) return false;
+        var granted = await Db.UserRoles
+            .Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+            .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .Where(p => p.Module == Inventory.Shared.ShopSections.Module)
+            .Select(p => p.Action)
+            .ToListAsync();
+        if (granted.Count == 0) return false;
+        if (granted.Contains($"Shop.{section.Key}.View")) return true;
+        return write && granted.Contains($"Shop.{section.Key}.Manage");
+    }
+
     /// <summary>اگر مجوز را نداشت 403 می‌دهد.</summary>
     protected async Task<IActionResult?> ForbiddenUnlessAsync(string module, string action)
         => await HasAsync(module, action) ? null
