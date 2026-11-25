@@ -186,3 +186,14 @@ window.downloadFileFromBase64 = function (fileName, contentType, base64) {
         setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
     } catch (e) { console.error('downloadFileFromBase64 failed', e); }
 };
+
+// فوکوس صفحهٔ ثبت صورتحساب مودیان: Enter میان فیلدهای یک ردیف جابه‌جا می‌کند.
+window.moadianInvoiceFocusCell = function (rowKey, focusIndex) {
+    if (!rowKey) return;
+    const row = document.querySelector('[data-moadian-row="' + rowKey + '"]');
+    if (!row) return;
+    const target = row.querySelector('[data-moadian-focus="' + Number(focusIndex) + '"]');
+    if (!target) return;
+    target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    target.focus({ preventScroll: true });
+};

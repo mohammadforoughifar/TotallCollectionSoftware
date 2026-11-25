@@ -8,6 +8,7 @@
 @using System.Collections.ObjectModel
 @implements IDisposable
 @inject IMoadianService Moadian
+@inject IJSRuntime JS
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -187,7 +188,7 @@ else
         <div class="card-header d-flex align-items-center gap-2">
             <span><i class="bi bi-list-ol"></i> ردیف‌های کالا/خدمت</span>
             <span class="small text-muted ms-2 d-none d-md-inline">
-                <i class="bi bi-lightning-charge"></i> نام کالا را تایپ کنید؛ با <kbd>Enter</kbd> انتخاب و با <kbd>Enter</kbd> بعدی ردیف تازه ساخته می‌شود.
+                <i class="bi bi-lightning-charge"></i> با <kbd>Enter</kbd> بین ستون‌ها حرکت کنید؛ در «مبلغ کل ردیف» <kbd>Enter</kbd> بزنید تا ردیف بعدی ساخته شود.
             </span>
             <button class="btn btn-sm btn-outline-success ms-auto" @onclick="AddRow">
                 <i class="bi bi-plus-lg"></i> افزودن ردیف
@@ -225,17 +226,17 @@ else
                             @foreach (var item in vm.InvoiceItems)
                             {
                                 var row = item;
-                                <tr @key="row">
+                                <tr @key="row" data-moadian-row="@InvoiceRowFocusKey(row)">
                                     <td>
                                         @if (Goods.Count == 0)
                                         {
-                                            <input class="form-control form-control-sm" value="@row.Name"
+                                            <input class="form-control form-control-sm" value="@row.Name" data-moadian-focus="0"
                                                    placeholder="@(ProviderId > 0 ? "کالایی ثبت نشده — از «کالا و خدمات» بیفزایید" : "ابتدا شرکت را انتخاب کنید")"
                                                    title="@(ProviderId > 0
                                                               ? "برای جست‌وجو و انتخاب کالا، ابتدا در «کالا و خدمات» مودیان کالا/خدمت تعریف کنید."
                                                               : "شرکت مودیان در نوار بالای صفحه انتخاب نشده است؛ کالاها به همان شرکت تعلق دارند.")"
                                                    @oninput="e => row.Name = e.Value?.ToString()"
-                                                   @onkeydown="e => OnRowKeyDown(e, row)" />
+                                                   @onkeydown="e => OnInvoiceCellKeyDown(e, row, 0)" />
                                         }
                                         else
                                         {
@@ -245,34 +246,36 @@ else
                                                                 AutoFocus="@(_autoFocusRow == row)"
                                                                 OnPick="g => PickGoods(row, g)"
                                                                 OnClear="() => ClearGoods(row)"
-                                                                OnEnterNextRow="() => AddRowAfter(row)" />
+                                                                OnEnterNextColumn="() => FocusInvoiceCellAsync(row, 1)" />
                                         }
                                     </td>
                                     <td class="small">@(string.IsNullOrWhiteSpace(row.UnitOfMeasurement) ? "—" : row.UnitOfMeasurement)</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.Count" @onchange="e => { row.Count = Dec(e); Calc(row); }"
-                                               @onkeydown="e => OnRowKeyDown(e, row)" />
+                                               value="@row.Count" data-moadian-focus="1" @onchange="e => { row.Count = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnInvoiceCellKeyDown(e, row, 1)" />
                                     </td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.PriceUnit" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }"
-                                               @onkeydown="e => OnRowKeyDown(e, row)" />
+                                               value="@row.PriceUnit" data-moadian-focus="2" @onchange="e => { row.PriceUnit = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnInvoiceCellKeyDown(e, row, 2)" />
                                     </td>
                                     <td class="num text-end">@MoadianUi.Money(RowGross(row))</td>
                                     <td>
                                         <input type="number" min="0" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.Discount" @onchange="e => { row.Discount = Dec(e); Calc(row); }"
-                                               @onkeydown="e => OnRowKeyDown(e, row)" />
+                                               value="@row.Discount" data-moadian-focus="3" @onchange="e => { row.Discount = Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnInvoiceCellKeyDown(e, row, 3)" />
                                     </td>
                                     <td class="num text-end">@MoadianUi.Money(RowNet(row))</td>
                                     <td>
                                         <input type="number" min="0" max="100" step="any" class="form-control form-control-sm num text-end"
-                                               value="@row.ValueAddedPercentage" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }"
-                                               @onkeydown="e => OnRowKeyDown(e, row)" />
+                                               value="@row.ValueAddedPercentage" data-moadian-focus="4" @onchange="e => { row.ValueAddedPercentage = (double?)Dec(e); Calc(row); }"
+                                               @onkeydown="e => OnInvoiceCellKeyDown(e, row, 4)" />
                                     </td>
                                     <td class="num text-end text-info">@MoadianUi.Money(RowVat(row))</td>
-                                    <td class="num fw-semibold text-end">@MoadianUi.Money(RowTotal(row))</td>
+                                    <td class="num fw-semibold text-end mi-total-cell" tabindex="0" data-moadian-focus="5"
+                                        title="Enter برای ساخت ردیف بعدی" aria-label="مبلغ کل ردیف؛ Enter برای ساخت ردیف بعدی"
+                                        @onkeydown="e => OnInvoiceCellKeyDown(e, row, 5)">@MoadianUi.Money(RowTotal(row))</td>
                                     <td class="text-center">
                                         <button class="btn btn-sm btn-outline-danger" title="حذف ردیف" @onclick="() => RemoveRow(row)">
                                             <i class="bi bi-trash"></i>
@@ -351,7 +354,7 @@ else
     private List<VMFiscalYear> FiscalYears = new();
     private bool loading = true, saving, forbidden;
 
-    /// <summary>ردیفی که کادر جست‌وجوی کالایش باید بعد از رندر بعدی فوکوس بگیرد.</summary>
+    /// <summary>ردیفی که فیلد کالا باید پس از رندر بعدی فوکوس بگیرد.</summary>
     private VmInvoiceItems? _autoFocusRow;
     private int? nextInvoiceNo; // پیش‌نمایش شمارهٔ صورتحساب جدید
 
@@ -473,10 +476,14 @@ else
         });
     }
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // پرچم فقط برای یک رندر معنا دارد؛ کامپوننت کمبو خودش یک‌بار فوکوس می‌گیرد.
-        if (_autoFocusRow is not null) _autoFocusRow = null;
+        // کمبوی کالا خودش فوکوس می‌گیرد؛ در حالت نبود کالا، فیلد متنیِ جایگزین را فوکوس می‌کنیم.
+        var focusRow = _autoFocusRow;
+        if (focusRow is null) return;
+        _autoFocusRow = null;
+        if (Goods.Count == 0)
+            await FocusInvoiceCellAsync(focusRow, 0);
     }
 
     public void Dispose()
@@ -636,7 +643,7 @@ else
         StateHasChanged();
     }
 
-    /// <summary>ردیف تازه <b>بعد از</b> ردیف جاری — همان چیزی که Enter می‌سازد.</summary>
+    /// <summary>ردیف تازه <b>بعد از</b> ردیف جاری؛ Enter در ستون «مبلغ کل ردیف» این مسیر را اجرا می‌کند.</summary>
     private void AddRowAfter(VmInvoiceItems current)
     {
         var index = vm.InvoiceItems.IndexOf(current);
@@ -651,11 +658,27 @@ else
     private static VmInvoiceItems NewRow() =>
         new() { Count = 1, PriceUnit = 0, ValueAddedPercentage = 0, Discount = 0 };
 
-    /// <summary>Enter روی فیلدهای عددی ردیف ⇒ ردیف بعدی (بدون نیاز به موس).</summary>
-    private void OnRowKeyDown(KeyboardEventArgs e, VmInvoiceItems row)
+    /// <summary>Enter بین فیلدهای یک ردیف جابه‌جا می‌شود؛ فقط از مبلغ کل، ردیف بعدی ساخته می‌شود.</summary>
+    private static string InvoiceRowFocusKey(VmInvoiceItems row)
+    {
+        row.RowId ??= Guid.NewGuid();
+        return row.RowId.Value.ToString("N");
+    }
+
+    private async Task FocusInvoiceCellAsync(VmInvoiceItems row, int focusIndex)
+    {
+        await JS.InvokeVoidAsync("moadianInvoiceFocusCell", InvoiceRowFocusKey(row), focusIndex);
+    }
+
+    private async Task OnInvoiceCellKeyDown(KeyboardEventArgs e, VmInvoiceItems row, int focusIndex)
     {
         if (e.Key != "Enter") return;
-        AddRowAfter(row);
+        if (focusIndex == 5)
+        {
+            AddRowAfter(row);
+            return;
+        }
+        await FocusInvoiceCellAsync(row, focusIndex + 1);
     }
 
     private void RemoveRow(VmInvoiceItems row)
@@ -772,5 +795,9 @@ else
     .mi-table kbd {
         background: #f1f5f9; border: 1px solid #d7dee8; border-radius: 4px;
         padding: 0 .3rem; font-size: .72rem; font-family: inherit;
+    }
+    .mi-total-cell { cursor: default; }
+    .mi-total-cell:focus-visible {
+        outline: 2px solid #0d6efd; outline-offset: -2px; border-radius: 4px;
     }
 </style>

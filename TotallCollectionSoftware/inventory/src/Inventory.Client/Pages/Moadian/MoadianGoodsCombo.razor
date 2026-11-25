@@ -9,9 +9,10 @@
         (قبلاً یک <select> بود که با تایپ جست‌وجو نمی‌شد).
       • FocusAsync نیاز به ElementReference دارد و در حلقهٔ ردیف‌ها فقط داخل یک
         کامپوننت مستقل تمیز درمی‌آید (به‌جای هندل‌کردن ref در والد).
-      • رفتار کلیدها یک‌جا متمرکز است: ↑/↓ حرکت، Enter انتخاب، Enter دوم «ردیف بعدی».
+      • رفتار کلیدها یک‌جا متمرکز است: ↑/↓ حرکت؛ Enter کالا را انتخاب می‌کند و به ستون بعدی می‌رود.
+        ساخت ردیف تازه فقط با Enter در ستون «مبلغ کل ردیف» انجام می‌شود.
 
-    جریان تایپ: فوکوس ⇒ کادر خالی می‌شود ⇒ تایپ ⇒ Enter (انتخاب کالا) ⇒ Enter (ردیف تازه).
+    جریان تایپ: فوکوس ⇒ کادر خالی می‌شود ⇒ تایپ ⇒ Enter (انتخاب کالا و رفتن به تعداد).
 
     ⚠️ نکتهٔ مهم (رفع اشکال «با کلیک انتخاب نمی‌شد»):
     در Blazor WebAssembly، کلیک ماوس روی گزینه، «مousedown ⇒ blur ورودی ⇒ حذف فهرست
@@ -98,8 +99,8 @@
     /// <summary>پاک‌کردن انتخابِ همین ردیف.</summary>
     [Parameter] public EventCallback OnClear { get; set; }
 
-    /// <summary>Enter روی ردیفی که انتخابش کامل است ⇒ ساخت ردیف بعدی.</summary>
-    [Parameter] public EventCallback OnEnterNextRow { get; set; }
+    /// <summary>Enter در ستون کالا ⇒ انتقال فوکوس به ستون بعدی.</summary>
+    [Parameter] public EventCallback OnEnterNextColumn { get; set; }
 
     /// <summary>سقف گزینه‌های نمایش‌داده‌شده (عملکرد در فهرست‌های چند هزارتایی).</summary>
     private const int MaxMatches = 60;
@@ -193,16 +194,18 @@
                 break;
 
             case "Enter":
-                if (_open && matches.Count > 0)
+                if (_open && matches.Count > 0 && (_query.Length > 0 || !HasSel))
                 {
+                    // Enter در جست‌وجو کالا را انتخاب می‌کند؛ بعد از انتخاب نیز به ستون تعداد می‌رویم.
                     await Pick(matches[Math.Clamp(_index, 0, matches.Count - 1)]);
                 }
                 else
                 {
-                    // انتخاب انجام شده (یا فهرستی نیست) ⇒ Enter = ردیف بعدی
+                    // کالای انتخاب‌شده را بی‌دلیل با گزینهٔ اول عوض نکن؛ فقط به ستون بعدی برو.
                     _open = false;
-                    await OnEnterNextRow.InvokeAsync();
+                    if (HasSel) { _typing = false; _query = ""; }
                 }
+                await OnEnterNextColumn.InvokeAsync();
                 break;
 
             case "Escape":
