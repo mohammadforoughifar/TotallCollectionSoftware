@@ -53,3 +53,6 @@ public class ShopTradeInTargetSaleDto
     public DateTime Date { get; set; }
     public decimal TotalAmount { get; set; }
 }
+
+/// <summary>فیلتر فهرست پذیرش‌های طرح تعویض (null = همه).</summary>
+public enum TradeInStatusFilter { Draft = 0, Finalized = 1, WithCredit = 2 }

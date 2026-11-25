@@ -1,4 +1,5 @@
 @namespace Inventory.Client.Pages
+@implements IDisposable
 @inject IApiClient Api
 @inject IOrderService OrderSvc
 @inject IAuthState Auth
@@ -13,8 +14,48 @@
     }
 </div>
 <div class="alert alert-light border fs-8">پس از نهایی‌سازی، ارزش دستگاه به اعتبار مشتری افزوده می‌شود و در صورت‌حساب، تسویه فروش یا پرداخت وجه قابل پیگیری است.</div>
+
+@* ---------- فیلترهای صفحهٔ طرح تعویض ---------- *@
+<div class="card mb-3"><div class="card-body py-2"><div class="row g-2 align-items-end">
+    <div class="col-md-4">
+        <label class="form-label fs-8">جستجو</label>
+        <div class="input-group">
+            <span class="input-group-text"><i class="bi bi-search"></i></span>
+            <input class="form-control" placeholder="شماره پذیرش، مشتری، دستگاه، سریال…" value="@search" @oninput="OnSearchInput" />
+        </div>
+    </div>
+    <div class="col-md-3">
+        <label class="form-label fs-8">وضعیت</label>
+        <select class="form-select" value="@(statusFilter ?? "")" @onchange="OnStatusFilter">
+            <option value="">— همه وضعیت‌ها —</option>
+            <option value="@((int)TradeInStatusFilter.Draft)">پیش‌نویس</option>
+            <option value="@((int)TradeInStatusFilter.Finalized)">نهایی‌شده</option>
+            <option value="@((int)TradeInStatusFilter.WithCredit)">دارای اعتبار باقیمانده</option>
+        </select>
+    </div>
+    <div class="col-md-2">
+        <label class="form-label fs-8">از تاریخ پذیرش</label>
+        <DatePicker @bind-Value="from" AllowClear="true" />
+    </div>
+    <div class="col-md-2">
+        <label class="form-label fs-8">تا تاریخ پذیرش</label>
+        <DatePicker @bind-Value="to" AllowClear="true" />
+    </div>
+    <div class="col-12 d-flex gap-2">
+        <button class="btn btn-primary btn-sm" type="button" @onclick="ApplyFilters" disabled="@loading"><i class="bi bi-funnel"></i> اعمال فیلتر</button>
+        <button class="btn btn-light btn-sm" type="button" @onclick="ResetFilters" disabled="@loading"><i class="bi bi-x-circle"></i> پاک کردن فیلتر</button>
+        @if (HasFilters) { <span class="badge badge-soft-primary align-self-center">@items.Count.Num() نتیجه با فیلتر</span> }
+    </div>
+</div></div></div>
 @if (loading) { <div class="text-center p-4" role="status">در حال دریافت پذیرش‌ها…</div> }
-else if (items.Count == 0) { <div class="empty-state"><i class="bi bi-arrow-left-right"></i><h5>پذیرش تعویضی ثبت نشده است</h5></div> }
+else if (items.Count == 0)
+{
+    <div class="empty-state">
+        <i class="bi bi-arrow-left-right"></i>
+        <h5>@(HasFilters ? "با این فیلتر پذیرشی یافت نشد" : "پذیرش تعویضی ثبت نشده است")</h5>
+        @if (HasFilters) { <button class="btn btn-sm btn-light" type="button" @onclick="ResetFilters">پاک کردن فیلتر</button> }
+    </div>
+}
 else
 {
     <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
@@ -119,6 +160,7 @@ else
     private int useKind = 1, targetSaleId, accountId;
     private Guid useOperation;
     private bool loading, saving, showForm;
+    private string search = "";
     private bool CanManage => ShopAccess.CanManage(Auth, "Repairs");
     private bool CanSettle => Auth.IsAdmin || Auth.HasDirect("Orders.Update") || ShopAccess.CanManage(Auth, "Sale") || ShopAccess.CanManage(Auth, "Installments");
 
@@ -131,10 +173,71 @@ else
     private async Task Load()
     {
         loading = true;
-        try { items = await Api.GetAsync<List<ShopTradeInDto>>("api/shop-trade-ins"); }
+        try { items = await Api.GetAsync<List<ShopTradeInDto>>(BuildFilterUrl()); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
     }
+
+    private string? statusFilter;
+    private DateTime? from, to;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(search) || !string.IsNullOrEmpty(statusFilter) || from.HasValue || to.HasValue;
+
+    private string BuildFilterUrl()
+    {
+        var query = new List<string>();
+        if (!string.IsNullOrWhiteSpace(search)) query.Add($"search={Uri.EscapeDataString(search.Trim())}");
+        if (!string.IsNullOrEmpty(statusFilter)) query.Add($"status={Uri.EscapeDataString(statusFilter)}");
+        if (from.HasValue) query.Add($"from={from.Value:yyyy-MM-dd}");
+        if (to.HasValue) query.Add($"to={to.Value:yyyy-MM-dd}");
+        return query.Count == 0 ? "api/shop-trade-ins" : "api/shop-trade-ins?" + string.Join("&", query);
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? "";
+        await DebouncedLoadAsync();
+    }
+
+    private async Task OnStatusFilter(ChangeEventArgs e)
+    {
+        statusFilter = e.Value?.ToString();
+        await Load();
+    }
+
+    private async Task ApplyFilters()
+    {
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+        {
+            Toast.Error("تاریخ شروع فیلتر پس از تاریخ پایان است.");
+            return;
+        }
+        await Load();
+    }
+
+    private async Task ResetFilters()
+    {
+        search = ""; statusFilter = null; from = null; to = null;
+        await Load();
+    }
+
+    private CancellationTokenSource? searchCts;
+
+    /// <summary>جستجوی زنده با تأخیر کوتاه تا هر کلید یک درخواست جدا نسازد.</summary>
+    private async Task DebouncedLoadAsync()
+    {
+        searchCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        searchCts = cts;
+        try
+        {
+            await Task.Delay(350, cts.Token);
+            if (cts.IsCancellationRequested) return;
+            await Load();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    public void Dispose() => searchCts?.Cancel();
     private void New()
     {
         form = new ShopTradeInDto { OperationId = Guid.NewGuid(), ReceivedAt = DateTime.Today };

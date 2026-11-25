@@ -41,7 +41,7 @@ else
             <div class="col-md-4"><label class="form-label">مشتری *</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف مشتری جدید" @onclick="() => showNewCustomer = true">جدید</button></div></div>
             <div class="col-md-4"><label class="form-label">تعمیرکار</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><select class="form-select" @bind="technicianId"><option value="0">— بعداً تعیین می‌شود —</option>@foreach (var t in technicians) { <option value="@t.Id">@t.Name</option> }</select></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف تعمیرکار جدید" @onclick="() => showNewTechnician = true">جدید</button></div></div>
             <div class="col-md-4"><label class="form-label">تاریخ پذیرش *</label><DatePicker @bind-Value="receivedAt" /></div>
-            <div class="col-md-6"><label class="form-label">انبار برداشت *</label><select class="form-select" @bind="form.WarehouseId"><option value="0">— انتخاب انبار —</option>@foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }</select></div>
+            <div class="col-md-6"><label class="form-label">انبار برداشت *</label><select class="form-select" value="@form.WarehouseId" @onchange="OnWarehouseChanged"><option value="0">— انتخاب انبار —</option>@foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }</select><small class="text-muted">موجودی ردیف‌های قطعه در همین انبار بررسی می‌شود.</small></div>
             <div class="col-md-6"><label class="form-label">یادداشت</label><input class="form-control" maxlength="500" @bind="form.Note" /></div>
         </div>
         <div class="d-flex align-items-center gap-2 mt-4 mb-2">
@@ -70,8 +70,30 @@ else
             var i = index;
             <div class="border rounded-3 p-3 mb-2"><div class="row g-2 align-items-end">
                 <div class="col-md-3"><label class="form-label">شرح کار یا قطعه *</label><input class="form-control form-control-sm" maxlength="300" @bind="form.Items[i].Description" /></div>
-                <div class="col-md-3"><label class="form-label">کالای انبار (اختیاری)</label><SearchSelect Items="products" Value="@(form.Items[i].ProductId ?? 0)" ValueChanged="v => SetProduct(i, v)" Placeholder="انتخاب کالا" ConstrainToModal="true" /></div>
-                <div class="col-6 col-md-1"><label class="form-label">مقدار</label><input class="form-control form-control-sm num" dir="ltr" inputmode="decimal" @bind="quantities[i]" /></div>
+                <div class="col-md-3"><label class="form-label">کالای انبار (اختیاری)</label>
+                    <SearchSelect Items="products" Value="@(form.Items[i].ProductId ?? 0)" ValueChanged="v => SetProduct(i, v)" Placeholder="انتخاب کالا" ConstrainToModal="true" />
+                    @if (form.Items[i].ProductId is > 0)
+                    {
+                        <small class="d-block mt-1 @StockClass(i)">
+                            موجودی انبار: <b class="num">@StockOf(form.Items[i].ProductId!.Value).Qty()</b>
+                            @if (StockShortage(i) > 0) { <span> — کمبود @StockShortage(i).Qty()</span> }
+                        </small>
+                    }
+                </div>
+                <div class="col-6 col-md-1"><label class="form-label">مقدار</label>
+                    <input class="form-control form-control-sm num" dir="ltr"
+                           inputmode="@(ProductRule(form.Items[i].ProductId)?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
+                           value="@quantities[i]" @oninput="e => OnQtyInput(i, e.Value?.ToString())" />
+                    @if (ProductRule(form.Items[i].ProductId) is { } rule)
+                    {
+                        <small class="d-block text-muted">واحد: @(string.IsNullOrWhiteSpace(rule.Unit) ? "—" : rule.Unit)<br />@rule.QuantityKindText</small>
+                        @if (rule.AllowsFractionalQuantity == false) { <small class="d-block text-danger">اعشار مجاز نیست</small> }
+                    }
+                    else if (form.Items[i].ProductId is > 0)
+                    {
+                        <small class="d-block text-muted">واحد و نوع مقدار نامشخص</small>
+                    }
+                </div>
                 <div class="col-6 col-md-2"><label class="form-label">هزینه داخلی واحد</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@costs[i]" @oninput="e => costs[i] = Fa.FormatTyping(e.Value?.ToString())" /></div>
                 <div class="col-md-2"><label class="form-label">تصمیم گارانتی *</label><select class="form-select form-select-sm" value="@form.Items[i].Decision" @onchange="e => SetDecision(i, e)"><option value="@WarrantyDecision.Unspecified">انتخاب کنید</option><option value="@WarrantyDecision.Accepted">پذیرفته</option><option value="@WarrantyDecision.Rejected">پذیرفته‌نشده</option></select></div>
                 <div class="col-md-1"><button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
@@ -81,7 +103,8 @@ else
                 }
                 @if (form.Items[i].ProductId is > 0)
                 {
-                    <div class="col-12"><label class="form-check-label"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].Supplied" /> این قطعه واقعاً تحویل یا مصرف شده است</label></div>
+                    <div class="col-12"><label class="form-check-label"><input class="form-check-input ms-1" type="checkbox" checked="@form.Items[i].Supplied" @onchange="e => OnSuppliedChanged(i, e)" /> این قطعه واقعاً تحویل یا مصرف شده است</label>
+                        @if (form.Items[i].Supplied && StockShortage(i) > 0) { <small class="text-danger ms-2">موجودی این قطعه در انبار کافی نیست (کمبود @StockShortage(i).Qty())</small> }</div>
                 }
                 else
                 {
@@ -89,9 +112,17 @@ else
                 }
             </div></div>
         }
-        <div class="text-secondary fs-8">مبلغ مشتری در زمان تحویل: <b class="num">@DraftCustomerAmount().MoneyExact()</b> ریال — هزینه داخلی جداگانه ثبت می‌شود.</div>
+        @if (stockWarnings.Count > 0)
+        {
+            <div class="alert alert-warning mt-3 mb-0">
+                <div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle ms-1"></i> کمبود موجودی انبار</div>
+                <ul class="mb-2 fs-8">@foreach (var warning in stockWarnings) { <li>@warning.Message</li> }</ul>
+                <div class="fs-8">با تأیید دوباره، پیش‌نویس با همین هشدار ذخیره می‌شود؛ هنگام تحویل، خروج قطعات از انبار همچنان بررسی می‌شود.</div>
+            </div>
+        }
+        <div class="text-secondary fs-8 mt-3">مبلغ مشتری در زمان تحویل: <b class="num">@DraftCustomerAmount().MoneyExact()</b> ریال — هزینه داخلی جداگانه ثبت می‌شود.</div>
     </ChildContent>
-    <Footer><button class="btn btn-light" @onclick="() => showForm = false">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">ذخیره پیش‌نویس</button></Footer>
+    <Footer><button class="btn btn-light" @onclick="() => showForm = false">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">@(stockWarnings.Count > 0 ? "ذخیره با وجود کمبود" : "ذخیره پیش‌نویس")</button></Footer>
 </Modal>
 
 <Modal Visible="view is not null" Title="جزئیات گارانتی" Size="modal-lg" OnClose="() => view = null">
@@ -150,6 +181,13 @@ else
     private List<ShopWarrantyDto> items = new();
     private List<LookupItem> customers = new(), products = new();
     private List<LookupItem> warehouses = new(), technicians = new();
+    /// <summary>قاعدهٔ واحد/نوع مقدار هر کالا — برای نمایش «نوع مقدار» و مسدودکردن اعشار.</summary>
+    private Dictionary<int, ShopWarrantyProductRuleDto> productRules = new();
+    /// <summary>موجودی کالاهای انتخابی در انبار پذیرش (برای هشدار کمبود).</summary>
+    private Dictionary<int, decimal> stockByProduct = new();
+    private List<ShopWarrantyStockWarningDto> stockWarnings = new();
+    /// <summary>کاربر کمبود موجودی را دید و آگاهانه ذخیره را تأیید کرد.</summary>
+    private bool stockAcknowledged;
     private ShopWarrantyDto form = new();
     private ShopWarrantyDto? view, credit;
     private List<string> quantities = new(), costs = new(), prices = new();
@@ -160,7 +198,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        try { var lookups = await Api.GetAsync<ShopWarrantyLookupsDto>("api/shop-warranties/lookups"); customers = lookups.Customers; warehouses = lookups.Warehouses; technicians = lookups.Technicians; products = lookups.Products; }
+        try
+        {
+            var lookups = await Api.GetAsync<ShopWarrantyLookupsDto>("api/shop-warranties/lookups");
+            customers = lookups.Customers; warehouses = lookups.Warehouses; technicians = lookups.Technicians; products = lookups.Products;
+            productRules = (lookups.ProductRules ?? new()).GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g => g.First());
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
         await Load();
     }
@@ -169,12 +212,15 @@ else
         loading = true; try { items = await Api.GetAsync<List<ShopWarrantyDto>>("api/shop-warranties"); }
         catch (Exception ex) { Toast.Error(ex.Message); } finally { loading = false; }
     }
-    private void New()
+    private async Task New()
     {
         form = new ShopWarrantyDto { OperationId = Guid.NewGuid(), ReceivedAt = DateTime.Today, WarehouseId = warehouses.FirstOrDefault()?.Id ?? 0 };
-        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); prices = new(); AddDevice(); AddItem(); showForm = true;
+        receivedAt = DateTime.Today; technicianId = 0; quantities = new(); costs = new(); prices = new();
+        stockWarnings = new(); stockByProduct = new(); stockAcknowledged = false;
+        AddDevice(); AddItem(); showForm = true;
+        await RefreshStockAsync();
     }
-    private void Edit(ShopWarrantyDto w)
+    private async Task Edit(ShopWarrantyDto w)
     {
         form = new ShopWarrantyDto { Id = w.Id, OperationId = w.OperationId, Number = w.Number, PartyId = w.PartyId, TechnicianId = w.TechnicianId,
             WarehouseId = w.WarehouseId, DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber,
@@ -187,7 +233,9 @@ else
         receivedAt = w.ReceivedAt; technicianId = w.TechnicianId ?? 0;
         quantities = w.Items.Select(i => i.Quantity.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).ToList();
         costs = w.Items.Select(i => Fa.FormatTyping(i.UnitCost.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture))).ToList();
-        prices = w.Items.Select(i => i.CustomerUnitPrice.HasValue ? FormatRial(i.CustomerUnitPrice.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture)) : "").ToList(); showForm = true;
+        prices = w.Items.Select(i => i.CustomerUnitPrice.HasValue ? FormatRial(i.CustomerUnitPrice.Value.ToString("0", System.Globalization.CultureInfo.InvariantCulture)) : "").ToList();
+        stockWarnings = new(); stockByProduct = new(); stockAcknowledged = false; showForm = true;
+        await RefreshStockAsync();
     }
     private static List<ShopWarrantyDeviceDto> DevicesFor(ShopWarrantyDto w) => w.Devices is { Count: > 0 } ? w.Devices : new() { new ShopWarrantyDeviceDto {
         DeviceType = w.DeviceType, DeviceModel = w.DeviceModel, SerialNumber = w.SerialNumber, ProblemDescription = w.ProblemDescription, Accessories = w.Accessories } };
@@ -209,7 +257,7 @@ else
         }
         return total;
     }
-    private void SetProduct(int i, int value)
+    private async Task SetProduct(int i, int value)
     {
         var productId = value > 0 ? value : (int?)null;
         if (form.Items[i].ProductId == productId) return;
@@ -219,6 +267,70 @@ else
         form.Items[i].CustomerUnitPrice = null;
         form.Items[i].UnitCost = 0m;
         prices[i] = ""; costs[i] = "";
+        stockAcknowledged = false;
+        await RefreshStockAsync(); // موجودی همین کالا در انبار انتخاب‌شده نمایش داده شود
+    }
+
+    /// <summary>قاعدهٔ واحد کالا (واحد + مجاز بودن اعشار) — null یعنی کالا انتخاب نشده/ناشناخته.</summary>
+    private ShopWarrantyProductRuleDto? ProductRule(int? productId)
+        => productId is > 0 && productRules.TryGetValue(productId.Value, out var rule) ? rule : null;
+
+    /// <summary>
+    /// ورودی مقدار: برای واحد «صحیح» جداکنندهٔ اعشار همان لحظهٔ تایپ حذف می‌شود تا
+    /// امکان ورود مقدار اعشاری نباشد (اعتبارسنجی نهایی هم در Save انجام می‌شود).
+    /// </summary>
+    private string NormalizeQtyInput(int index, string? raw)
+    {
+        var text = raw ?? "";
+        if (index < 0 || index >= form.Items.Count) return text;
+        if (ProductRule(form.Items[index].ProductId)?.AllowsFractionalQuantity != false) return text;
+        return new string(text.Where(ch => ch is not ('.' or '٫' or ',' or '٬' or '/')).ToArray());
+    }
+
+    private async Task OnSuppliedChanged(int index, ChangeEventArgs e)
+    {
+        form.Items[index].Supplied = e.Value is true;
+        stockAcknowledged = false;
+        await RefreshStockAsync();
+    }
+
+    private void OnQtyInput(int index, string? raw)
+    {
+        quantities[index] = NormalizeQtyInput(index, raw);
+        stockAcknowledged = false; // مقدار تغییر کرد؛ هشدار کمبود باید دوباره ارزیابی شود
+    }
+
+    private string StockClass(int index) => StockShortage(index) > 0 ? "text-danger fw-bold" : "text-muted";
+
+    private decimal StockOf(int productId) => stockByProduct.TryGetValue(productId, out var q) ? q : 0m;
+
+    private decimal StockShortage(int index)
+    {
+        var item = form.Items[index];
+        if (item.ProductId is not > 0 || !item.Supplied) return 0m;
+        var required = Fa.ParseDecimal(quantities[index]);
+        var available = StockOf(item.ProductId!.Value);
+        return required > available ? required - available : 0m;
+    }
+
+    /// <summary>موجودی کالاهای ردیف‌های فعلی را از انبار انتخاب‌شده می‌خواند (هشدار کمبود).</summary>
+    private async Task RefreshStockAsync()
+    {
+        var ids = form.Items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
+        if (form.WarehouseId <= 0 || ids.Count == 0) { stockByProduct = new(); return; }
+        try
+        {
+            var rows = await Api.GetAsync<List<ShopWarrantyStockItemDto>>(
+                $"api/shop-warranties/stock?warehouseId={form.WarehouseId}&productIds={string.Join(",", ids)}");
+            stockByProduct = rows.GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g => g.First().Quantity);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OnWarehouseChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id)) form.WarehouseId = id;
+        await RefreshStockAsync();
     }
     private void SetDecision(int i, ChangeEventArgs e)
     {
@@ -239,8 +351,50 @@ else
             form.Items[i].Quantity = Fa.ParseDecimal(quantities[i]); form.Items[i].UnitCost = Fa.ParseDecimal(costs[i]);
             form.Items[i].CustomerUnitPrice = string.IsNullOrWhiteSpace(prices[i]) ? null : Fa.ParseDecimal(prices[i]);
         }
+
+        if (form.WarehouseId <= 0) { Toast.Error("انبار برداشت را انتخاب کنید."); return; }
+        if (form.Items.Count == 0) { Toast.Error("حداقل یک ردیف کار یا قطعه اضافه کنید."); return; }
+
+        // نوع مقدار کالا: واحد «صحیح» اعشار نمی‌پذیرد و واحدِ نامشخص باید تعیین شود.
+        foreach (var item in form.Items.Where(i => i.ProductId is > 0))
+        {
+            var rule = ProductRule(item.ProductId);
+            if (rule is null) continue; // قاعده در سرور بررسی می‌شود (کالای غیرفعال/حذف‌شده)
+            if (rule.AllowsFractionalQuantity is null)
+            {
+                Toast.Error($"نوع مقدار واحد «{rule.Unit}» برای «{item.Description}» مشخص نیست؛ ابتدا آن را در واحدهای شمارش تعیین کنید.");
+                return;
+            }
+            if (rule.AllowsFractionalQuantity == false && !ShopQuantityRules.IsWhole(item.Quantity))
+            {
+                Toast.Error($"مقدار «{item.Description}» با واحد «{rule.Unit}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
+                return;
+            }
+        }
+
         saving = true;
-        try { await Api.PostAsync<ShopWarrantyDto>("api/shop-warranties", form); showForm = false; Toast.Success("پیش‌نویس گارانتی ثبت شد."); await Load(); }
+        try
+        {
+            // موجودی انبار پیش از ثبت بررسی می‌شود؛ کمبود فقط هشدار است (خروج واقعی
+            // هنگام «تحویل / نهایی‌سازی» انجام می‌شود) ولی کاربر همان‌جا آن را می‌بیند.
+            var warnings = await Api.PostAsync<List<ShopWarrantyStockWarningDto>>("api/shop-warranties/stock-warnings",
+                new ShopWarrantyStockCheckCommand { WarehouseId = form.WarehouseId, Items = form.Items });
+            stockWarnings = warnings ?? new();
+            if (stockWarnings.Count > 0 && !stockAcknowledged)
+            {
+                // نخستین تلاش: کمبود نشان داده می‌شود و ذخیره متوقف می‌ماند تا کاربر
+                // آگاهانه با دکمهٔ «ذخیره با وجود کمبود» ادامه دهد.
+                stockAcknowledged = true;
+                await RefreshStockAsync();
+                Toast.Warning($"موجودی انبار برای {stockWarnings.Count.Num()} قطعه کافی نیست؛ پیام هشدار را ببینید و دوباره تأیید کنید.");
+                StateHasChanged();
+                return;
+            }
+
+            await Api.PostAsync<ShopWarrantyDto>("api/shop-warranties", form);
+            showForm = false; stockWarnings = new();
+            Toast.Success("پیش‌نویس گارانتی ثبت شد."); await Load();
+        }
         catch (Exception ex) { Toast.Error(ex.Message); } finally { saving = false; }
     }
     private async Task FinalizeWarranty(ShopWarrantyDto w)

@@ -19,6 +19,16 @@ public class ShopWarrantyController : ApiControllerBase
     [HttpGet("lookups")]
     public async Task<ActionResult<ShopWarrantyLookupsDto>> Lookups() => Ok(await _service.LookupsAsync());
 
+    /// <summary>موجودی کالاهای انتخابی در انبار پذیرش (برای نمایش در فرم و هشدار کمبود).</summary>
+    [HttpGet("stock")]
+    public async Task<ActionResult<List<ShopWarrantyStockItemDto>>> Stock([FromQuery] int warehouseId, [FromQuery] string? productIds)
+        => Ok(await _service.StockAsync(warehouseId, productIds));
+
+    /// <summary>کمبود موجودی برای ردیف‌های «قطعهٔ تحویل/مصرف‌شده» یک پذیرش گارانتی.</summary>
+    [HttpPost("stock-warnings")]
+    public async Task<ActionResult<List<ShopWarrantyStockWarningDto>>> StockWarnings([FromBody] ShopWarrantyStockCheckCommand cmd)
+        => Ok(await _service.StockWarningsAsync(cmd.WarehouseId, cmd.Items ?? new List<ShopWarrantyItemDto>()));
+
     [HttpGet("report")]
     public async Task<ActionResult<List<ShopWarrantyDto>>> Report([FromQuery] DateTime? from, [FromQuery] DateTime? to)
         => Ok(await _service.ListAsync(from, to, finalizedOnly: true));
