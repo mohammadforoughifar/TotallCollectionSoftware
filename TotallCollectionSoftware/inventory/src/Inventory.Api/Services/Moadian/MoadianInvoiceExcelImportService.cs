@@ -506,7 +506,7 @@ public sealed class MoadianInvoiceExcelImportService(IConnectService connectServ
             result.ErrorDetailsOmitted++;
     }
 
-    private static Customer ResolveCustomer(IReadOnlyList<Customer> customers, string nationalId, string economicNumber, string name)
+    private static int ResolveCustomer(IReadOnlyList<Customer> customers, string nationalId, string economicNumber, string name)
     {
         if (nationalId.Length == 0 && economicNumber.Length == 0)
             throw new InvalidOperationException("برای صورتحساب نوع اول، کد ملی/شماره ثبت یا شماره اقتصادی مشتری الزامی است.");
@@ -539,7 +539,7 @@ public sealed class MoadianInvoiceExcelImportService(IConnectService connectServ
         var type = NormalizeHeader(customer.Type);
         if (type is not ("حقیقی" or "حقوقی" or "شخصحقیقی" or "شخصحقوقی"))
             throw new InvalidOperationException("نوع شخص مشتری در اطلاعات پایه مشخص نیست؛ پیش از ورود، نوع «حقیقی» یا «حقوقی» را اصلاح کنید.");
-        return customer;
+        return customer.Id;
     }
 
     private static DateOnly ParseInvoiceDate(IXLCell cell)
