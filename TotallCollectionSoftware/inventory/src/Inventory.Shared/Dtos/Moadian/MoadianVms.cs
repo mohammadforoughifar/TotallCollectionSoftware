@@ -299,6 +299,8 @@ public class VmInvoiceItems
         public string? StatusSentToSystemInt { get; set; }
         public string? TaxNumber { get; set; }
         public string? ReferenceId { get; set; }
+        /// <summary>کلید یکتای منبع برای جلوگیری از ورود دوبارهٔ یک صورتحساب اکسل در همان خدمات‌دهنده.</summary>
+        public string? ImportReference { get; set; }
         public double? TotallValueAddedPercentage { get; set; }
         public decimal? TotallMoney { get; set; }
         public string? Subject { get; set; }
@@ -459,4 +461,22 @@ public class VmInvoiceItems
         public List<object>? warning { get; set; }
         public bool success { get; set; }
     }
+}
+
+/// <summary>نوع اطلاعات پایهٔ مودیان برای قالب و ورود اکسل.</summary>
+public enum MoadianExcelKind
+{
+    Goods = 0,
+    Units = 1,
+    Customers = 2,
+    Invoices = 3
+}
+
+/// <summary>نتیجهٔ ورود اکسل اطلاعات پایهٔ مودیان؛ سطر معتبر جداگانه ذخیره می‌شود.</summary>
+public sealed class MoadianExcelImportResult
+{
+    public int Imported { get; set; }
+    public int Failed { get; set; }
+    public int ErrorDetailsOmitted { get; set; }
+    public List<string> Errors { get; set; } = new();
 }

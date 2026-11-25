@@ -23,6 +23,7 @@ else
                 <i class="bi bi-search" aria-hidden="true"></i>
                 <input class="form-control" placeholder="جستجو در نام یا کد" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در واحدها" />
             </div>
+            <MoadianExcelImport Kind="MoadianExcelKind.Units" EntityLabel="واحدهای سنجش" OnImported="AfterExcelImportAsync" />
             <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
                 <i class="bi bi-plus-lg" aria-hidden="true"></i> واحد جدید
             </button>
@@ -229,6 +230,8 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
+
+    private Task AfterExcelImportAsync() => LoadAsync(1);
 
     public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }
 }

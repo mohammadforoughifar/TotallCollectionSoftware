@@ -95,6 +95,16 @@ public sealed class MoadianPermissionFilter : IAsyncActionFilter
             ["InsertCustomer"] = "Customers",
             ["UpdateCustomer"] = "Customers",
 
+            // ورود اکسل و دانلود قالب: هر عملیات فقط با مجوز همان تب اطلاعات پایه.
+            ["DownloadGoodsImportTemplate"] = "Goods",
+            ["ImportGoodsExcel"] = "Goods",
+            ["DownloadUnitsImportTemplate"] = "Units",
+            ["ImportUnitsExcel"] = "Units",
+            ["DownloadCustomersImportTemplate"] = "Customers",
+            ["ImportCustomersExcel"] = "Customers",
+            ["DownloadInvoicesImportTemplate"] = "InvoiceCreate",
+            ["ImportInvoicesExcel"] = "InvoiceCreate",
+
             // چرخهٔ صورتحساب — ایجاد/اصلاح/ابطال/حذف
             ["AddInvoice"] = "InvoiceCreate",
             ["EslahiInvoiceAsync"] = "InvoiceUpdate",

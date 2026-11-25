@@ -1,4 +1,4 @@
-﻿using Inventory.Api.Services.Moadian;
+using Inventory.Api.Services.Moadian;
 
 using Inventory.Shared.Dtos.Moadian;
 
@@ -19,8 +19,15 @@ namespace Inventory.Api.Controllers.Moadian
     [ApiController]
     [Route("Moadian")]
     [MoadianPermission]
-    public class MoadianController(IConnectService connectService, IWebHostEnvironment _env) : BaseApiController
+    public class MoadianController(
+        IConnectService connectService,
+        IWebHostEnvironment _env,
+        IMoadianExcelImportService excelImportService,
+        IMoadianInvoiceExcelImportService invoiceExcelImportService) : BaseApiController
     {
+        private const long MaxMoadianExcelFileBytes = 15L * 1024 * 1024;
+        private const string MoadianExcelContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
     
         [HttpPost("GetIsConnectToMoadian")]
         public async Task<ApiModel> GetConnect(VMConnection vMConnection)
@@ -459,6 +466,59 @@ namespace Inventory.Api.Controllers.Moadian
         public async Task<ApiModel> UpdateCustomer(VMCustomerList model)
         {
             return await connectService.UpdateCustomerAsync(model);
+        }
+
+        // ==================== ورود اکسل اطلاعات پایه ====================
+
+        [HttpGet("GoodsImportTemplate")]
+        public Task<IActionResult> DownloadGoodsImportTemplate()
+            => Task.FromResult<IActionResult>(File(excelImportService.BuildGoodsTemplate(), MoadianExcelContentType, "Moadian-Goods-Template.xlsx"));
+
+        [HttpGet("UnitsImportTemplate")]
+        public Task<IActionResult> DownloadUnitsImportTemplate()
+            => Task.FromResult<IActionResult>(File(excelImportService.BuildUnitsTemplate(), MoadianExcelContentType, "Moadian-Units-Template.xlsx"));
+
+        [HttpGet("CustomersImportTemplate")]
+        public Task<IActionResult> DownloadCustomersImportTemplate()
+            => Task.FromResult<IActionResult>(File(excelImportService.BuildCustomersTemplate(), MoadianExcelContentType, "Moadian-Customers-Template.xlsx"));
+
+        [HttpPost("ImportGoodsExcel")]
+        [RequestSizeLimit(20_000_000)]
+        public Task<ApiModel> ImportGoodsExcel([FromQuery] int cpInfoId, [FromForm] IFormFile? file)
+            => ImportExcelFileAsync(cpInfoId, file, excelImportService.ImportGoodsAsync);
+
+        [HttpPost("ImportUnitsExcel")]
+        [RequestSizeLimit(20_000_000)]
+        public Task<ApiModel> ImportUnitsExcel([FromQuery] int cpInfoId, [FromForm] IFormFile? file)
+            => ImportExcelFileAsync(cpInfoId, file, excelImportService.ImportUnitsAsync);
+
+        [HttpPost("ImportCustomersExcel")]
+        [RequestSizeLimit(20_000_000)]
+        public Task<ApiModel> ImportCustomersExcel([FromQuery] int cpInfoId, [FromForm] IFormFile? file)
+            => ImportExcelFileAsync(cpInfoId, file, excelImportService.ImportCustomersAsync);
+
+        [HttpGet("InvoicesImportTemplate")]
+        public Task<IActionResult> DownloadInvoicesImportTemplate()
+            => Task.FromResult<IActionResult>(File(invoiceExcelImportService.BuildTemplate(), MoadianExcelContentType, "Moadian-Invoices-Template.xlsx"));
+
+        [HttpPost("ImportInvoicesExcel")]
+        [RequestSizeLimit(20_000_000)]
+        public Task<ApiModel> ImportInvoicesExcel([FromQuery] int cpInfoId, [FromForm] IFormFile? file)
+            => ImportExcelFileAsync(cpInfoId, file, invoiceExcelImportService.ImportAsync);
+
+        private async Task<ApiModel> ImportExcelFileAsync(int cpInfoId, IFormFile? file, Func<int, Stream, Task<ApiModel>> import)
+        {
+            if (cpInfoId <= 0)
+                return new ApiModel { Success = false, Status = 400, Message = "ابتدا یک خدمات‌دهندهٔ مودیان انتخاب کنید." };
+            if (file is null || file.Length <= 0)
+                return new ApiModel { Success = false, Status = 400, Message = "فایل اکسل انتخاب نشده است." };
+            if (file.Length > MaxMoadianExcelFileBytes)
+                return new ApiModel { Success = false, Status = 400, Message = "حجم فایل اکسل نباید بیشتر از ۱۵ مگابایت باشد." };
+            if (!Path.GetExtension(file.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
+                return new ApiModel { Success = false, Status = 400, Message = "فقط فایل اکسل با فرمت xlsx پشتیبانی می‌شود." };
+
+            await using var stream = file.OpenReadStream();
+            return await import(cpInfoId, stream);
         }
     }
 }

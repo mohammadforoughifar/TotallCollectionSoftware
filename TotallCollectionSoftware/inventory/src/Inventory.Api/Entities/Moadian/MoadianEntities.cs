@@ -91,6 +91,8 @@ public class Invoice
     public string? Description { get; set; }
     public string? StatusSentToSystem { get; set; }
     public string? TaxNumber { get; set; }
+    /// <summary>کلید منبع اکسل برای جلوگیری از ثبت مجدد یک فاکتور واردشده در همان خدمات‌دهنده.</summary>
+    public string? ImportReference { get; set; }
     /// <summary>شناسهٔ حافظه مغطبی زمان صدور — معادل TaxMemoryID مبدأ (ثبت روی خود صورتحساب).</summary>
     public string? TaxMemoryID { get; set; }
     public string? ReferenceId { get; set; }

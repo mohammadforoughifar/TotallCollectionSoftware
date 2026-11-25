@@ -55,6 +55,10 @@ public interface IMoadianService
     Task<ApiModel> UpdateUnitAsync(VMUnitOfMeasurement vm);
     Task<ApiModel> DeleteUnitAsync(int id);
     Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync(int cpinfoId);
+
+    // ---------- ورود اکسل اطلاعات پایه ----------
+    Task<(byte[] Data, string FileName, string ContentType)> DownloadExcelTemplateAsync(MoadianExcelKind kind);
+    Task<MoadianExcelImportResult> ImportExcelAsync(MoadianExcelKind kind, int cpinfoId, Stream excelStream, string fileName);
 }
 
 public class MoadianService : IMoadianService
@@ -252,4 +256,33 @@ public class MoadianService : IMoadianService
     public Task<ApiModel> DeleteUnitAsync(int id) => _api.DeleteAsync<ApiModel>($"Moadian/{id}");
     public async Task<List<VMUnitOfMeasurement>> GetUnitsComboAsync(int cpinfoId)
         => Must<List<VMUnitOfMeasurement>>(await _api.GetAsync<ApiModel>($"Moadian/GetUnitOfMeasurementForComboAsync?cpinfoid={cpinfoId}")) ?? new();
+
+    private static (string TemplatePath, string ImportPath, string FileName, string Label) ExcelPaths(MoadianExcelKind kind)
+        => kind switch
+        {
+            MoadianExcelKind.Goods => ("Moadian/GoodsImportTemplate", "Moadian/ImportGoodsExcel", "Moadian-Goods-Template.xlsx", "کالاها/خدمات"),
+            MoadianExcelKind.Units => ("Moadian/UnitsImportTemplate", "Moadian/ImportUnitsExcel", "Moadian-Units-Template.xlsx", "واحدها"),
+            MoadianExcelKind.Customers => ("Moadian/CustomersImportTemplate", "Moadian/ImportCustomersExcel", "Moadian-Customers-Template.xlsx", "مشتریان"),
+            MoadianExcelKind.Invoices => ("Moadian/InvoicesImportTemplate", "Moadian/ImportInvoicesExcel", "Moadian-Invoices-Template.xlsx", "فاکتورها"),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), "نوع فایل اکسل معتبر نیست.")
+        };
+
+    public async Task<(byte[] Data, string FileName, string ContentType)> DownloadExcelTemplateAsync(MoadianExcelKind kind)
+    {
+        var paths = ExcelPaths(kind);
+        var file = await _api.GetFileAsync(paths.TemplatePath);
+        return (file.Data, string.IsNullOrWhiteSpace(file.FileName) ? paths.FileName : file.FileName, file.ContentType);
+    }
+
+    public async Task<MoadianExcelImportResult> ImportExcelAsync(MoadianExcelKind kind, int cpinfoId, Stream excelStream, string fileName)
+    {
+        if (cpinfoId <= 0) throw new ArgumentOutOfRangeException(nameof(cpinfoId), "خدمات‌دهندهٔ مودیان انتخاب نشده است.");
+        var paths = ExcelPaths(kind);
+        var response = await _api.PostFileAsync<ApiModel>(
+            $"{paths.ImportPath}?cpInfoId={cpinfoId}", excelStream, fileName,
+            formFieldName: "file",
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return AsStrict<MoadianExcelImportResult>(response, $"ورود {paths.Label} از اکسل")
+               ?? throw new Exception($"نتیجهٔ ورود {paths.Label} از سرور خالی بود.");
+    }
 }

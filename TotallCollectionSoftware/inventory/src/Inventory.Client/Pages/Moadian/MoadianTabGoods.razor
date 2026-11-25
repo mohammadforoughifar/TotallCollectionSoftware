@@ -25,6 +25,7 @@ else
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input class="form-control" placeholder="جستجو در نام یا شناسهٔ CPC" value="@search" @oninput="OnSearchInput" @onkeyup="OnSearchKey" aria-label="جستجو در کالاها" />
                 </div>
+                <MoadianExcelImport Kind="MoadianExcelKind.Goods" EntityLabel="کالاها/خدمات" OnImported="AfterExcelImportAsync" />
                 <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
                     <i class="bi bi-plus-lg" aria-hidden="true"></i> کالا/خدمت جدید
                 </button>
@@ -283,6 +284,12 @@ else
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; StateHasChanged(); }
+    }
+
+    private async Task AfterExcelImportAsync()
+    {
+        search = "";
+        await InitAsync();
     }
 
     public void Dispose() { Ctx.Changed -= OnCtxChanged; searchTimer?.Dispose(); }

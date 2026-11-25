@@ -23,6 +23,7 @@
     <div class="ms-auto d-flex gap-2">
         @if (CanCreate)
         {
+            <MoadianExcelImport Kind="MoadianExcelKind.Invoices" EntityLabel="فاکتورها" OnImported="AfterExcelImportAsync" />
             <NavLink class="btn btn-primary" href="moadian/invoices/new"><i class="bi bi-plus-lg"></i> صورتحساب جدید</NavLink>
         }
         <NavLink class="btn btn-outline-secondary" href="moadian/guide"><i class="bi bi-journal-check"></i> راهنما</NavLink>
@@ -727,6 +728,16 @@ else
     }
 
     private void GoPage(int p) => _ = LoadAsync(p);
+
+    private async Task AfterExcelImportAsync()
+    {
+        // پیش‌نویس‌های تازه با فیلتر «همه» و بدون جست‌وجو/بازهٔ قدیمی دیده شوند.
+        search = "";
+        fFrom = null;
+        fTo = null;
+        fOp = "همه";
+        await LoadAsync(1);
+    }
 
     private async Task LoadAsync(int p)
     {

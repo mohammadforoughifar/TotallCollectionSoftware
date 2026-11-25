@@ -617,6 +617,10 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        // کلید منبع اکسل در محدودهٔ هر خدمات‌دهنده یکتا است؛ null برای فاکتورهای دستی.
+        mb.Entity<Invoice>().Property(i => i.ImportReference).HasMaxLength(128);
+        mb.Entity<Invoice>().HasIndex(i => new { i.CpInfo, i.ImportReference }).IsUnique()
+            .HasFilter("[ImportReference] IS NOT NULL");
         // بک‌آپ خودکار: کلیدهای رشته‌ای و تک‌ردیفی تنظیمات نباید Identity بگیرند.
         mb.Entity<BackupSetting>().Property(x => x.Id).ValueGeneratedNever();
         mb.Entity<BackupBrowserSession>().HasKey(x => x.Id);

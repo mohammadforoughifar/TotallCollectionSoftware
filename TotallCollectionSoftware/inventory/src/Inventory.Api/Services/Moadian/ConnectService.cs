@@ -2048,6 +2048,7 @@ context.Customers.Any(x =>
                 .OrderBy(c => c.Name).Select(c => new VMUnitOfMeasurement
             {
                 Name = c.Name,
+                Code = c.Code,
                 UnitOfMeasurementId = c.Id,
                 CpInfoId = cpinfoid
             }).ToListAsync();
@@ -3981,6 +3982,7 @@ context.Customers.Any(x =>
                 {
                     CustomerId = IsNoBuyerDisclosureType(typeCode) ? null : modeldata.CustomerId,
                     CpInfo = modeldata.CPInfoId,
+                    ImportReference = modeldata.ImportReference,
                     InvoiceNumber = modeldata.NumberInvoice is > 0 ? modeldata.NumberInvoice.Value : await NextInvoiceNoCoreAsync(modeldata.CPInfoId),
                     FiscalYearId = Convert.ToInt32(modeldata.FiscalYearId),
                     DateOrder = modeldata.DateOrder,

@@ -199,6 +199,8 @@ builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService,
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
 builder.Services.AddScoped<Inventory.Api.Services.Moadian.IConnectService, Inventory.Api.Services.Moadian.ConnectService>(); // سامانه مودیان (SDK 0.0.27)
+builder.Services.AddScoped<Inventory.Api.Services.Moadian.IMoadianExcelImportService, Inventory.Api.Services.Moadian.MoadianExcelImportService>(); // ورود اکسل اطلاعات پایه مودیان
+builder.Services.AddScoped<Inventory.Api.Services.Moadian.IMoadianInvoiceExcelImportService, Inventory.Api.Services.Moadian.MoadianInvoiceExcelImportService>(); // ورود اکسل صورتحساب مودیان
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel

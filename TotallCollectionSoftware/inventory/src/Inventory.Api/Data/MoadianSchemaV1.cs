@@ -10,10 +10,8 @@ namespace Inventory.Api.Data;
 //  MigrateSqlServer آن مایگریشن را «stamp و رد» می‌کند و در نتیجه جدول‌های
 //  مودیان (CPInfos و بقیه) هرگز ساخته نمی‌شوند. سرور در SaveCpInfo با
 //  «Invalid object name 'CPInfos'» می‌افتد.
-//  نسخه ۲: ستون‌های جاافتاده نسبت به جدول‌های پروژهٔ مبدأ هم اضافه شد
-//  (EnglishName/PostalCode/IsDelete/CompanyId، CertificatePath، Title/IsActive/
-//  CreatedDate/IsDelete سال مالی، IsDelete کالا و مشتری، TaxMemoryID صورتحساب،
-//  PriceNaghd/PriceNesye آیتم و جدول InvoicePayments).
+//  نسخه ۳: علاوه بر ستون‌های نسخهٔ ۲، ImportReference یکتای صورتحساب برای
+//  جلوگیری از ورود دوبارهٔ همان فاکتور اکسل به همان خدمات‌دهنده اضافه شد.
 //  این خودتعمیر — مانند بقیهٔ *SchemaV1* ها — همه را idempotent می‌سازد؛
 //  روی دیتابیسِ جدید که مایگریشن کامل اجرا شده هیچ کاری انجام نمی‌دهد.
 // ============================================================
@@ -133,6 +131,7 @@ BEGIN
         [StatusSentToSystem] nvarchar(max) NULL,
         [ShowButtons] bit NOT NULL DEFAULT(0),
         [TaxNumber] nvarchar(max) NULL,
+        [ImportReference] nvarchar(128) NULL,
         [TaxMemoryID] nvarchar(max) NULL,
         [NewTaxNumber] nvarchar(max) NULL,
         [ReferenceId] nvarchar(max) NULL,
@@ -206,8 +205,15 @@ END");
         await AddSqlServerColumnIfMissing(db, "FiscalYears", "CreatedDate", "datetime2", "NOT NULL DEFAULT(SYSDATETIME())");
         await AddSqlServerBitIfMissing(db, "FiscalYears", "IsActive", "1");
         await AddSqlServerBitIfMissing(db, "FiscalYears", "IsDelete", "0");
-        // Invoices: TaxMemoryID
+        // Invoices: TaxMemoryID + شناسهٔ یکتای منبع اکسل (کلید idempotency)
         await AddSqlServerColumnIfMissing(db, "Invoices", "TaxMemoryID", "nvarchar(max)", "NULL");
+        await AddSqlServerColumnIfMissing(db, "Invoices", "ImportReference", "nvarchar(128)", "NULL");
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.Invoices', N'U') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_Invoices_CpInfo_ImportReference' AND object_id = OBJECT_ID(N'dbo.Invoices'))
+    CREATE UNIQUE INDEX [IX_Invoices_CpInfo_ImportReference]
+        ON [dbo].[Invoices] ([CpInfo], [ImportReference])
+        WHERE [ImportReference] IS NOT NULL;");
         // InvoiceItems: PriceNaghd/PriceNesye
         await AddSqlServerColumnIfMissing(db, "InvoiceItems", "PriceNaghd", "decimal(18,2)", "NULL");
         await AddSqlServerColumnIfMissing(db, "InvoiceItems", "PriceNesye", "decimal(18,2)", "NULL");
@@ -350,6 +356,7 @@ CREATE TABLE IF NOT EXISTS Invoices (
     StatusSentToSystem TEXT NULL,
     ShowButtons INTEGER NOT NULL DEFAULT(0),
     TaxNumber TEXT NULL,
+    ImportReference TEXT NULL,
     TaxMemoryID TEXT NULL,
     NewTaxNumber TEXT NULL,
     ReferenceId TEXT NULL,
@@ -357,6 +364,11 @@ CREATE TABLE IF NOT EXISTS Invoices (
     Name TEXT NULL,
     IsDelete INTEGER NOT NULL DEFAULT(0)
 );");
+        await SafeAsync(db, "ALTER TABLE Invoices ADD COLUMN ImportReference TEXT NULL;");
+        await SafeAsync(db, @"
+CREATE UNIQUE INDEX IF NOT EXISTS IX_Invoices_CpInfo_ImportReference
+    ON Invoices (CpInfo, ImportReference)
+    WHERE ImportReference IS NOT NULL;");
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS InvoiceItems (
     Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

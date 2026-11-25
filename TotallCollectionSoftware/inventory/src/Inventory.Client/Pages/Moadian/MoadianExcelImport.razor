@@ -1,0 +1,244 @@
+@using Inventory.Shared.Dtos.Moadian
+@inject IMoadianService Moadian
+@inject IToastService Toast
+@inject MoadianCompanyContext Ctx
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="d-flex gap-2 align-items-center flex-wrap">
+    <button type="button" class="btn btn-outline-success btn-sm" @onclick="DownloadTemplate" disabled="@downloadingTemplate"
+            title="دانلود فایل نمونهٔ اکسل برای @EntityLabel">
+        @if (downloadingTemplate) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+        else { <i class="bi bi-download ms-1" aria-hidden="true"></i> }
+        نمونه اکسل
+    </button>
+    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenImport" disabled="@uploading"
+            title="ورود @EntityLabel از فایل اکسل">
+        <i class="bi bi-file-earmark-arrow-up ms-1" aria-hidden="true"></i>
+        ورود اکسل
+    </button>
+</div>
+
+<Modal Visible="showImport" Title="@ModalTitle" Size="modal-lg" OnClose="CloseImport">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="alert alert-info fs-8 mb-0">
+                    <i class="bi bi-info-circle ms-1" aria-hidden="true"></i>
+                    @if (IsInvoice)
+                    {
+                        <span>قالب دو برگهٔ ورودی «فاکتورها» و «اقلام» دارد؛ کد فاکتور در هر دو برگه باید یکسان باشد. هر فاکتور فقط با سربرگ و همهٔ اقلام معتبر ثبت می‌شود. نتیجه فقط پیش‌نویسِ ارسال‌نشده است و هیچ فاکتوری خودکار به سامانهٔ مودیان ارسال نمی‌شود. کد هر فاکتور پس از ثبت برای جلوگیری از ورود دوباره ذخیره می‌شود.</span>
+                    }
+                    else
+                    {
+                        <span>فایل نمونه دو برگه دارد: اطلاعات را در برگهٔ ورود وارد کنید؛ برگهٔ «نمونه» فقط راهنماست و خوانده نمی‌شود. فقط سطرهای معتبر و جدید در دیتابیس ذخیره می‌شوند؛ سطرهای نامعتبر یا تکراری در نتیجه گزارش خواهند شد.</span>
+                    }
+                    <button type="button" class="btn btn-link p-0 fw-500 align-baseline me-1" @onclick="DownloadTemplate" disabled="@downloadingTemplate">
+                        دانلود نمونه اکسل
+                    </button>
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">فایل اکسل (.xlsx) <span class="text-danger">*</span></label>
+                <InputFile class="form-control" OnChange="OnFileSelected" accept=".xlsx" disabled="@uploading" />
+                @if (selectedFile is not null)
+                {
+                    <div class="small text-muted mt-1">
+                        <i class="bi bi-paperclip ms-1"></i>@selectedFile.Name — @((selectedFile.Size / 1024d).ToString("N0")) KB
+                    </div>
+                }
+                @if (!string.IsNullOrWhiteSpace(fileError))
+                {
+                    <div class="text-danger small mt-1" role="alert">@fileError</div>
+                }
+            </div>
+            @if (importResult is not null)
+            {
+                <div class="col-12">
+                    <div class="alert @(importResult.Failed == 0 && importResult.ErrorDetailsOmitted == 0 ? "alert-success" : importResult.Imported > 0 ? "alert-warning" : "alert-danger") fs-8 mb-0">
+                        <div class="fw-semibold mb-1">
+                            <i class="bi @(importResult.Failed == 0 ? "bi-check-circle" : "bi-exclamation-triangle") ms-1" aria-hidden="true"></i>
+                            @if (IsInvoice)
+                            {
+                                <span>@importResult.Imported.Num() پیش‌نویس صورتحساب ثبت شد.</span>
+                                @if (importResult.Failed > 0)
+                                {
+                                    <span> — @importResult.Failed.Num() فاکتور/گروه ثبت نشد.</span>
+                                }
+                            }
+                            else
+                            {
+                                <span>@importResult.Imported.Num() مورد ثبت شد.</span>
+                                @if (importResult.Failed > 0)
+                                {
+                                    <span> — @importResult.Failed.Num() سطر نامعتبر/تکراری بود.</span>
+                                }
+                            }
+                        </div>
+                        @foreach (var error in importResult.Errors.Take(8))
+                        {
+                            <div>• @error</div>
+                        }
+                        @if (importResult.Errors.Count > 8)
+                        {
+                            <div>… و @((importResult.Errors.Count - 8).Num()) خطای ثبت‌شدهٔ دیگر</div>
+                        }
+                        @if (importResult.ErrorDetailsOmitted > 0)
+                        {
+                            <div>… جزئیات @importResult.ErrorDetailsOmitted.Num() خطای دیگر به‌علت حجم فایل نمایش داده نشده است.</div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="CloseImport">بستن</button>
+        <button type="button" class="btn btn-primary" @onclick="ImportExcel" disabled="@(uploading || selectedFile is null || !string.IsNullOrWhiteSpace(fileError))">
+            @if (uploading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            @(IsInvoice ? "بارگذاری و ثبت پیش‌نویس‌های معتبر" : "بارگذاری و ثبت سطرهای معتبر")
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private const long MaxFileBytes = 15L * 1024 * 1024;
+
+    [Parameter] public MoadianExcelKind Kind { get; set; }
+    [Parameter] public string EntityLabel { get; set; } = "اطلاعات پایه";
+    [Parameter] public EventCallback OnImported { get; set; }
+
+    private string ModalTitle => $"ورود {EntityLabel} از اکسل";
+    private bool IsInvoice => Kind == MoadianExcelKind.Invoices;
+    private bool showImport;
+    private bool uploading;
+    private bool downloadingTemplate;
+    private int openedCpInfoId;
+    private IBrowserFile? selectedFile;
+    private string? fileError;
+    private MoadianExcelImportResult? importResult;
+
+    protected override void OnInitialized() => Ctx.Changed += OnContextChanged;
+
+    private void OnContextChanged()
+    {
+        _ = InvokeAsync(() =>
+        {
+            if (showImport && !uploading && openedCpInfoId > 0 && openedCpInfoId != Ctx.CpInfoId)
+            {
+                showImport = false;
+                selectedFile = null;
+                importResult = null;
+                fileError = null;
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void OpenImport()
+    {
+        if (Ctx.CpInfoId <= 0)
+        {
+            Toast.Error("ابتدا یک خدمات‌دهندهٔ مودیان انتخاب کنید.");
+            return;
+        }
+        openedCpInfoId = Ctx.CpInfoId;
+        selectedFile = null;
+        fileError = null;
+        importResult = null;
+        showImport = true;
+    }
+
+    private void CloseImport() => showImport = false;
+
+    private void OnFileSelected(InputFileChangeEventArgs args)
+    {
+        selectedFile = args.File;
+        importResult = null;
+        fileError = null;
+        if (!Path.GetExtension(selectedFile.Name).Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
+        {
+            fileError = "فقط فایل اکسل با فرمت xlsx پشتیبانی می‌شود.";
+            return;
+        }
+        if (selectedFile.Size <= 0)
+        {
+            fileError = "فایل انتخاب‌شده خالی است.";
+            return;
+        }
+        if (selectedFile.Size > MaxFileBytes)
+            fileError = "حجم فایل نباید بیشتر از ۱۵ مگابایت باشد.";
+    }
+
+    private async Task DownloadTemplate()
+    {
+        if (downloadingTemplate) return;
+        downloadingTemplate = true;
+        try
+        {
+            var file = await Moadian.DownloadExcelTemplateAsync(Kind);
+            if (file.Data is null || file.Data.Length == 0)
+            {
+                Toast.Error("فایل نمونهٔ اکسل خالی برگشت.");
+                return;
+            }
+            var safeName = Path.GetFileName(file.FileName);
+            var name = string.IsNullOrWhiteSpace(safeName) ? "Moadian-Template.xlsx" : safeName;
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType)
+                ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                : file.ContentType;
+            var downloaded = await JS.InvokeAsync<bool>("downloadBlob", name, contentType, Convert.ToBase64String(file.Data));
+            if (downloaded) Toast.Success("فایل نمونهٔ اکسل دانلود شد.");
+            else Toast.Error("دانلود فایل انجام نشد؛ تنظیمات مرورگر را بررسی کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { downloadingTemplate = false; }
+    }
+
+    private async Task ImportExcel()
+    {
+        if (uploading) return;
+        if (selectedFile is null)
+        {
+            fileError = "ابتدا فایل اکسل را انتخاب کنید.";
+            return;
+        }
+        if (Ctx.CpInfoId <= 0 || openedCpInfoId != Ctx.CpInfoId)
+        {
+            fileError = "شرکت مودیان تغییر کرده است؛ پنجره را ببندید و دوباره باز کنید.";
+            return;
+        }
+
+        uploading = true;
+        try
+        {
+            await using var stream = selectedFile.OpenReadStream(MaxFileBytes);
+            importResult = await Moadian.ImportExcelAsync(Kind, openedCpInfoId, stream, selectedFile.Name);
+            if (importResult.Imported > 0)
+            {
+                Toast.Success(IsInvoice
+                    ? $"{importResult.Imported.Num()} پیش‌نویس صورتحساب ثبت شد؛ برای ارسال، از فهرست صورتحساب‌ها اقدام کنید."
+                    : $"{importResult.Imported.Num()} مورد از {EntityLabel} ثبت شد.");
+                if (Ctx.CpInfoId == openedCpInfoId)
+                    await OnImported.InvokeAsync();
+            }
+            if (importResult.Failed > 0)
+                Toast.Error(IsInvoice
+                    ? $"{importResult.Failed.Num()} فاکتور/گروه ثبت نشد؛ جزئیات در همین پنجره است."
+                    : $"{importResult.Failed.Num()} سطر ثبت نشد؛ جزئیات در همین پنجره است.");
+            if (importResult.Imported == 0 && importResult.Failed == 0)
+                Toast.Info(IsInvoice ? "فاکتور معتبری برای ثبت پیدا نشد." : "ردیفی برای ثبت پیدا نشد.");
+        }
+        catch (Exception ex)
+        {
+            fileError = ex.Message;
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            uploading = false;
+        }
+    }
+
+    public void Dispose() => Ctx.Changed -= OnContextChanged;
+}

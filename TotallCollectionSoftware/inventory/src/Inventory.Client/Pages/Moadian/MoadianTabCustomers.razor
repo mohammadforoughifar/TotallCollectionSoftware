@@ -25,6 +25,7 @@ else
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input class="form-control" placeholder="جستجو در نام، کد ملی/ثبت، شمارهٔ اقتصادی، تلفن" value="@search" @oninput="OnSearch" aria-label="جستجو در مشتریان" />
                 </div>
+                <MoadianExcelImport Kind="MoadianExcelKind.Customers" EntityLabel="مشتریان" OnImported="AfterExcelImportAsync" />
                 <button type="button" class="btn btn-primary btn-sm" @onclick="() => OpenForm(null)">
                     <i class="bi bi-person-plus" aria-hidden="true"></i> مشتری جدید
                 </button>
@@ -269,6 +270,8 @@ else
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; StateHasChanged(); }
     }
+
+    private Task AfterExcelImportAsync() => LoadAsync();
 
     public void Dispose() => Ctx.Changed -= OnCtxChanged;
 }
