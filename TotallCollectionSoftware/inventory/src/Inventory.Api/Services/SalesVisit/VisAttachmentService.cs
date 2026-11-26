@@ -133,7 +133,6 @@ public class VisAttachmentService : IVisAttachmentService
             UploaderName = userName ?? "",
             UploaderUserId = userId,
             Category = cleanCategory,
-            DocumentId = orderId == VisAttachmentCategories.DraftRefId ? userId : null,
             FinancialStatus = VisAttachmentFinancialStatus.Pending
         };
         _db.AppAttachments.Add(att);
@@ -190,10 +189,11 @@ public class VisAttachmentService : IVisAttachmentService
             .ToHashSet();
 
         // پیوست‌های پیش‌نویس همین کاربر (حتی اگر فهرست شناسه‌ها ناقص بماند، همه منتقل می‌شوند).
+        // مالکیت پیش‌نویس فقط با UploaderUserId سنجیده می‌شود؛ ستون جداگانه‌ای برای
+        // «شناسهٔ کاربر بارگذار» وجود ندارد و UploaderUserId همان است.
         var drafts = await _db.AppAttachments
             .Where(a => a.Module == ModuleName && a.RefId == VisAttachmentCategories.DraftRefId &&
-                        a.UploaderUserId == userId &&
-                        (a.DocumentId == null || a.DocumentId == userId))
+                        a.UploaderUserId == userId)
             .ToListAsync();
 
         var targets = drafts
@@ -203,7 +203,6 @@ public class VisAttachmentService : IVisAttachmentService
         {
             d.RefId = orderId;
             d.CompanyId = companyId;
-            d.DocumentId = null;
             d.FinancialStatus = VisAttachmentFinancialStatus.Pending;
             d.FinancialDecidedAt = null;
             d.FinancialDecidedBy = null;

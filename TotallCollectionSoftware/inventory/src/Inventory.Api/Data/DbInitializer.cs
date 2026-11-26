@@ -219,6 +219,10 @@ public static class DbInitializer
                 await VisPaymentPlanSchemaV1.EnsureAsync(db);
                 // ستون‌های دسته/تصمیم مالی/شرکت روی جدول مشترک پیوست‌ها (عکس چک سفارش ویزیتور).
                 await VisAttachmentSchemaV1.EnsureAsync(db);
+                // پایش هم‌خوانی مدل EF با جدول AppAttachments: اگر ستونی در دیتابیس نباشد
+                // (مثل باگ «Invalid column name 'DocumentId'»)، همین‌جا در لاگ راه‌اندازی
+                // هشدار داده می‌شود تا تشخیص «مشکل اسکیما» از «مشکل کد» آسان باشد.
+                await ModelSchemaDriftCheck.RunAsync(db);
 
                 // طرف حساب: ستون‌های «ثبت‌کننده» (چه ویزیتوری این مشتری را ثبت کرد)
                 await PartyRegistrationSchemaV1.EnsureAsync(db);
