@@ -488,5 +488,79 @@ class DtoContractTests(unittest.TestCase):
         self.assertIn("public const int DraftRefId = -1;", self.dtos)
 
 
+# تایپ‌ها/نان‌اسپیس‌هایی که در عبارت‌های مارک‌آپ مجازند (using سراسری یا @using فایل)
+_RAZOR_TYPES = {
+    "Math", "String", "DateTime", "Decimal", "Boolean", "Int32", "Console",
+    "CashType", "TreasuryAccountKind", "PaymentMethod", "VisOrderStatus",
+    "Fa", "VisUi", "VisAttachmentCategories", "VisPaymentPart", "System",
+    "Enumerable", "Task", "List", "Guid", "Uri", "Inventory", "Layout",
+}
+
+class RazorCompileSafetyTests(unittest.TestCase):
+    """خطاهای بیلد Razor که با کپی‌کردن مارک‌آپ از فرم فاکتور پیش آمدند.
+
+    هیچ کامپایلری در این محیط نیست، پس همین دو قاعدهٔ ساده جلوی برگشتشان را می‌گیرند.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.form = read(VISIT_FORM)
+        cls.detail = read(VISIT_DETAIL)
+
+    def test_no_single_at_media_inside_style(self):
+        """CS0103 'media': در <style> باید @@media نوشت، نه @media.
+
+        Razor تکِ '@' را درون بلوک استایل به‌عنوان عبارت C# می‌خواند و «media»
+        را شناسهٔ ناموجود می‌بیند.
+        """
+        for path, name in ((VISIT_FORM, "VisitForm"), (VISIT_DETAIL, "VisitDetail")):
+            src = read(path)
+            for m in re.finditer(r"<style>(.*?)</style>", src, re.S):
+                block = m.group(1)
+                bare = [ln for ln in block.split("\n")
+                        if re.search(r"(?<!@)@[a-zA-Z]", ln) and not re.search(r"@@[a-zA-Z]", ln)]
+                self.assertEqual([], bare, f"{name}: '@' تنها در <style> به C# تفسیر می‌شود")
+
+    def test_cash_kind_identifier_is_declared(self):
+        """CS0103 'CashKind': مارک‌آپ CashKind می‌خواهد؛ باید عضو هم‌نام وجود داشته باشد.
+
+        فیلد اصلی cashKind است (حروف کوچک) و C# حساس به بزرگی/کوچکی حرف است.
+        """
+        self.assertIn("CashKind", self.form, "مارک‌آپ از CashKind استفاده می‌کند")
+        self.assertRegex(self.form, r"private\s+CashType\s+CashKind\s*=>",
+                         "عضو CashKind باید تعریف شده باشد")
+
+    def test_csharp_expressions_use_declared_identifiers(self):
+        """CS0103: داخل @(...) و @Identifier هر نام باید در @code تعریف شده باشد.
+
+        برخلاف بررسی «همهٔ شناسه‌های مارک‌آپ»، اینجا فقط عبارت‌های C# بررسی
+        می‌شوند تا پارامترهای کامپوننت (Items، Value، ...) هشدار ندهند.
+        """
+        for path, name in ((VISIT_FORM, "VisitForm"), (VISIT_DETAIL, "VisitDetail")):
+            src = read(path)
+            cut = src.find("@code")
+            code, markup = src[cut:], src[:cut]
+            markup = re.sub(r"@\*.*?\*@", "", markup, flags=re.S)
+            markup = re.sub(r"<style>.*?</style>", "", markup, flags=re.S)
+
+            declared = set(re.findall(
+                r"\b(?:private|public|protected|internal)\s+"
+                r"(?:static\s+|readonly\s+|override\s+|async\s+)*"
+                r"[\w\?<>,\[\]\.]+\s+([A-Za-z_]\w*)", code))
+
+            # فقط عبارت‌های صریح C#: @( ... ) و @SomeIdentifier (نه داخل نقل‌قول)
+            exprs = re.findall(r"@\(([^()]*(?:\([^()]*\)[^()]*)*)\)", markup)
+            exprs += re.findall(r"(?<![\w@])@([A-Z][A-Za-z0-9_]*)\b(?!\s*[=\w])", markup)
+
+            missing = set()
+            for e in exprs:
+                for ident in re.findall(r"(?<![.\w\"])([A-Z][A-Za-z0-9_]*)\b", e):
+                    if ident in declared or ident in _RAZOR_TYPES:
+                        continue
+                    if ident.lower() in {d.lower() for d in declared}:
+                        missing.add(ident)   # اختلاف فقط در بزرگی/کوچکی حرف
+            self.assertEqual(set(), missing, f"{name}: شناسه‌های تعریف‌نشده {sorted(missing)}")
+
+
 if __name__ == "__main__":
     unittest.main()
