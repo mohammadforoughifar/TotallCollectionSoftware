@@ -1,0 +1,129 @@
+/* ============================================================================
+   چاپ نگار ذهنی (MindFlow)
+   ----------------------------------------------------------------------------
+   دو بخش دارد:
+   1) «پیش‌نمایش چاپ» — یک لایهٔ تمام‌صفحه روی برنامه که برگهٔ A4 افقی را نشان می‌دهد.
+   2) «برگهٔ چاپ» — همان برگه، این‌بار داخل یک iframe جدا که واقعاً چاپ می‌شود؛
+      به این ترتیب چاپ کاملاً از چیدمان صفحهٔ برنامه (منو، نوار بالا، پنل تنظیمات)
+      جداست و دقیقاً در اندازهٔ A4 افقی بیرون می‌آید.
+
+   این فایل عمداً «سراسری» است (نه scoped) چون همان نسخه در iframe چاپ هم
+   بارگذاری می‌شود و باید همان ظاهر را داشته باشد.
+   ============================================================================ */
+
+/* ---------- فونت (برای هماهنگی با برنامه؛ در iframe هم لازم است) ---------- */
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-SemiBold.woff2') format('woff2');
+    font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+
+/* ---------- لایهٔ پیش‌نمایش ---------- */
+.wpmf-print-overlay {
+    position: fixed; inset: 0; z-index: 2147483000;
+    display: flex; flex-direction: column;
+    background: #eef2f7; color: #1e293b;
+    direction: rtl; font-family: Vazirmatn, Tahoma, sans-serif; outline: none;
+}
+.wpmf-print-overlay *, .wpmf-print-overlay *::before, .wpmf-print-overlay *::after { box-sizing: border-box; }
+.wpmf-print-head {
+    flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: .7rem 1.2rem;
+    padding: .7rem 1rem; background: #fff; border-bottom: 1px solid #dce3ed;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .04);
+}
+.wpmf-print-heading { display: flex; align-items: center; gap: .65rem; min-width: 0; margin-inline-end: auto; }
+.wpmf-print-heading > i {
+    display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px;
+    color: #4338ca; background: #eef2ff; border: 1px solid #dfe4ff; border-radius: 10px; font-size: 1.05rem;
+}
+.wpmf-print-heading > div { display: grid; gap: 0; min-width: 0; line-height: 1.6; }
+.wpmf-print-heading strong { color: #172033; font-size: .95rem; }
+.wpmf-print-heading span { color: #64748b; font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wpmf-print-actions { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; }
+.wpmf-print-actions .btn { display: inline-flex; align-items: center; gap: .35rem; min-height: 34px; font-size: .8rem; font-weight: 600; }
+.wpmf-print-stage {
+    flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px;
+    display: flex; justify-content: safe center; align-items: flex-start;
+}
+
+/* ---------- برگهٔ A4 افقی ---------- */
+.wpmf-print-sheet {
+    flex: 0 0 auto; width: 1120px; max-width: 100%; min-height: 790px;
+    padding: 14mm 16mm; background: #fff;
+    box-shadow: 0 3px 18px rgba(15, 23, 42, .15); border-radius: 4px;
+    color: #1e293b; direction: rtl; font-family: Vazirmatn, Tahoma, sans-serif;
+}
+.wpmf-print-sheet-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+    padding-bottom: 8px; margin-bottom: 10px; border-bottom: 2px solid #e2e8f0;
+}
+.wpmf-print-sheet-title { display: grid; gap: 2px; min-width: 0; }
+.wpmf-print-sheet-title strong { color: #172033; font-size: 15pt; line-height: 1.5; }
+.wpmf-print-sheet-title span { color: #64748b; font-size: 10pt; }
+.wpmf-print-sheet-meta {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+    color: #64748b; font-size: 9pt; white-space: nowrap;
+}
+.wpmf-print-sheet-canvas { width: 100%; }
+.wpmf-print-sheet-canvas svg {
+    position: static !important; width: 100% !important; height: auto !important;
+    max-width: none !important; display: block !important;
+}
+/* روی کاغذ سایهٔ گره‌ها و کم‌رنگیِ یال‌ها خوب نیست؛ تمیزتر چاپ می‌شود. */
+.wpmf-print-sheet-canvas .wpmf-node { filter: none; }
+.wpmf-print-sheet-canvas .wpmf-link { opacity: .75; }
+.wpmf-print-sheet-foot {
+    margin-top: 10px; padding-top: 6px; border-top: 1px solid #eef2f7;
+    color: #94a3b8; font-size: 8pt; text-align: center;
+}
+
+/* ---------- متن گره‌ها در نسخهٔ چاپی (به‌جای foreignObject) ---------- */
+.wpmf-print-node-label {
+    fill: #252c3b; font: 600 18px Vazirmatn, Tahoma, sans-serif;
+    text-anchor: middle; dominant-baseline: central; direction: rtl; pointer-events: none;
+}
+.wpmf-print-node-label.root { fill: #fff; font-weight: 700; font-size: 20px; }
+.wpmf-print-ring-label {
+    fill: #515fd3; font: 800 8px Vazirmatn, Tahoma, sans-serif;
+    text-anchor: middle; dominant-baseline: central; pointer-events: none;
+}
+.wpmf-print-ring-label.root-label { fill: #fff; }
+
+/* ---------- محیط چاپ (داخل iframe) ---------- */
+.wpmf-print-body {
+    margin: 0; padding: 0; background: #fff; color: #1e293b;
+    direction: rtl; font-family: Vazirmatn, Tahoma, sans-serif;
+}
+.wpmf-print-body .wpmf-print-sheet {
+    width: 100%; max-width: none; min-height: 0; padding: 0;
+    box-shadow: none; border-radius: 0;
+}
+
+/* ---------- قاب iframe چاپ (دور از صفحه، ولی رندرشده تا چیدمان درست باشد) ----------
+   اندازه برابر ناحیهٔ قابل چاپِ A4 افقی (۲۹۷×۲۱۰ میلی‌متر با حاشیهٔ ۸ میلی‌متر) است. */
+.wpmf-print-frame {
+    position: fixed; left: -20000px; top: 0;
+    width: 1063px; height: 734px; border: 0; pointer-events: none;
+}
+
+/* برگه نباید بین دو صفحه بشکند. */
+@media print {
+    .wpmf-print-sheet { page-break-inside: avoid; break-inside: avoid; }
+}
+
+@media (max-width: 640px) {
+    .wpmf-print-head { gap: .5rem; padding: .6rem .7rem; }
+    .wpmf-print-heading { flex: 1 1 100%; }
+    .wpmf-print-actions { margin-inline-start: auto; }
+    .wpmf-print-stage { padding: 10px; }
+}

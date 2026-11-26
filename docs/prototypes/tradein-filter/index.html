@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>پیش‌نمایش نوار فیلتر «طرح تعویض»</title>
+<link rel="stylesheet" href="css/bootstrap.min.css" />
+<link rel="stylesheet" href="css/app.css" />
+<link rel="stylesheet" href="icons/bootstrap-icons.css" />
+<style>
+/* ---------- هدف: نوار فیلتر فشردهٔ «طرح تعویض» (همان CSS صفحهٔ TradeInTab.razor) ---------- */
+.ti-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem .65rem;
+    background: #fff;
+    border: 1px solid #e3e8ee;
+    border-radius: 12px;
+    padding: .5rem .65rem;
+    margin-bottom: .5rem;
+}
+.ti-search { position: relative; flex: 1 1 260px; min-width: 180px; }
+.ti-search-icon {
+    position: absolute; inset-inline-start: .7rem; top: 50%; transform: translateY(-50%);
+    color: #94a3b8; font-size: .82rem; pointer-events: none;
+}
+.ti-search-input {
+    width: 100%; height: 34px;
+    padding-inline: 2.05rem 2rem;
+    font-size: .82rem; color: #1e293b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px;
+    outline: none; transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ti-search-input:focus { background: #fff; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+.ti-search-clear {
+    position: absolute; inset-inline-end: .35rem; top: 50%; transform: translateY(-50%);
+    border: 0; background: none; color: #94a3b8; font-size: .72rem;
+    padding: .25rem .35rem; border-radius: 6px; line-height: 1;
+}
+.ti-search-clear:hover { color: #e11d48; background: #fef2f2; }
+.ti-control { display: flex; align-items: center; gap: .35rem; margin: 0; }
+.ti-control-text { font-size: .74rem; font-weight: 700; color: #64748b; white-space: nowrap; }
+.ti-status { width: auto; min-width: 9.5rem; height: 34px; font-size: .78rem; border-radius: 9px; }
+.ti-date-range .date-picker { width: 7.4rem; }
+.ti-date-range .date-picker .form-control { height: 34px; font-size: .74rem; padding-inline: .45rem; }
+.ti-date-range .date-picker .btn { height: 34px; padding-inline: .4rem; font-size: .7rem; }
+.ti-range-dash { color: #cbd5e1; font-size: .8rem; }
+.ti-presets { display: inline-flex; border: 1px solid #e2e8f0; border-radius: 9px; overflow: hidden; }
+.ti-presets button {
+    border: 0; background: #fff; color: #475569;
+    font-size: .72rem; font-weight: 700; padding: .32rem .55rem; line-height: 1.15;
+}
+.ti-presets button + button { border-inline-start: 1px solid #e2e8f0; }
+.ti-presets button:hover { background: #f8fafc; }
+.ti-presets button.on { background: #eef2ff; color: #4338ca; }
+.ti-filter-tail { display: flex; align-items: center; gap: .5rem; margin-inline-start: auto; }
+.ti-count { font-size: .74rem; color: #94a3b8; white-space: nowrap; }
+.ti-loading { display: inline-flex; color: #6366f1; }
+.ti-clear {
+    border: 0; background: none; color: #e11d48; font-size: .74rem; font-weight: 700;
+    padding: .3rem .5rem; border-radius: 8px; white-space: nowrap;
+}
+.ti-clear:hover:not(:disabled) { background: #fef2f2; }
+.ti-clear:disabled { opacity: .5; }
+.ti-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .75rem; }
+.ti-chips:empty { display: none; }
+/* در جستجوی زنده جدول پاک نمی‌شود؛ فقط کم‌رنگ می‌شود تا تایپ نلرزد */
+.ti-stale { opacity: .55; transition: opacity .12s ease; }
+.ti-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    border: 1px solid #e0e7ff; background: #eef2ff; color: #4338ca;
+    border-radius: 99px; padding: .18rem .6rem; font-size: .72rem; font-weight: 600;
+}
+.ti-chip b { font-weight: 800; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ti-chip:hover { background: #e0e7ff; }
+@media (max-width: 767.98px) {
+    .ti-search { flex: 1 1 100%; }
+    .ti-date-range { flex-wrap: wrap; }
+    .ti-filter-tail { margin-inline-start: 0; width: 100%; justify-content: space-between; }
+}
+/* ---------- قالب نمایشی نمونه (فقط برای این پیش‌نمایش) ---------- */
+body { background: #f1f5f9; padding: 18px 22px 60px; }
+.demo-tabs { display:flex; gap:.25rem; border-bottom:1px solid #dbe3ef; background:#fff; padding:.2rem .4rem 0; margin-bottom:1rem; }
+.demo-tabs span { color:#64748b; font-weight:700; padding:.7rem 1.15rem; border-bottom:3px solid transparent; }
+.demo-tabs span.on { color:#3730a3; border-bottom-color:#4f46e5; }
+.demo-note { font-size:.72rem; color:#64748b; margin: 0 0 .6rem; }
+.demo-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; }
+.demo-card table { margin:0; font-size:.8rem; }
+.dp-mock { position:relative; }
+.dp-mock .form-control { padding-inline-end: .4rem; }
+.dp-mock .bi-calendar3 { color:#94a3b8; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+    <div><h1>طرح تعویض</h1><p class="lead">ارزش دستگاه را فروشگاه تعیین می‌کند؛ دستگاه فعلاً وارد موجودی نمی‌شود.</p></div>
+    <button class="btn btn-primary me-auto" type="button"><i class="bi bi-plus-lg"></i> پذیرش تعویض</button>
+</div>
+<div class="alert alert-light border fs-8">پس از نهایی‌سازی، ارزش دستگاه به اعتبار مشتری افزوده می‌شود و در صورت‌حساب، تسویه فروش یا پرداخت وجه قابل پیگیری است.</div>
+
+<div class="demo-tabs"><span>تعمیرات</span><span>گارانتی</span><span class="on">طرح تعویض</span></div>
+<p class="demo-note">پیش‌نمایش تعاملی نوار فیلتر فشرده — فقط نمونهٔ نمایشی، بدون اتصال به سرور.</p>
+
+<!-- ================= نوار فیلتر ================= -->
+<section class="ti-filter-bar" aria-label="فیلتر پذیرش‌های تعویض">
+    <div class="ti-search">
+        <i class="bi bi-search ti-search-icon" aria-hidden="true"></i>
+        <input type="search" class="ti-search-input" id="q" placeholder="جستجوی شماره، مشتری، دستگاه یا سریال…" aria-label="جستجوی پذیرش تعویض" />
+        <button type="button" class="ti-search-clear" id="qClear" title="پاک کردن جستجو" aria-label="پاک کردن جستجو" hidden><i class="bi bi-x-lg"></i></button>
+    </div>
+
+    <label class="ti-control">
+        <span class="ti-control-text">وضعیت</span>
+        <select class="form-select form-select-sm ti-status" id="status" aria-label="فیلتر وضعیت">
+            <option value="">همه وضعیت‌ها</option>
+            <option value="0">پیش‌نویس</option>
+            <option value="1">نهایی‌شده</option>
+            <option value="2">دارای اعتبار باقیمانده</option>
+        </select>
+    </label>
+
+    <div class="ti-control ti-date-range">
+        <span class="ti-control-text">پذیرش از</span>
+        <div class="input-group input-group-sm dp-mock"><input type="text" class="form-control" id="from" placeholder="از تاریخ" /><span class="input-group-text bg-white"><i class="bi bi-calendar3"></i></span></div>
+        <span class="ti-range-dash" aria-hidden="true">—</span>
+        <span class="ti-control-text">تا</span>
+        <div class="input-group input-group-sm dp-mock"><input type="text" class="form-control" id="to" placeholder="تا تاریخ" /><span class="input-group-text bg-white"><i class="bi bi-calendar3"></i></span></div>
+        <div class="ti-presets" role="group" aria-label="بازهٔ سریع تاریخ">
+            <button type="button" data-days="7" aria-pressed="false">۷ روز</button>
+            <button type="button" data-days="30" aria-pressed="false">۳۰ روز</button>
+            <button type="button" data-days="90" aria-pressed="false">۹۰ روز</button>
+        </div>
+    </div>
+
+    <div class="ti-filter-tail">
+        <span class="ti-count num" id="count">۳ مورد</span>
+        <button type="button" class="ti-clear" id="clearAll" hidden><i class="bi bi-x-circle ms-1"></i> پاک کردن فیلترها</button>
+    </div>
+</section>
+
+<div class="ti-chips" id="chips" aria-label="فیلترهای فعال"></div>
+
+<div class="demo-card" id="tableCard">
+    <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th class="text-start">ارزش (ریال)</th><th class="text-start">اعتبار باقیمانده</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+        <tbody id="rows"></tbody>
+    </table>
+</div>
+
+<script>
+const DATA = [
+  { number:'TI-0003', date:'1405/08/18', customer:'مشتری دو', device:'لپ تاپ', serial:'', value:'۲٬۰۰۰٬۰۰۰٬۰۰۰', credit:'۲٬۰۰۰٬۰۰۰٬۰۰۰', status:'1', creditLeft:true },
+  { number:'TI-0002', date:'1405/08/15', customer:'مشتری یک', device:'لپ تاپ', serial:'', value:'۴۷۰٬۰۰۰٬۰۰۰', credit:'۰', status:'1', creditLeft:false },
+  { number:'TI-0001', date:'1405/08/10', customer:'مشتری دو', device:'دوربین', serial:'', value:'۱۰٬۰۰۰٬۰۰۰٬۰۰۰', credit:'۱۰٬۰۰۰٬۰۰۰٬۰۰۰', status:'1', creditLeft:true }
+];
+const STATUS_LABEL = { '0':'پیش‌نویس', '1':'نهایی‌شده', '2':'دارای اعتبار باقیمانده' };
+const el = id => document.getElementById(id);
+
+let quickDays = 0;
+function state(){ return { q: el('q').value.trim(), status: el('status').value, from: el('from').value.trim(), to: el('to').value.trim(), quick: quickDays }; }
+
+function filtered(){
+  const s = state();
+  return DATA.filter(r => {
+    if (s.q && !(r.number+' '+r.customer+' '+r.device+' '+r.serial).includes(s.q)) return false;
+    if (s.status === '0' && r.status !== '1') return false;              // نمونه: پیش‌نویس ندارد
+    if (s.status === '1' && r.status !== '1') return false;
+    if (s.status === '2' && !(r.status === '1' && r.creditLeft)) return false;
+    if (s.from && r.date < s.from) return false;
+    if (s.to && r.date > s.to) return false;
+    return true;
+  });
+}
+
+function chip(label, value, clearFn){
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'ti-chip'; b.title = 'حذف این فیلتر';
+  b.innerHTML = `${label}: <b>${value}</b> <i class="bi bi-x"></i>`;
+  b.onclick = () => { clearFn(); render(); };
+  return b;
+}
+
+function render(){
+  const s = state(), list = filtered(), has = !!(s.q || s.status || s.from || s.to);
+
+  const chips = el('chips'); chips.innerHTML = '';
+  if (s.q) chips.appendChild(chip('جستجو', s.q, () => el('q').value = ''));
+  if (s.status) chips.appendChild(chip('وضعیت', STATUS_LABEL[s.status], () => el('status').value = ''));
+  if (s.from) chips.appendChild(chip('از', s.from, () => el('from').value = ''));
+  if (s.to) chips.appendChild(chip('تا', s.to, () => el('to').value = ''));
+  if (s.quick) chips.appendChild(chip('بازه', s.quick + ' روز اخیر', () => { quickDays = 0; }));
+
+  el('qClear').hidden = !s.q;
+  el('clearAll').hidden = !has;
+  el('count').textContent = list.length + ' مورد';
+
+  el('rows').innerHTML = list.length ? list.map(r => `
+    <tr>
+      <td><b>${r.number}</b><div class="text-muted fs-8 num">${r.date}</div></td>
+      <td>${r.customer}</td><td>${r.device} <div class="text-muted fs-9">${r.serial}</div></td>
+      <td class="num text-start">${r.value}</td><td class="num text-start fw-bold">${r.credit}</td>
+      <td>${r.status === '1' ? 'نهایی‌شده' : 'پیش‌نویس'}</td>
+      <td class="text-nowrap">
+        <button class="btn btn-sm btn-outline-primary" type="button">${r.creditLeft ? 'مصرف / پرداخت اعتبار' : '—'}</button>
+        <button class="btn btn-sm btn-light" type="button">گردش‌ها</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="7"><div class="empty-state text-center p-4"><h5>با این فیلتر پذیرشی یافت نشد</h5></div></td></tr>`;
+}
+
+let timer;
+el('q').addEventListener('input', () => {
+  el('tableCard').classList.add('ti-stale');            // جدول نلرزد، فقط کم‌رنگ شود
+  clearTimeout(timer);
+  timer = setTimeout(() => { el('tableCard').classList.remove('ti-stale'); render(); }, 300);
+});
+el('qClear').onclick = () => { el('q').value = ''; render(); };
+el('status').onchange = render;
+document.querySelectorAll('.ti-presets button').forEach(b => {
+  b.onclick = () => {
+    const d = +b.dataset.days;
+    quickDays = quickDays === d ? 0 : d;
+    document.querySelectorAll('.ti-presets button').forEach(x => {
+      const on = +x.dataset.days === quickDays;
+      x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    render();
+  };
+});
+el('from').oninput = render; el('to').oninput = render;
+el('clearAll').onclick = () => {
+  el('q').value = ''; el('status').value = ''; el('from').value = ''; el('to').value = '';
+  quickDays = 0; document.querySelectorAll('.ti-presets button').forEach(x => { x.classList.remove('on'); x.setAttribute('aria-pressed','false'); });
+  render();
+};
+render();
+</script>
+</body>
+</html>
