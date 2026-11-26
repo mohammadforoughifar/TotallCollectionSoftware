@@ -2062,7 +2062,7 @@ public class WarehousingService : IWarehousingService
         var ledgerRows = await ledgerQuery
             .Select(e => new
             {
-                e.Id, e.Date, e.DocId, e.DocTypeId, e.Number, e.Description,
+                e.Id, e.Date, e.DocId, e.DocTypeId, e.Number, e.Description, e.Nature,
                 e.QtyIn, e.QtyOut, e.UnitCost, e.ValueIn, e.ValueOut, e.WarehouseId
             })
             .ToListAsync();
@@ -2114,7 +2114,7 @@ public class WarehousingService : IWarehousingService
             {
                 t.Id, t.Date, t.Type, t.Number, t.Description, t.PartyId, t.WarehouseId,
                 Lines = t.Lines.Where(l => l.ProductId == productId)
-                    .Select(l => new { l.Id, l.Quantity, l.Price, l.UnitCostSnapshot }).ToList()
+                    .Select(l => new { l.Id, l.Quantity, l.Price, l.UnitCostSnapshot, l.Description }).ToList()
             })
             .ToListAsync();
 
@@ -2299,7 +2299,13 @@ public class WarehousingService : IWarehousingService
     {
         /// <summary>۰ = سند فروشگاهی، ۱ = دفتر انبارداری — فقط برای ترتیب پایدار.</summary>
         public int Source { get; set; }
-        public int SortId { get; set; }
+
+        /// <summary>
+        /// شناسهٔ ردیف مبدأ در منبع خودش. <c>InvLedgerEntry.Id</c> از نوع <c>long</c> است
+        /// (دفتر انبار می‌تواند از محدودهٔ int بگذرد) و <c>TransactionLine.Id</c> از نوع int؛
+        /// به‌همین‌دلیل نوع مشترک <c>long</c> گرفته شده تا تبدیل ضمنی لازم نباشد.
+        /// </summary>
+        public long SortId { get; set; }
         public DateTime Date { get; set; }
         public int DocId { get; set; }
         public int DocTypeId { get; set; }
