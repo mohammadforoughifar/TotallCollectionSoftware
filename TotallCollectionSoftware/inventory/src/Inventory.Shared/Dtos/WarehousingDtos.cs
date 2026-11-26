@@ -488,6 +488,12 @@ public class InvKardexRow
     public decimal BalanceQty { get; set; }
     public decimal BalanceValue { get; set; }
     public decimal BalanceAvg => BalanceQty != 0 ? BalanceValue / BalanceQty : 0;
+
+    /// <summary>
+    /// ردیف از دفتر انبارداری آمده است (نه از سند سامانهٔ فروشگاهی)؛ فقط برای این
+    /// ردیف‌ها لینک «ویرایش سند انبار» با شناسهٔ <see cref="DocId"/> معنا دارد.
+    /// </summary>
+    public bool FromWarehouseDoc { get; set; }
 }
 
 /// <summary>خروجی کامل گزارش کاردکس</summary>

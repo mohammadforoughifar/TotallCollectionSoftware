@@ -2030,6 +2030,21 @@ public class WarehousingService : IWarehousingService
     //  کاردکس و موجودی
     // =====================================================================
 
+    /// <summary>
+    /// کاردکس مقداری و ریالی یک کالا — از «هر دو» منبع گردش انبار:
+    /// <list type="bullet">
+    ///   <item><c>InvLedger</c> — دفتر ماژول انبارداری (اسناد قطعی رسید/حواله/انتقال/انبارگردانی).</item>
+    ///   <item><c>Transactions</c> — گردش سامانهٔ فروشگاهی (فاکتور خرید/فروش/برگشت/موجودی اول دوره).</item>
+    /// </list>
+    /// <para>
+    /// پیش‌تر فقط <c>InvLedger</c> خوانده می‌شد؛ در نصب‌های فروشگاهی که خرید و فروش از
+    /// مسیر «سفارش‌ها» ثبت می‌شود، دفتر انبارداری خالی می‌ماند و گزارش با همهٔ کارت‌های
+    /// صفر و پیام «گردشی ثبت نشده» باز می‌شد. حالا هر دو منبع در یک خط زمانی ادغام
+    /// می‌شوند و ماندهٔ مقداری/ریالی به‌ترتیب رخداد بازپخش می‌شود؛ «موجودی اول دوره» و
+    /// «تعدیل» مقدار را «تنظیم» می‌کنند (نه افزایش/کاهش) و بهای واحدشان میانگین فعلی است،
+    /// پس ارزش دفتری هرگز از مقدار صفر جدا نمی‌شود.
+    /// </para>
+    /// </summary>
     public async Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to,
         Paging.Request? pagination = null)
     {
@@ -2039,84 +2054,134 @@ public class WarehousingService : IWarehousingService
 
         var method = await GetEffectiveMethodAsync(productId, warehouseId);
 
-        var q = _db.InvLedger.AsNoTracking().Where(e => e.ProductId == productId);
-        if (warehouseId is > 0) q = q.Where(e => e.WarehouseId == warehouseId);
+        // ---------- ۱) جمع‌آوری رخدادهای هر دو منبع (بدون بازه؛ بازه فقط برای نمایش) ----------
+        var events = new List<KardexEvent>();
 
-        // بازهٔ نمایش [from, to) — ترتیب پایدار Date → DocId → Seq (و Id به‌عنوان tie-breaker).
-        var window = q;
-        if (from.HasValue) { var start = from.Value.Date; window = window.Where(e => e.Date >= start); }
-        if (to.HasValue && to.Value.Date < DateTime.MaxValue.Date)
+        var ledgerQuery = _db.InvLedger.AsNoTracking().Where(e => e.ProductId == productId);
+        if (warehouseId is > 0) ledgerQuery = ledgerQuery.Where(e => e.WarehouseId == warehouseId);
+        var ledgerRows = await ledgerQuery
+            .Select(e => new
+            {
+                e.Id, e.Date, e.DocId, e.DocTypeId, e.Number, e.Description,
+                e.QtyIn, e.QtyOut, e.UnitCost, e.ValueIn, e.ValueOut, e.WarehouseId
+            })
+            .ToListAsync();
+
+        var ledgerTypeIds = ledgerRows.Select(e => e.DocTypeId).Distinct().ToList();
+        var ledgerTypes = ledgerTypeIds.Count == 0
+            ? new Dictionary<int, Db.InvDocType>()
+            : await _db.InvDocTypes.AsNoTracking().Where(t => ledgerTypeIds.Contains(t.Id))
+                .ToDictionaryAsync(t => t.Id);
+
+        var ledgerDocIds = ledgerRows.Select(e => e.DocId).Distinct().ToList();
+        var ledgerDocParties = ledgerDocIds.Count == 0
+            ? new Dictionary<int, int?>()
+            : await _db.InvDocs.AsNoTracking().Where(d => ledgerDocIds.Contains(d.Id))
+                .Select(d => new { d.Id, d.PartyId }).ToDictionaryAsync(d => d.Id, d => d.PartyId);
+
+        foreach (var e in ledgerRows)
         {
-            var end = to.Value.Date.AddDays(1);
-            window = window.Where(e => e.Date < end);
-        }
-        window = window.OrderBy(e => e.Date).ThenBy(e => e.DocId).ThenBy(e => e.Seq).ThenBy(e => e.Id);
-
-        // فقط ردیف‌های صفحهٔ جاری materialize می‌شوند (COUNT + SKIP/TAKE در SQL).
-        var pageRows = await window.ToPageListAsync(pagination);
-
-        // ماندهٔ ماشینی پس از پردازش «دقیقاً» ردیف‌های یک prefix از دفتر:
-        // runQty جمع سادهٔ دلتاهاست؛ runValue با قاعدهٔ صفر شدن ماندهٔ ریالی هنگام رسیدن ماندهٔ مقداری به صفر.
-        // مقدار ماشینی = جمع دلتای مقدار تا آخرین تقاطع صفر (V(p) − V(z))؛ تقاطع با کوئری همبسته پیدا می‌شود.
-        async Task<(decimal Qty, decimal Value)> MachineStateAsync(IQueryable<Db.InvLedgerEntry> before)
-        {
-            decimal qty, value;
-            if (_db.Database.IsSqlite())
+            ledgerTypes.TryGetValue(e.DocTypeId, out var type);
+            ledgerDocParties.TryGetValue(e.DocId, out var partyId);
+            events.Add(new KardexEvent
             {
-                // SQLite جمع decimal ندارد؛ مانند بقیهٔ متدهای پروژه با double و گردکردن ۳ رقمی.
-                qty = (decimal)Math.Round(await before.Select(x => x.QtyIn - x.QtyOut).SumAsync(x => (double?)x) ?? 0, 3);
-                value = (decimal)Math.Round(await before.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
-            }
-            else
-            {
-                qty = await before.Select(x => x.QtyIn - x.QtyOut).SumAsync(x => (decimal?)x) ?? 0m;
-                value = await before.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
-            }
-
-            // آخرین ردیفِ prefix که جمع مقدار تا آن ردیف دقیقاً صفر شده است (همان لحظهٔ صفر شدن ماندهٔ ریالی).
-            Db.InvLedgerEntry? zero;
-            if (_db.Database.IsSqlite())
-            {
-                zero = await before.Where(s => Math.Round(q
-                        .Where(x => x.Date < s.Date
-                            || (x.Date == s.Date && x.DocId < s.DocId)
-                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq < s.Seq)
-                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq == s.Seq && x.Id <= s.Id))
-                        .Select(x => x.QtyIn - x.QtyOut).Sum(x => (double?)x) ?? 0, 3) == 0)
-                    .OrderByDescending(s => s.Date).ThenByDescending(s => s.DocId)
-                    .ThenByDescending(s => s.Seq).ThenByDescending(s => s.Id)
-                    .FirstOrDefaultAsync();
-            }
-            else
-            {
-                zero = await before.Where(s => (q
-                        .Where(x => x.Date < s.Date
-                            || (x.Date == s.Date && x.DocId < s.DocId)
-                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq < s.Seq)
-                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq == s.Seq && x.Id <= s.Id))
-                        .Select(x => x.QtyIn - x.QtyOut).Sum(x => (decimal?)x) ?? 0m) == 0m)
-                    .OrderByDescending(s => s.Date).ThenByDescending(s => s.DocId)
-                    .ThenByDescending(s => s.Seq).ThenByDescending(s => s.Id)
-                    .FirstOrDefaultAsync();
-            }
-            if (zero != null)
-            {
-                // جمع دلتای مقدار تا «خود» ردیف تقاطع؛ ماشین در آن ردیف ماندهٔ ریالی را صفر می‌کند.
-                var throughZero = q.Where(x => x.Date < zero.Date
-                    || (x.Date == zero.Date && x.DocId < zero.DocId)
-                    || (x.Date == zero.Date && x.DocId == zero.DocId && x.Seq < zero.Seq)
-                    || (x.Date == zero.Date && x.DocId == zero.DocId && x.Seq == zero.Seq && x.Id <= zero.Id));
-                if (_db.Database.IsSqlite())
-                    value -= (decimal)Math.Round(await throughZero.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
-                else
-                    value -= await throughZero.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
-            }
-            return (qty, value);
+                Source = 1,
+                SortId = e.Id,
+                Date = e.Date,
+                DocId = e.DocId,
+                Number = e.Number,
+                DocTypeName = type?.Name ?? "—",
+                Nature = e.Nature,
+                WarehouseId = e.WarehouseId,
+                PartyId = partyId,
+                Description = e.Description,
+                InQty = e.QtyIn,
+                OutQty = e.QtyOut,
+                InUnitCost = e.QtyIn > 0 ? e.UnitCost : 0,
+                OutUnitCost = e.QtyOut > 0 ? e.UnitCost : 0,
+                InValue = e.ValueIn,
+                OutValue = e.ValueOut
+            });
         }
 
-        var whName = warehouseId is > 0
-            ? await _db.Warehouses.AsNoTracking().Where(w => w.Id == warehouseId.Value).Select(w => w.Name).FirstOrDefaultAsync()
-            : null;
+        // گردش سامانهٔ فروشگاهی. موجودی اول دوره/تعدیل «تنظیم» هستند و در بازپخش
+        // به‌صورت رسیدن به مقدار هدف (یا صفر) رفتار می‌کنند.
+        var txnQuery = _db.Transactions.AsNoTracking()
+            .Where(t => t.Lines.Any(l => l.ProductId == productId));
+        if (warehouseId is > 0) txnQuery = txnQuery.Where(t => t.WarehouseId == warehouseId);
+        var txns = await txnQuery
+            .Select(t => new
+            {
+                t.Id, t.Date, t.Type, t.Number, t.Description, t.PartyId, t.WarehouseId,
+                Lines = t.Lines.Where(l => l.ProductId == productId)
+                    .Select(l => new { l.Id, l.Quantity, l.Price, l.UnitCostSnapshot }).ToList()
+            })
+            .ToListAsync();
+
+        foreach (var t in txns)
+        {
+            foreach (var l in t.Lines)
+            {
+                // قیمت واحد: بهای قفل‌شده (تعمیر/گارانتی/برگشت) وگرنه قیمت سطر سند.
+                var unitCost = l.UnitCostSnapshot ?? l.Price;
+                var ev = new KardexEvent
+                {
+                    Source = 0,
+                    SortId = l.Id,
+                    Date = t.Date,
+                    DocId = t.Id,
+                    Number = t.Number,
+                    DocTypeName = TransactionTypeTitle(t.Type),
+                    WarehouseId = t.WarehouseId,
+                    PartyId = t.PartyId,
+                    Description = string.IsNullOrWhiteSpace(t.Description) ? l.Description : t.Description,
+                    InUnitCost = unitCost,
+                    OutUnitCost = unitCost,
+                    DocTypeId = 0
+                };
+                switch (t.Type)
+                {
+                    case TransactionType.Purchase:
+                    case TransactionType.SaleReturn:
+                        ev.Nature = StockNature.Increase;
+                        ev.InQty = l.Quantity;
+                        ev.InValue = l.Quantity * unitCost;
+                        break;
+                    case TransactionType.Sale:
+                    case TransactionType.WarrantyOut:
+                        ev.Nature = StockNature.Decrease;
+                        ev.OutQty = l.Quantity;
+                        ev.OutValue = l.Quantity * unitCost;
+                        break;
+                    default:
+                        // Initial / Adjustment — تنظیم موجودی به مقدار سطر.
+                        ev.Nature = StockNature.Neutral;
+                        ev.ResetQty = l.Quantity;
+                        break;
+                }
+                events.Add(ev);
+            }
+        }
+
+        // ---------- ۲) نام‌های نمایشی (انبار / طرف‌حساب) ----------
+        var whIds = events.Select(e => e.WarehouseId).Distinct().ToList();
+        if (warehouseId is > 0 && !whIds.Contains(warehouseId.Value)) whIds.Add(warehouseId.Value);
+        var whNames = whIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.Warehouses.AsNoTracking().Where(w => whIds.Contains(w.Id))
+                .ToDictionaryAsync(w => w.Id, w => w.Name);
+
+        var partyIds = events.Where(e => e.PartyId is > 0).Select(e => e.PartyId!.Value).Distinct().ToList();
+        var partyNames = partyIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, p => p.Name);
+
+        // ---------- ۳) بازپخش خط زمانی و ساخت ردیف‌ها ----------
+        // ترتیب پایدار: تاریخ → منبع → شناسه (ردیف‌های دفتر انبار و سند فروش هرگز قاطی نمی‌شوند).
+        var ordered = events
+            .OrderBy(e => e.Date).ThenBy(e => e.Source).ThenBy(e => e.SortId)
+            .ToList();
 
         var result = new InvKardexResult
         {
@@ -2124,7 +2189,7 @@ public class WarehousingService : IWarehousingService
             ProductCode = product.Code,
             ProductName = product.Name,
             Unit = product.Unit,
-            WarehouseName = warehouseId is > 0 && whName != null ? whName : "همه انبارها",
+            WarehouseName = warehouseId is > 0 && whNames.TryGetValue(warehouseId.Value, out var wn) ? wn : "همه انبارها",
             Method = method,
             MethodTitle = method switch
             {
@@ -2134,94 +2199,138 @@ public class WarehousingService : IWarehousingService
             }
         };
 
-        // ماندهٔ ابتدای بازه: وضعیت ماشین پس از آخرین ردیفِ قبل از from — مستقل از صفحه.
-        if (from.HasValue)
-            (result.OpeningQty, result.OpeningValue) = await MachineStateAsync(
-                q.Where(x => x.Date < from.Value.Date));
+        decimal runQty = 0, runValue = 0;
+        var fromDay = from?.Date;
+        var toDay = to?.Date;
+        // ردیف‌های صفحه فقط وقتی لازم می‌شوند که واقعاً صفحه‌بندی درخواست شده باشد.
+        var paged = pagination?.IsPaged == true;
+        var displayIndex = 0;
 
-        // خلاصه‌های مالی بازه با Aggregate سطح دیتابیس — مستقل از صفحه.
-        if (_db.Database.IsSqlite())
+        foreach (var e in ordered)
         {
-            result.TotalInQty = (decimal)Math.Round(await window.Select(x => x.QtyIn).SumAsync(x => (double?)x) ?? 0, 3);
-            result.TotalInValue = (decimal)Math.Round(await window.Select(x => x.ValueIn).SumAsync(x => (double?)x) ?? 0, 3);
-            result.TotalOutQty = (decimal)Math.Round(await window.Select(x => x.QtyOut).SumAsync(x => (double?)x) ?? 0, 3);
-            result.TotalOutValue = (decimal)Math.Round(await window.Select(x => x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
-        }
-        else
-        {
-            result.TotalInQty = await window.Select(x => x.QtyIn).SumAsync(x => (decimal?)x) ?? 0m;
-            result.TotalInValue = await window.Select(x => x.ValueIn).SumAsync(x => (decimal?)x) ?? 0m;
-            result.TotalOutQty = await window.Select(x => x.QtyOut).SumAsync(x => (decimal?)x) ?? 0m;
-            result.TotalOutValue = await window.Select(x => x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
-        }
+            // ماندهٔ ابتدای بازه: وضعیت ماشین در پایان روز قبل از «از تاریخ».
+            var beforeWindow = fromDay.HasValue && e.Date.Date < fromDay.Value;
+            var inWindow = (!fromDay.HasValue || e.Date.Date >= fromDay.Value)
+                           && (!toDay.HasValue || e.Date.Date <= toDay.Value);
 
-        // ماندهٔ پایانی: وضعیت ماشین پس از کل دفتر (آخرین ردیف) — مستقل از صفحه و بازه.
-        (result.ClosingQty, result.ClosingValue) = await MachineStateAsync(q);
+            decimal inQty = 0, outQty = 0, inValue = 0, outValue = 0;
+            decimal inUnit = 0, outUnit = 0;
 
-        if (pageRows.Count > 0)
-        {
-            // واکشی اطلاعات تکمیلی فقط با شناسه‌های صفحهٔ جاری.
-            var docIds = pageRows.Select(e => e.DocId).Distinct().ToList();
-            var docs = docIds.Count == 0
-                ? new Dictionary<int, int?>()
-                : await _db.InvDocs.AsNoTracking().Where(d => docIds.Contains(d.Id))
-                    .Select(d => new { d.Id, d.PartyId }).ToDictionaryAsync(d => d.Id, d => (int?)d.PartyId);
-            var partyIds = docs.Values.Where(p => p is > 0).Select(p => p!.Value).Distinct().ToList();
-            var partyNames = partyIds.Count == 0
-                ? new Dictionary<int, string>()
-                : await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
-                    .ToDictionaryAsync(p => p.Id, p => p.Name);
-            var whIds = pageRows.Select(e => e.WarehouseId).Distinct().ToList();
-            if (warehouseId is > 0 && !whIds.Contains(warehouseId.Value)) whIds.Add(warehouseId.Value);
-            var whNames = whIds.Count == 0
-                ? new Dictionary<int, string>()
-                : await _db.Warehouses.AsNoTracking().Where(w => whIds.Contains(w.Id))
-                    .ToDictionaryAsync(w => w.Id, w => w.Name);
-            var typeIds = pageRows.Select(e => e.DocTypeId).Distinct().ToList();
-            var typeNames = typeIds.Count == 0
-                ? new Dictionary<int, string>()
-                : await _db.InvDocTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id))
-                    .ToDictionaryAsync(t => t.Id, t => t.Name);
-
-            // ماندهٔ ابتدای صفحه: وضعیت ماشین پس از آخرین ردیفِ قبل از اولین ردیف صفحه.
-            var first = pageRows[0];
-            var (runQty, runValue) = await MachineStateAsync(q.Where(x => x.Date < first.Date
-                || (x.Date == first.Date && x.DocId < first.DocId)
-                || (x.Date == first.Date && x.DocId == first.DocId && x.Seq < first.Seq)
-                || (x.Date == first.Date && x.DocId == first.DocId && x.Seq == first.Seq && x.Id < first.Id)));
-
-            foreach (var e in pageRows)
+            if (e.ResetQty.HasValue)
             {
-                runQty += e.QtyIn - e.QtyOut;
-                runValue += e.ValueIn - e.ValueOut;
-                if (runQty == 0) runValue = 0;
-
-                docs.TryGetValue(e.DocId, out var partyId);
-
-                result.Rows.Add(new InvKardexRow
-                {
-                    Date = e.Date,
-                    DocId = e.DocId,
-                    Number = e.Number,
-                    DocTypeName = typeNames.TryGetValue(e.DocTypeId, out var tn) ? tn : "—",
-                    Nature = e.Nature,
-                    WarehouseName = whNames.TryGetValue(e.WarehouseId, out var w) ? w : null,
-                    PartyName = partyId is > 0 && partyNames.TryGetValue(partyId.Value, out var pn) ? pn : null,
-                    Description = e.Description,
-                    InQty = e.QtyIn,
-                    InPrice = e.QtyIn > 0 ? e.UnitCost : 0,
-                    InValue = e.ValueIn,
-                    OutQty = e.QtyOut,
-                    OutPrice = e.QtyOut > 0 ? e.UnitCost : 0,
-                    OutValue = e.ValueOut,
-                    BalanceQty = runQty,
-                    BalanceValue = runValue
-                });
+                // تنظیم: مقدار به هدف می‌رسد و ارزش با میانگین فعلی هم‌تراز می‌شود.
+                var target = e.ResetQty.Value;
+                var avg = runQty != 0 ? runValue / runQty : e.InUnitCost;
+                var delta = target - runQty;
+                if (delta > 0) { inQty = delta; inUnit = avg; inValue = delta * avg; }
+                else if (delta < 0) { outQty = -delta; outUnit = avg; outValue = -delta * avg; }
+                runQty = target;
+                runValue = target != 0 ? target * avg : 0;
             }
+            else if (e.InQty != 0)
+            {
+                inQty = e.InQty;
+                inValue = e.InValue != 0 ? e.InValue : e.InQty * e.InUnitCost;
+                inUnit = e.InUnitCost != 0 ? e.InUnitCost : (inQty != 0 ? inValue / inQty : 0);
+                runQty += inQty;
+                runValue += inValue;
+            }
+            else if (e.OutQty != 0)
+            {
+                outQty = e.OutQty;
+                outValue = e.OutValue != 0 ? e.OutValue : e.OutQty * e.OutUnitCost;
+                outUnit = e.OutUnitCost != 0 ? e.OutUnitCost : (outQty != 0 ? outValue / outQty : 0);
+                runQty -= outQty;
+                runValue -= outValue;
+            }
+            // ماندهٔ مقداری صفر ⇒ ارزش دفتری هم صفر (هم‌راستا با RebuildLedgerAsync).
+            if (runQty == 0) runValue = 0;
+
+            if (beforeWindow)
+            {
+                result.OpeningQty = runQty;
+                result.OpeningValue = runValue;
+                continue;
+            }
+            if (!inWindow) continue;
+
+            result.TotalInQty += inQty;
+            result.TotalInValue += inValue;
+            result.TotalOutQty += outQty;
+            result.TotalOutValue += outValue;
+
+            displayIndex++;
+            if (paged && displayIndex <= (pagination!.Skip)) continue;
+            if (paged && pagination!.Take is > 0 && result.Rows.Count >= pagination.Take.Value) continue;
+
+            result.Rows.Add(new InvKardexRow
+            {
+                Date = e.Date,
+                DocId = e.DocId,
+                Number = e.Number,
+                DocTypeName = e.DocTypeName,
+                Nature = e.Nature,
+                WarehouseName = e.WarehouseId > 0 && whNames.TryGetValue(e.WarehouseId, out var whn) ? whn : null,
+                PartyName = e.PartyId is > 0 && partyNames.TryGetValue(e.PartyId.Value, out var pn) ? pn : null,
+                Description = e.Description,
+                InQty = inQty,
+                InPrice = inUnit,
+                InValue = inValue,
+                OutQty = outQty,
+                OutPrice = outUnit,
+                OutValue = outValue,
+                BalanceQty = runQty,
+                BalanceValue = runValue,
+                FromWarehouseDoc = e.Source == 1
+            });
         }
+
+        if (paged) pagination!.SetTotal(displayIndex);
+
+        // ماندهٔ پایانی = وضعیت ماشین پس از تمام گردش‌ها (مستقل از صفحه).
+        result.ClosingQty = runQty;
+        result.ClosingValue = runValue;
 
         return result;
     }
+
+    /// <summary>یک رخداد گردش انبار (از دفتر انبارداری یا از سند سامانهٔ فروشگاهی).</summary>
+    private sealed class KardexEvent
+    {
+        /// <summary>۰ = سند فروشگاهی، ۱ = دفتر انبارداری — فقط برای ترتیب پایدار.</summary>
+        public int Source { get; set; }
+        public int SortId { get; set; }
+        public DateTime Date { get; set; }
+        public int DocId { get; set; }
+        public int DocTypeId { get; set; }
+        public string Number { get; set; } = "";
+        public string DocTypeName { get; set; } = "";
+        public StockNature Nature { get; set; }
+        public int WarehouseId { get; set; }
+        public int? PartyId { get; set; }
+        public string? Description { get; set; }
+
+        public decimal InQty { get; set; }
+        public decimal OutQty { get; set; }
+        public decimal InUnitCost { get; set; }
+        public decimal OutUnitCost { get; set; }
+        public decimal InValue { get; set; }
+        public decimal OutValue { get; set; }
+
+        /// <summary>مقدار هدف برای «موجودی اول دوره» و «تعدیل»؛ در بقیهٔ رخدادها null.</summary>
+        public decimal? ResetQty { get; set; }
+    }
+
+    private static string TransactionTypeTitle(TransactionType t) => t switch
+    {
+        TransactionType.Initial => "موجودی اول دوره",
+        TransactionType.Purchase => "رسید خرید",
+        TransactionType.Sale => "حواله فروش",
+        TransactionType.SaleReturn => "برگشت از فروش",
+        TransactionType.WarrantyOut => "خروج گارانتی",
+        TransactionType.Adjustment => "تعدیل موجودی",
+        _ => "سند انبار"
+    };
 
     public async Task<PagedResult<InvStockRow>> GetStockAsync(int? warehouseId, int? categoryId, string? search,
         bool belowOnly, int page, int pageSize)

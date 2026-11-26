@@ -111,8 +111,13 @@ public abstract class RbacControllerBase : ApiControllerBase
             .Select(p => p.Action)
             .ToListAsync();
         if (granted.Count == 0) return false;
-        if (granted.Contains($"Shop.{section.Key}.View")) return true;
-        return write && granted.Contains($"Shop.{section.Key}.Manage");
+
+        // اکشن‌ها در جدول Permissions به‌صورت «{Key}.View» ذخیره می‌شوند (بدون پیشوند
+        // «Shop.» که نام خودِ مدول است). پیش‌تر این‌جا «Shop.{Key}.View» مقایسه می‌شد و
+        // هیچ‌گاه تطبیق نمی‌خورد؛ نتیجه: کاردکس ریالی برای نقش‌هایی که فقط تیک
+        // «کاردکس کالا» را داشتند 403 می‌گرفت و گزارش بارگذاری نمی‌شد.
+        if (granted.Contains($"{section.Key}.View", StringComparer.OrdinalIgnoreCase)) return true;
+        return write && granted.Contains($"{section.Key}.Manage", StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>اگر مجوز را نداشت 403 می‌دهد.</summary>

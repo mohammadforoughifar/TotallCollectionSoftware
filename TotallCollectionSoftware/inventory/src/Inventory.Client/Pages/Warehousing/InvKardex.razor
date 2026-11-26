@@ -3,6 +3,7 @@
 @inject IInvReportService ReportSvc
 @inject IInvProductService ProductSvc
 @inject IInvWarehouseService WarehouseSvc
+@inject IAuthState Auth
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -10,6 +11,17 @@
 
 <PageTitle>گزارش کاردکس مقداری و ریالی کالا</PageTitle>
 
+@if (!CanViewKardex)
+{
+    @* صفحه از منوی فروشگاهی هم باز می‌شود؛ مجوز «بخش کاردکس» باید مثل خود API
+       پذیرفته شود، وگرنه کاربر تیک‌خورده صفحهٔ خالی می‌دید. *@
+    <div class="alert alert-warning d-flex align-items-center gap-2 mt-3 rounded-4 p-3">
+        <i class="bi bi-shield-exclamation fs-4 text-warning"></i>
+        <div>شما به «کاردکس کالا» دسترسی ندارید. برای دریافت دسترسی با مدیر سیستم تماس بگیرید.</div>
+    </div>
+}
+else
+{
 <div class="fin-page-container fade-in" @ref="printRoot">
     <!-- ================== سربرگ لوکس ================== -->
     <div class="fin-header mb-4 d-print-none">
@@ -254,9 +266,18 @@
                                         <td class="text-center num text-secondary fs-8">@((rowIdx++).FaDigits())</td>
                                         <td class="num text-secondary fs-8">@r.Date.ToFaDate()</td>
                                         <td>
-                                            <a href="@($"/inv/docs/edit/{r.DocId}")" class="fw-700 text-primary num text-decoration-none">
-                                                @r.Number
-                                            </a>
+                                            @* فقط ردیف‌های دفتر انبارداری سند قابل ویرایش دارند؛ ردیف‌های
+                                               سامانهٔ فروشگاهی شناسهٔ سند انبار ندارند و لینک مرده نمی‌سازیم. *@
+                                            @if (r.FromWarehouseDoc)
+                                            {
+                                                <a href="@($"/inv/docs/edit/{r.DocId}")" class="fw-700 text-primary num text-decoration-none">
+                                                    @r.Number
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span class="fw-700 text-dark num">@r.Number</span>
+                                            }
                                             <div class="text-secondary fs-9">@r.DocTypeName@(string.IsNullOrWhiteSpace(r.WarehouseName) ? "" : $" — {r.WarehouseName}")</div>
                                         </td>
                                         <td class="fs-8">
@@ -299,6 +320,7 @@
         </div>
     }
 </div>
+}
 
 
 <style>
@@ -647,12 +669,37 @@
     private int? warehouseId;
     private DateTime? from, to;
 
+    /// <summary>شناسهٔ آخرین بارگذاری — پاسخ دیررس کالای قبلی نباید جدول کالای جدید را پر کند.</summary>
+    private int loadVersion;
+
+    /// <summary>
+    /// مجوز دیدن گزارش: مجوز ماژول گزارش‌ها یا تیک «کاردکس کالا» در سامانهٔ فروشگاهی.
+    /// صفحه از هر دو منو باز می‌شود و API هم هر دو را می‌پذیرد؛ نگهبان صفحه هم باید
+    /// همین‌طور باشد، وگرنه کاربر تیک‌خورده پیام «دسترسی ندارید» می‌گرفت.
+    /// </summary>
+    private bool CanViewKardex => Auth.IsAdmin
+        || Auth.Has("ReportPages.Kardex")
+        || Auth.HasModule("ReportPages")
+        || ShopAccess.CanSee(Auth, "Kardex");
+
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("کاردکس کالا");
+        productId = QueryProductId ?? 0;
+        warehouseId = QueryWarehouseId;
         try
         {
+            // فهرست انتخاب کالا با سقف ۵۰۰ ردیف می‌آید؛ اگر کالای آدرس (productId در
+            // لینک «کاردکس» صفحهٔ موجودی/کالاها) در آن سقف نباشد، نامش در فهرست
+            // پیدا نمی‌شد و کادر جستجو خالی می‌ماند. با گرفتن همان کالا از API نامش
+            // به فهرست اضافه می‌شود.
             products = await ProductSvc.GetLookupsAsync();
+            if (productId > 0 && products.All(p => p.Id != productId))
+            {
+                var picked = await ProductSvc.GetAsync(productId);
+                if (picked is not null)
+                    products.Insert(0, new LookupItem { Id = picked.Id, Name = picked.Code + " — " + picked.Name });
+            }
             warehouses = await WarehouseSvc.GetLookupsAsync();
         }
         catch (Exception ex)
@@ -660,8 +707,6 @@
             Toast.Error(ex.Message);
         }
 
-        productId = QueryProductId ?? 0;
-        warehouseId = QueryWarehouseId;
         if (productId > 0) await Load();
     }
 
@@ -670,26 +715,32 @@
         // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
         if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
         if (productId <= 0) return;
+        var version = ++loadVersion;
+        var requestedProduct = productId;
         loading = true;
         try
         {
-            result = await ReportSvc.GetKardexAsync(productId, warehouseId, from, to);
+            var loaded = await ReportSvc.GetKardexAsync(requestedProduct, warehouseId, from, to);
+            if (version != loadVersion || requestedProduct != productId) return;
+            result = loaded;
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            if (version == loadVersion) Toast.Error(ex.Message);
         }
         finally
         {
-            loading = false;
+            if (version == loadVersion) loading = false;
         }
     }
 
     private async Task OnProduct(int id)
     {
+        if (productId == id) return;
         productId = id;
+        // انتخاب تازه یعنی جدول قبلی معتبر نیست — حتی پیش از رسیدن پاسخ تازه.
+        result = null;
         if (id > 0) await Load();
-        else result = null;
     }
 
     private async Task OnWarehouse(ChangeEventArgs e)

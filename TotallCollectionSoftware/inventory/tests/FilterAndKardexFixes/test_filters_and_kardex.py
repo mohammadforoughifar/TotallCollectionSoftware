@@ -91,7 +91,11 @@ class KardexContract(unittest.TestCase):
         self.assertIn('ShopSectionPermissionAsync("Kardex", write: false)', ctrl)
         base = read('Inventory.Api/Controllers/RbacControllerBase.cs')
         self.assertIn('protected async Task<bool> ShopSectionPermissionAsync(string sectionKey, bool write)', base)
-        self.assertIn('granted.Contains($"Shop.{section.Key}.View")', base)
+        # اکشن‌های مدول Shop به‌صورت «{Key}.View» ذخیره می‌شوند (پیشوند «Shop.» نام
+        # خود مدول است و در ستون Action تکرار نمی‌شود). تطبیق با «Shop.{Key}.View»
+        # هرگز برقرار نمی‌شد و کاردکس ریالی برای نقش تیک‌خورده ۴۰۳ می‌گرفت.
+        self.assertIn('granted.Contains($"{section.Key}.View", StringComparer.OrdinalIgnoreCase)', base)
+        self.assertNotIn('granted.Contains($"Shop.{section.Key}.View")', base)
 
 
 if __name__ == '__main__':

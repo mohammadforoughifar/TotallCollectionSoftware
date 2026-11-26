@@ -143,8 +143,9 @@ public class InvReportsController : RbacControllerBase
         // صفحهٔ کاردکس ریالی از منوی فروشگاهی هم باز می‌شود و نباید 403 بگیرد.
         if (!await HasAsync("ReportPages", "Kardex") && !await ShopSectionPermissionAsync("Kardex", write: false))
             return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
-        // COUNT و Skip/Take در SQL و قبل از materialize شدن ردیف‌ها؛ ماندهٔ ابتدای/پایانی و
-        // خلاصه‌های مالی مستقل از صفحه محاسبه می‌شوند و فقط ردیف‌های صفحه واکشی می‌شوند.
+        // گردش از دو منبع (دفتر انبارداری + اسناد فروشگاهی) ادغام می‌شود، پس مرز صفحه
+        // فقط پس از ساخت خط زمانی کامل معنا دارد؛ شمارش/برش در همان بازپخش انجام
+        // می‌شود و ماندهٔ ابتدای/پایانی و خلاصه‌ها مستقل از صفحه می‌مانند.
         var pagination = new Paging.Request(skip, take);
         var r = await _svc.GetKardexAsync(productId, warehouseId, from, to, pagination);
         if (pagination.IsPaged)
