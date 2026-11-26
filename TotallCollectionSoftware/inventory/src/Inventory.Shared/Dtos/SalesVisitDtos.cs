@@ -415,9 +415,6 @@ public class VisOrderAttachmentDto
         _ => "vis-att-pending"
     };
 
-    /// <summary>آیا کاربر جاری اجازهٔ پیش‌نمایش دارد؟ (از سرور در فهرست پیوست‌ها)</summary>
-    public bool CanPreview { get; set; } = true;
-
     /// <summary>آیا کاربر جاری اجازهٔ دانلود دارد؟</summary>
     public bool CanDownload { get; set; } = true;
 }

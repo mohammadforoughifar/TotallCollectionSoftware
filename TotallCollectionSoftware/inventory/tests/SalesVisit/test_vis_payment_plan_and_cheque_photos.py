@@ -457,6 +457,32 @@ class DtoContractTests(unittest.TestCase):
             with self.subTest(member=member):
                 self.assertIn(member, self.dtos)
 
+    def test_payment_plan_file_imports_dtos_namespace(self):
+        """CS0246: ChequeDto/InstallmentDto در Inventory.Shared.Dtos هستند.
+
+        فایل SalesVisitPaymentPlan در namespace ریشه (Inventory.Shared) است و
+        global using فقط همان را می‌آورد؛ پس using صریح Dtos لازم است.
+        """
+        plan = read(PLAN)
+        self.assertIn("using Inventory.Shared.Dtos;", plan)
+        # مطمئن شویم واقعاً به تایپ‌های آن namespace نیاز دارد
+        self.assertIn("ChequeDto", plan)
+        self.assertIn("InstallmentDto", plan)
+
+    def test_no_duplicate_member_in_attachment_dto(self):
+        """CS0102: VisOrderAttachmentDto نباید عضو تکراری داشته باشد.
+
+        قبلاً CanPreview دو بار تعریف شده بود (محاسبه‌ای + قابل‌نوشتن) و بیلد
+        با «already contains a definition» شکست می‌خورد.
+        """
+        start = self.dtos.index("public class VisOrderAttachmentDto")
+        end = self.dtos.index("public static class VisAttachmentCategories")
+        body = self.dtos[start:end]
+        self.assertEqual(body.count("public bool CanPreview"), 1,
+                         "CanPreview باید دقیقاً یک تعریف داشته باشد")
+        self.assertIn("public bool CanPreview =>", body,
+                      "نسخهٔ محاسبه‌ای (IsImage/PDF) باید بماند")
+
     def test_categories_are_shared_constants(self):
         self.assertIn('public const string Cheque = "Cheque";', self.dtos)
         self.assertIn("public const int DraftRefId = -1;", self.dtos)
