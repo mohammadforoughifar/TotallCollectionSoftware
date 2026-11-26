@@ -106,12 +106,6 @@ public class AppAttachment
     [MaxLength(40)]
     public string? Category { get; set; }
 
-    /// <summary>
-    /// شناسهٔ مدرک مرتبط در آرشیو (فقط DocVersion) — برای پیوست پیش‌نویس سفارش ویزیتور
-    /// موقتاً شناسهٔ کاربر بارگذار را نگه می‌دارد تا انتقال به سفارش ممکن شود.
-    /// </summary>
-    public int? DocumentId { get; set; }
-
     /// <summary>شرکت مالک پیوست — پیوست پیش‌نویس بدون شرکت است.</summary>
     public int? CompanyId { get; set; }
 
