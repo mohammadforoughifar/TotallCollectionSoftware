@@ -1,3 +1,5 @@
+using Inventory.Shared.Dtos;
+
 namespace Inventory.Shared;
 
 /// <summary>

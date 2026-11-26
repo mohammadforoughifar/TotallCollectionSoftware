@@ -179,8 +179,7 @@
                 UploaderName = r.UploaderName,
                 UploadedAt = r.UploadedAt,
                 Category = VisAttachmentCategories.Cheque,
-                CanDownload = r.CanDownload,
-                CanPreview = r.CanPreview
+                CanDownload = r.CanDownload
             }).ToList();
         }
         catch { items = new(); }
