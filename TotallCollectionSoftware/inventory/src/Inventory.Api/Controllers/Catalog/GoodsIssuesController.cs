@@ -22,8 +22,9 @@ public class GoodsIssuesController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<List<GoodsIssueDto>>> GetAll(
         [FromQuery] int? partyId = null, [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null, [FromQuery] string? search = null)
-        => Ok(await _service.GetAsync(partyId, from, to, search));
+        [FromQuery] DateTime? to = null, [FromQuery] string? search = null,
+        CancellationToken ct = default)
+        => Ok(await _service.GetAsync(partyId, from, to, search, ct));
 
     /// <summary>
     /// کالاهای انباری برای انتخاب در سطرهای بیجک (با موجودی).

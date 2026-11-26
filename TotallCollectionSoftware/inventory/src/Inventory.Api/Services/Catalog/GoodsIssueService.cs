@@ -9,7 +9,7 @@ namespace Inventory.Api.Services.Catalog;
 /// <summary>سرویس حواله تحویل کالا (فقط مقدار — بدون قیمت).</summary>
 public interface IGoodsIssueService
 {
-    Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null, CancellationToken ct = default);
     Task<GoodsIssueDto?> GetAsync(int id);
 
     /// <summary>ثبت یا ویرایش حواله. شماره فقط هنگام ثبت جدید ساخته می‌شود.</summary>
@@ -68,9 +68,12 @@ public class GoodsIssueService : IGoodsIssueService
     /// <summary>سقف فهرست انتخاب کالا (هم‌اندازهٔ سقف صفحه‌بندی کالاها).</summary>
     private const int MaxProductOptions = 10000;
 
-    public async Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    /// <summary>سقف فهرست حواله‌ها — فقط تازه‌ترین‌ها؛ بقیه با تنگ‌تر کردن فیلتر پیدا می‌شوند.</summary>
+    private const int MaxListResults = 200;
+
+    public async Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null, CancellationToken ct = default)
     {
-        var q = _db.GoodsIssues.Include(g => g.Lines).AsNoTracking().AsQueryable();
+        var q = _db.GoodsIssues.AsNoTracking().AsQueryable();
 
         if (partyId is > 0) q = q.Where(g => g.PartyId == partyId);
         if (from.HasValue) q = q.Where(g => g.Date >= from.Value.Date);
@@ -84,8 +87,17 @@ public class GoodsIssueService : IGoodsIssueService
                 || _db.Parties.MatchingPhone(s).Any(p => p.Id == g.PartyId));
         }
 
-        var list = await q.OrderByDescending(g => g.Date).ThenByDescending(g => g.Id).ToListAsync();
-        return list.Select(ToDto).ToList();
+        // دو مرحله‌ای: اول فقط شناسه‌های ۲۰۰ تای آخر (بدون Include)، بعد همان‌ها با سطرها.
+        // Include روی کل جدول، همهٔ حواله‌ها و همهٔ سطرهایشان را یک‌جا می‌خواند و
+        // فهرست را کند و پاسخ را سنگین می‌کرد (اسپینرِ بی‌پایان پس از اعمال فیلتر).
+        var ids = await q.OrderByDescending(g => g.Date).ThenByDescending(g => g.Id)
+            .Select(g => g.Id).Take(MaxListResults).ToListAsync(ct);
+        if (ids.Count == 0) return new List<GoodsIssueDto>();
+
+        var list = await _db.GoodsIssues.Include(g => g.Lines).AsNoTracking()
+            .Where(g => ids.Contains(g.Id)).ToListAsync(ct);
+        var byId = list.ToDictionary(g => g.Id);
+        return ids.Where(byId.ContainsKey).Select(id => ToDto(byId[id])).ToList();
     }
 
     public async Task<GoodsIssueDto?> GetAsync(int id)

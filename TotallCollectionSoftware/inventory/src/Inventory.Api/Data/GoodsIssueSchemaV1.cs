@@ -41,6 +41,14 @@ END");
 IF COL_LENGTH(N'dbo.GoodsIssues', N'WarehouseId') IS NULL ALTER TABLE dbo.GoodsIssues ADD WarehouseId int NULL;
 IF COL_LENGTH(N'dbo.GoodsIssues', N'WarehouseName') IS NULL ALTER TABLE dbo.GoodsIssues ADD WarehouseName nvarchar(150) NULL;");
 
+        // فهرست بیجک همیشه «شرکت فعال + مرتب‌شده بر تاریخ» است؛ این ایندکس مرکب
+        // پرش/مرتب‌سازی کل جدول را حذف می‌کند و باز شدن صفحه را سریع نگه می‌دارد.
+        await SafeAsync(db, @"
+IF COL_LENGTH(N'dbo.GoodsIssues', N'CompanyId') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_GoodsIssues_CompanyId_Date'
+                   AND object_id = OBJECT_ID(N'dbo.GoodsIssues'))
+    CREATE INDEX [IX_GoodsIssues_CompanyId_Date] ON [dbo].[GoodsIssues] ([CompanyId], [Date]);");
+
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.GoodsIssueLines', N'U') IS NULL
 BEGIN
@@ -78,6 +86,9 @@ END");
         if (hasTable)
         {
             await EnsureSqliteWarehouseColumnsAsync(db);
+            // ایندکس مرکب شرکت/تاریخ؛ روی دیتابیس‌های قدیمی که ستون CompanyId ندارند
+            // بی‌صدا رد می‌شود (SafeAsync) و رفتار قبلی حفظ می‌شود.
+            await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssues_CompanyId_Date ON GoodsIssues (CompanyId, Date);");
             return;
         }
 
@@ -96,6 +107,7 @@ CREATE TABLE IF NOT EXISTS GoodsIssues (
         await SafeAsync(db, "CREATE UNIQUE INDEX IF NOT EXISTS IX_GoodsIssues_Number ON GoodsIssues (Number);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssues_PartyId ON GoodsIssues (PartyId);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssues_Date ON GoodsIssues (Date);");
+        await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_GoodsIssues_CompanyId_Date ON GoodsIssues (CompanyId, Date);");
 
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS GoodsIssueLines (

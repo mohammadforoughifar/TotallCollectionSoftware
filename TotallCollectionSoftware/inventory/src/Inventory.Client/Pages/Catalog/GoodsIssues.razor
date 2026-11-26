@@ -1,4 +1,5 @@
 @page "/goods-issues"
+@implements IDisposable
 @inject IAuthState Auth
 @inject IGoodsIssueService IssueSvc
 @inject IPartyService PartySvc
@@ -29,28 +30,41 @@
         </button>
     </div>
 
-    @* ---------- فیلترها ---------- *@
+    @* ---------- فیلترها: جستجو → مشتری (فشرده) → بازهٔ تاریخ → اعمال ---------- *@
     <div class="card mb-3">
         <div class="card-body">
-            <div class="d-flex flex-wrap gap-2 align-items-end">
-                <div style="min-width:220px" class="flex-grow-1">
-                    <label class="form-label">مشتری</label>
-                    <SearchSelect Items="partyLookup" Value="filterPartyId" ValueChanged="OnFilterPartyChanged" Placeholder="همه مشتری‌ها" />
+            <div class="gi-filters">
+                <div class="gi-filter gi-filter-search">
+                    <label class="form-label" for="gi-filter-search">جستجو</label>
+                    <input id="gi-filter-search" class="form-control" @bind="search" @bind:event="oninput"
+                           @onkeydown="OnSearchKeyDown" placeholder="شماره حواله، نام/تلفن مشتری یا کالا…" />
                 </div>
-                <div style="min-width:150px">
+                <div class="gi-filter gi-filter-party">
+                    <label class="form-label">مشتری</label>
+                    <SearchSelect Items="partyLookup" Value="filterPartyId" ValueChanged="OnFilterPartyChanged"
+                                  Placeholder="همه مشتری‌ها" />
+                </div>
+                <div class="gi-filter gi-filter-date">
                     <label class="form-label">از تاریخ</label>
                     <DatePicker @bind-Value="from" AllowClear="true" Placeholder="از تاریخ" />
                 </div>
-                <div style="min-width:150px">
+                <div class="gi-filter gi-filter-date">
                     <label class="form-label">تا تاریخ</label>
                     <DatePicker @bind-Value="to" AllowClear="true" Placeholder="تا تاریخ" />
                 </div>
-                <div style="min-width:200px" class="flex-grow-1">
-                    <label class="form-label">جستجو</label>
-                    <input class="form-control" @bind="search" @bind:event="oninput"
-                           @onkeydown="OnSearchKeyDown" placeholder="شماره حواله، نام/تلفن مشتری یا کالا…" />
+                <div class="gi-filter gi-filter-apply">
+                    <button id="btn-apply-filter" class="btn btn-primary w-100" @onclick="ApplyFilter" disabled="@loading">
+                        @if (loading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-funnel"></i>
+                        }
+                        اعمال فیلتر
+                    </button>
                 </div>
-                <button class="btn btn-primary" @onclick="ApplyFilter"><i class="bi bi-funnel"></i> اعمال فیلتر</button>
             </div>
         </div>
     </div>
@@ -58,9 +72,19 @@
     @* ---------- فهرست حواله‌ها ---------- *@
     <div class="card">
         <div class="card-body p-0">
+            @if (items.Count >= ListCap && !loading)
+            {
+                <div class="gi-cap-hint">
+                    <i class="bi bi-info-circle"></i>
+                    @ListCap.Num() حوالهٔ آخر نمایش داده شده است؛ برای دیدن بقیه بازهٔ تاریخ یا مشتری را محدود کنید.
+                </div>
+            }
             @if (loading)
             {
-                <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                    <div class="text-muted mt-2 small">در حال دریافت حواله‌ها…</div>
+                </div>
             }
             else if (items.Count == 0)
             {
@@ -92,12 +116,12 @@
                                     <td class="num fw-700">@g.TotalQuantity.Qty()</td>
                                     <td class="text-muted text-truncate" style="max-width:220px">@(g.Description ?? "—")</td>
                                     <td class="text-end">
-                                        <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(g)"><i class="bi bi-eye text-primary"></i></button>
-                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(g)"><i class="bi bi-pencil text-primary"></i></button>
-                                        <button class="btn btn-sm btn-light" title="چاپ" @onclick="() => Print(g)"><i class="bi bi-printer text-secondary"></i></button>
+                                        <button class="btn btn-sm btn-light" title="مشاهده" disabled="@busy" @onclick="() => View(g)"><i class="bi bi-eye text-primary"></i></button>
+                                        <button class="btn btn-sm btn-light" title="ویرایش" disabled="@busy" @onclick="() => OpenEdit(g)"><i class="bi bi-pencil text-primary"></i></button>
+                                        <button class="btn btn-sm btn-light" title="چاپ" disabled="@busy" @onclick="() => Print(g)"><i class="bi bi-printer text-secondary"></i></button>
                                         @if (CanDelete)
                                         {
-                                            <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(g)"><i class="bi bi-trash text-danger"></i></button>
+                                            <button class="btn btn-sm btn-light" title="حذف" disabled="@busy" @onclick="() => Delete(g)"><i class="bi bi-trash text-danger"></i></button>
                                         }
                                     </td>
                                 </tr>
@@ -394,6 +418,24 @@
                 OnCancel="CloseNewParty" />
 
 <style>
+    /* ---------- نوار فیلتر: جستجو → مشتری (فشرده) → بازهٔ تاریخ → اعمال ---------- */
+    .gi-filters { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
+    .gi-filter { display: flex; flex-direction: column; min-width: 0; }
+    .gi-filter .form-label { margin-bottom: .25rem; font-size: .8rem; color: #475569; }
+    /* جستجو بیشترین جا را می‌گیرد؛ مشتری و تاریخ‌ها فشرده و ثابت‌ترند. */
+    .gi-filter-search { flex: 1 1 320px; }
+    .gi-filter-party { flex: 0 1 200px; max-width: 240px; }
+    .gi-filter-date { flex: 0 1 135px; max-width: 160px; }
+    .gi-filter-apply { flex: 0 0 auto; }
+    .gi-cap-hint {
+        display: flex; align-items: center; gap: .4rem; padding: .5rem .9rem;
+        font-size: .8rem; color: #92400e; background: #fffbeb; border-bottom: 1px solid #fde68a;
+    }
+    @media (max-width: 767.98px) {
+        .gi-filter-search, .gi-filter-party, .gi-filter-date { flex: 1 1 100%; max-width: none; }
+        .gi-filter-apply { flex: 1 1 100%; }
+    }
+
     /* ---------- سربرگ بخش اقلام + راهنای کلیدها ---------- */
     .gi-lines-head {
         display: flex; align-items: center; justify-content: space-between;
@@ -433,7 +475,20 @@
     private List<GoodsIssueDto> items = new();
     private List<LookupItem> partyLookup = new();
     private List<LookupItem> warehouseLookup = new();
+    /// <summary>بارگذاری فهرست (فقط برای Load) — اسپینر جدول به این وابسته است.</summary>
     private bool loading = true;
+
+    /// <summary>کار جاری روی یک رکورد (ویرایش/مشاهده/حذف/چاپ) — اسپینر جدول را روشن نمی‌کند.</summary>
+    private bool busy;
+
+    /// <summary>شمارهٔ آخرین بارگذاری فهرست — پاسخ‌های کهنه با آن دور ریخته می‌شوند.</summary>
+    private int loadVersion;
+
+    /// <summary>درخواست در جریان فهرست؛ با هر فیلتر تازه لغو می‌شود.</summary>
+    private CancellationTokenSource? loadCts;
+
+    /// <summary>هم‌اندازهٔ سقف سرور: تازه‌ترین ۲۰۰ حواله.</summary>
+    private const int ListCap = 200;
 
     // ---------- انتخاب کالا از انبار (در کنار ورود نام دستی) ----------
     private List<GoodsIssueProductOptionDto> productOptions = new();
@@ -467,8 +522,11 @@
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("بیجک");
-        await LoadLookups();
+        // فهرست‌های کمکی (مشتری/انبار) موازی با فهرست اصلی خوانده می‌شوند؛ اسپینر جدول
+        // فقط به همان یک کوئری فهرست وابسته است و منتظر فهرست‌های سنگین نمی‌ماند.
+        var lookups = LoadLookups();
         await Load();
+        await lookups;
     }
 
     private async Task LoadLookups()
@@ -483,7 +541,8 @@
 
         try { warehouseLookup = await IssueSvc.GetWarehouseOptionsAsync(); }
         catch (Exception ex) { Toast.Error("فهرست انبارها دریافت نشد. " + ex.Message); }
-        await LoadProductOptionsAsync();
+        // فهرست کالاهای انباری (تا ۱۰٬۰۰۰ قلم با موجودی) عمداً اینجا خوانده نمی‌شود:
+        // فقط هنگام باز شدن فرم/انتخاب‌گر لازم است و همان‌جا با LoadProductOptionsAsync می‌آید.
     }
 
     /// <summary>
@@ -531,14 +590,53 @@
     {
         // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
         if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
+
+        // هر بارگذاری، بارگذاریِ در جریانِ قبلی را کنار می‌گذارد: هم درخواست قبلی
+        // لغو می‌شود و هم پاسخ دیررسِ آن دیگر روی فهرست نمی‌نشیند. علت اصلی
+        // «چرخیدن بی‌پایان اسپینر» همین بود که چند بارگذاری هم‌زمان روی هم می‌افتادند.
+        var version = ++loadVersion;
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+        var cts = new CancellationTokenSource(LoadTimeout);
+        loadCts = cts;
+
         loading = true;
         try
         {
-            items = await IssueSvc.GetAsync(filterPartyId > 0 ? filterPartyId : null, from, to, search);
+            var result = await IssueSvc.GetAsync(filterPartyId > 0 ? filterPartyId : null, from, to, search, cts.Token);
+            if (version != loadVersion) return;
+            items = result ?? new();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (OperationCanceledException) when (version != loadVersion)
+        {
+            // درخواست تازه‌تری جای این را گرفته — خطا نیست و پیامی هم ندارد
+        }
+        catch (OperationCanceledException)
+        {
+            if (version != loadVersion) return;
+            items = new();
+            Toast.Error(LoadTimeoutMessage);
+        }
+        catch (Exception ex)
+        {
+            if (version != loadVersion) return;
+            items = new();
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            if (version == loadVersion)
+            {
+                loading = false;
+                if (ReferenceEquals(loadCts, cts)) loadCts = null;
+                cts.Dispose();
+            }
+        }
     }
+
+    /// <summary>سقف انتظار فهرست در کلاینت: پس از آن پیام روشن به کاربر و توقف اسپینر.</summary>
+    private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(45);
+    private const string LoadTimeoutMessage = "دریافت فهرست حواله‌ها طول کشید و لغو شد؛ دوباره «اعمال فیلتر» را بزنید یا بازهٔ تاریخ/مشتری را محدودتر کنید.";
 
     private async Task OnFilterPartyChanged(int v)
     {
@@ -546,11 +644,21 @@
         await Load();
     }
 
-    private void ApplyFilter() => _ = Load();
+    /// <summary>اعمال فیلتر — await می‌شود تا پایان کار، رندر و خاموش‌شدن اسپینر تضمین شود.</summary>
+    private async Task ApplyFilter() => await Load();
 
     private async Task OnSearchKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await Load();
+    }
+
+    /// <summary>لغو درخواست در جریان هنگام ترک صفحه؛ پاسخ دیررس روی یک کامپوننت حذف‌شده نمی‌نشیند.</summary>
+    public void Dispose()
+    {
+        ++loadVersion;
+        loadCts?.Cancel();
+        loadCts?.Dispose();
+        loadCts = null;
     }
 
     // ============================ فرم ============================
@@ -571,7 +679,7 @@
 
     private async Task OpenEdit(GoodsIssueDto g)
     {
-        loading = true;
+        busy = true;
         showForm = true;
         viewing = false;
         try
@@ -586,12 +694,12 @@
             await LoadProductOptionsAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); showForm = false; }
-        finally { loading = false; }
+        finally { busy = false; }
     }
 
     private async Task View(GoodsIssueDto g)
     {
-        loading = true;
+        busy = true;
         showForm = true;
         viewing = true;
         try
@@ -602,7 +710,7 @@
             date = full.Date;
         }
         catch (Exception ex) { Toast.Error(ex.Message); showForm = false; }
-        finally { loading = false; }
+        finally { busy = false; }
     }
 
     private void CloseForm()
@@ -819,7 +927,7 @@
     private async Task Delete(GoodsIssueDto g)
     {
         if (!CanDelete) return;
-        loading = true;
+        busy = true;
         try
         {
             await IssueSvc.DeleteAsync(g.Id);
@@ -827,7 +935,7 @@
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        finally { busy = false; }
     }
 
     // ==================== چاپ ====================
@@ -835,7 +943,7 @@
     /// <summary>چاپ از فهرست حواله.</summary>
     private async Task Print(GoodsIssueDto g)
     {
-        loading = true;
+        busy = true;
         try
         {
             var full = await IssueSvc.GetAsync(g.Id);
@@ -843,7 +951,7 @@
             await PrintDoc(full);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        finally { busy = false; }
     }
 
     /// <summary>پیش‌نمایش از جزئیات، بدون بستن پنجرهٔ زیر آن.</summary>
