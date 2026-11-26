@@ -623,14 +623,15 @@ public class GoodsIssueService : IGoodsIssueService
     private readonly IApiClient _api;
     public GoodsIssueService(IApiClient api) => _api = api;
 
-    public Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    public Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null, CancellationToken ct = default)
     {
-        var url = "api/goods-issues?";
-        if (partyId is > 0) url += $"partyId={partyId}&";
-        if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
-        if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
-        url += $"search={Uri.EscapeDataString(search ?? "")}";
-        return _api.GetAsync<List<GoodsIssueDto>>(url);
+        var query = new List<string>(4);
+        if (partyId is > 0) query.Add($"partyId={partyId}");
+        if (from.HasValue) query.Add($"from={from:yyyy-MM-dd}");
+        if (to.HasValue) query.Add($"to={to:yyyy-MM-dd}");
+        // متن جستجو همیشه فرستاده می‌شود تا «فیلتر خالی» همان فهرست کامل باشد.
+        query.Add($"search={Uri.EscapeDataString(search ?? "")}");
+        return _api.GetAsync<List<GoodsIssueDto>>("api/goods-issues?" + string.Join("&", query), ct);
     }
 
     public Task<GoodsIssueDto?> GetAsync(int id)

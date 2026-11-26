@@ -40,6 +40,20 @@ Check(ExpenseChequeDates.MinDueDate(handover) == handover.Date, "calendar minimu
 Check(ExpenseChequeDates.MinDueDate(new DateTime(2026, 11, 23, 15, 45, 0)) == handover.Date, "calendar minimum drops the time part");
 Check(ExpenseChequeDates.MinDueDate(null) is null, "no hand-over date means no calendar minimum");
 
+// ---------- قاعدهٔ دوم: پرداخت (تحویل چک) نمی‌تواند پیش از سند هزینه باشد ----------
+var expenseDate = handover.AddDays(4);   // سند هزینه بعد از روز تحویل ثبت شده است
+Check(ExpenseChequeDates.HandoverIsBeforeExpense(handover, handover), "hand-over on the expense day is valid");
+Check(!ExpenseChequeDates.HandoverIsBeforeExpense(handover.AddDays(4), handover), "hand-over after the expense day is valid");
+Check(ExpenseChequeDates.HandoverIsBeforeExpense(handover, expenseDate), "hand-over four days before the expense day is rejected");
+Check(!ExpenseChequeDates.HandoverIsBeforeExpense(new DateTime(2026, 11, 23, 23, 59, 0), new DateTime(2026, 11, 23, 0, 1, 0)),
+      "same calendar day compares by date only, even if the times differ");
+Check(!ExpenseChequeDates.HandoverIsBeforeExpense(null, expenseDate), "missing hand-over date is not an order error");
+Check(ExpenseChequeDates.ValidateHandover(handover, expenseDate) == ExpenseChequeDates.HandoverBeforeExpenseMessage,
+      "the order error returns the shared hand-over message");
+Check(ExpenseChequeDates.ValidateHandover(handover, handover) is null, "same day returns no message");
+Check(ExpenseChequeDates.HandoverBeforeExpenseMessage.Contains("سند"), "message names the expense document date");
+Check(ExpenseChequeDates.HandoverBeforeExpenseMessage.Contains("تحویل"), "message names the hand-over date");
+
 // ---------- سناریوی فرم: تغییر تحویل بعد از انتخاب سررسید ----------
 var due = handover;                      // سررسید = امروز
 var handoverLater = handover.AddDays(5); // کاربر تحویل را ۵ روز جلو می‌برد

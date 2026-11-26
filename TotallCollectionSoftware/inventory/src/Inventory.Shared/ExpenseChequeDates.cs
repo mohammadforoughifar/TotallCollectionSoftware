@@ -22,4 +22,19 @@ public static class ExpenseChequeDates
 
     /// <summary>کمینهٔ مجاز انتخاب سررسید در تقویم: روز تحویل چک.</summary>
     public static DateTime? MinDueDate(DateTime? handedAt) => handedAt?.Date;
+
+    /// <summary>
+    /// پیام قاعدهٔ دوم: پرداخت (تحویل چک) نمی‌تواند پیش از خودِ سند هزینه ثبت شود.
+    /// متن، هر دو راه حل را می‌گوید تا کاربر بداند کدام تاریخ را اصلاح کند.
+    /// </summary>
+    public const string HandoverBeforeExpenseMessage =
+        "تاریخ تحویل چک نمی‌تواند پیش از تاریخ سند هزینه باشد؛ تاریخ سند را به روز تحویل (یا قبل‌تر) تغییر دهید یا تاریخ تحویل را به روز سند ببرید.";
+
+    /// <summary>تحویل چک پیش از تاریخ سند هزینه است؟</summary>
+    public static bool HandoverIsBeforeExpense(DateTime? handedAt, DateTime? expenseDate)
+        => handedAt.HasValue && expenseDate.HasValue && handedAt.Value.Date < expenseDate.Value.Date;
+
+    /// <summary>اعتبار تاریخ تحویل نسبت به تاریخ سند؛ null یعنی معتبر.</summary>
+    public static string? ValidateHandover(DateTime? handedAt, DateTime? expenseDate)
+        => HandoverIsBeforeExpense(handedAt, expenseDate) ? HandoverBeforeExpenseMessage : null;
 }

@@ -96,11 +96,24 @@ public class ShopExpenseChequeService
         ArgumentNullException.ThrowIfNull(cmd);
         var dto = cmd.Expense ?? throw new InvalidOperationException("اطلاعات هزینه لازم است.");
         var recipient = Optional(cmd.Recipient);
-        if (cmd.OperationId == Guid.Empty || cmd.Kind != routeKind || dto.CategoryId <= 0 || dto.Date == default || cmd.HandedAt == default ||
-            dto.Amount <= 0 || dto.Amount > MaxMoney || decimal.Round(dto.Amount, 2) != dto.Amount ||
-            recipient is null || recipient.Length > 150 || dto.Description?.Length > 500 || user?.Length > 120 ||
-            cmd.HandedAt.Date < dto.Date.Date)
-            throw new InvalidOperationException("مشخصات هزینه، دریافت‌کننده، مبلغ یا تاریخ تحویل چک معتبر نیست.");
+        // هر شرط پیام خودش را دارد؛ پیامِ عمومی قبلی نمی‌گفت کدام فیلد مشکل دارد و
+        // کاربر فقط «HTTP 400» می‌دید.
+        if (cmd.OperationId == Guid.Empty || cmd.Kind != routeKind)
+            throw new InvalidOperationException("درخواست ثبت چک هزینه معتبر نیست؛ فرم را ببندید و دوباره باز کنید.");
+        if (dto.CategoryId <= 0) throw new InvalidOperationException("نوع هزینه را انتخاب کنید.");
+        if (dto.Date == default) throw new InvalidOperationException("تاریخ سند هزینه را وارد کنید.");
+        if (cmd.HandedAt == default) throw new InvalidOperationException("تاریخ تحویل چک را وارد کنید.");
+        if (dto.Amount <= 0) throw new InvalidOperationException("مبلغ هزینه را وارد کنید.");
+        if (dto.Amount > MaxMoney || decimal.Round(dto.Amount, 2) != dto.Amount)
+            throw new InvalidOperationException("مبلغ هزینه معتبر نیست؛ حداکثر دو رقم اعشار و در محدودهٔ مجاز وارد کنید.");
+        if (recipient is null) throw new InvalidOperationException("دریافت‌کننده / طرف هزینه را وارد کنید.");
+        if (recipient.Length > 150) throw new InvalidOperationException("نام دریافت‌کننده حداکثر ۱۵۰ نویسه است.");
+        if (dto.Description?.Length > 500) throw new InvalidOperationException("توضیحات حداکثر ۵۰۰ نویسه است.");
+        if (user?.Length > 120) throw new InvalidOperationException("شناسهٔ کاربر معتبر نیست؛ دوباره وارد شوید.");
+        // قاعدهٔ ترتیب: پرداخت نمی‌تواند پیش از خودِ سند هزینه باشد. متن پیام می‌گوید
+        // کدام تاریخ را اصلاح کند (قاعدهٔ مشترک با فرم؛ Inventory.Shared.ExpenseChequeDates).
+        if (ExpenseChequeDates.HandoverIsBeforeExpense(cmd.HandedAt, dto.Date))
+            throw new InvalidOperationException(ExpenseChequeDates.HandoverBeforeExpenseMessage);
         if (routeKind == ExpenseChequeKind.Issued && (cmd.IssuingAccountId is not > 0 || cmd.SourceChequeId.HasValue ||
                 string.IsNullOrWhiteSpace(cmd.Number) || cmd.Number.Trim().Length > 50 || cmd.DueDate == default))
             throw new InvalidOperationException("شماره، بانک و سررسید چک صادره را وارد کنید.");
@@ -163,9 +176,12 @@ public class ShopExpenseChequeService
                 ?? throw new InvalidOperationException("چک دریافتی یافت نشد.");
             var sale = await _db.Transactions.FirstOrDefaultAsync(t => t.Id == cheque.TransactionId)
                 ?? throw new InvalidOperationException("فاکتور مبدأ چک یافت نشد.");
+            // تاریخ، پیام خودش را دارد؛ پیامِ «چک در دسترس نیست» برای این حالت گمراه‌کننده بود.
+            if (cmd.HandedAt.Date < sale.Date.Date)
+                throw new InvalidOperationException("تاریخ تحویل چک نمی‌تواند پیش از تاریخ فاکتور مبدأ باشد.");
             if (sale.Type != TransactionType.Sale || sale.PartyId is not > 0 || sale.CompanyId != expense.CompanyId || cheque.CompanyId != sale.CompanyId ||
                 cheque.IsCleared || cheque.Status != ChequeStatus.InHand || cheque.Amount != expense.Amount ||
-                string.IsNullOrWhiteSpace(cheque.Number) || cheque.DueDate == default || cmd.HandedAt.Date < sale.Date.Date ||
+                string.IsNullOrWhiteSpace(cheque.Number) || cheque.DueDate == default ||
                 await _db.ShopExpenseCheques.AnyAsync(c => c.SourceChequeId == cheque.Id && c.State != ExpenseChequeState.Returned) ||
                 await _db.SaleChequeCancellations.AnyAsync(c => c.SaleTransactionId == sale.Id))
                 throw new InvalidOperationException("چک دریافتی در دسترس نیست، مبلغ آن یکسان نیست یا متعلق به شرکت جاری نیست.");

@@ -685,6 +685,8 @@ public class AppDbContext : DbContext
         mb.Entity<GoodsIssue>().HasIndex(g => new { g.CompanyId, g.Number }).IsUnique();
         mb.Entity<GoodsIssue>().HasIndex(g => g.PartyId);
         mb.Entity<GoodsIssue>().HasIndex(g => g.Date);
+        // فهرست صفحه با «شرکت فعال + مرتب‌سازی بر تاریخ» خوانده می‌شود.
+        mb.Entity<GoodsIssue>().HasIndex(g => new { g.CompanyId, g.Date });
         mb.Entity<GoodsIssueLine>().HasIndex(l => l.IssueId);
         mb.Entity<GoodsIssueLine>().HasIndex(l => l.ProductId);
         // حذف حواله = حذف سطرهایش (بدون FK به Parties/Products تا حذف طرف حساب یا کالا ممکن بماند)

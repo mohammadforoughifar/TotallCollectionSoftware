@@ -1,8 +1,11 @@
 @* ============================================================
    نوار تب‌های کاری
    • هر بخش یک تب: آیکون + عنوان + دکمهٔ بستن
-   • راست‌کلیک: بازسازی / سنجاق / بستن بقیه / بستن همه / بستن
-   • کشیدن و رها کردن برای تغییر ترتیب
+   • راست‌کلیک: بازسازی / سنجاق / انتقال / بستن بقیه / بستن همه / بستن
+   • کشیدن و رها کردن برای تغییر ترتیب:
+     - دسکتاپ: HTML5 Drag & Drop روی کل تب (با dataTransfer در JS)
+     - لمسی/قلمی: کشیدن از دستگیرهٔ ⠿ با Pointer Events (در tabs.js)
+     - صفحه‌کلید: Ctrl+←/→ روی تبِ فوکوس‌شده
    • تبِ خانه سنجاق است و بسته نمی‌شود
    • دکمه‌های ‹ › کنارِ نوار، صفحهٔ قبلی/بعدی را باز می‌کنند
    ============================================================ *@
@@ -18,23 +21,35 @@
         <i class="bi bi-chevron-right"></i>
     </button>
 
-    <div class="tabstrip" @ref="strip">
+    <div class="tabstrip" @ref="strip"
+         @ondragover="OnStripDragOver" @ondragover:preventDefault="true"
+         @ondrop="DropAtEnd" @ondrop:preventDefault="true"
+         @ondragleave="OnStripDragLeave">
         @foreach (var t in Tabs.Tabs)
         {
             var tab = t;
             <div class="tab @(tab.IsActive ? "on" : "") @(tab.Pinned ? "pinned" : "") @(dragOver == tab ? "dragover" : "") @(dragging == tab ? "dragging" : "")"
-                 title="@tab.Title"
+                 data-tab-key="@tab.Key"
+                 title="@($"{tab.Title} — برای تغییر ترتیب بکشید یا Ctrl+←/→ را بزنید")"
+                 role="tab"
+                 tabindex="0"
+                 aria-selected="@tab.IsActive"
+                 aria-label="@($"{tab.Title} — برای تغییر ترتیب بکشید")"
                  draggable="true"
                  @onclick="() => Activate(tab)"
+                 @onkeydown="(KeyboardEventArgs e) => OnTabKeyDown(tab, e)"
                  @oncontextmenu="(MouseEventArgs e) => OpenMenu(tab, e)"
                  @oncontextmenu:preventDefault="true"
                  @ondragstart="() => dragging = tab"
-                 @ondragend="() => dragging = null"
-                 @ondragover:preventDefault="true"
+                 @ondragend="OnDragEnd"
+                 @ondragover="() => dragOver = tab" @ondragover:preventDefault="true"
                  @ondragenter="() => dragOver = tab"
-                 @ondrop="() => Drop(tab)"
-                 @ondrop:preventDefault="true">
+                 @ondragleave="() => OnTabDragLeave(tab)"
+                 @ondrop="() => Drop(tab)" @ondrop:stopPropagation="true" @ondrop:preventDefault="true">
 
+                <span class="tab-grip" title="برای تغییر ترتیب بکشید" aria-hidden="true">
+                    <i class="bi bi-grip-vertical"></i>
+                </span>
                 <i class="bi @tab.Icon tab-ico"></i>
                 <span class="tab-title">@tab.Title</span>
 
@@ -118,6 +133,13 @@
             @(menuTab.Pinned ? "برداشتن سنجاق" : "سنجاق کردن")
         </button>
         <div class="tabctx-sep"></div>
+        <button class="tabctx-i" @onclick="() => MoveToStart(menuTab)">
+            <i class="bi bi-arrow-right-square"></i> انتقال به ابتدای نوار
+        </button>
+        <button class="tabctx-i" @onclick="() => MoveToEnd(menuTab)">
+            <i class="bi bi-arrow-left-square"></i> انتقال به انتهای نوار
+        </button>
+        <div class="tabctx-sep"></div>
         <button class="tabctx-i" @onclick="() => CloseOthers(menuTab)">
             <i class="bi bi-x-circle"></i> بستن بقیه
         </button>
@@ -140,6 +162,9 @@
     private TabItem? menuTab;
     private double menuX, menuY;
 
+    private DotNetObjectReference<TabBar>? _self;
+    private DateTime _lastDropUtc = DateTime.MinValue;
+
     protected override void OnInitialized() => Tabs.Changed += OnChanged;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -147,6 +172,12 @@
         if (firstRender)
         {
             try { await JS.InvokeVoidAsync("appTabs.enableWheel", strip); } catch { }
+            try
+            {
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("appTabs.enableDrag", strip, _self);
+            }
+            catch { }
         }
         try { await JS.InvokeVoidAsync("appTabs.scrollToActive", strip); } catch { }
     }
@@ -157,13 +188,20 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => Tabs.Changed -= OnChanged;
+    public void Dispose()
+    {
+        Tabs.Changed -= OnChanged;
+        _self?.Dispose();
+    }
 
     // ---------- عملیات ----------
 
     private void Activate(TabItem t)
     {
         menuTab = null;
+        // کلیکِ بلافاصله بعد از رها کردن (HTML5 یا لمسی) نباید تب را فعال کند؛
+        // وگرنه کاربر فقط می‌خواست ترتیب را عوض کند ولی صفحه هم عوض می‌شود.
+        if ((DateTime.UtcNow - _lastDropUtc).TotalMilliseconds < 350) return;
         Tabs.Activate(t);
     }
 
@@ -203,14 +241,88 @@
         await Tabs.TogglePinAsync(t);
     }
 
-    // ---------- کشیدن و رها کردن ----------
+    private async Task MoveToStart(TabItem t)
+    {
+        menuTab = null;
+        await Tabs.MoveToAsync(t, 0);
+    }
+
+    private async Task MoveToEnd(TabItem t)
+    {
+        menuTab = null;
+        await Tabs.MoveToAsync(t, Tabs.Tabs.Count - 1);
+    }
+
+    // ---------- کشیدن و رها کردن (دسکتاپ — HTML5) ----------
 
     private async Task Drop(TabItem target)
     {
         dragOver = null;
+        _lastDropUtc = DateTime.UtcNow;
         if (dragging is null || ReferenceEquals(dragging, target)) { dragging = null; return; }
         await Tabs.MoveAsync(dragging, target);
         dragging = null;
+    }
+
+    /// <summary>رها کردن روی فضای خالیِ نوار (بعد از آخرین تب) — تب به انتها می‌رود.</summary>
+    private async Task DropAtEnd()
+    {
+        dragOver = null;
+        _lastDropUtc = DateTime.UtcNow;
+        if (dragging is null) return;
+        await Tabs.MoveToAsync(dragging, Tabs.Tabs.Count - 1);
+        dragging = null;
+    }
+
+    private void OnDragEnd()
+    {
+        dragging = null;
+        dragOver = null;
+    }
+
+    private void OnTabDragLeave(TabItem tab)
+    {
+        if (dragOver == tab) dragOver = null;
+    }
+
+    private void OnStripDragOver()
+    {
+        // فقط برای اجازه دادن به drop (preventDefault در خط بالا)؛
+        // نشانگر روی تبِ زیرِ نشانگر با dragenter/dragoverِ خودِ تب تنظیم می‌شود.
+    }
+
+    private void OnStripDragLeave()
+    {
+        dragOver = null;
+    }
+
+    /// <summary>
+    /// فراخوانی از JS بعد از درگ لمسی/قلمی (tabs.js).
+    /// <paramref name="sourceKey"/> کلیدِ تبِ کشیده‌شده و <paramref name="targetIndex"/>
+    /// ایندکسِ نهایی در فهرست است (۰ تا Count-1).
+    /// </summary>
+    [JSInvokable]
+    public async Task OnTabDropped(string sourceKey, int targetIndex)
+    {
+        _lastDropUtc = DateTime.UtcNow;
+        dragging = null;
+        dragOver = null;
+        await Tabs.MoveByKeyAsync(sourceKey, targetIndex);
+    }
+
+    // ---------- جابه‌جایی با صفحه‌کلید ----------
+
+    private async Task OnTabKeyDown(TabItem tab, KeyboardEventArgs e)
+    {
+        // در نوارِ RTL، «چپ» یعنی دیداری به چپ = ایندکسِ بزرگ‌تر و «راست» یعنی ایندکسِ کوچک‌تر.
+        if (e.CtrlKey && e.Key == "ArrowLeft")
+            await Tabs.MoveByOffsetAsync(tab, +1);
+        else if (e.CtrlKey && e.Key == "ArrowRight")
+            await Tabs.MoveByOffsetAsync(tab, -1);
+        else if (e.CtrlKey && e.Key == "Home")
+            await Tabs.MoveToAsync(tab, 0);
+        else if (e.CtrlKey && e.Key == "End")
+            await Tabs.MoveToAsync(tab, Tabs.Tabs.Count - 1);
     }
 
     // ---------- منو و پیمایش ----------

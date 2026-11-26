@@ -604,17 +604,67 @@ public sealed class TabService
         Changed?.Invoke();
     }
 
-    /// <summary>جابه‌جاییِ تب با کشیدن و رها کردن</summary>
-    public async Task MoveAsync(TabItem source, TabItem target)
+    /// <summary>
+    /// جابه‌جاییِ تب با کشیدن و رها کردن — رها کردن روی تبِ مقصد.
+    /// <para>
+    /// <paramref name="after"/> مشخص می‌کند تبِ کشیده‌شده قبلِ مقصد می‌نشیند یا بعدِ آن؛
+    /// پیش‌فرض <c>false</c> یعنی «قبلِ مقصد» (رها کردن روی تب = نشستن قبلِ آن).
+    /// </para>
+    /// </summary>
+    public async Task MoveAsync(TabItem source, TabItem target, bool after = false)
     {
         var si = _tabs.IndexOf(source);
         var ti = _tabs.IndexOf(target);
         if (si < 0 || ti < 0 || si == ti) return;
 
         _tabs.RemoveAt(si);
-        _tabs.Insert(ti, source);
+        // بعد از حذفِ مبدأ، جای مقصد اگر مبدأ جلوتر بود یک خانه جابه‌جا می‌شود.
+        var insertAt = ti + (after ? 1 : 0) - (si < ti ? 1 : 0);
+        insertAt = Math.Clamp(insertAt, 0, _tabs.Count);
+        _tabs.Insert(insertAt, source);
         Changed?.Invoke();
         await SaveAsync();
+    }
+
+    /// <summary>
+    /// جابه‌جاییِ تب به یک ایندکسِ مشخص (۰ تا Count) — برای درگ لمسی/قلمی و صفحه‌کلید.
+    /// ایندکس، جایگاهِ نهایی در فهرستِ پس از حذفِ مبدأ است؛ یعنی
+    /// <c>MoveToAsync(t, 0)</c> تب را به ابتدای نوار و <c>MoveToAsync(t, Count-1)</c> به انتها می‌برد.
+    /// </summary>
+    public async Task MoveToAsync(TabItem source, int targetIndex)
+    {
+        var si = _tabs.IndexOf(source);
+        if (si < 0) return;
+
+        _tabs.RemoveAt(si);
+        var insertAt = Math.Clamp(targetIndex, 0, _tabs.Count);
+        if (insertAt == si) { _tabs.Insert(si, source); return; }
+        _tabs.Insert(insertAt, source);
+        Changed?.Invoke();
+        await SaveAsync();
+    }
+
+    /// <summary>
+    /// همان <see cref="MoveToAsync"/> ولی با کلیدِ تب — برای فراخوانی از JS (درگ لمسی).
+    /// کلید پایدارتر از ارجاعِ شیء است، چون بعد از رندرِ مجددِ Blazor ارجاع‌ها عوض نمی‌شوند
+    /// ولی کلید همیشه همان است.
+    /// </summary>
+    public async Task MoveByKeyAsync(string sourceKey, int targetIndex)
+    {
+        var source = _tabs.FirstOrDefault(x => x.Key == sourceKey);
+        if (source is null) return;
+        await MoveToAsync(source, targetIndex);
+    }
+
+    /// <summary>
+    /// جابه‌جاییِ تب یک گام در فهرست — برای جابه‌جایی با صفحه‌کلید (Ctrl+←/→).
+    /// <paramref name="offset"/> مثبت یعنی یک خانه به سمت انتهای نوار و منفی یعنی یک خانه به سمت ابتدا.
+    /// </summary>
+    public async Task MoveByOffsetAsync(TabItem source, int offset)
+    {
+        var si = _tabs.IndexOf(source);
+        if (si < 0) return;
+        await MoveToAsync(source, si + offset);
     }
 
     /// <summary>آیا این نوع صفحه «لایه‌ی اختصاصی» دارد و نباید تب بگیرد؟</summary>
