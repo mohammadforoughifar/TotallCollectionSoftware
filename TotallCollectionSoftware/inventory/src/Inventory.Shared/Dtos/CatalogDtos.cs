@@ -279,6 +279,12 @@ public class Product
     public int? WarehouseId { get; set; }
     public string? WarehouseName { get; set; }
 
+    /// <summary>
+    /// تعداد اولیه (موجودی اول دوره) هنگام تعریف کالای تازه. فقط در ساخت کالا خوانده
+    /// می‌شود و پس از آن نادیده گرفته می‌شود؛ ویرایش موجودی از مسیر اسناد انبار است.
+    /// </summary>
+    public decimal? InitialQuantity { get; set; }
+
     /// <summary>زمان ورود (ثبت) کالا</summary>
     public DateTime CreatedAt { get; set; }
 

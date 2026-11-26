@@ -686,6 +686,10 @@ public class WarehousingService : IWarehousingService
                 ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
             await _db.SaveChangesAsync();
 
+            // ---------- تعداد اولیه (فقط هنگام تعریف کالای تازه) ----------
+            if (dto.InitialQuantity is > 0)
+                await ApplyOpeningStockAsync(entity, dto.InitialQuantity.Value);
+
             // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
             var currentValues = await _db.ProductAttributeValues.Where(v => v.ProductId == entity.Id).ToListAsync();
             var incomingAttrIds = dto.Attributes.Where(v => v.AttributeId > 0).Select(v => v.AttributeId).ToHashSet();
@@ -1599,6 +1603,88 @@ public class WarehousingService : IWarehousingService
             if (int.TryParse(tail, out var v) && v > max) max = v;
         }
         return $"{head}{max + 1:0000}";
+    }
+
+    // =====================================================================
+    //  موجودی اولیهٔ کالای تازه (تعداد اولیهٔ فرم تعریف کالا)
+    // =====================================================================
+
+    /// <summary>
+    /// ثبت «تعداد اولیه» کالای تازه به‌صورت یک سند «رسید موجودی اول دوره» قطعی.
+    /// از مسیر سند استفاده می‌شود (نه نوشتن مستقیم در جدول مانده) تا کاردکس،
+    /// بهای تمام‌شده و ماندهٔ قدیمی همگی یک‌جا به‌روز شوند.
+    /// انبار: انبار پیش‌فرض کالا، وگرنه انبار پیش‌فرض سیستم، وگرنه اولین انبار فعال.
+    /// </summary>
+    private async Task ApplyOpeningStockAsync(Db.Product product, decimal quantity)
+    {
+        if (product.IsService)
+            throw new InvalidOperationException("خدمات موجودی انبار ندارد؛ «تعداد اولیه» فقط برای کالا معنا دارد.");
+
+        var unitRule = await _db.MeasureUnits.AsNoTracking()
+            .Where(u => u.CompanyId == product.CompanyId && u.Name == product.Unit)
+            .Select(u => (bool?)u.AllowsFractionalQuantity).ToListAsync();
+        var allowsFraction = unitRule.Count == 1
+            ? unitRule[0] : ShopQuantityRules.DefaultAllowsFraction(product.Unit);
+        if (allowsFraction == false && !ShopQuantityRules.IsWhole(quantity))
+            throw new InvalidOperationException(
+                $"واحد «{product.Unit}» فقط مقدار صحیح می‌پذیرد؛ تعداد اولیه نمی‌تواند اعشاری باشد.");
+        if (quantity != decimal.Round(quantity, 3))
+            throw new InvalidOperationException("تعداد اولیه حداکثر تا سه رقم اعشار قابل ثبت است.");
+
+        var warehouseId = product.WarehouseId
+            ?? (await _db.Warehouses.AsNoTracking().Where(w => w.IsDefault).OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? (await _db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? (await _db.Warehouses.AsNoTracking().OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? throw new InvalidOperationException(
+                "برای ثبت تعداد اولیه، ابتدا حداقل یک انبار تعریف کنید یا انبار پیش‌فرض کالا را انتخاب کنید.");
+
+        // نوع سند سیستمیِ موجودی اول دوره (در نصب‌های قدیمی هم اگر نبود ساخته می‌شود).
+        var docType = await _db.InvDocTypes.FirstOrDefaultAsync(t => t.Code == "RC-OPEN")
+            ?? await _db.InvDocTypes.FirstOrDefaultAsync(
+                t => t.Nature == StockNature.Increase && t.NumberPrefix == "RCO");
+        if (docType is null)
+        {
+            docType = new Db.InvDocType
+            {
+                Code = "RC-OPEN", Name = "رسید موجودی اول دوره", Nature = StockNature.Increase,
+                RequiresPrice = false, NumberPrefix = "RCO", Color = "success",
+                Icon = "bi-box-arrow-in-down", SortOrder = 1
+            };
+            _db.InvDocTypes.Add(docType);
+            await _db.SaveChangesAsync();
+        }
+
+        var doc = new Db.InvDoc
+        {
+            DocTypeId = docType.Id,
+            WarehouseId = warehouseId,
+            Date = DateTime.Now,
+            Number = await NextDocNumberAsync(docType),
+            Description = $"موجودی اولیه هنگام تعریف کالا — {product.Code} {product.Name}".Trim(),
+            Status = InvDocStatus.Confirmed,
+            CreatedBy = _db.CurrentUserName,
+            CreatedAt = DateTime.Now,
+            ConfirmedBy = _db.CurrentUserName,
+            ConfirmedAt = DateTime.Now
+        };
+        doc.Lines.Add(new Db.InvDocLine
+        {
+            RowNo = 1,
+            ProductId = product.Id,
+            Quantity = quantity,
+            UnitPrice = product.PurchasePrice,
+            Description = "موجودی اولیه کالا"
+        });
+        doc.TotalQuantity = quantity;
+        doc.TotalValue = quantity * product.PurchasePrice;
+
+        _db.InvDocs.Add(doc);
+        await _db.SaveChangesAsync();
+
+        await RebuildManyAsync(new[] { (product.Id, warehouseId) }.ToList());
     }
 
     // =====================================================================

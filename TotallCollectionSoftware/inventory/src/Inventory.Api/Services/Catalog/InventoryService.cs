@@ -1033,6 +1033,7 @@ public class InventoryService : IInventoryService
         ("max", new[] { "حداکثر موجودی", "حداکثر موجودی مطلوب", "تعداد مطلوب" }),
         ("barcode", new[] { "بارکد" }),
         ("desc", new[] { "توضیحات", "شرح" }),
+        ("initialQty", new[] { "تعداد اولیه", "موجودی اولیه", "تعداد اول دوره", "موجودی اول دوره", "موجودی" }),
         ("vat", new[] { "ارزش افزوده", "مالیات بر ارزش افزوده", "VAT" }),
         ("status", new[] { "وضعیت کالا", "وضعیت خدمت", "وضعیت" }),
         ("taxCode", new[] { "شناسه مالیاتی", "کد مالیاتی" })
@@ -1049,7 +1050,8 @@ public class InventoryService : IInventoryService
         {
             ["code"] = 1, ["name"] = 2, ["category"] = 3, ["unit"] = 4,
             ["purchase"] = 5, ["sale"] = 6, ["reorder"] = 7, ["max"] = 8,
-            ["barcode"] = 9, ["desc"] = 10, ["vat"] = 0, ["status"] = 0, ["taxCode"] = 0
+            ["barcode"] = 9, ["desc"] = 10, ["vat"] = 0, ["status"] = 0, ["taxCode"] = 0,
+            ["initialQty"] = 0
         };
         // حداکثر ۲۰ ستون کافی است (قالب رسمی ۱۳ ستون دارد). خواندن سلول خالی
         // در ClosedXML بیخطر است و وابستگی به LastCellUsed روی سطر خالی نداریم.
@@ -1072,9 +1074,10 @@ public class InventoryService : IInventoryService
     }
 
     /// <summary>
-    /// ورود گروهی «کالا» یا «خدمات» از اکسل. علاوه بر ستونهای قدیمی، ستونهای
-    /// «ارزش افزوده» و «وضعیت کالا/خدمت» (و «شناسه مالیاتی») خوانده میشوند؛
-    /// فایلهای قدیمی بدون این ستونها همچنان با مقادیر پیشفرض وارد میشوند.
+    /// ورود گروهی «کالا» یا «خدمات» از اکسل. علاوه بر ستون‌های قدیمی، ستون‌های
+    /// «ارزش افزوده»، «وضعیت کالا/خدمت»، «شناسه مالیاتی» و «تعداد اولیه» خوانده
+    /// می‌شوند؛ فایل‌های قدیمی بدون این ستون‌ها همچنان با مقادیر پیش‌فرض وارد می‌شوند.
+    /// «تعداد اولیه» هر سطر به‌صورت سند موجودی اول دوره در انبار انتخابی ثبت می‌شود.
     /// </summary>
     public async Task<ExcelImportResult> ImportProductsAsync(Stream excelStream, int? warehouseId = null,
         ProductImportKind kind = ProductImportKind.Goods)
@@ -1122,10 +1125,11 @@ public class InventoryService : IInventoryService
                 var taxCode = Text(row, "taxCode");
                 var vat = Vat(row);
                 var active = Active(row);
+                var initialQty = isService ? 0m : Number(row, "initialQty");
 
                 if (string.IsNullOrWhiteSpace(name))
                     throw new InvalidOperationException(isService ? "نام خدمت خالی است." : "نام کالا خالی است.");
-                if (purchase < 0 || sale < 0 || reorder < 0 || maxStock < 0)
+                if (purchase < 0 || sale < 0 || reorder < 0 || maxStock < 0 || initialQty < 0)
                     throw new InvalidOperationException("مقادیر عددی نمیتوانند منفی باشند.");
 
                 await SaveProductAsync(new Product
@@ -1144,7 +1148,9 @@ public class InventoryService : IInventoryService
                     InvoiceVatValue = vat,
                     IsActive = active,
                     IsService = isService,
-                    WarehouseId = isService ? null : warehouseId is > 0 ? warehouseId : null
+                    WarehouseId = isService ? null : warehouseId is > 0 ? warehouseId : null,
+                    // تعداد اولیهٔ هر سطر؛ صفر یعنی بدون موجودی اولیه.
+                    InitialQuantity = initialQty > 0 ? initialQty : null
                 });
 
                 result.Imported++;
@@ -1234,7 +1240,8 @@ public class InventoryService : IInventoryService
             isService ? "نام خدمت" : "نام کالا",
             "گروه", "واحد", "قیمت خرید", "قیمت فروش", "نقطه سفارش",
             "حداکثر موجودی", "بارکد", "توضیحات", "ارزش افزوده",
-            isService ? "وضعیت خدمت" : "وضعیت کالا", "شناسه مالیاتی"
+            isService ? "وضعیت خدمت" : "وضعیت کالا", "شناسه مالیاتی",
+            "تعداد اولیه"
         };
     }
 
@@ -1269,6 +1276,7 @@ public class InventoryService : IInventoryService
             ws.Cell(2, 11).Value = 10;                ws.Cell(3, 11).Value = 0;
             ws.Cell(2, 12).Value = "فعال";            ws.Cell(3, 12).Value = "غیرفعال";
             ws.Cell(2, 13).Value = "";                ws.Cell(3, 13).Value = "";
+            ws.Cell(2, 14).Value = "";                ws.Cell(3, 14).Value = "";
         }
         else
         {
@@ -1285,6 +1293,7 @@ public class InventoryService : IInventoryService
             ws.Cell(2, 11).Value = 10;              ws.Cell(3, 11).Value = 0;
             ws.Cell(2, 12).Value = "فعال";          ws.Cell(3, 12).Value = "غیرفعال";
             ws.Cell(2, 13).Value = "";              ws.Cell(3, 13).Value = "";
+            ws.Cell(2, 14).Value = 24;              ws.Cell(3, 14).Value = 6;
         }
 
         ws.Columns(1, headers.Length).AdjustToContents();
@@ -1302,8 +1311,11 @@ public class InventoryService : IInventoryService
             ? "• خدمات موجودی انبار، بارکد، گروه و واحد ندارند؛ فقط نام، قیمت فروش، ارزش افزوده و وضعیت خوانده میشود."
             : "• گروه یا واحد جدید باشد، خودکار در اطلاعات پایه ساخته میشود؛ گروه دارای زیرگروه قابل انتخاب نیست.";
         help.Cell(8, 1).Value = "• «شناسه مالیاتی» اختیاری است و در صورت ورود باید ۵ تا ۲۰ نویسه و یکتا باشد.";
-        help.Cell(9, 1).Value = "• ستونها بر اساس عنوان شناسایی میشوند؛ فایلهای ۱۰ستونه قدیمی هم پذیرفته میشوند.";
-        help.Cell(10, 1).Value = "• دو سطر نمونه را قبل از ورود نهایی حذف کنید.";
+        help.Cell(9, 1).Value = isService
+            ? "• «تعداد اولیه» برای خدمات کاربردی ندارد و نادیده گرفته می‌شود."
+            : "• «تعداد اولیه» موجودی اول دورهٔ همان کالا در انبار انتخابی است؛ خالی یا صفر = بدون موجودی اولیه.";
+        help.Cell(10, 1).Value = "• ستونها بر اساس عنوان شناسایی میشوند؛ فایلهای ۱۰ستونه قدیمی هم پذیرفته میشوند.";
+        help.Cell(11, 1).Value = "• دو سطر نمونه را قبل از ورود نهایی حذف کنید.";
         help.Columns(1, 1).AdjustToContents();
 
         using var ms = new MemoryStream();
@@ -1569,6 +1581,8 @@ public class InventoryService : IInventoryService
                 (!currentPrices.ContainsKey(entity.Id) && ShopInvoiceAmounts.IsWholePrice(dto.SalePrice)))
                 ShopPricingService.RecordCatalogPrice(_db, entity, previousSalePrice, _db.CurrentUserName);
             await _db.SaveChangesAsync();
+            // «تعداد اولیه» فقط هنگام تعریف کالای تازه اعمال می‌شود؛ ویرایش کالا موجودی را تغییر نمی‌دهد.
+            if (dto.Id == 0) await ApplyInitialQuantityAsync(entity, dto);
             var result = await GetProductAsync(entity.Id) ?? throw new InvalidOperationException();
             await transaction.CommitAsync();
             return result;
@@ -1592,6 +1606,61 @@ public class InventoryService : IInventoryService
             n++;
         } while (await _db.Products.AnyAsync(p => p.Code == code));
         return code;
+    }
+
+    /// <summary>
+    /// ثبت «تعداد اولیه» کالای تازه به‌صورت سند «موجودی اول دوره» (نوع Initial) روی
+    /// همان تراکنشِ ذخیرهٔ کالا؛ بنابراین کاردکس، موجودی فاکتور و ماندهٔ قدیمی همگی
+    /// از یک مسیر به‌روز می‌شوند. فقط با شناسهٔ کالای تازه (id = 0 در ورودی) اجرا می‌شود.
+    /// </summary>
+    private async Task ApplyInitialQuantityAsync(Db.Product entity, Product dto)
+    {
+        if (dto.InitialQuantity is not > 0) return;
+        var quantity = dto.InitialQuantity.Value;
+        if (entity.IsService)
+            throw new InvalidOperationException("خدمات موجودی انبار ندارد؛ «تعداد اولیه» فقط برای کالا معنا دارد.");
+        if (quantity != decimal.Round(quantity, 3))
+            throw new InvalidOperationException("تعداد اولیه حداکثر تا سه رقم اعشار قابل ثبت است.");
+
+        var unitRuleRows = await _db.MeasureUnits.AsNoTracking()
+            .Where(u => u.CompanyId == entity.CompanyId && u.Name == entity.Unit)
+            .Select(u => (bool?)u.AllowsFractionalQuantity).ToListAsync();
+        var allowsFraction = unitRuleRows.Count == 1
+            ? unitRuleRows[0] : ShopQuantityRules.DefaultAllowsFraction(entity.Unit);
+        if (allowsFraction == false && !ShopQuantityRules.IsWhole(quantity))
+            throw new InvalidOperationException(
+                $"واحد «{entity.Unit}» فقط مقدار صحیح می‌پذیرد؛ تعداد اولیه نمی‌تواند اعشاری باشد.");
+
+        var warehouseId = entity.WarehouseId
+            ?? (await _db.Warehouses.AsNoTracking().Where(w => w.IsDefault).OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? (await _db.Warehouses.AsNoTracking().Where(w => w.IsActive).OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? (await _db.Warehouses.AsNoTracking().OrderBy(w => w.Id)
+                .Select(w => (int?)w.Id).FirstOrDefaultAsync())
+            ?? throw new InvalidOperationException(
+                "برای ثبت تعداد اولیه، ابتدا حداقل یک انبار تعریف کنید یا انبار اختصاصی کالا را انتخاب کنید.");
+
+        var txn = new Db.Transaction
+        {
+            Type = TransactionType.Initial,
+            Number = await GenerateNumberAsync(TransactionType.Initial),
+            Date = DateTime.Now,
+            Description = $"موجودی اولیه هنگام تعریف کالا — {entity.Code} {entity.Name}".Trim(),
+            WarehouseId = warehouseId,
+            CreatedAt = DateTime.Now
+        };
+        txn.Lines.Add(new Db.TransactionLine
+        {
+            ProductId = entity.Id,
+            Quantity = quantity,
+            Price = entity.PurchasePrice,
+            Description = "تعداد اولیه کالا"
+        });
+        _db.Transactions.Add(txn);
+        await _db.SaveChangesAsync();
+        await RecalcStockAsync(warehouseId, entity.Id);
+        await _db.SaveChangesAsync();
     }
 
     public async Task DeleteProductAsync(int id)
@@ -4570,6 +4639,7 @@ public class InventoryService : IInventoryService
             TransactionType.Purchase => "PR",
             TransactionType.Sale => "SL",
             TransactionType.SaleReturn => "SR",
+            TransactionType.Initial => "INIT",
             _ => "ADJ"
         };
         var count = await _db.Transactions.CountAsync(t => t.Type == type);

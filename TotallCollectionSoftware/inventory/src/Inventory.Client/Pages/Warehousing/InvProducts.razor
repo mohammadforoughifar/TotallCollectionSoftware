@@ -479,6 +479,24 @@
                     <input class="form-control" @bind="form.ShelfCode" placeholder="مثلاً: A-12-3" />
                 </div>
 
+                @if (!editing)
+                {
+                    <div class="col-md-4">
+                        <label class="form-label">تعداد اولیه (موجودی اول دوره)</label>
+                        <input class="form-control num" value="@fInitial" @oninput="@(e => fInitial = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" placeholder="۰" />
+                        <div class="fs-8 text-muted mt-1">
+                            @if (!string.IsNullOrWhiteSpace(WarehouseLabel))
+                            {
+                                <span>به‌صورت «رسید موجودی اول دوره» در انبار «@WarehouseLabel» قطعی ثبت می‌شود؛ </span>
+                            }
+                            else
+                            {
+                                <span>به‌صورت «رسید موجودی اول دوره» در انبار پیش‌فرض قطعی ثبت می‌شود؛ </span>
+                            }
+                            خالی یا صفر = بدون موجودی اولیه.
+                        </div>
+                    </div>
+                }
                 <div class="col-md-3">
                     <label class="form-label">نقطه سفارش</label>
                     <input class="form-control num" value="@fReorder" @oninput="@(e => fReorder = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
@@ -995,7 +1013,7 @@
     private bool showModal, saving;
     private int tab;
     private string categoryStr = "0", warehouseStr = "0", valuationStr = "";
-    private string fSale = "", fSale2 = "", fPurchase = "", fReorder = "", fMax = "", fMinOrder = "";
+    private string fSale = "", fSale2 = "", fPurchase = "", fReorder = "", fMax = "", fMinOrder = "", fInitial = "";
     private bool editing => form.Id != 0;
 
     // تنظیمات ساختار کدینگ
@@ -1084,7 +1102,7 @@
         categoryStr = (form.CategoryId ?? 0).ToString();
         warehouseStr = "0";
         valuationStr = "";
-        fSale = fSale2 = fPurchase = fReorder = fMax = fMinOrder = "";
+        fSale = fSale2 = fPurchase = fReorder = fMax = fMinOrder = fInitial = "";
         imagePreviewData = null;
         uploadError = null;
         uploadingImage = false;
@@ -1116,6 +1134,7 @@
         fReorder = Fa.Money(form.ReorderPoint);
         fMax = Fa.Money(form.MaxStock);
         fMinOrder = Fa.Money(form.MinOrderQty);
+        fInitial = ""; // تعداد اولیه فقط هنگام تعریف کالای تازه گرفته می‌شود
         imagePreviewData = null;
         uploadError = null;
         uploadingImage = false;
@@ -1341,6 +1360,21 @@
             return;
         }
 
+        // تعداد اولیه فقط در تعریف کالای تازه و فقط برای کالا (نه خدمات) گرفته می‌شود.
+        if (!editing && !form.IsService)
+        {
+            var initial = Fa.ParseDecimal(fInitial);
+            if (initial < 0) { Toast.Error("تعداد اولیه نمی‌تواند منفی باشد."); tab = 3; return; }
+            if (initial != decimal.Round(initial, 3))
+            { Toast.Error("تعداد اولیه حداکثر تا سه رقم اعشار قابل ثبت است."); tab = 3; return; }
+            var allowsFraction = units.FirstOrDefault(u => string.Equals(u.Name?.Trim(), form.Unit?.Trim(), StringComparison.Ordinal))
+                ?.AllowsFractionalQuantity ?? ShopQuantityRules.DefaultAllowsFraction(form.Unit);
+            if (initial > 0 && allowsFraction == false && !ShopQuantityRules.IsWhole(initial))
+            { Toast.Error($"واحد «{form.Unit}» فقط مقدار صحیح می‌پذیرد؛ تعداد اولیه نمی‌تواند اعشاری باشد."); tab = 3; return; }
+            form.InitialQuantity = initial > 0 ? initial : null;
+        }
+        else form.InitialQuantity = null;
+
         saving = true;
         try
         {
@@ -1367,6 +1401,11 @@
     }
 
     // ---------- کمکی ----------
+    /// <summary>نام انباری که تعداد اولیه در آن ثبت می‌شود (برای راهنمای زیر فیلد).</summary>
+    private string WarehouseLabel =>
+        int.TryParse(warehouseStr, out var id) && id > 0
+            ? warehouses.FirstOrDefault(w => w.Id == id)?.Name ?? ""
+            : "";
     private static string FormatMoney(object? value)
     {
         var raw = Fa.ToEn(value?.ToString() ?? "").Replace(",", "");
