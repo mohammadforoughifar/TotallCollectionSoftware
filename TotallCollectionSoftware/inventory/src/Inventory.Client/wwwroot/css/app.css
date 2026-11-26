@@ -4280,3 +4280,43 @@ button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
     .zs-opt { font-size: .54rem; }
     .zs-badge { font-size: .6rem; padding: .14rem .42rem; }
 }
+
+/* ============================================================
+   کارت‌های گزارش «fin-*» (کاردکس ریالی، خلاصهٔ فاکتور، نقطه سفارش)
+   این کلاس‌ها در صفحه‌ها استفاده می‌شدند اما هیچ‌جا تعریف نشده بودند؛
+   نتیجه: کارت‌ها بدون پس‌زمینه/حاشیه/گردی و بخشی از متن‌ها با وزن غلط
+   نمایش داده می‌شدند و گزارش «کار نمی‌کند» به‌نظر می‌رسید.
+   ============================================================ */
+.fin-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    box-shadow: 0 4px 18px -6px rgba(15, 23, 42, .08);
+    overflow: hidden;
+}
+.fin-card-body { padding: 1rem 1.15rem; }
+.fin-card-header {
+    padding: .85rem 1.15rem;
+    background: #fbfcfe;
+    border-bottom: 1px solid #eef2f7;
+}
+
+/* وزن/اندازه‌های عددی پرکاربرد (Bootstrap فقط تا fw-bold دارد) */
+.fw-600 { font-weight: 600 !important; }
+.fw-800 { font-weight: 800 !important; }
+
+/* فاصله‌های نیم‌مرحله‌ای که در صفحات استفاده می‌شوند */
+.p-3\.5 { padding: 1rem !important; }
+.px-3\.5 { padding-inline: 1rem !important; }
+.p-2\.5 { padding: .625rem !important; }
+.m-3\.5 { margin: 1rem !important; }
+.mt-0\.5 { margin-top: .125rem !important; }
+.mt-1\.5 { margin-top: .375rem !important; }
+.mb-1\.5 { margin-bottom: .375rem !important; }
+.mb-2\.5 { margin-bottom: .625rem !important; }
+.mb-3\.5 { margin-bottom: 1rem !important; }
+.py-1\.5 { padding-block: .375rem !important; }
+.py-2\.5 { padding-block: .625rem !important; }
+.px-2\.5 { padding-inline: .625rem !important; }
+.g-2\.5 { --bs-gutter-x: .625rem; --bs-gutter-y: .625rem; }
+.g-3\.5 { --bs-gutter-x: 1rem; --bs-gutter-y: 1rem; }
