@@ -195,3 +195,37 @@ dotnet restore Inventory.sln
    موجودیِ جدید روی جدول قدیمی **آینه (mirror)** می‌شود. اگر می‌خواهید کاملاً یکپارچه شود،
    باید داده‌های `Products` قدیمی به `InvProducts` مهاجرت داده و صفحات قدیمی
    (`/products`, `/categories`, `/warehouses`, `/stock`) بازنشسته شوند.
+
+---
+
+## ۷) تعداد اولیه (موجودی اول دوره) هنگام تعریف کالا ✅
+
+تعریف کالای تازه در هر دو فرم، فیلد **«تعداد اولیه (موجودی اول دوره)»** را می‌گیرد و ورود گروهی اکسل هم ستون
+**«تعداد اولیه»** را می‌خواند:
+
+| مسیر | صفحه/فایل | رفتار |
+|---|---|---|
+| فرم کالای جدید (فروشگاه) | `/products` → `Pages/Catalog/Products.razor` | فیلد «تعداد اولیه» فقط وقتی `!editing` است نمایش داده می‌شود |
+| فرم چندمرحله‌ای تعریف کالا | `/inv/products` → تب «انبار و موجودی» → `Pages/Warehousing/InvProducts.razor` | همان فیلد، فقط برای کالای تازه و غیرخدمات |
+| ورود گروهی از اکسل | `Products-Template.xlsx` ستون `K` | مقدار صفر/خالی = بدون موجودی اولیه |
+
+قواعد سرور (`InitialQuantity` در `Product`/`InvProduct`):
+
+- مقدار فقط در **ساخت** کالا اعمال می‌شود؛ در ویرایش نادیده گرفته می‌شود تا ویرایش قیمت یا گروه، موجودی را دست‌کاری نکند.
+- انبار مقصد: انبار اختصاصی کالا، وگرنه انبار پیش‌فرض سیستم، وگرنه اولین انبار فعال. اگر هیچ انباری نباشد، ثبت کالا با خطای روشن رد می‌شود.
+- واحدهای «فقط صحیح» (مثل عدد) مقدار اعشاری نمی‌پذیرند؛ حداکثر سه رقم اعشار.
+- خدمات موجودی ندارند و مقدار ارسالی برای آن‌ها نادیده گرفته می‌شود.
+
+ثبت موجودی از دو مسیر سریع، اما هر دو به **کاردکس و ماندهٔ یکپارچه** می‌رسند:
+
+- `/products` (فروشگاه) → سند `Transaction` با نوع `TransactionType.Initial` و شمارهٔ `INIT-0001`؛ همین نوع در محاسبهٔ موجودی «تنظیم» است و بهای تمام‌شده را از قیمت خرید کالا می‌گیرد.
+- `/inv/products` (انبارداری) → سند **قطعی** «رسید موجودی اول دوره» (`InvDocType.Code = "RC-OPEN"`) و سپس بازسازی کاردکس همان (کالا، انبار)؛ بنابراین `InvLedger`، `InvStocks` و آینهٔ `Stocks` همگی به‌روز می‌شوند.
+
+منابع تغییر:
+
+- `Inventory.Shared/Dtos/CatalogDtos.cs`، `Inventory.Shared/Dtos/WarehousingDtos.cs` — `InitialQuantity`.
+- `Inventory.Api/Services/Catalog/InventoryService.cs` — `ApplyInitialQuantityAsync`، ستون و قالب اکسل، پیشوند `INIT`.
+- `Inventory.Api/Services/Warehousing/WarehousingService.cs` — `ApplyOpeningStockAsync`.
+- `Inventory.Client/Pages/Catalog/Products.razor`، `Inventory.Client/Pages/Warehousing/InvProducts.razor`.
+- `docs/samples/Products-Template.xlsx` — ستون «تعداد اولیه» در فایل نمونه.
+- تست قرارداد: `tests/ShopBugFixes/test_shop_bug_fixes.py::InitialQuantityOnProductCreate`.

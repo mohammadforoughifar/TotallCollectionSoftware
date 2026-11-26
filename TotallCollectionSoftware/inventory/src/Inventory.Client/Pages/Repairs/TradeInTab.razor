@@ -15,39 +15,185 @@
 </div>
 <div class="alert alert-light border fs-8">پس از نهایی‌سازی، ارزش دستگاه به اعتبار مشتری افزوده می‌شود و در صورت‌حساب، تسویه فروش یا پرداخت وجه قابل پیگیری است.</div>
 
-@* ---------- فیلترهای صفحهٔ طرح تعویض ---------- *@
-<div class="card mb-3"><div class="card-body py-2"><div class="row g-2 align-items-end">
-    <div class="col-md-4">
-        <label class="form-label fs-8">جستجو</label>
-        <div class="input-group">
-            <span class="input-group-text"><i class="bi bi-search"></i></span>
-            <input class="form-control" placeholder="شماره پذیرش، مشتری، دستگاه، سریال…" value="@search" @oninput="OnSearchInput" />
-        </div>
+<style>
+/* ---------- نوار فیلتر فشردهٔ «طرح تعویض» ---------- */
+.ti-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem .65rem;
+    background: #fff;
+    border: 1px solid #e3e8ee;
+    border-radius: 12px;
+    padding: .5rem .65rem;
+    margin-bottom: .5rem;
+}
+.ti-search { position: relative; flex: 1 1 260px; min-width: 180px; }
+.ti-search-icon {
+    position: absolute; inset-inline-start: .7rem; top: 50%; transform: translateY(-50%);
+    color: #94a3b8; font-size: .82rem; pointer-events: none;
+}
+.ti-search-input {
+    width: 100%; height: 34px;
+    padding-inline: 2.05rem 2rem;
+    font-size: .82rem; color: #1e293b;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 9px;
+    outline: none; transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.ti-search-input:focus { background: #fff; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+.ti-search-clear {
+    position: absolute; inset-inline-end: .35rem; top: 50%; transform: translateY(-50%);
+    border: 0; background: none; color: #94a3b8; font-size: .72rem;
+    padding: .25rem .35rem; border-radius: 6px; line-height: 1;
+}
+.ti-search-clear:hover { color: #e11d48; background: #fef2f2; }
+.ti-control { display: flex; align-items: center; gap: .35rem; margin: 0; }
+.ti-control-text { font-size: .74rem; font-weight: 700; color: #64748b; white-space: nowrap; }
+.ti-status { width: auto; min-width: 9.5rem; height: 34px; font-size: .78rem; border-radius: 9px; }
+.ti-date-range .date-picker { width: 7.4rem; }
+.ti-date-range .date-picker .form-control { height: 34px; font-size: .74rem; padding-inline: .45rem; }
+.ti-date-range .date-picker .btn { height: 34px; padding-inline: .4rem; font-size: .7rem; }
+.ti-range-dash { color: #cbd5e1; font-size: .8rem; }
+.ti-presets { display: inline-flex; border: 1px solid #e2e8f0; border-radius: 9px; overflow: hidden; }
+.ti-presets button {
+    border: 0; background: #fff; color: #475569;
+    font-size: .72rem; font-weight: 700; padding: .32rem .55rem; line-height: 1.15;
+}
+.ti-presets button + button { border-inline-start: 1px solid #e2e8f0; }
+.ti-presets button:hover { background: #f8fafc; }
+.ti-presets button.on { background: #eef2ff; color: #4338ca; }
+.ti-filter-tail { display: flex; align-items: center; gap: .5rem; margin-inline-start: auto; }
+.ti-count { font-size: .74rem; color: #94a3b8; white-space: nowrap; }
+.ti-loading { display: inline-flex; color: #6366f1; }
+.ti-clear {
+    border: 0; background: none; color: #e11d48; font-size: .74rem; font-weight: 700;
+    padding: .3rem .5rem; border-radius: 8px; white-space: nowrap;
+}
+.ti-clear:hover:not(:disabled) { background: #fef2f2; }
+.ti-clear:disabled { opacity: .5; }
+.ti-chips { display: flex; flex-wrap: wrap; gap: .35rem; margin-bottom: .75rem; }
+.ti-chips:empty { display: none; }
+/* در جستجوی زنده جدول پاک نمی‌شود؛ فقط کم‌رنگ می‌شود تا تایپ نلرزد */
+.ti-stale { opacity: .55; transition: opacity .12s ease; }
+.ti-chip {
+    display: inline-flex; align-items: center; gap: .3rem;
+    border: 1px solid #e0e7ff; background: #eef2ff; color: #4338ca;
+    border-radius: 99px; padding: .18rem .6rem; font-size: .72rem; font-weight: 600;
+}
+.ti-chip b { font-weight: 800; max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ti-chip:hover { background: #e0e7ff; }
+@media (max-width: 767.98px) {
+    .ti-search { flex: 1 1 100%; }
+    .ti-date-range { flex-wrap: wrap; }
+    .ti-filter-tail { margin-inline-start: 0; width: 100%; justify-content: space-between; }
+}
+</style>
+
+
+@* ---------- نوار فیلتر فشردهٔ طرح تعویض (زنده، یک‌خطی) ---------- *@
+<section class="ti-filter-bar d-print-none" aria-label="فیلتر پذیرش‌های تعویض">
+    <div class="ti-search">
+        <i class="bi bi-search ti-search-icon" aria-hidden="true"></i>
+        <input type="search"
+               class="ti-search-input"
+               placeholder="جستجوی شماره، مشتری، دستگاه یا سریال…"
+               aria-label="جستجوی پذیرش تعویض"
+               @bind="search"
+               @bind:event="oninput"
+               @bind:after="DebouncedLoadAsync" />
+        @if (!string.IsNullOrWhiteSpace(search))
+        {
+            <button type="button" class="ti-search-clear" title="پاک کردن جستجو" aria-label="پاک کردن جستجو"
+                    @onclick="ClearSearchAsync">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
     </div>
-    <div class="col-md-3">
-        <label class="form-label fs-8">وضعیت</label>
-        <select class="form-select" value="@(statusFilter ?? "")" @onchange="OnStatusFilter">
-            <option value="">— همه وضعیت‌ها —</option>
+
+    <label class="ti-control">
+        <span class="ti-control-text">وضعیت</span>
+        <select class="form-select form-select-sm ti-status" aria-label="فیلتر وضعیت"
+                @bind="statusFilter" @bind:after="Load">
+            <option value="">همه وضعیت‌ها</option>
             <option value="@((int)TradeInStatusFilter.Draft)">پیش‌نویس</option>
             <option value="@((int)TradeInStatusFilter.Finalized)">نهایی‌شده</option>
             <option value="@((int)TradeInStatusFilter.WithCredit)">دارای اعتبار باقیمانده</option>
         </select>
+    </label>
+
+    <div class="ti-control ti-date-range">
+        <span class="ti-control-text">پذیرش از</span>
+        <DatePicker Value="from" ValueChanged="OnFromChanged" AllowClear="true" Placeholder="از تاریخ" />
+        <span class="ti-range-dash" aria-hidden="true">—</span>
+        <span class="ti-control-text">تا</span>
+        <DatePicker Value="to" ValueChanged="OnToChanged" AllowClear="true" Placeholder="تا تاریخ" />
+        <div class="ti-presets" role="group" aria-label="بازهٔ سریع تاریخ">
+            <button type="button" class="@(quickRangeDays == 7 ? "on" : "")" title="۷ روز اخیر"
+                    aria-pressed="@(quickRangeDays == 7 ? "true" : "false")" @onclick="() => SetQuickRange(7)">۷ روز</button>
+            <button type="button" class="@(quickRangeDays == 30 ? "on" : "")" title="۳۰ روز اخیر"
+                    aria-pressed="@(quickRangeDays == 30 ? "true" : "false")" @onclick="() => SetQuickRange(30)">۳۰ روز</button>
+            <button type="button" class="@(quickRangeDays == 90 ? "on" : "")" title="۹۰ روز اخیر"
+                    aria-pressed="@(quickRangeDays == 90 ? "true" : "false")" @onclick="() => SetQuickRange(90)">۹۰ روز</button>
+        </div>
     </div>
-    <div class="col-md-2">
-        <label class="form-label fs-8">از تاریخ پذیرش</label>
-        <DatePicker @bind-Value="from" AllowClear="true" />
+
+    <div class="ti-filter-tail">
+        @if (loading)
+        {
+            <span class="ti-loading" role="status" aria-label="در حال به‌روزرسانی">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+            </span>
+        }
+        else
+        {
+            <span class="ti-count num">@items.Count.Num() مورد</span>
+        }
+        @if (HasFilters)
+        {
+            <button type="button" class="ti-clear" @onclick="ResetFilters" disabled="@loading">
+                <i class="bi bi-x-circle ms-1"></i> پاک کردن فیلترها
+            </button>
+        }
     </div>
-    <div class="col-md-2">
-        <label class="form-label fs-8">تا تاریخ پذیرش</label>
-        <DatePicker @bind-Value="to" AllowClear="true" />
+</section>
+
+@if (HasFilters)
+{
+    <div class="ti-chips d-print-none" aria-label="فیلترهای فعال">
+        @if (!string.IsNullOrWhiteSpace(search))
+        {
+            <button type="button" class="ti-chip" @onclick="ClearSearchAsync" title="حذف این فیلتر">
+                جستجو: <b>@search</b> <i class="bi bi-x"></i>
+            </button>
+        }
+        @if (!string.IsNullOrWhiteSpace(statusFilter))
+        {
+            <button type="button" class="ti-chip" @onclick="ClearStatusAsync" title="حذف این فیلتر">
+                وضعیت: <b>@StatusText</b> <i class="bi bi-x"></i>
+            </button>
+        }
+        @if (from.HasValue)
+        {
+            <button type="button" class="ti-chip" @onclick="ClearFromAsync" title="حذف این فیلتر">
+                از <b class="num">@from.Value.ToFa()</b> <i class="bi bi-x"></i>
+            </button>
+        }
+        @if (to.HasValue)
+        {
+            <button type="button" class="ti-chip" @onclick="ClearToAsync" title="حذف این فیلتر">
+                تا <b class="num">@to.Value.ToFa()</b> <i class="bi bi-x"></i>
+            </button>
+        }
+        @if (quickRangeDays > 0)
+        {
+            <button type="button" class="ti-chip" @onclick="() => SetQuickRange(quickRangeDays)" title="حذف این فیلتر">
+                بازه: <b>@QuickRangeLabel اخیر</b> <i class="bi bi-x"></i>
+            </button>
+        }
     </div>
-    <div class="col-12 d-flex gap-2">
-        <button class="btn btn-primary btn-sm" type="button" @onclick="ApplyFilters" disabled="@loading"><i class="bi bi-funnel"></i> اعمال فیلتر</button>
-        <button class="btn btn-light btn-sm" type="button" @onclick="ResetFilters" disabled="@loading"><i class="bi bi-x-circle"></i> پاک کردن فیلتر</button>
-        @if (HasFilters) { <span class="badge badge-soft-primary align-self-center">@items.Count.Num() نتیجه با فیلتر</span> }
-    </div>
-</div></div></div>
-@if (loading) { <div class="text-center p-4" role="status">در حال دریافت پذیرش‌ها…</div> }
+}
+
+@if (loading && items.Count == 0) { <div class="text-center p-4" role="status">در حال دریافت پذیرش‌ها…</div> }
 else if (items.Count == 0)
 {
     <div class="empty-state">
@@ -58,7 +204,7 @@ else if (items.Count == 0)
 }
 else
 {
-    <div class="card"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
+    <div class="card @(loading ? "ti-stale" : "")" aria-busy="@(loading ? "true" : "false")"><div class="table-responsive"><table class="table table-hover align-middle mb-0">
         <thead><tr><th>شماره / تاریخ</th><th>مشتری</th><th>دستگاه</th><th class="text-start">ارزش (ریال)</th><th class="text-start">اعتبار باقیمانده</th><th>وضعیت</th><th>عملیات</th></tr></thead>
         <tbody>@foreach (var item in items)
         {
@@ -172,6 +318,14 @@ else
     }
     private async Task Load()
     {
+        // بازهٔ تاریخ برعکس، هیچ نتیجه‌ای ندارد؛ پیام روشن به‌جای جدول خالی.
+        var start = EffectiveFrom;
+        if (start.HasValue && to.HasValue && start.Value.Date > to.Value.Date)
+        {
+            items = new();
+            Toast.Error("تاریخ «از» پس از تاریخ «تا» است؛ بازه را اصلاح کنید.");
+            return;
+        }
         loading = true;
         try { items = await Api.GetAsync<List<ShopTradeInDto>>(BuildFilterUrl()); }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -180,43 +334,91 @@ else
 
     private string? statusFilter;
     private DateTime? from, to;
-    private bool HasFilters => !string.IsNullOrWhiteSpace(search) || !string.IsNullOrEmpty(statusFilter) || from.HasValue || to.HasValue;
+    // فیلترهای + (افزودنی): بازهٔ سریع بدون پر کردن فیلدهای تاریخ؛ از هر دو با هم استفاده می‌شود.
+    private int quickRangeDays;
+    private bool HasFilters => !string.IsNullOrWhiteSpace(search) || !string.IsNullOrWhiteSpace(statusFilter) ||
+        from.HasValue || to.HasValue || quickRangeDays > 0;
+
+    /// <summary>تاریخ شروع مؤثر: تاریخ دستی، وگرنه ابتدای بازهٔ سریع. تاریخ دستی همیشه اولویت دارد.</summary>
+    private DateTime? EffectiveFrom =>
+        from ?? (quickRangeDays > 0 ? DateTime.Today.AddDays(-(quickRangeDays - 1)) : null);
 
     private string BuildFilterUrl()
     {
         var query = new List<string>();
         if (!string.IsNullOrWhiteSpace(search)) query.Add($"search={Uri.EscapeDataString(search.Trim())}");
-        if (!string.IsNullOrEmpty(statusFilter)) query.Add($"status={Uri.EscapeDataString(statusFilter)}");
-        if (from.HasValue) query.Add($"from={from.Value:yyyy-MM-dd}");
+        if (!string.IsNullOrWhiteSpace(statusFilter)) query.Add($"status={Uri.EscapeDataString(statusFilter)}");
+        if (EffectiveFrom.HasValue) query.Add($"from={EffectiveFrom.Value:yyyy-MM-dd}");
         if (to.HasValue) query.Add($"to={to.Value:yyyy-MM-dd}");
         return query.Count == 0 ? "api/shop-trade-ins" : "api/shop-trade-ins?" + string.Join("&", query);
     }
 
-    private async Task OnSearchInput(ChangeEventArgs e)
-    {
-        search = e.Value?.ToString() ?? "";
-        await DebouncedLoadAsync();
-    }
+    // فیلترها با @bind:after زنده اعمال می‌شوند؛ دکمهٔ تأیید جدا لازم نیست.
 
-    private async Task OnStatusFilter(ChangeEventArgs e)
+    private async Task OnFromChanged(DateTime? value)
     {
-        statusFilter = e.Value?.ToString();
+        from = value;
         await Load();
     }
 
-    private async Task ApplyFilters()
+    private async Task OnToChanged(DateTime? value)
     {
-        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
-        {
-            Toast.Error("تاریخ شروع فیلتر پس از تاریخ پایان است.");
-            return;
-        }
+        to = value;
         await Load();
     }
+
+    private async Task ClearSearchAsync()
+    {
+        search = "";
+        await Load();
+    }
+
+    private async Task ClearStatusAsync()
+    {
+        statusFilter = null;
+        await Load();
+    }
+
+    private async Task ClearFromAsync()
+    {
+        from = null;
+        quickRangeDays = 0;
+        await Load();
+    }
+
+    /// <summary>بازهٔ سریع (۰ = همه)؛ با کلیک دوباره روی همان گزینه، بازه برداشته می‌شود.</summary>
+    private async Task SetQuickRange(int days)
+    {
+        quickRangeDays = quickRangeDays == days ? 0 : days;
+        await Load();
+    }
+
+    private string QuickRangeLabel => quickRangeDays switch
+    {
+        7 => "۷ روز",
+        30 => "۳۰ روز",
+        90 => "۹۰ روز",
+        _ => ""
+    };
+
+    private async Task ClearToAsync()
+    {
+        to = null;
+        await Load();
+    }
+
+    /// <summary>متن خوانا برای چیپ وضعیت؛ همان برچسبی که در فهرست دیده می‌شود.</summary>
+    private string StatusText => statusFilter switch
+    {
+        "0" => "پیش‌نویس",
+        "1" => "نهایی‌شده",
+        "2" => "دارای اعتبار باقیمانده",
+        _ => "همه وضعیت‌ها"
+    };
 
     private async Task ResetFilters()
     {
-        search = ""; statusFilter = null; from = null; to = null;
+        search = ""; statusFilter = null; from = null; to = null; quickRangeDays = 0;
         await Load();
     }
 

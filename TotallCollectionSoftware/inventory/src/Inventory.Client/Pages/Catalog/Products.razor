@@ -256,6 +256,24 @@
                     <a href="units" target="_blank">مدیریت واحدها <i class="bi bi-box-arrow-up-left"></i></a>
                 </div>
             </div>
+            @if (!editing)
+            {
+                <div class="col-md-3">
+                    <label class="form-label">تعداد اولیه (موجودی اول دوره)</label>
+                    <input class="form-control num" value="@fInitial" @oninput="@(e => fInitial = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" placeholder="۰" />
+                    <div class="fs-8 text-muted mt-1">
+                        @if (!string.IsNullOrEmpty(WarehouseLabel))
+                        {
+                            <span>در انبار «@WarehouseLabel» ثبت می‌شود؛ </span>
+                        }
+                        else
+                        {
+                            <span>در انبار پیش‌فرض ثبت می‌شود؛ </span>
+                        }
+                        خالی یا صفر = بدون موجودی اولیه.
+                    </div>
+                </div>
+            }
             <div class="col-md-3">
                 <label class="form-label">قیمت خرید (ریال)</label>
                 <input class="form-control num" value="@fPurchase" @oninput="@(e => fPurchase = PurchaseSalePriceInput.Format(e.Value?.ToString()))" inputmode="numeric" title="قیمت به ریال صحیح و بدون اعشار" dir="ltr" />
@@ -360,7 +378,7 @@
                     فایل اکسل نمونه
                 </button>
                 را دانلود کنید، @(importKind == ProductImportKind.Services ? "خدمات" : "کالاها") را مطابق آن وارد کرده و سپس فایل را بارگذاری نمایید.
-                فایل نمونه ستونهای «ارزش افزوده» و «@(importKind == ProductImportKind.Services ? "وضعیت خدمت" : "وضعیت کالا")» را هم دارد.
+                فایل نمونه ستونهای «ارزش افزوده» و «@(importKind == ProductImportKind.Services ? "وضعیت خدمت" : "وضعیت کالا")» را هم دارد@(importKind == ProductImportKind.Goods ? "؛ ستون «تعداد اولیه» موجودی اول دوره هر کالا در انبار انتخابی است" : "").
                 @if (importKind == ProductImportKind.Goods)
                 {
                     <span>گروه یا واحد جدید به‌صورت خودکار در اطلاعات پایه ساخته می‌شود.</span>
@@ -446,7 +464,7 @@
 
     private Product form = new();
     private bool showModal, saving;
-    private string fSale = "", fPurchase = "", fReorder = "", fMax = "";
+    private string fSale = "", fPurchase = "", fReorder = "", fMax = "", fInitial = "";
     private bool editing => form.Id != 0;
 
     private string ModalTitle => form.IsService
@@ -613,7 +631,7 @@
     {
         await LoadLookups();
         form = new Product { IsActive = true, Unit = "عدد", InvoiceVatValue = 0 };
-        fSale = fPurchase = fReorder = fMax = "";
+        fSale = fPurchase = fReorder = fMax = fInitial = "";
         prodWarehouseIdStr = "0";
         showModal = true;
     }
@@ -636,6 +654,7 @@
         fSale = Fa.MoneyExact(p.SalePrice); fPurchase = Fa.MoneyExact(p.PurchasePrice);
         fReorder = Fa.Digits(p.ReorderPoint.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
         fMax = Fa.Digits(p.MaxStock.ToString("#,##0.###", System.Globalization.CultureInfo.InvariantCulture));
+        fInitial = ""; // تعداد اولیه فقط در تعریف کالای تازه گرفته می‌شود
         showModal = true;
     }
 
@@ -647,9 +666,15 @@
     private bool CategoryIsParent(string? name) => !string.IsNullOrWhiteSpace(name) &&
         categories.Any(c => string.Equals(c.Name, name, StringComparison.Ordinal) && HasChildren(c));
 
+    /// <summary>نام انباری که تعداد اولیه در آن ثبت می‌شود (برای راهنمای زیر فیلد).</summary>
+    private string WarehouseLabel =>
+        int.TryParse(prodWarehouseIdStr, out var id) && id > 0
+            ? whLookup.FirstOrDefault(w => w.Id == id)?.Name ?? ""
+            : "";
+
     /// <summary>
     /// واحدهای «فقط صحیح» (مانند عدد) نباید نقطهٔ سفارش/حداکثر موجودی اعشاری بگیرند.
-    /// قانون از تعریف واحد خوانده میشود و برای واحدهای ناشناخته همان پیشفرض سرور است.
+    /// قانون از تعریف واحد خوانده می‌شود و برای واحدهای ناشناخته همان پیش‌فرض سرور است.
     /// </summary>
     private bool UnitAllowsFraction()
     {
@@ -701,6 +726,7 @@
             form.Barcode = null;
             form.Unit = "خدمت";
             form.WarehouseId = null;
+            form.InitialQuantity = null;
         }
         else
         {
@@ -722,6 +748,29 @@
             form.ReorderPoint = reorder;
             form.MaxStock = maxStock;
             form.WarehouseId = int.TryParse(prodWarehouseIdStr, out var pw) && pw > 0 ? pw : null;
+
+            // تعداد اولیه فقط در تعریف کالای تازه گرفته می‌شود؛ ویرایش موجودی از مسیر اسناد انبار است.
+            if (!editing)
+            {
+                var initial = Fa.ParseDecimal(fInitial);
+                if (initial < 0)
+                {
+                    Toast.Error("تعداد اولیه نمی‌تواند منفی باشد.");
+                    return;
+                }
+                if (!UnitAllowsFraction() && !ShopQuantityRules.IsWhole(initial))
+                {
+                    Toast.Error($"واحد «{form.Unit}» فقط مقدار صحیح می‌پذیرد؛ تعداد اولیه نمی‌تواند اعشاری باشد.");
+                    return;
+                }
+                if (initial != decimal.Round(initial, 3))
+                {
+                    Toast.Error("تعداد اولیه حداکثر تا سه رقم اعشار قابل ثبت است.");
+                    return;
+                }
+                form.InitialQuantity = initial > 0 ? initial : null;
+            }
+            else form.InitialQuantity = null;
         }
 
         form.InvoiceVatValue ??= 0;

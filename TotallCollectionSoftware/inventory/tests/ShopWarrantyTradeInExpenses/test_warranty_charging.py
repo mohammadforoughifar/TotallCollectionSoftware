@@ -164,7 +164,7 @@ class ChargingInvariants(unittest.TestCase):
 
     def test_changing_a_warranty_product_requires_fresh_price_and_consumption(self):
         warranty = read('src/Inventory.Client/Pages/Repairs/WarrantyTab.razor')
-        product = warranty[warranty.index('private void SetProduct'):warranty.index('private async Task Save()')]
+        product = warranty[warranty.index('private async Task SetProduct'):warranty.index('private async Task Save()')]
         self.assertIn('form.Items[i].Supplied = false', product)
         self.assertIn('form.Items[i].Performed = false', product)
         self.assertIn('form.Items[i].CustomerUnitPrice = null', product)

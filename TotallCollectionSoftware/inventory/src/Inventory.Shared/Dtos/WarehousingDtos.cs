@@ -233,6 +233,12 @@ public class InvProduct
     public int? WarehouseId { get; set; }
     public string? WarehouseName { get; set; }
 
+    /// <summary>
+    /// تعداد اولیه (موجودی اول دوره) هنگام تعریف کالای تازه. فقط در ساخت کالا خوانده
+    /// می‌شود و به‌صورت «رسید موجودی اول دوره» قطعی ثبت می‌گردد.
+    /// </summary>
+    public decimal? InitialQuantity { get; set; }
+
     /// <summary>روش قیمت‌گذاری اختصاصی کالا (null = ارث‌بری از گروه کالا / تنظیمات)</summary>
     public ValuationMethod? Valuation { get; set; }
 

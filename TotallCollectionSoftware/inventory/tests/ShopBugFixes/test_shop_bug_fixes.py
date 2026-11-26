@@ -187,6 +187,55 @@ class Bug7And8ExcelImport(unittest.TestCase):
         self.assertIn('ResolveImportColumns(ws.Row(1))', SERVICE)
 
 
+class InitialQuantityOnProductCreate(unittest.TestCase):
+    """«تعداد اولیه» هم در فرم افزودن کالا و هم در ستون اکسل گرفته می‌شود."""
+
+    WAREOUS = read(API / 'Services/Warehousing/WarehousingService.cs')
+    INV_PRODUCTS = read(CLIENT / 'Pages/Warehousing/InvProducts.razor')
+    WAREHOUSE_DTOS = read(SHARED / 'Dtos/WarehousingDtos.cs')
+
+    def test_dto_has_initial_quantity_on_both_forms(self):
+        self.assertIn('public decimal? InitialQuantity { get; set; }', DTOS)
+        self.assertIn('public decimal? InitialQuantity { get; set; }', self.WAREHOUSE_DTOS)
+
+    def test_shop_form_asks_for_initial_quantity(self):
+        self.assertIn('تعداد اولیه', PRODUCTS)
+        self.assertIn('private string fSale = "", fPurchase = "", fReorder = "", fMax = "", fInitial = "";', PRODUCTS)
+        self.assertIn('if (!editing)', PRODUCTS)
+        self.assertIn('form.InitialQuantity = initial > 0 ? initial : null;', PRODUCTS)
+        # ویرایش کالا موجودی را تغییر نمی‌دهد
+        self.assertIn('else form.InitialQuantity = null;', PRODUCTS)
+
+    def test_warehousing_wizard_asks_for_initial_quantity(self):
+        self.assertIn('تعداد اولیه', self.INV_PRODUCTS)
+        self.assertIn(', fInitial = "";', self.INV_PRODUCTS)
+        self.assertIn('form.InitialQuantity = initial > 0 ? initial : null;', self.INV_PRODUCTS)
+
+    def test_server_creates_an_opening_stock_document(self):
+        self.assertIn('if (dto.Id == 0) await ApplyInitialQuantityAsync(entity, dto);', SERVICE)
+        self.assertIn('TransactionType.Initial => "INIT"', SERVICE)
+        self.assertIn('private async Task ApplyInitialQuantityAsync(Db.Product entity, Product dto)', SERVICE)
+        self.assertIn('if (dto.InitialQuantity is > 0)', self.WAREOUS)
+        self.assertIn('private async Task ApplyOpeningStockAsync(Db.Product product, decimal quantity)', self.WAREOUS)
+        # سند قطعی «رسید موجودی اول دوره» و بازسازی کاردکس
+        self.assertIn('t.Code == "RC-OPEN"', self.WAREOUS)
+        self.assertIn('Status = InvDocStatus.Confirmed,', self.WAREOUS)
+        self.assertIn('await RebuildManyAsync(new[] { (product.Id, warehouseId) }.ToList());', self.WAREOUS)
+
+    def test_excel_template_and_reader_carry_the_column(self):
+        self.assertIn('("initialQty", new[] { "تعداد اولیه"', SERVICE)
+        self.assertIn('["initialQty"] = 0', SERVICE)
+        self.assertIn('var initialQty = isService ? 0m : Number(row, "initialQty");', SERVICE)
+        self.assertIn('InitialQuantity = initialQty > 0 ? initialQty : null', SERVICE)
+        self.assertIn('"تعداد اولیه"\n        };', SERVICE)
+        # فایل نمونهٔ مخزن هم همان ستون را دارد (بررسی متنی xlsx)
+        import zipfile
+        sample = zipfile.ZipFile(ROOT.parent / 'docs' / 'samples' / 'Products-Template.xlsx')
+        sheet = sample.read('xl/worksheets/sheet1.xml').decode('utf-8')
+        self.assertIn('<t>تعداد اولیه</t>', sheet)
+        self.assertIn('r="K1"', sheet)
+
+
 class Bug9DatedStock(unittest.TestCase):
     """موجودی فاکتور بر اساس تاریخ سند، نه تجمیع فعلی."""
 
