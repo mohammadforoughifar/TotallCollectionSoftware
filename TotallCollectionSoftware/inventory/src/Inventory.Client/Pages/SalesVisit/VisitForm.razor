@@ -1468,7 +1468,7 @@ else
 .vis-form .vis-pay-part .form-label { margin-bottom: .15rem; }
 .vis-form .vis-pay-part .fs-8 { font-size: .76rem; }
 .vis-form .vis-pay-part .fs-9 { font-size: .7rem; }
-@media (max-width: 576px) {
+@@media (max-width: 576px) {
     .vis-form .vis-pay-card { padding: .6rem .55rem; }
     .vis-form .vis-pay-summary { font-size: .72rem; }
 }
@@ -1733,6 +1733,14 @@ else
     // ==================================================================
     private bool useCash = true, useCheque, useInstallment, useCredit;
     private CashType cashKind = CashType.Cash;
+
+    /// <summary>
+    /// نوع دریافت نقدی به‌صورت فقط‌خواندنی — همان الگوی فرم فاکتور (OrderForm.CashKind).
+    /// فیلد اصلی <see cref="cashKind"/> است و با انتخاب کاربر عوض می‌شود؛ مارک‌آپ
+    /// (انتخابگر نوع دریافت و دکمهٔ «تعریف صندوق/بانک») از این نام بزرگ‌حرف استفاده می‌کند.
+    /// </summary>
+    private CashType CashKind => cashKind;
+
     private int? trsAccountId;
     private string cashAmountText = "";
     private DateTime? creditDue;
