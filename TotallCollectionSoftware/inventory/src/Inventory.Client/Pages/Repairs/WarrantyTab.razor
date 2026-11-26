@@ -68,7 +68,9 @@ else
         @for (var index = 0; index < form.Items.Count; index++)
         {
             var i = index;
-            <div class="border rounded-3 p-3 mb-2"><div class="row g-2 align-items-end">
+            var qtyRule = ProductRule(form.Items[i].ProductId);
+            var qtyInvalid = IsInvalidFractionalQty(i);
+            <div class="border rounded-3 p-3 mb-2"><div class="row g-2 align-items-start">
                 <div class="col-md-3"><label class="form-label">شرح کار یا قطعه *</label><input class="form-control form-control-sm" maxlength="300" @bind="form.Items[i].Description" /></div>
                 <div class="col-md-3"><label class="form-label">کالای انبار (اختیاری)</label>
                     <SearchSelect Items="products" Value="@(form.Items[i].ProductId ?? 0)" ValueChanged="v => SetProduct(i, v)" Placeholder="انتخاب کالا" ConstrainToModal="true" />
@@ -81,22 +83,25 @@ else
                     }
                 </div>
                 <div class="col-6 col-md-1"><label class="form-label">مقدار</label>
-                    <input class="form-control form-control-sm num" dir="ltr"
-                           inputmode="@(ProductRule(form.Items[i].ProductId)?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
+                    <input class="form-control form-control-sm num @(qtyInvalid ? "is-invalid" : "")" dir="ltr"
+                           inputmode="@(qtyRule?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
                            value="@quantities[i]" @oninput="e => OnQtyInput(i, e.Value?.ToString())" />
-                    @if (ProductRule(form.Items[i].ProductId) is { } rule)
+                    @if (qtyInvalid)
                     {
-                        <small class="d-block text-muted">واحد: @(string.IsNullOrWhiteSpace(rule.Unit) ? "—" : rule.Unit)<br />@rule.QuantityKindText</small>
-                        @if (rule.AllowsFractionalQuantity == false) { <small class="d-block text-danger">اعشار مجاز نیست</small> }
+                        <small class="d-block text-danger mt-1">اعشار مجاز نیست</small>
+                    }
+                    @if (qtyRule is not null)
+                    {
+                        <small class="d-block text-muted mt-1">واحد: @(string.IsNullOrWhiteSpace(qtyRule.Unit) ? "—" : qtyRule.Unit)</small>
                     }
                     else if (form.Items[i].ProductId is > 0)
                     {
-                        <small class="d-block text-muted">واحد و نوع مقدار نامشخص</small>
+                        <small class="d-block text-muted mt-1">واحد نامشخص</small>
                     }
                 </div>
                 <div class="col-6 col-md-2"><label class="form-label">هزینه داخلی واحد</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@costs[i]" @oninput="e => costs[i] = Fa.FormatTyping(e.Value?.ToString())" /></div>
                 <div class="col-md-2"><label class="form-label">تصمیم گارانتی *</label><select class="form-select form-select-sm" value="@form.Items[i].Decision" @onchange="e => SetDecision(i, e)"><option value="@WarrantyDecision.Unspecified">انتخاب کنید</option><option value="@WarrantyDecision.Accepted">پذیرفته</option><option value="@WarrantyDecision.Rejected">پذیرفته‌نشده</option></select></div>
-                <div class="col-md-1"><button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
+                <div class="col-md-1"><label class="form-label d-none d-md-block">&nbsp;</label><button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
                 @if (form.Items[i].Decision == WarrantyDecision.Rejected && (form.Items[i].ProductId is > 0 ? form.Items[i].Supplied : form.Items[i].Performed))
                 {
                     <div class="col-12 col-md-4"><label class="form-label">قیمت واحد مشتری (ریال) *</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@prices[i]" @oninput="e => prices[i] = FormatRial(e.Value?.ToString())" placeholder="قیمت را دستی وارد کنید" /></div>
@@ -275,16 +280,15 @@ else
     private ShopWarrantyProductRuleDto? ProductRule(int? productId)
         => productId is > 0 && productRules.TryGetValue(productId.Value, out var rule) ? rule : null;
 
-    /// <summary>
-    /// ورودی مقدار: برای واحد «صحیح» جداکنندهٔ اعشار همان لحظهٔ تایپ حذف می‌شود تا
-    /// امکان ورود مقدار اعشاری نباشد (اعتبارسنجی نهایی هم در Save انجام می‌شود).
-    /// </summary>
-    private string NormalizeQtyInput(int index, string? raw)
+    private static bool HasDecimalSeparator(string? raw)
+        => !string.IsNullOrEmpty(raw) && raw.Any(ch => ch is '.' or '٫' or ',' or '٬' or '/');
+
+    private bool IsInvalidFractionalQty(int index)
     {
-        var text = raw ?? "";
-        if (index < 0 || index >= form.Items.Count) return text;
-        if (ProductRule(form.Items[index].ProductId)?.AllowsFractionalQuantity != false) return text;
-        return new string(text.Where(ch => ch is not ('.' or '٫' or ',' or '٬' or '/')).ToArray());
+        if (index < 0 || index >= form.Items.Count || index >= quantities.Count) return false;
+        if (ProductRule(form.Items[index].ProductId)?.AllowsFractionalQuantity != false) return false;
+        var raw = quantities[index];
+        return HasDecimalSeparator(raw) || !ShopQuantityRules.IsWhole(Fa.ParseDecimal(raw));
     }
 
     private async Task OnSuppliedChanged(int index, ChangeEventArgs e)
@@ -296,7 +300,7 @@ else
 
     private void OnQtyInput(int index, string? raw)
     {
-        quantities[index] = NormalizeQtyInput(index, raw);
+        quantities[index] = raw ?? "";
         stockAcknowledged = false; // مقدار تغییر کرد؛ هشدار کمبود باید دوباره ارزیابی شود
     }
 
@@ -356,8 +360,10 @@ else
         if (form.Items.Count == 0) { Toast.Error("حداقل یک ردیف کار یا قطعه اضافه کنید."); return; }
 
         // نوع مقدار کالا: واحد «صحیح» اعشار نمی‌پذیرد و واحدِ نامشخص باید تعیین شود.
-        foreach (var item in form.Items.Where(i => i.ProductId is > 0))
+        for (var i = 0; i < form.Items.Count; i++)
         {
+            var item = form.Items[i];
+            if (item.ProductId is not > 0) continue;
             var rule = ProductRule(item.ProductId);
             if (rule is null) continue; // قاعده در سرور بررسی می‌شود (کالای غیرفعال/حذف‌شده)
             if (rule.AllowsFractionalQuantity is null)
@@ -365,7 +371,7 @@ else
                 Toast.Error($"نوع مقدار واحد «{rule.Unit}» برای «{item.Description}» مشخص نیست؛ ابتدا آن را در واحدهای شمارش تعیین کنید.");
                 return;
             }
-            if (rule.AllowsFractionalQuantity == false && !ShopQuantityRules.IsWhole(item.Quantity))
+            if (IsInvalidFractionalQty(i))
             {
                 Toast.Error($"مقدار «{item.Description}» با واحد «{rule.Unit}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
                 return;
