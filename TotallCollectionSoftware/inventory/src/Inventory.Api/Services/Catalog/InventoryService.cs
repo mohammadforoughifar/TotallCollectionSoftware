@@ -2348,7 +2348,10 @@ public class InventoryService : IInventoryService
             IsCancelled = state.Settlement.IsCancelled,
             HasSettlementHistory = !state.Settlement.IsUntouched,
             // ماهیت مانده و نوع چک هرگز از مسیر ویرایش تغییر نمی‌کند.
-            NatureLocked = true
+            NatureLocked = true,
+            // حذف کامل با همان شرط ویرایش باز است؛ دلیلش جدا از دلیل ویرایش گفته می‌شود.
+            CanDelete = OpeningBalanceEdit.CanDelete(state.Settlement),
+            DeleteBlockedReason = OpeningBalanceEdit.DeleteBlockedReason(state.Settlement)
         };
     }
 
@@ -2481,6 +2484,58 @@ public class InventoryService : IInventoryService
             var saved = await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException("سند افتتاحیه یافت نشد.");
             await trx.CommitAsync();
             return saved;
+        }
+        catch
+        {
+            try { if (_db.Database.CurrentTransaction is not null) await trx.RollbackAsync(); } catch { }
+            _db.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// حذف کامل یک ردیف ماندهٔ اول دوره (هر سه بخش سندی: طرف حساب، اقساط، موجودی کالا).
+    /// فقط سندی که هیچ گردش تسویه/دریافت/وصول/قسط ندارد حذف می‌شود؛ چون در آن حالت هیچ
+    /// سابقهٔ مالی به سند ارجاع نمی‌دهد و حذف، دفتر دیگران را دگرگون نمی‌کند.
+    ///
+    /// ترتیب کار: تأیید تراز نقدی، معکوس‌کردن ردیف نقدی، حذف سند، بازمحاسبهٔ کاردکس
+    /// همان (انبار، کالا)های سند و در پایان کنترل موجودی منفی. همه در یک تراکنش
+    /// <c>Serializable</c>؛ هر خطا کل عملیات را برمی‌گرداند.
+    /// </summary>
+    public async Task DeleteOpeningBalanceAsync(int id, string? user = null)
+    {
+        await using var trx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        try
+        {
+            var state = await ReadOpeningBalanceEditStateAsync(id);
+            var blocked = OpeningBalanceEdit.DeleteBlockedReason(state.Settlement);
+            if (blocked is not null) throw new InvalidOperationException(blocked);
+            var txn = state.Transaction;
+            if (state.Section == OpeningBalanceSection.Cheque)
+                throw new InvalidOperationException("چک اول دوره از مسیر دفتر چک حذف می‌شود، نه از سند افتتاحیه.");
+
+            // گردش نقدی موجودی اولیه (بهای تمام‌شده) پیش از حذف معکوس می‌شود تا دفتر
+            // نقدی و صورت‌حساب طرف حساب با سند حذف‌شده ناسازگار نمانند.
+            var previousCash = txn.ShopCashLedgerEnabled
+                ? await ShopOrderCashLedger.VerifyCurrentAsync(_db, txn) : null;
+
+            var productIds = txn.Lines.Select(l => l.ProductId).Distinct().ToList();
+            var warehouseId = txn.WarehouseId;
+
+            await ShopOrderCashLedger.ReverseForDeleteAsync(_db, txn, previousCash, user);
+            _db.Transactions.Remove(txn);
+            // ابتدا حذف اعمال می‌شود تا کاردکس سند حذف‌شده را دوباره حساب نکند.
+            await _db.SaveChangesAsync();
+
+            if (state.Section == OpeningBalanceSection.Stock)
+            {
+                foreach (var pid in productIds)
+                    await RecalcStockAsync(warehouseId, pid);
+                await _db.SaveChangesAsync();
+                await EnsureNoNegativeStockAsync(productIds.Select(pid => (warehouseId, pid)));
+            }
+
+            await trx.CommitAsync();
         }
         catch
         {
@@ -2802,6 +2857,16 @@ public class InventoryService : IInventoryService
             TrsAccountName = trsAccountName,
             DueDate = t.DueDate,
             SettledAmount = t.SettledAmount,
+            // نوع سند: همان قاعدهٔ بخش‌بندی ماژول افتتاحیه، تا «فاکتور فروش» و
+            // «ردیف آمده از افتتاح حساب» در فهرست از هم جدا شوند.
+            DocumentKind = OpeningBalanceEdit.DocumentKindTitle(t.Type, t.Description, t.PaymentMethod,
+                t.Lines.Any(l => products.TryGetValue(l.ProductId, out var lp) &&
+                    (lp.Code == OpeningBalanceEdit.ServiceProductCode ||
+                     lp.Code == OpeningBalanceEdit.GoodsProductCode))),
+            IsOpeningDocument = OpeningBalanceEdit.IsOpeningDocument(t.Description, t.PaymentMethod,
+                t.Lines.Any(l => products.TryGetValue(l.ProductId, out var lo) &&
+                    (lo.Code == OpeningBalanceEdit.ServiceProductCode ||
+                     lo.Code == OpeningBalanceEdit.GoodsProductCode))),
             Cheques = t.Cheques.OrderBy(c => c.DueDate).Select(c => new ChequeDto
             {
                 Id = c.Id, Number = c.Number, TrsAccountId = c.TrsAccountId, BankName = c.BankName, AccountInfo = c.AccountInfo,

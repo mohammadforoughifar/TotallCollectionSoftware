@@ -136,6 +136,9 @@ public interface IOrderService
 
     /// <summary>ویرایش سند ماندهٔ اول دوره با حفظ شناسهٔ همان سند.</summary>
     Task<Order> UpdateOpeningBalanceAsync(int id, OpeningBalanceEditCommand cmd);
+
+    /// <summary>حذف کامل یک ردیف ماندهٔ اول دوره؛ تنها برای سند دست‌نخورده.</summary>
+    Task DeleteOpeningBalanceAsync(int id);
     Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd);
     Task<ShopOrderCreditState> GetCreditStateAsync(int id);
     Task ReceiveCreditAsync(int id, ShopOrderCreditReceiptCommand cmd);

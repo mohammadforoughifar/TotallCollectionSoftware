@@ -551,6 +551,31 @@ public class OrdersController : ApiControllerBase
         }
     }
 
+    /// <summary>
+    /// حذف کامل یک ردیف ماندهٔ اول دوره (طرف حساب، اقساط یا موجودی کالا).
+    /// فقط سند دست‌نخورده حذف می‌شود: نه ابطال‌شده و نه دارای گردش نقدی، دریافت نسیه،
+    /// وصول/خرج چک یا قسط پرداخت‌شده. در غیر این صورت 400 با متن علت برمی‌گردد.
+    /// </summary>
+    [HttpDelete("{id:int}/opening-balance")]
+    [Inventory.Api.Infrastructure.RequirePermission("Orders", "Delete")]
+    public async Task<IActionResult> DeleteOpeningBalance(int id)
+    {
+        var existing = await _service.GetOrderAsync(id);
+        if (existing is null) return NotFound(new { message = "سند یافت نشد." });
+        // حذف سند تاریخ‌گذشته همان قاعدهٔ حذف فاکتور را دارد.
+        if (existing.Date.Date < DateTime.Today && !await CanManagePricingAsync())
+            return StatusCode(403, new { message = "حذف سند تاریخ‌گذشته به مجوز مدیریت قیمت‌گذاری نیاز دارد." });
+        try
+        {
+            await _service.DeleteOpeningBalanceAsync(id, CurrentActor);
+            return Ok(new { ok = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     /// <summary>حساب‌های فعال خزانه/بانک متعلق به شرکت فعال برای عملیات فروش و وصول.</summary>
     [HttpGet("active-treasury-accounts")]
     public async Task<ActionResult<List<TrsAccount>>> ActiveTreasuryAccounts([FromQuery] TreasuryAccountKind? kind = null)

@@ -118,6 +118,9 @@ public interface IInventoryService
     /// <summary>ویرایش سند افتتاحیه در همان سند و با حفظ شناسه؛ گردش‌دار رد می‌شود.</summary>
     Task<Order> UpdateOpeningBalanceAsync(int id, OpeningBalanceEditCommand cmd, string? user = null);
 
+    /// <summary>حذف کامل سند افتتاحیهٔ دست‌نخورده؛ سند دارای گردش رد می‌شود.</summary>
+    Task DeleteOpeningBalanceAsync(int id, string? user = null);
+
     // ---------------- داشبورد ادمین و پرداخت ----------------
     Task<AdminDashboard> GetAdminDashboardAsync();
     Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null);

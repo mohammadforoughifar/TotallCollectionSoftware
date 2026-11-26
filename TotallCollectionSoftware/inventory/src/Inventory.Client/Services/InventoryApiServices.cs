@@ -338,6 +338,9 @@ public class OrderService : IOrderService
     public Task<Order> UpdateOpeningBalanceAsync(int id, OpeningBalanceEditCommand cmd)
         => _api.PutAsync<Order>($"api/orders/{id}/opening-balance", cmd);
 
+    public Task DeleteOpeningBalanceAsync(int id)
+        => _api.DeleteAsync($"api/orders/{id}/opening-balance");
+
     public async Task ReconcileCashAsync(int id, ShopCashReconciliationCommand cmd)
         => await _api.PostAsync<object>($"api/orders/{id}/cash-reconciliation", cmd);
 
