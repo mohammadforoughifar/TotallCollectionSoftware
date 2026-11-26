@@ -11,6 +11,7 @@ The suite pins three things the request depends on:
   any document that already has settlement history (cash, credit receipt, cheque
   collection, paid installment) or is cancelled.
 """
+import re
 import unittest
 from pathlib import Path
 
@@ -481,6 +482,30 @@ class DocumentKindColumnContract(unittest.TestCase):
         self.assertIn('"/shop/opening-balance"', handler)
         # مسیر حذف معمولی دست‌نخورده است.
         self.assertIn('await OrderSvc.DeleteAsync(o.Id);', handler)
+
+
+class PageHelpersAreDefined(unittest.TestCase):
+    """CS0103: هر تابع کمکی که مارک‌آپ صدا می‌زند باید در @code تعریف شده باشد.
+
+    مارک‌آپ «@ChequeDeleteButtonTitle(ch)» را صدا می‌زد ولی نسخهٔ محلی‌اش
+    فراموش شده بود؛ قاعدهٔ مشترک در OpeningBalanceEdit وجود داشت اما Razor
+    فقط اعضای خودِ کامپوننت را می‌بیند. بیلد با CS0103 می‌شکست.
+    """
+
+    def test_every_title_helper_called_by_markup_exists(self):
+        markup, code = PAGE.split('@code', 1)
+        # فقط فراخوانی‌های بدون پیشوند کلاس (اعضای محلی) مهم‌اند
+        called = set(re.findall(r'(?<![.\w])@?([A-Z][A-Za-z0-9_]*)\s*\(', markup))
+        for helper in ('ChequeDeleteButtonTitle', 'ChequeEditButtonTitle',
+                       'OpeningDeleteButtonTitle', 'StockDeleteButtonTitle'):
+            self.assertIn(helper, called, f'{helper} باید در مارک‌آپ صدا زده شود')
+            self.assertRegex(
+                code, rf'private\s+(?:static\s+)?\w[\w\?<>,\[\]\.]*\s+{helper}\s*\(' ,
+                f'{helper} باید در @code تعریف شده باشد')
+
+    def test_cheque_delete_title_delegates_to_shared_rule(self):
+        self.assertIn('OpeningBalanceEdit.ChequeDeleteButtonTitle(ch.Status)', PAGE)
+        self.assertIn('public static string ChequeDeleteButtonTitle(ChequeStatus status)', RULE)
 
 
 class ExistingBehaviourIsUntouched(unittest.TestCase):
