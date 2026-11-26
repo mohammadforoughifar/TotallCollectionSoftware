@@ -2039,6 +2039,10 @@ select.op-input,
     private static string ChequeEditButtonTitle(TrsCheque ch) =>
         OpeningBalanceEdit.ChequeBlockedReason(ch.Status) ?? OpeningBalanceEdit.EditActionTitle;
 
+    /// <summary>عنوان دکمهٔ حذف چک اول دوره — همان قاعدهٔ مشترک، با آبجکت ردیف جدول.</summary>
+    private static string ChequeDeleteButtonTitle(TrsCheque ch) =>
+        OpeningBalanceEdit.ChequeDeleteButtonTitle(ch.Status);
+
     private static string StockEditButtonTitle(OpeningStockLine line) =>
         line.IsCancelled ? OpeningBalanceEdit.LockedCancelledMessage : OpeningBalanceEdit.EditActionTitle;
 
