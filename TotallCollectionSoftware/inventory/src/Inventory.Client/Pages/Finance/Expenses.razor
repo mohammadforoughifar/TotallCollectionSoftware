@@ -306,7 +306,21 @@
             }
             @if (paymentMode != "ordinary")
             {
-                <div class="col-md-6"><label class="form-label">تاریخ تحویل چک *</label><DatePicker @bind-Value="handedAt" /></div>
+                <div class="col-md-6">
+                    <label class="form-label">تاریخ تحویل چک *</label>
+                    @* پرداخت نمی‌تواند پیش از سند هزینه باشد؛ همین قاعده در سرور هم مرجع نهایی است. *@
+                    <DatePicker @bind-Value="handedAt" CssClass="@HandoverCss" />
+                    @if (HandoverBeforeExpense)
+                    {
+                        <div class="invalid-feedback d-block" data-expense-cheque-handover-warning>
+                            @ExpenseChequeDates.HandoverBeforeExpenseMessage
+                            <button id="btn-align-expense-date" type="button" class="btn btn-sm btn-outline-primary mt-1"
+                                    @onclick="AlignExpenseDateToHandover">
+                                <i class="bi bi-calendar-check"></i> تاریخ سند را با تاریخ تحویل هماهنگ کن
+                            </button>
+                        </div>
+                    }
+                </div>
                 <div class="col-12"><div class="alert alert-light border mb-0 py-2 fs-8">@(paymentMode == "issued" ? "بانک فقط هنگام ثبت پاس‌شدن کسر می‌شود." : "پاس چک نزد گیرنده، بدون ثبت ورود وجه به بانک فروشگاه، تسویه فاکتور مبدأ را ثبت می‌کند.")</div></div>
             }
             <div class="col-md-6">
@@ -465,6 +479,29 @@
 
     /// <summary>قاب قرمزِ فیلد سررسید وقتی نامعتبر است.</summary>
     private string DueCss => DueBeforeHandover ? "is-invalid" : "";
+
+    /// <summary>
+    /// تاریخ تحویل چک پیش از تاریخ سند هزینه است؟ پرداخت نمی‌تواند پیش از خودِ هزینه باشد؛
+    /// همان قاعدهٔ سرور (ExpenseChequeDates) اینجا در فرم هم نشان داده می‌شود تا کاربر
+    /// به‌جای «HTTP 400» پیام روشن و راه‌حل را ببیند.
+    /// </summary>
+    private bool HandoverBeforeExpense =>
+        paymentMode != "ordinary" && ExpenseChequeDates.HandoverIsBeforeExpense(handedAt, expDate ?? form.Date);
+
+    /// <summary>قاب قرمزِ فیلد تاریخ تحویل وقتی پیش از تاریخ سند است.</summary>
+    private string HandoverCss => HandoverBeforeExpense ? "is-invalid" : "";
+
+    /// <summary>
+    /// «تاریخ سند را با تحویل هماهنگ کن»: به‌جای اینکه کاربر خودش تاریخ سند را عقب ببرد،
+    /// با یک کلیک سند به روز تحویل چک منتقل می‌شود (هزینه‌ای که دیرتر ثبت شده است).
+    /// </summary>
+    private void AlignExpenseDateToHandover()
+    {
+        if (!handedAt.HasValue) return;
+        expDate = handedAt.Value.Date;
+        form.Date = expDate.Value;
+        Toast.Info($"تاریخ سند به {expDate.Value.ToFa()} (روز تحویل چک) تغییر کرد.");
+    }
 
     /// <summary>راهنمای روزهای غیرمجاز در تقویم.</summary>
     private string BlockedDueTitle => "پیش از تاریخ تحویل چک";
@@ -752,6 +789,10 @@
                 // سررسید پیش از تحویل چک پذیرفته نمی‌شود؛ همین قاعده در سرور هم دوباره بررسی می‌شود.
                 if (paymentMode == "issued" && ExpenseChequeDates.DueIsBeforeHandover(chequeDue, handedAt))
                     throw new InvalidOperationException(ExpenseChequeDates.DueBeforeHandoverMessage);
+                // پرداخت پیش از تاریخ سند هزینه هم پذیرفته نمی‌شود؛ پیش از فراخوانی API
+                // بررسی می‌شود تا پیام روشن دیده شود، نه خطای عمومی سرور.
+                if (ExpenseChequeDates.HandoverIsBeforeExpense(handedAt, form.Date))
+                    throw new InvalidOperationException(ExpenseChequeDates.HandoverBeforeExpenseMessage);
                 if (paymentMode == "received" && sourceChequeId <= 0)
                     throw new InvalidOperationException("چک دریافتی را انتخاب کنید.");
                 await ExpenseSvc.CreateChequeExpenseAsync(new ExpenseChequeCreateCommand

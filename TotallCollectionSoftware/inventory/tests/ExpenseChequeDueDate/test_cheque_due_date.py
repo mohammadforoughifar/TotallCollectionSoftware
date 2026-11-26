@@ -21,6 +21,8 @@ SERVICE = read('Inventory.Api/Services/Finance/ShopExpenseChequeService.cs')
 CSS = read('Inventory.Client/wwwroot/css/app.css')
 
 MESSAGE = 'تاریخ سررسید چک صادره نمی‌تواند پیش از تاریخ تحویل چک باشد.'
+HANDOVER_MESSAGE = ('تاریخ تحویل چک نمی‌تواند پیش از تاریخ سند هزینه باشد؛ تاریخ سند را به روز تحویل '
+                    '(یا قبل‌تر) تغییر دهید یا تاریخ تحویل را به روز سند ببرید.')
 
 
 class SharedRule(unittest.TestCase):
@@ -35,6 +37,17 @@ class SharedRule(unittest.TestCase):
         self.assertIn(f'public const string DueBeforeHandoverMessage =\n        "{MESSAGE}";', RULE)
         self.assertIn('public static string? ValidateIssued(DateTime? dueDate, DateTime? handedAt)', RULE)
         self.assertIn('public static DateTime? MinDueDate(DateTime? handedAt) => handedAt?.Date;', RULE)
+
+    def test_handover_before_expense_rule_is_shared_too(self):
+        # قاعدهٔ دوم (پرداخت پیش از سند) هم در Shared است تا فرم و سرور یک پیام بدهند.
+        self.assertIn('public static bool HandoverIsBeforeExpense(DateTime? handedAt, DateTime? expenseDate)', RULE)
+        self.assertIn('handedAt.Value.Date < expenseDate.Value.Date', RULE)
+        self.assertIn('public static string? ValidateHandover(DateTime? handedAt, DateTime? expenseDate)', RULE)
+        self.assertIn('HandoverIsBeforeExpense(handedAt, expenseDate) ? HandoverBeforeExpenseMessage : null', RULE)
+        self.assertIn(f'public const string HandoverBeforeExpenseMessage =\n        "{HANDOVER_MESSAGE}";', RULE)
+        # پیام باید هر دو راه حل را بگوید، چون «مشخصات ... معتبر نیست» قبلی هیچ راهنمایی نداشت.
+        self.assertIn('تاریخ سند را به روز تحویل', RULE)
+        self.assertIn('تاریخ تحویل را به روز سند ببرید', RULE)
 
 
 class ExpenseForm(unittest.TestCase):
@@ -74,6 +87,48 @@ class ExpenseForm(unittest.TestCase):
         self.assertIn('chequeDue = handedAt;', prepare)
 
 
+class HandoverBeforeExpenseRule(unittest.TestCase):
+    """پرداخت نمی‌تواند پیش از خودِ سند هزینه باشد؛ پیام باید فیلد و راه‌حل را بگوید."""
+
+    def test_form_shows_the_rule_next_to_the_handover_field(self):
+        self.assertIn('data-expense-cheque-handover-warning', FORM)
+        self.assertIn('@ExpenseChequeDates.HandoverBeforeExpenseMessage', FORM)
+        self.assertIn('private bool HandoverBeforeExpense =>', FORM)
+        self.assertIn('ExpenseChequeDates.HandoverIsBeforeExpense(handedAt, expDate ?? form.Date)', FORM)
+        self.assertIn('private string HandoverCss => HandoverBeforeExpense ? "is-invalid" : "";', FORM)
+        self.assertIn('<DatePicker @bind-Value="handedAt" CssClass="@HandoverCss" />', FORM)
+        # هشدار در همان ستون تاریخ تحویل است، نه جای دیگری از فرم
+        handover_block = FORM.split('تاریخ تحویل چک *', 1)[1].split('دریافت‌کننده / طرف هزینه', 1)[0]
+        self.assertIn('data-expense-cheque-handover-warning', handover_block)
+
+    def test_user_can_align_the_expense_date_with_one_click(self):
+        self.assertIn('id="btn-align-expense-date"', FORM)
+        self.assertIn('@onclick="AlignExpenseDateToHandover"', FORM)
+        align = FORM.split('private void AlignExpenseDateToHandover()', 1)[1].split('private async Task', 1)[0]
+        self.assertIn('expDate = handedAt.Value.Date;', align)
+        self.assertIn('form.Date = expDate.Value;', align)
+
+    def test_save_refuses_before_calling_the_api(self):
+        save = FORM.split('private async Task Save()', 1)[1]
+        self.assertIn('ExpenseChequeDates.HandoverIsBeforeExpense(handedAt, form.Date)', save)
+        self.assertLess(save.index('HandoverIsBeforeExpense(handedAt, form.Date)'),
+                        save.index('CreateChequeExpenseAsync'))
+
+    def test_server_uses_the_shared_message_not_a_generic_one(self):
+        self.assertIn('ExpenseChequeDates.HandoverIsBeforeExpense(cmd.HandedAt, dto.Date)', SERVICE)
+        self.assertIn('ExpenseChequeDates.HandoverBeforeExpenseMessage', SERVICE)
+        self.assertNotIn('مشخصات هزینه، دریافت‌کننده، مبلغ یا تاریخ تحویل چک معتبر نیست.', SERVICE)
+
+    def test_each_rejected_field_names_itself(self):
+        # به‌جای یک پیام مبهم، هر شرط پیام خودش را دارد.
+        create = SERVICE.split('public async Task<int> CreateAsync', 1)[1].split('public async Task ChangeStatusAsync', 1)[0]
+        for message in ('نوع هزینه را انتخاب کنید.', 'تاریخ سند هزینه را وارد کنید.',
+                        'تاریخ تحویل چک را وارد کنید.', 'مبلغ هزینه را وارد کنید.',
+                        'دریافت‌کننده / طرف هزینه را وارد کنید.'):
+            with self.subTest(message=message):
+                self.assertIn(message, create)
+
+
 class CalendarPicker(unittest.TestCase):
     def test_picker_supports_a_minimum_date(self):
         self.assertIn('[Parameter] public DateTime? MinDate { get; set; }', PICKER)
@@ -109,8 +164,12 @@ class ApiGuard(unittest.TestCase):
         self.assertLess(create.index('ExpenseChequeDates.DueIsBeforeHandover'),
                         create.index('BeginTransactionAsync'))
 
-    def test_existing_handover_not_before_expense_date_rule_is_kept(self):
-        self.assertIn('cmd.HandedAt.Date < dto.Date.Date', SERVICE)
+    def test_handover_not_before_expense_date_is_enforced_with_its_own_message(self):
+        self.assertIn('ExpenseChequeDates.HandoverIsBeforeExpense(cmd.HandedAt, dto.Date)', SERVICE)
+        # پیش از آغاز تراکنش رد می‌شود تا هیچ سندی ثبت نشود.
+        create = SERVICE.split('public async Task<int> CreateAsync', 1)[1].split('public async Task ChangeStatusAsync', 1)[0]
+        self.assertLess(create.index('ExpenseChequeDates.HandoverIsBeforeExpense'),
+                        create.index('BeginTransactionAsync'))
 
 
 if __name__ == '__main__':
