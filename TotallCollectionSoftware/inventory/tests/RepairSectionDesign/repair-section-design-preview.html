@@ -3142,6 +3142,51 @@ a { text-decoration: none; }
     .repair-total { justify-content: space-between; }
 }
 
+/* ---------- جدول «کارها و قطعات»: همهٔ فیلدها در یک راستا ----------
+   مشکل قبلی: جدول از عرض مودال بیرون می‌زد و `align-middle` باعث می‌شد هر
+   ورودی (به‌خاطر راهنمای متفاوت زیرش) در ارتفاع دیگری بیفتد؛ نتیجه یک ردیف
+   نامرتب بود. اینجا ستون‌ها عرض ثابت دارند، سلول‌ها از بالا تراز می‌شوند و
+   راهنمای هر فیلد یک‌خطی (بدون شکستن) نمایش داده می‌شود. */
+.repair-items-block { overflow: hidden; }
+.repair-items-table {
+    width: 100%;
+    min-width: 660px;
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+.repair-items-table > :not(caption) > * > * { padding: .4rem .35rem; vertical-align: top; }
+.repair-items-table thead th {
+    font-size: .74rem;
+    font-weight: 700;
+    color: #64748b;
+    white-space: nowrap;
+    border-bottom: 1px solid #eef2f7;
+    background: #fbfcfe;
+}
+.repair-items-table tbody tr + tr > * { border-top: 1px solid #f1f5f9; }
+.repair-items-table .form-control-sm,
+.repair-items-table .form-select-sm { min-height: 31px; }
+
+/* سلول: پشتهٔ عمودی با فاصلهٔ ثابت تا همهٔ ردیف‌های هم‌ستون هم‌تراز بمانند */
+.ri-cell { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.ri-hint {
+    font-size: .68rem;
+    line-height: 1.45;
+    color: #7c8798;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ri-hint.text-danger { color: #dc2626; }
+.ri-sep { color: #cbd5e1; margin: 0 .15rem; }
+.ri-profit { align-items: flex-start; }
+.ri-profit-total { font-weight: 800; white-space: nowrap; }
+
+@media (max-width: 991.98px) {
+    .repair-items-table { min-width: 620px; }
+    .ri-hint { font-size: .66rem; }
+}
+
 /* ---------- سوییچ جدول⇆کارت: دسکتاپ جدول، موبایل کارت ---------- */
 .cards-mobile { display: none; }
 
@@ -6369,7 +6414,7 @@ body { background: #f5f7fa; padding: 1.25rem; }
             </div>
             </section>
 
-            <section class="repair-block">
+            <section class="repair-block repair-items-block">
                 <div class="repair-block-head">
                     <i class="bi bi-list-check text-primary"></i>
                     <h6>کارها و قطعات مصرفی</h6>
@@ -6377,25 +6422,91 @@ body { background: #f5f7fa; padding: 1.25rem; }
                     <button type="button" class="btn btn-sm btn-outline-primary me-auto"><i class="bi bi-plus-lg"></i> ردیف جدید (F2)</button>
                 </div>
                 <div class="table-responsive">
-                    <table class="table align-middle">
-                        <thead><tr><th>شرح کار</th><th>قطعه از انبار</th><th style="width:90px">مقدار</th><th>هزینه داخلی</th><th>قیمت فروش</th><th>سود ردیف</th><th></th></tr></thead>
+                    <table class="table table-sm repair-items-table">
+                        <colgroup>
+                            <col style="width:26%" /><col style="width:22%" /><col style="width:9%" />
+                            <col style="width:14%" /><col style="width:15%" /><col style="width:11%" /><col style="width:3%" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>شرح کار</th>
+                                <th>قطعه از انبار</th>
+                                <th>مقدار</th>
+                                <th>هزینهٔ داخلی</th>
+                                <th>قیمت فروش</th>
+                                <th>سود</th>
+                                <th aria-label="حذف"></th>
+                            </tr>
+                        </thead>
                         <tbody>
                             <tr>
-                                <td><input class="form-control form-control-sm" value="تعویض خمیر سیلیکون" /></td>
-                                <td><input class="form-control form-control-sm" placeholder="جستجوی قطعه…" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="1" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="120,000" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="350,000" /></td>
-                                <td class="text-start num text-success">230,000</td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm" value="تعویض خمیر سیلیکون و تمیزکاری کامل فن و هیت‌سینک" />
+                                        <select class="form-select form-select-sm"><option>تعمیر عادی</option></select>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <select class="form-select form-select-sm"><option>خمیر سیلیکون MX-4</option></select>
+                                        <div class="ri-hint">فروش: <b class="num">350,000</b><span class="ri-sep">·</span>میانگین: <b class="num">120,000</b></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm num" dir="ltr" value="1" />
+                                        <div class="ri-hint"><span>واحد: بسته</span><span class="ri-sep">·</span><span>فقط عدد صحیح</span></div>
+                                        <div class="ri-hint text-danger">اعشار برای این واحد مجاز نیست</div>
+                                    </div>
+                                </td>
+                                <td><div class="ri-cell"><input class="form-control form-control-sm num" dir="ltr" value="120,000" /></div></td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm num" dir="ltr" value="350,000" />
+                                        <div class="ri-hint">رایگان</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell ri-profit text-success">
+                                        <div class="ri-profit-total num">230,000</div>
+                                        <div class="ri-hint">هر واحد: <span class="num">230,000</span></div>
+                                    </div>
+                                </td>
                                 <td class="text-center"><button class="btn btn-sm btn-light"><i class="bi bi-x-lg text-danger"></i></button></td>
                             </tr>
                             <tr>
-                                <td><input class="form-control form-control-sm" value="باتری CMOS" /></td>
-                                <td><input class="form-control form-control-sm" value="BAT-CMOS" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="1" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="90,000" /></td>
-                                <td><input class="form-control form-control-sm num" dir="ltr" value="150,000" /></td>
-                                <td class="text-start num text-success">60,000</td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm" value="باتری CMOS" />
+                                        <select class="form-select form-select-sm"><option>گارانتی پذیرفته — رایگان</option></select>
+                                        <label class="form-check-label fs-9"><input class="form-check-input ms-1" type="checkbox" checked /> قطعه تحویل / مصرف شد</label>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <select class="form-select form-select-sm"><option>BAT-CMOS</option></select>
+                                        <div class="ri-hint">فروش: <b class="num">150,000</b><span class="ri-sep">·</span>میانگین: <b class="num">90,000</b></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm num" dir="ltr" value="2" />
+                                        <div class="ri-hint"><span>واحد: عدد</span><span class="ri-sep">·</span><span>اعشار مجاز</span></div>
+                                    </div>
+                                </td>
+                                <td><div class="ri-cell"><input class="form-control form-control-sm num" dir="ltr" value="90,000" /></div></td>
+                                <td>
+                                    <div class="ri-cell">
+                                        <input class="form-control form-control-sm num" dir="ltr" value="0" disabled />
+                                        <div class="ri-hint">رایگان</div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="ri-cell ri-profit text-danger">
+                                        <div class="ri-profit-total num">-180,000</div>
+                                        <div class="ri-hint">هر واحد: <span class="num">-90,000</span></div>
+                                    </div>
+                                </td>
                                 <td class="text-center"><button class="btn btn-sm btn-light"><i class="bi bi-x-lg text-danger"></i></button></td>
                             </tr>
                         </tbody>

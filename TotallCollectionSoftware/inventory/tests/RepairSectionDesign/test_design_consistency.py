@@ -126,5 +126,48 @@ class ListRowsStayFunctional(unittest.TestCase):
                     self.assertIn(method, block)
 
 
+class ItemsTableAlignment(unittest.TestCase):
+    """جدول «کارها و قطعات مصرفی» باید ستون‌های هم‌عرض و فیلدهای هم‌تراز داشته باشد.
+
+    ایراد کارفرما: فیلدهای ردیف در یک راستا نبودند و راهنماهای زیر هر فیلد
+    (واحد/نوع مقدار و سود ردیف) ردیف را به‌هم می‌ریختند.
+    """
+
+    TABLE = REPAIRS[REPAIRS.index("repair-items-table"):REPAIRS.index('<div class="repair-total">', REPAIRS.index("repair-items-table"))]
+
+    def test_items_section_uses_the_dedicated_table_class(self):
+        self.assertIn('class="repair-block repair-items-block"', REPAIRS)
+        self.assertIn('class="table table-sm repair-items-table"', REPAIRS)
+
+    def test_no_legacy_centered_table_layout(self):
+        # align-middle + استایل‌های inline قدیمی باعث ناهم‌ترازی ارتفاع فیلدها می‌شدند.
+        self.assertNotIn('class="table align-middle"', REPAIRS)
+        self.assertNotIn('style="min-width:220px"', REPAIRS)
+        self.assertNotIn('style="width:90px"', REPAIRS)
+
+    def test_every_row_cell_wraps_content_in_the_alignment_stack(self):
+        body = self.TABLE[self.TABLE.index("<tbody>"):]
+        # در سورس ردیف یک `@for` دارد؛ ۶ سلول محتوایی (سلول هفتم فقط دکمهٔ حذف).
+        self.assertEqual(body.count('class="ri-cell'), 6)
+        self.assertIn('class="ri-cell ri-profit', body)
+
+    def test_column_widths_are_declared_once_for_the_whole_table(self):
+        self.assertIn("<colgroup>", self.TABLE)
+        self.assertEqual(self.TABLE.count("<col "), 7)
+        self.assertIn("table-layout: fixed", CSS)
+
+    def test_hints_do_not_break_the_row(self):
+        self.assertIn(".ri-hint {", CSS)
+        hint_block = CSS[CSS.index(".ri-hint {"):CSS.index(".ri-hint {") + 400]
+        self.assertIn("white-space: nowrap", hint_block)
+        self.assertIn("text-overflow: ellipsis", hint_block)
+
+    def test_header_keeps_all_seven_columns(self):
+        head = self.TABLE[self.TABLE.index("<thead>") : self.TABLE.index("</thead>")]
+        for label in ("شرح کار", "قطعه از انبار", "مقدار", "هزینهٔ داخلی", "قیمت فروش", "سود"):
+            with self.subTest(label=label):
+                self.assertIn(f"<th>{label}</th>", head)
+
+
 if __name__ == "__main__":
     unittest.main()

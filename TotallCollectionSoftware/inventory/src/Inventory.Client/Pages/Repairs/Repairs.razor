@@ -690,7 +690,7 @@
                 </div>
             </section>
 
-            <section class="repair-block">
+            <section class="repair-block repair-items-block">
                 <div class="repair-block-head">
                     <i class="bi bi-list-check text-primary"></i>
                     <h6>کارها و قطعات مصرفی</h6>
@@ -700,16 +700,25 @@
                     </button>
                 </div>
                 <div class="table-responsive">
-                    <table class="table align-middle">
+                    <table class="table table-sm repair-items-table">
+                        <colgroup>
+                            <col style="width:26%" />
+                            <col style="width:22%" />
+                            <col style="width:9%" />
+                            <col style="width:14%" />
+                            <col style="width:15%" />
+                            <col style="width:11%" />
+                            <col style="width:3%" />
+                        </colgroup>
                         <thead>
                             <tr>
-                                <th style="min-width:220px">شرح کار</th>
-                                <th style="min-width:200px">قطعه از انبار (اختیاری)</th>
-                                <th style="width:90px">مقدار</th>
-                                <th style="min-width:130px">هزینه داخلی (ریال)</th>
-                                <th style="min-width:150px">قیمت فروش / دریافتی از مشتری (ریال)</th>
-                                <th style="min-width:140px">سود واحد / ردیف (ریال)</th>
-                                <th style="width:50px"></th>
+                                <th>شرح کار</th>
+                                <th>قطعه از انبار</th>
+                                <th>مقدار</th>
+                                <th>هزینهٔ داخلی</th>
+                                <th>قیمت فروش</th>
+                                <th>سود</th>
+                                <th aria-label="حذف"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -717,65 +726,84 @@
                             {
                                 var i = idx;
                                 var rowProfit = ItemProfit(i);
-                                <tr>
+                                <tr @key="form.Items[i]">
                                     <td>
-                                        <input class="form-control form-control-sm" @bind="form.Items[i].Description" />
-                                        <select class="form-select form-select-sm mt-1" aria-label="نوع ردیف تعمیر یا گارانتی" value="@form.Items[i].WarrantyDecision" @onchange="e => SetItemDecision(i, e)">
-                                            <option value="@WarrantyDecision.Unspecified">تعمیر عادی</option>
-                                            <option value="@WarrantyDecision.Accepted">گارانتی پذیرفته — رایگان</option>
-                                            <option value="@WarrantyDecision.Rejected">گارانتی پذیرفته‌نشده</option>
-                                        </select>
-                                        @if (form.Items[i].WarrantyDecision != WarrantyDecision.Unspecified)
-                                        {
-                                            @if (IsWarrantyPart(i))
-                                            { <label class="form-check-label fs-8"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantySupplied" /> قطعه تحویل / مصرف شد</label> }
-                                            else
-                                            { <label class="form-check-label fs-8"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantyPerformed" /> کار انجام شد</label> }
-                                        }
-                                    </td>
-                                    <td>
-                                        <SearchSelect Items="productLookup" Value="form.Items[i].ProductId ?? 0"
-                                                      ValueChanged="v => OnItemProduct(i, v)"
-                                                      SearchChanged="OnProductSearchChanged" RemoteSearch="true"
-                                                      Placeholder="جستجوی قطعه از انبار…" CssClass="form-select-sm" />
-                                        @if (GetItemProduct(i) is { } selectedProduct)
-                                        {
-                                            <div class="fs-8 text-muted mt-1">
-                                                فروش فعلی: <b class="num">@selectedProduct.SalePrice.Money()</b>
-                                                <span class="mx-1">·</span>
-                                                بهای میانگین: <b class="num">@selectedProduct.AvgCost.Money()</b>
-                                            </div>
-                                        }
-                                    </td>
-                                    <td>
-                                        <input class="form-control form-control-sm num" value="@itemQty[i]"
-                                               @oninput="@(e => itemQty[i] = NormalizeQtyInput(i, e.Value?.ToString()))"
-                                               inputmode="@(GetItemProduct(i)?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
-                                               dir="ltr" aria-label="مقدار قطعه" />
-                                        @if (GetItemProduct(i) is { } quantityProduct)
-                                        {
-                                            <small class="d-block text-muted">واحد: @quantityProduct.Unit<br />@QuantityKind(quantityProduct.AllowsFractionalQuantity)</small>
-                                            @if (quantityProduct.AllowsFractionalQuantity == false)
+                                        <div class="ri-cell">
+                                            <input class="form-control form-control-sm" @bind="form.Items[i].Description" aria-label="شرح کار" />
+                                            <select class="form-select form-select-sm" aria-label="نوع ردیف تعمیر یا گارانتی" value="@form.Items[i].WarrantyDecision" @onchange="e => SetItemDecision(i, e)">
+                                                <option value="@WarrantyDecision.Unspecified">تعمیر عادی</option>
+                                                <option value="@WarrantyDecision.Accepted">گارانتی پذیرفته — رایگان</option>
+                                                <option value="@WarrantyDecision.Rejected">گارانتی پذیرفته‌نشده</option>
+                                            </select>
+                                            @if (form.Items[i].WarrantyDecision != WarrantyDecision.Unspecified)
                                             {
-                                                <small class="d-block text-danger">اعشار برای این واحد مجاز نیست</small>
+                                                @if (IsWarrantyPart(i))
+                                                { <label class="form-check-label fs-9"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantySupplied" /> قطعه تحویل / مصرف شد</label> }
+                                                else
+                                                { <label class="form-check-label fs-9"><input class="form-check-input ms-1" type="checkbox" @bind="form.Items[i].WarrantyPerformed" /> کار انجام شد</label> }
                                             }
-                                        }
-                                        else if (form.Items[i].ProductId is > 0)
-                                        {
-                                            <small class="d-block text-muted">واحد و نوع مقدار نامشخص</small>
-                                        }
+                                        </div>
                                     </td>
-                                    <td><input type="text" class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
-                                    <td><input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" disabled="@(form.Items[i].WarrantyDecision == WarrantyDecision.Accepted || !ItemDone(i))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" />
-                                        @if (form.Items[i].WarrantyDecision == WarrantyDecision.Rejected && ItemDone(i)) { <small class="text-muted">قیمت مشتری را دستی وارد کنید</small> }
-                                        else if (form.Items[i].WarrantyDecision == WarrantyDecision.Accepted) { <small class="text-muted">رایگان برای مشتری</small> }
+                                    <td>
+                                        <div class="ri-cell">
+                                            <SearchSelect Items="productLookup" Value="form.Items[i].ProductId ?? 0"
+                                                          ValueChanged="v => OnItemProduct(i, v)"
+                                                          SearchChanged="OnProductSearchChanged" RemoteSearch="true"
+                                                          Placeholder="جستجوی قطعه…" CssClass="form-select-sm" />
+                                            @if (GetItemProduct(i) is { } selectedProduct)
+                                            {
+                                                <div class="ri-hint">
+                                                    فروش: <b class="num">@selectedProduct.SalePrice.Money()</b>
+                                                    <span class="ri-sep">·</span>
+                                                    میانگین: <b class="num">@selectedProduct.AvgCost.Money()</b>
+                                                </div>
+                                            }
+                                        </div>
                                     </td>
-                                    <td class="text-start num @(rowProfit >= 0 ? "text-success" : "text-danger")">
-                                        <div class="fw-700">@rowProfit.Money()</div>
-                                        <small class="d-block text-muted">هر واحد: @ItemUnitProfit(i).Money()</small>
+                                    <td>
+                                        <div class="ri-cell">
+                                            <input class="form-control form-control-sm num" value="@itemQty[i]"
+                                                   @oninput="@(e => itemQty[i] = NormalizeQtyInput(i, e.Value?.ToString()))"
+                                                   inputmode="@(GetItemProduct(i)?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
+                                                   dir="ltr" aria-label="مقدار قطعه" />
+                                            @if (GetItemProduct(i) is { } quantityProduct)
+                                            {
+                                                <div class="ri-hint">
+                                                    <span>واحد: @quantityProduct.Unit</span>
+                                                    <span class="ri-sep">·</span>
+                                                    <span>@QuantityKind(quantityProduct.AllowsFractionalQuantity)</span>
+                                                </div>
+                                                @if (quantityProduct.AllowsFractionalQuantity == false)
+                                                {
+                                                    <div class="ri-hint text-danger">اعشار برای این واحد مجاز نیست</div>
+                                                }
+                                            }
+                                            else if (form.Items[i].ProductId is > 0)
+                                            {
+                                                <div class="ri-hint">واحد و نوع مقدار نامشخص</div>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="ri-cell">
+                                            <input type="text" class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" aria-label="هزینهٔ داخلی" />
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="ri-cell">
+                                            <input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" disabled="@(form.Items[i].WarrantyDecision == WarrantyDecision.Accepted || !ItemDone(i))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" aria-label="قیمت فروش" />
+                                            @if (form.Items[i].WarrantyDecision == WarrantyDecision.Rejected && ItemDone(i)) { <div class="ri-hint">دستی وارد کنید</div> }
+                                            else if (form.Items[i].WarrantyDecision == WarrantyDecision.Accepted) { <div class="ri-hint">رایگان</div> }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="ri-cell ri-profit @(rowProfit >= 0 ? "text-success" : "text-danger")">
+                                            <div class="ri-profit-total num">@rowProfit.Money()</div>
+                                            <div class="ri-hint">هر واحد: <span class="num">@ItemUnitProfit(i).Money()</span></div>
+                                        </div>
                                     </td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-light" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button>
                                     </td>
                                 </tr>
                             }

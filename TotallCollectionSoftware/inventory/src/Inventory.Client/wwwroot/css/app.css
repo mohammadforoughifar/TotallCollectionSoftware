@@ -1091,6 +1091,51 @@ a { text-decoration: none; }
     .repair-total { justify-content: space-between; }
 }
 
+/* ---------- جدول «کارها و قطعات»: همهٔ فیلدها در یک راستا ----------
+   مشکل قبلی: جدول از عرض مودال بیرون می‌زد و `align-middle` باعث می‌شد هر
+   ورودی (به‌خاطر راهنمای متفاوت زیرش) در ارتفاع دیگری بیفتد؛ نتیجه یک ردیف
+   نامرتب بود. اینجا ستون‌ها عرض ثابت دارند، سلول‌ها از بالا تراز می‌شوند و
+   راهنمای هر فیلد یک‌خطی (بدون شکستن) نمایش داده می‌شود. */
+.repair-items-block { overflow: hidden; }
+.repair-items-table {
+    width: 100%;
+    min-width: 660px;
+    table-layout: fixed;
+    margin-bottom: 0;
+}
+.repair-items-table > :not(caption) > * > * { padding: .4rem .35rem; vertical-align: top; }
+.repair-items-table thead th {
+    font-size: .74rem;
+    font-weight: 700;
+    color: #64748b;
+    white-space: nowrap;
+    border-bottom: 1px solid #eef2f7;
+    background: #fbfcfe;
+}
+.repair-items-table tbody tr + tr > * { border-top: 1px solid #f1f5f9; }
+.repair-items-table .form-control-sm,
+.repair-items-table .form-select-sm { min-height: 31px; }
+
+/* سلول: پشتهٔ عمودی با فاصلهٔ ثابت تا همهٔ ردیف‌های هم‌ستون هم‌تراز بمانند */
+.ri-cell { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.ri-hint {
+    font-size: .68rem;
+    line-height: 1.45;
+    color: #7c8798;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ri-hint.text-danger { color: #dc2626; }
+.ri-sep { color: #cbd5e1; margin: 0 .15rem; }
+.ri-profit { align-items: flex-start; }
+.ri-profit-total { font-weight: 800; white-space: nowrap; }
+
+@media (max-width: 991.98px) {
+    .repair-items-table { min-width: 620px; }
+    .ri-hint { font-size: .66rem; }
+}
+
 /* ---------- سوییچ جدول⇆کارت: دسکتاپ جدول، موبایل کارت ---------- */
 .cards-mobile { display: none; }
 
