@@ -3512,7 +3512,40 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
 }
 .tabbar .tab .tab-pin { font-size: .66rem; color: var(--primary); opacity: .75; flex: none; }
 
-.tabbar .tab.dragging { opacity: .45; }
+/* ---------- کشیدن و رها کردن برای تغییر ترتیب ---------- */
+.tabbar .tab { cursor: grab; }
+.tabbar .tab:active { cursor: grabbing; }
+.tabbar .tab:focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+.tabbar .tab .tab-grip {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    margin-inline-end: -2px;
+    color: var(--text-soft);
+    font-size: .8rem;
+    line-height: 1;
+    cursor: grab;
+    opacity: .45;
+    touch-action: none;
+    transition: opacity .15s, color .15s;
+}
+.tabbar .tab:hover .tab-grip,
+.tabbar .tab:focus-visible .tab-grip { opacity: 1; color: var(--primary); }
+.tabbar .tab-grip:active { cursor: grabbing; }
+
+.tabbar .tab.dragging { opacity: .45; cursor: grabbing; }
+.tabbar .tab.pointer-dragging {
+    position: relative;
+    z-index: 5;
+    opacity: .92;
+    cursor: grabbing;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, .18);
+}
 .tabbar .tab.dragover { border-right: 2px solid var(--primary); }
 .tabbar .tab.dragover::after {
     content: "";
