@@ -22,6 +22,8 @@ ENTITY = ROOT / "Inventory.Api/Entities/System/ArchiveAndAttachments.cs"
 SCHEMA_ATT = ROOT / "Inventory.Api/Data/VisAttachmentSchemaV1.cs"
 SQUASHED = ROOT / "Inventory.Api/Migrations/20260911100108_SquashedInitial.cs"
 SERVICE = ROOT / "Inventory.Api/Services/SalesVisit/VisAttachmentService.cs"
+DRIFT = ROOT / "Inventory.Api/Data/ModelSchemaDriftCheck.cs"
+DB_INIT = ROOT / "Inventory.Api/Data/DbInitializer.cs"
 
 
 def read(path: Path) -> str:
@@ -66,6 +68,17 @@ class AttachmentSchemaMatchesModelTests(unittest.TestCase):
         svc = read(SERVICE)
         self.assertNotIn("DocumentId", svc)
         self.assertIn("a.UploaderUserId == userId", svc)
+
+    def test_startup_reports_model_schema_drift(self):
+        """اگر مدل و دیتابیس از هم جدا شوند، باید در لاگ راه‌اندازی دیده شود — نه فقط ۴۰۰ در UI."""
+        db_init = read(DB_INIT)
+        drift = read(DRIFT)
+        self.assertIn("ModelSchemaDriftCheck.RunAsync(db)", db_init)
+        self.assertIn("Invalid column name", drift)
+        self.assertIn("pragma_table_info", drift)
+        self.assertIn("INFORMATION_SCHEMA.COLUMNS", drift)
+        # پایش هرگز نباید راه‌اندازی را متوقف کند
+        self.assertIn("catch (Exception ex)", drift)
 
 
 if __name__ == "__main__":
