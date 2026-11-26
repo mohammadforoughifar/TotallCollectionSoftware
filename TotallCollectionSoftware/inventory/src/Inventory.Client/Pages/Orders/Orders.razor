@@ -103,6 +103,7 @@
                     <thead>
                         <tr>
                             <th>شماره سند</th>
+                            <th>نوع</th>
                             <th>تاریخ</th>
                             <th>طرف حساب</th>
                             <th>انبار</th>
@@ -131,6 +132,7 @@
                                         <span class="badge badge-soft-success fs-8 me-1">بستانکاری: @o.AvailableCustomerCredit.Money()</span>
                                     }
                                 </td>
+                                <td data-order-kind="@(o.IsOpeningDocument ? "opening" : "invoice")">@KindBadge(o)</td>
                                 <td class="text-muted">@o.Date.ToFa()</td>
                                 <td>@o.PartyName</td>
                                 <td class="text-muted">@o.WarehouseName</td>
@@ -196,7 +198,7 @@
                                     @if (!o.IsCancelled)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
-                                        <button class="btn btn-sm btn-light" title="@(o.HasChequeCharge ? "ابطال فاکتور" : "حذف")" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
+                                        <button class="btn btn-sm btn-light" title="@(o.HasChequeCharge ? "ابطال فاکتور" : DeleteTitle(o))" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
                                     }
                                 </td>
                             </tr>
@@ -215,6 +217,7 @@
                             <div class="flex-grow-1 min-w-0">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="doc-number fw-800 text-primary">@o.Number</span>
+                                    @KindBadge(o)
                                     @PayBadge(o)
                                 </div>
                                 <div class="fw-700 text-truncate">@o.PartyName</div>
@@ -825,6 +828,16 @@
         order.Lines.Any(l => l.Price % 1m != 0m || l.Gross % 1m != 0m || l.DiscountAmount % 1m != 0m ||
             l.AfterDiscount % 1m != 0m || l.VatAmount % 1m != 0m || l.Total % 1m != 0m);
 
+    /// <summary>
+    /// ستون «نوع»: فاکتور واقعی یا ردیفی که از ماژول افتتاح حساب آمده است. متن از سرور
+    /// می‌آید (همان قاعدهٔ بخش‌بندی ماژول)، پس کلاینت هیچ‌گاه دو جواب متفاوت نمی‌دهد.
+    /// </summary>
+    private static RenderFragment KindBadge(Order o) => o.IsOpeningDocument switch
+    {
+        true => @<span class="badge badge-soft-warning fs-8" data-order-kind-tag="opening" title="این ردیف از ماژول افتتاح حساب آمده و فاکتور فروش/خرید واقعی نیست"><i class="bi bi-safe2"></i> @o.DocumentKind</span>,
+        false => @<span class="badge badge-soft-muted fs-8" data-order-kind-tag="invoice" title="فاکتور ثبت‌شده در همین بخش"><i class="bi bi-receipt"></i> @o.DocumentKind</span>
+    };
+
     private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
     {
         PaymentMethod.Cash => @<span class="badge badge-pay-cash fs-8" title="@o.TrsAccountName"><i class="bi bi-cash-coin"></i> نقدی @(!string.IsNullOrWhiteSpace(o.TrsAccountName) ? $"({o.TrsAccountName})" : "")</span>,
@@ -1401,8 +1414,25 @@
         finally { cancelSaving = false; }
     }
 
+    /// <summary>
+    /// ردیف آمده از افتتاح حساب از همین ماژول ویرایش/حذف می‌شود؛ در فهرست فروش فقط
+    /// راهنمایی نشان داده می‌شود تا کاربر بداند جای درست کجاست.
+    /// </summary>
+    private static string DeleteTitle(Order o) => o.IsOpeningDocument
+        ? "این ردیف از افتتاح حساب آمده است؛ ویرایش و حذفش در «افتتاح حساب و مانده‌های اولیه» انجام می‌شود."
+        : "حذف";
+
     private async Task Delete(Order o)
     {
+        if (o.IsOpeningDocument)
+        {
+            var go = await JS.InvokeAsync<bool>("confirm",
+                $"این ردیف از ماژول «افتتاح حساب و مانده‌های اولیه» آمده است ({o.DocumentKind}).\n" +
+                "برای ویرایش یا حذف، از همان صفحه استفاده کنید تا سابقهٔ افتتاحیه سالم بماند.\n" +
+                "همین حالا به آن صفحه بروم؟");
+            if (go) await JS.InvokeVoidAsync("open", "/shop/opening-balance", "_self");
+            return;
+        }
         if (o.HasChequeCharge)
         {
             cancellingOrder = o;

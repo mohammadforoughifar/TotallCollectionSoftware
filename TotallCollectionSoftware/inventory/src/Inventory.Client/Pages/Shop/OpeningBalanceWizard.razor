@@ -319,6 +319,14 @@
                                                             @onclick="() => OpenPartyEditAsync(item)">
                                                         <i class="bi bi-pencil-square me-1"></i> ویرایش
                                                     </button>
+
+                                                    <button type="button" class="btn btn-sm btn-outline-danger op-btn-rounded"
+                                                            data-opening-delete="parties" data-opening-order="@item.Id"
+                                                            title="@OpeningDeleteButtonTitle(PartyState(item))"
+                                                            disabled="@(!OpeningBalanceEdit.CanDelete(PartyState(item)) || deletingId != 0)"
+                                                            @onclick="() => DeletePartyRowAsync(item)">
+                                                        <i class="bi bi-trash me-1"></i> حذف
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -550,6 +558,14 @@
                                                             @onclick="() => OpenChequeEditAsync(ch)">
                                                         <i class="bi bi-pencil-square me-1"></i> ویرایش
                                                     </button>
+
+                                                    <button type="button" class="btn btn-sm btn-outline-danger op-btn-rounded"
+                                                            data-opening-delete="cheques" data-opening-cheque="@ch.Id"
+                                                            title="@ChequeDeleteButtonTitle(ch)"
+                                                            disabled="@(!OpeningBalanceEdit.CanDeleteCheque(ch.Status) || deletingId != 0)"
+                                                            @onclick="() => DeleteChequeRowAsync(ch)">
+                                                        <i class="bi bi-trash me-1"></i> حذف
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -725,6 +741,14 @@
                                                             @onclick="() => OpenInstallmentEditAsync(o)">
                                                         <i class="bi bi-pencil-square me-1"></i> ویرایش
                                                     </button>
+
+                                                    <button type="button" class="btn btn-sm btn-outline-danger op-btn-rounded"
+                                                            data-opening-delete="installments" data-opening-order="@o.Id"
+                                                            title="@OpeningDeleteButtonTitle(InstallmentState(o))"
+                                                            disabled="@(!OpeningBalanceEdit.CanDelete(InstallmentState(o)) || deletingId != 0)"
+                                                            @onclick="() => DeleteInstallmentRowAsync(o)">
+                                                        <i class="bi bi-trash me-1"></i> حذف
+                                                    </button>
                                                 </td>
                                             </tr>
                                         }
@@ -884,6 +908,14 @@
                                                             disabled="@(sl.IsCancelled)"
                                                             @onclick="() => OpenStockEditAsync(sl)">
                                                         <i class="bi bi-pencil-square me-1"></i> ویرایش
+                                                    </button>
+
+                                                    <button type="button" class="btn btn-sm btn-outline-danger op-btn-rounded"
+                                                            data-opening-delete="stock" data-opening-order="@sl.OrderId"
+                                                            title="@StockDeleteButtonTitle(sl)"
+                                                            disabled="@(sl.IsCancelled || deletingId != 0)"
+                                                            @onclick="() => DeleteStockRowAsync(sl)">
+                                                        <i class="bi bi-trash me-1"></i> حذف
                                                     </button>
                                                 </td>
                                             </tr>
@@ -1974,6 +2006,9 @@ select.op-input,
     private TrsCheque editCheque = new();
     private DateTime? editChequeDueDate;
 
+    /// <summary>شناسهٔ ردیفی که حذفش در جریان است؛ دکمه‌ها را از کلیک دوباره باز می‌دارد.</summary>
+    private int deletingId;
+
     /// <summary>همان راهنمای واحد شمارش فرم ثبت، برای کالای انتخاب‌شده در ویرایش.</summary>
     private string EditStockQuantityHint => stockProducts.FirstOrDefault(p => p.Id == editStockProductId)
         ?.AllowsFractionalQuantity switch
@@ -2006,6 +2041,21 @@ select.op-input,
 
     private static string StockEditButtonTitle(OpeningStockLine line) =>
         line.IsCancelled ? OpeningBalanceEdit.LockedCancelledMessage : OpeningBalanceEdit.EditActionTitle;
+
+    // ---------- تصمیم «حذف آزاد / غیرفعال»؛ همان قاعدهٔ ویرایش، با متن مخصوص حذف ----------
+    /// <summary>
+    /// گردش مالی ردیف موجودی اولیه: سطر کاردکس تنها واقعیتِ آن است، پس همان مبلغ
+    /// سند مبنای «دست‌نخورده بودن» است. اگر گردش تسویه‌ایه‌ای وجود داشت، سرور حرف
+    /// آخر را می‌زند و پیام خودش را برمی‌گرداند.
+    /// </summary>
+    private static OpeningBalanceEdit.SettlementState StockState(OpeningStockLine line) =>
+        OpeningBalanceEdit.State(line.IsCancelled, line.Description, false, false, false, false);
+
+    private static string OpeningDeleteButtonTitle(OpeningBalanceEdit.SettlementState state) =>
+        OpeningBalanceEdit.DeleteButtonTitle(state);
+
+    private static string StockDeleteButtonTitle(OpeningStockLine line) =>
+        OpeningBalanceEdit.DeleteButtonTitle(StockState(line));
 
     private void OpenEditModal(string kind, int orderId)
     {
@@ -2225,6 +2275,78 @@ select.op-input,
 
         editError = "این ردیف قابل ویرایش نیست.";
         return null;
+    }
+
+    // ==================== حذف ردیف افتتاحیه (هر چهار بخش) ====================
+
+    /// <summary>
+    /// حذف کامل یک ردیف ماندهٔ اول دوره. پیش از هر تغییری تأیید گرفته می‌شود و پیام
+    /// تأیید خلاصهٔ همان ردیف را نشان می‌دهد تا حذف تصادفی رخ ندهد.
+    /// </summary>
+    /// <param name="orderId">شناسهٔ سند افتتاحیه.</param>
+    /// <param name="summary">خلاصهٔ فارسی ردیف برای متن تأیید.</param>
+    private async Task DeleteOpeningRowAsync(int orderId, string summary)
+    {
+        if (deletingId != 0) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"آیا از حذف «{summary}» مطمئن هستید؟\nاین ردیف از سابقه و مانده‌های اول دوره پاک می‌شود و بازگشت‌پذیر نیست.");
+        if (!ok) return;
+        deletingId = orderId;
+        try
+        {
+            await OrderSvc.DeleteOpeningBalanceAsync(orderId);
+            Toast.Success("ردیف افتتاحیه حذف شد.");
+            await LoadOpeningHistoryAsync();
+        }
+        catch (Exception ex)
+        {
+            // سرور حرف آخر را می‌زند: اگر بین بارگذاری و حذف گردشی ثبت شده باشد، این‌جا دیده می‌شود.
+            Toast.Error(ex.Message);
+            await LoadOpeningHistoryAsync();
+        }
+        finally
+        {
+            deletingId = 0;
+        }
+    }
+
+    private Task DeletePartyRowAsync(PartyBalanceItem item) =>
+        DeleteOpeningRowAsync(item.Id,
+            $"افتتاح حساب {item.PartyName} به مبلغ {item.Amount.Money()} ریال");
+
+    private Task DeleteInstallmentRowAsync(Order order) =>
+        DeleteOpeningRowAsync(order.Id,
+            $"دفترچه اقساط {order.PartyName} به مبلغ {order.TotalAmount.Money()} ریال");
+
+    private Task DeleteStockRowAsync(OpeningStockLine line) =>
+        DeleteOpeningRowAsync(line.OrderId,
+            $"موجودی اولیه {line.ProductName} در انبار {line.WarehouseName} با تعداد {line.Quantity.Qty()}");
+
+    /// <summary>حذف چک اول دوره؛ دفتر چک مسیر خودش را دارد و همان قاعدهٔ »نزد صندوق« را می‌سنجد.</summary>
+    private async Task DeleteChequeRowAsync(TrsCheque ch)
+    {
+        if (deletingId != 0) return;
+        var blocked = OpeningBalanceEdit.ChequeDeleteBlockedReason(ch.Status);
+        if (blocked is not null) { Toast.Error(blocked); return; }
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"آیا از حذف چک شمارهٔ {ch.Number} به مبلغ {ch.Amount.Money()} ریال مطمئن هستید؟\nاین چک از دفتر چک پاک می‌شود و بازگشت‌پذیر نیست.");
+        if (!ok) return;
+        deletingId = ch.Id;
+        try
+        {
+            await ChequeSvc.DeleteAsync(ch.Id);
+            Toast.Success($"چک شمارهٔ {ch.Number} حذف شد.");
+            var chqRes = await ChequeSvc.GetAllAsync(pageSize: 200);
+            chequesList = chqRes.Items;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            deletingId = 0;
+        }
     }
 
     /// <summary>ویرایش چک در همان ردیف دفتر چک؛ همان اعتبارسنجی ثبت اولیه.</summary>

@@ -31,6 +31,7 @@ CLIENT_API = read('Inventory.Client/Services/IInventoryApi.cs')
 DTOS = read('Inventory.Shared/Dtos/OperationDtos.cs')
 IFACE = read('Inventory.Api/Services/Catalog/IInventoryService.cs')
 SEARCH = read('Inventory.Shared/PersianSearch.cs')
+ORDERS_PAGE = read('Inventory.Client/Pages/Orders/Orders.razor')
 INDEX = read('Inventory.Client/wwwroot/index.html')
 
 # پیام در C# روی دو خط با «+» به هم چسبیده است؛ هر دو نیمه جدا بررسی می‌شوند.
@@ -186,7 +187,7 @@ class WizardContract(unittest.TestCase):
         self.assertIn('disabled="@(!CanEditPartyRow(item))"', PAGE)
         self.assertIn('disabled="@(!OpeningBalanceEdit.CanEdit(InstallmentState(o)))"', PAGE)
         self.assertIn('disabled="@(OpeningBalanceEdit.ChequeBlockedReason(ch.Status) is not null)"', PAGE)
-        self.assertIn('disabled="@(sl.IsCancelled)"', PAGE)
+        self.assertIn('disabled="@(sl.IsCancelled || deletingId != 0)"', PAGE)
         self.assertIn('private static bool CanEditPartyRow(PartyBalanceItem item) => OpeningBalanceEdit.CanEdit(PartyState(item));', PAGE)
 
     def test_rows_keep_the_document_id(self):
@@ -363,6 +364,123 @@ class SearchContract(unittest.TestCase):
     def test_cheque_history_is_not_truncated_behind_the_search(self):
         self.assertNotIn('FilteredCheques.Take(10)', PAGE)
         self.assertIn('ChequeSvc.GetAllAsync(pageSize: 200)', PAGE)
+
+
+class DeleteContract(unittest.TestCase):
+    """حذف ردیف افتتاحیه: دکمه در هر چهار تب، قاعدهٔ مشترک و مسیر سرور."""
+
+    def test_every_tab_has_a_delete_action(self):
+        for tab in ('parties', 'cheques', 'installments', 'stock'):
+            with self.subTest(tab=tab):
+                self.assertIn(f'data-opening-delete="{tab}"', PAGE)
+
+    def test_delete_buttons_are_disabled_by_the_shared_rule(self):
+        self.assertIn('disabled="@(!OpeningBalanceEdit.CanDelete(PartyState(item)) || deletingId != 0)"', PAGE)
+        self.assertIn('disabled="@(!OpeningBalanceEdit.CanDelete(InstallmentState(o)) || deletingId != 0)"', PAGE)
+        self.assertIn('disabled="@(!OpeningBalanceEdit.CanDeleteCheque(ch.Status) || deletingId != 0)"', PAGE)
+        self.assertIn('disabled="@(sl.IsCancelled || deletingId != 0)"', PAGE)
+        self.assertIn('OpeningBalanceEdit.DeleteBlockedReason(state.Settlement)', SERVICE)
+
+    def test_delete_reason_differs_from_edit_reason(self):
+        self.assertIn('public static string? DeleteBlockedReason(SettlementState state) => state.IsCancelled',
+                      RULE)
+        self.assertIn('LockedDeleteAfterSettlementMessage', RULE)
+        self.assertIn('LockedDeleteCancelledMessage', RULE)
+        # دلیل حذف نباید همان متن «ویرایش غیرفعال است» باشد.
+        self.assertNotIn('ویرایش آن غیرفعال است', RULE.split('LockedDeleteAfterSettlementMessage', 1)[1]
+                         .split(';', 1)[0])
+
+    def test_client_asks_for_confirmation_before_deleting(self):
+        handler = PAGE.split('private async Task DeleteOpeningRowAsync', 1)[1].split('private Task DeletePartyRowAsync', 1)[0]
+        self.assertIn('JS.InvokeAsync<bool>("confirm"', handler)
+        self.assertIn('await OrderSvc.DeleteOpeningBalanceAsync(orderId);', handler)
+        self.assertIn('await LoadOpeningHistoryAsync();', handler)
+        cheque = PAGE.split('private async Task DeleteChequeRowAsync', 1)[1].split('private async Task SaveChequeEditAsync', 1)[0]
+        self.assertIn('await ChequeSvc.DeleteAsync(ch.Id);', cheque)
+
+    def test_delete_endpoint_refuses_settled_documents_first(self):
+        endpoint = CONTROLLER.split('[HttpDelete("{id:int}/opening-balance")]', 1)[1]
+        # حذف، مجوز Delete می‌خواهد؛ نه Update.
+        self.assertIn('[Inventory.Api.Infrastructure.RequirePermission("Orders", "Delete")]', endpoint)
+        self.assertIn('await _service.DeleteOpeningBalanceAsync(id, CurrentActor);', endpoint)
+
+    def test_delete_service_keeps_the_ledger_consistent(self):
+        delete = SERVICE.split('public async Task DeleteOpeningBalanceAsync', 1)[1] \
+            .split('/// <summary>ویرایش ماندهٔ طرف حساب', 1)[0]
+        # قبل از هر تغییری قاعده بررسی می‌شود.
+        self.assertLess(delete.index('OpeningBalanceEdit.DeleteBlockedReason(state.Settlement)'),
+                        delete.index('_db.Transactions.Remove(txn);'))
+        self.assertIn('BeginTransactionAsync(IsolationLevel.Serializable)', delete)
+        self.assertIn('await trx.RollbackAsync();', delete)
+        self.assertIn('_db.ChangeTracker.Clear();', delete)
+        # ردیف نقدی معکوس و کاردکس بازمحاسبه می‌شود.
+        self.assertIn('ShopOrderCashLedger.VerifyCurrentAsync', delete)
+        self.assertIn('ShopOrderCashLedger.ReverseForDeleteAsync', delete)
+        self.assertIn('await RecalcStockAsync(warehouseId, pid);', delete)
+        self.assertIn('await EnsureNoNegativeStockAsync(productIds.Select(pid => (warehouseId, pid)));', delete)
+        # چک اول دوره از مسیر دفتر چک حذف می‌شود، نه از سند افتتاحیه.
+        self.assertIn('OpeningBalanceSection.Cheque', delete)
+
+    def test_cheque_delete_is_stricter_than_cheque_edit(self):
+        # ویرایش چک در جریان وصول آزاد است، حذفش نه (ارجاع سند وصول).
+        self.assertIn('public static bool CanDeleteCheque(ChequeStatus status) => status is ChequeStatus.InHand;',
+                      RULE)
+        self.assertIn('ChequeDeleteLockedMessage', RULE)
+        self.assertIn('OpeningBalanceEdit.ChequeDeleteBlockedReason(ch.Status)', PAGE)
+        self.assertIn('disabled="@(!OpeningBalanceEdit.CanDeleteCheque(ch.Status) || deletingId != 0)"', PAGE)
+
+    def test_delete_state_is_exposed_to_the_client(self):
+        self.assertIn('public bool CanDelete { get; set; }', DTOS)
+        self.assertIn('public string? DeleteBlockedReason { get; set; }', DTOS)
+        self.assertIn('CanDelete = OpeningBalanceEdit.CanDelete(state.Settlement),', SERVICE)
+        self.assertIn('Task DeleteOpeningBalanceAsync(int id, string? user = null);', IFACE)
+        self.assertIn('Task DeleteOpeningBalanceAsync(int id);', CLIENT_API)
+        self.assertIn('_api.DeleteAsync($"api/orders/{id}/opening-balance");', CLIENT_SVC)
+
+
+class DocumentKindColumnContract(unittest.TestCase):
+    """ستون «نوع» در فهرست فروش: فاکتور واقعی در برابر ردیف آمده از افتتاح حساب."""
+
+    def test_orders_table_has_a_type_column(self):
+        self.assertIn('<th>نوع</th>', ORDERS_PAGE)
+        self.assertIn('@KindBadge(o)', ORDERS_PAGE)
+        # هم در جدول و هم در نمای کارتی موبایل.
+        self.assertEqual(ORDERS_PAGE.count('@KindBadge(o)'), 2)
+        self.assertIn('data-order-kind="@(o.IsOpeningDocument ? "opening" : "invoice")"', ORDERS_PAGE)
+
+    def test_kind_comes_from_the_shared_opening_rule(self):
+        self.assertIn('public static string DocumentKindTitle(TransactionType type, string? description,',
+                      RULE)
+        self.assertIn('public static OpeningBalanceSection StrictSectionOf(', RULE)
+        self.assertIn('DocumentKind = OpeningBalanceEdit.DocumentKindTitle(t.Type, t.Description, t.PaymentMethod,',
+                      SERVICE)
+        self.assertIn('IsOpeningDocument = OpeningBalanceEdit.IsOpeningDocument(t.Description, t.PaymentMethod,',
+                      SERVICE)
+        # برچسب‌ها فارسی و ثابت‌اند.
+        for title in ('OrdinarySaleTitle = "فروش"', 'PartyOpeningTitle = "افتتاح حساب"',
+                      'InstallmentOpeningTitle = "اقساط اول دوره"', 'StockOpeningTitle = "موجودی اولیه"'):
+            with self.subTest(title=title):
+                self.assertIn(title, RULE)
+
+    def test_ordinary_invoice_with_the_word_opening_is_not_mislabelled(self):
+        # قاعدهٔ سخت‌گیرانه فقط پیشوند، شرح قدیمی و کالای ساختگی را می‌پذیرد.
+        strict = RULE.split('public static OpeningBalanceSection StrictSectionOf', 1)[1] \
+            .split('public static string DocumentKindTitle', 1)[0]
+        self.assertNotIn('Contains("افتتاح"', strict)
+        self.assertIn('StartsWith(InstallmentPrefix', strict)
+        self.assertIn('StartsWith(PartyPrefix', strict)
+        self.assertIn('if (!hasOpeningProductLine) return OpeningBalanceSection.None;', strict)
+
+    def test_dto_carries_the_kind(self):
+        self.assertIn('public string DocumentKind { get; set; } = "";', DTOS)
+        self.assertIn('public bool IsOpeningDocument { get; set; }', DTOS)
+
+    def test_orders_list_points_the_user_to_the_opening_module(self):
+        handler = ORDERS_PAGE.split('private async Task Delete(Order o)', 1)[1]
+        self.assertIn('if (o.IsOpeningDocument)', handler)
+        self.assertIn('"/shop/opening-balance"', handler)
+        # مسیر حذف معمولی دست‌نخورده است.
+        self.assertIn('await OrderSvc.DeleteAsync(o.Id);', handler)
 
 
 class ExistingBehaviourIsUntouched(unittest.TestCase):

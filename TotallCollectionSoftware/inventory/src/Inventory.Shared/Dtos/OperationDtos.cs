@@ -128,6 +128,16 @@ public class Order
     public List<ChequeDto> Cheques { get; set; } = new();
     public List<InstallmentDto> Installments { get; set; } = new();
 
+    /// <summary>
+    /// نوع سند برای ستون «نوع» فهرست: «فروش»/«خرید» برای فاکتور واقعی و
+    /// «افتتاح حساب»/«اقساط اول دوره»/«موجودی اولیه» برای ردیف‌های ماژول افتتاحیه.
+    /// سرور آن را با همان قاعدهٔ بخش‌بندی ماژول پر می‌کند، نه با حدس کلاینت.
+    /// </summary>
+    public string DocumentKind { get; set; } = "";
+
+    /// <summary>این سند از ماژول افتتاح حساب آمده است (رنگ و فیلتر ستون نوع).</summary>
+    public bool IsOpeningDocument { get; set; }
+
     public bool IsPosted { get; set; } = true;
     public bool CanDelete { get; set; } = true;
 
@@ -871,6 +881,10 @@ public class OpeningBalanceEditState
     public bool HasSettlementHistory { get; set; }
     /// <summary>ماهیت مانده و نوع چک قابل تغییر نیست (مبلغ، تاریخ و شرح آزادند).</summary>
     public bool NatureLocked { get; set; }
+    /// <summary>حذف کامل سند آزاد است؟ (همان شرط ویرایش: سند باید دست‌نخورده باشد)</summary>
+    public bool CanDelete { get; set; }
+    /// <summary>علت غیرفعال بودن حذف؛ null یعنی آزاد است.</summary>
+    public string? DeleteBlockedReason { get; set; }
 }
 
 /// <summary>

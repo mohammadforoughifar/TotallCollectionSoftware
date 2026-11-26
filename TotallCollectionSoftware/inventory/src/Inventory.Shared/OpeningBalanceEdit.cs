@@ -240,4 +240,108 @@ public static class OpeningBalanceEdit
         var months = (secondDueDate.Year - firstDueDate.Year) * 12 + (secondDueDate.Month - firstDueDate.Month);
         return months is >= 1 and <= 12 ? months : 1;
     }
+
+    // ======================= حذف ردیف افتتاحیه =======================
+
+    public const string LockedDeleteAfterSettlementMessage =
+        "این مانده اول دوره گردش تسویه، دریافت یا وصول دارد؛ حذف آن غیرفعال است. " +
+        "ابتدا گردش را برگشت یا اصلاح کنید.";
+
+    public const string LockedDeleteCancelledMessage =
+        "این سند افتتاحیه قبلاً ابطال شده است و حذف دوباره ندارد.";
+
+    public const string DeleteActionTitle = "حذف این ردیف افتتاحیه";
+
+    public const string NotDeletableTitle = "این ردیف قابل حذف نیست";
+
+    /// <summary>
+    /// علت غیرفعال بودن «حذف» یا null. عمداً جدا از متن ویرایش است تا کاربر بداند کدام
+    /// دکمه بسته است؛ شرط اما همان شرط ویرایش است: سند باید کاملاً دست‌نخورده باشد.
+    /// </summary>
+    public static string? DeleteBlockedReason(SettlementState state) => state.IsCancelled
+        ? LockedDeleteCancelledMessage
+        : !state.IsUntouched ? LockedDeleteAfterSettlementMessage
+        : null;
+
+    /// <summary>حذف آزاد است؟ (همان قاعدهٔ سرور)</summary>
+    public static bool CanDelete(SettlementState state) => DeleteBlockedReason(state) is null;
+
+    /// <summary>
+    /// عنوان دکمهٔ حذف در فهرست سابقه؛ همان قاعده‌ای که دکمه را غیرفعال می‌کند.
+    /// </summary>
+    public static string DeleteButtonTitle(SettlementState state) =>
+        DeleteBlockedReason(state) ?? DeleteActionTitle;
+
+    public const string ChequeDeleteLockedMessage =
+        "فقط چکی که هنوز «نزد صندوق» است حذف می‌شود؛ چک در جریان وصول یا تعیین‌تکلیف‌شده حذف ندارد.";
+
+    /// <summary>
+    /// حذف چک سخت‌گیرانه‌تر از ویرایش است: چک در جریان وصول قابل ویرایش است ولی حذف
+    /// نمی‌شود (دفتر خزانه هم همین قاعده را دارد)، چون ممکن است سند وصول به آن ارجاع داده باشد.
+    /// </summary>
+    public static bool CanDeleteCheque(ChequeStatus status) => status is ChequeStatus.InHand;
+
+    /// <summary>علت غیرفعال بودن حذف چک یا null.</summary>
+    public static string? ChequeDeleteBlockedReason(ChequeStatus status) =>
+        CanDeleteCheque(status) ? null : ChequeDeleteLockedMessage;
+
+    /// <summary>عنوان دکمهٔ حذف برای چک اول دوره؛ چک فقط تا وقتی «نزد صندوق» است حذف می‌شود.</summary>
+    public static string ChequeDeleteButtonTitle(ChequeStatus status) =>
+        ChequeDeleteBlockedReason(status) ?? DeleteActionTitle;
+
+    // ======================= ستون «نوع سند» =======================
+
+    /// <summary>برچسب غیرافتتاحیه در ستون نوع سند فهرست فروش/خرید.</summary>
+    public const string OrdinarySaleTitle = "فروش";
+
+    public const string OrdinaryPurchaseTitle = "خرید";
+
+    public const string PartyOpeningTitle = "افتتاح حساب";
+
+    public const string InstallmentOpeningTitle = "اقساط اول دوره";
+
+    public const string StockOpeningTitle = "موجودی اولیه";
+
+    /// <summary>
+    /// بخش سند برای ستون «نوع». عمداً سخت‌گیرانه‌تر از <see cref="SectionOf"/> است: فقط
+    /// پیشوند ثبتی، شرح‌های قدیمی شناخته‌شده و کالای ساختگی افتتاحیه را می‌پذیرد. پس
+    /// فاکتور عادی که واژهٔ «افتتاح» در شرحش دارد اشتباهاً افتتاحیه برچسب نمی‌خورد.
+    /// </summary>
+    public static OpeningBalanceSection StrictSectionOf(string? description, PaymentMethod paymentMethod,
+        bool hasOpeningProductLine)
+    {
+        if (description is not null && description.StartsWith(InstallmentPrefix, StringComparison.Ordinal))
+            return OpeningBalanceSection.Installment;
+        if (description == LegacyInstallmentDescription) return OpeningBalanceSection.Installment;
+        if (IsOpeningStock(description)) return OpeningBalanceSection.Stock;
+        if (description is not null && description.StartsWith(PartyPrefix, StringComparison.Ordinal))
+            return OpeningBalanceSection.Party;
+        if (!hasOpeningProductLine) return OpeningBalanceSection.None;
+        // سندِ کالای ساختگی بدون پیشوند (سندهای قدیمی): اقساطی یعنی دفترچه، بقیه یعنی ماندهٔ طرف حساب.
+        return paymentMethod == PaymentMethod.Installment
+            ? OpeningBalanceSection.Installment
+            : OpeningBalanceSection.Party;
+    }
+
+    /// <summary>
+    /// برچسب کوتاه «نوع سند» برای فهرست فروش/خرید: مشخص می‌کند این ردیف یک فاکتور واقعی
+    /// است یا از ماژول افتتاح حساب آمده. تصمیم با همان قاعدهٔ بخش‌بندی ماژول است تا
+    /// کلاینت و ماژول هرگز دو جواب متفاوت ندهند.
+    /// </summary>
+    public static string DocumentKindTitle(TransactionType type, string? description,
+        PaymentMethod paymentMethod, bool hasOpeningProductLine)
+    {
+        var section = StrictSectionOf(description, paymentMethod, hasOpeningProductLine);
+        return section switch
+        {
+            OpeningBalanceSection.Party => PartyOpeningTitle,
+            OpeningBalanceSection.Installment => InstallmentOpeningTitle,
+            OpeningBalanceSection.Stock => StockOpeningTitle,
+            _ => type == TransactionType.Sale ? OrdinarySaleTitle : OrdinaryPurchaseTitle
+        };
+    }
+
+    /// <summary>آیا این سند از ماژول افتتاح حساب آمده است؟ (برای رنگ و فیلتر ستون نوع)</summary>
+    public static bool IsOpeningDocument(string? description, PaymentMethod paymentMethod, bool hasOpeningProductLine)
+        => StrictSectionOf(description, paymentMethod, hasOpeningProductLine) != OpeningBalanceSection.None;
 }
