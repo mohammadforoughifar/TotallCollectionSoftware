@@ -17,6 +17,7 @@ public class OperationsReportsService : IOperationsReportsService
     public async Task<OperationsOrderReportDto> GetOrderReportAsync(TransactionType type, DateTime? from, DateTime? to,
         int? partyId, int? warehouseId, bool? hasChequeIncome = null, bool includeChequeIncome = true)
     {
+        DateRangeFilter.EnsureValid(from, to);
         EnsureOrderType(type);
         (from, to) = NormalizeRange(from, to);
 
@@ -116,6 +117,7 @@ public class OperationsReportsService : IOperationsReportsService
 
     public async Task<ChequeIncomeReportDto> GetChequeIncomeReportAsync(DateTime? from, DateTime? to, int? partyId)
     {
+        DateRangeFilter.EnsureValid(from, to);
         (from, to) = NormalizeRange(from, to);
         var query = _db.SaleChequeChargeEvents.AsNoTracking()
             .Include(e => e.AccVoucher) // optional historical link, never required for new shop events
@@ -154,6 +156,7 @@ public class OperationsReportsService : IOperationsReportsService
     public async Task<OperationsDashboardDto> GetDashboardAsync(DateTime? from, DateTime? to,
         bool includeOrders, bool includeRepairs, bool includeReferrers, bool includeChequeIncome = true)
     {
+        DateRangeFilter.EnsureValid(from, to);
         (from, to) = NormalizeRange(from, to);
         var result = new OperationsDashboardDto { From = from, To = to };
 

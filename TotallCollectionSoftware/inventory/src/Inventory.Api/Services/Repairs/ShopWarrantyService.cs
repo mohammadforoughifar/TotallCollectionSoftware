@@ -15,17 +15,109 @@ public class ShopWarrantyService
     private static string? Optional(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
 
     // Narrow shop-scoped lookups so repair staff do not need ERP/catalog management permissions.
-    public async Task<ShopWarrantyLookupsDto> LookupsAsync() => new()
+    public async Task<ShopWarrantyLookupsDto> LookupsAsync()
     {
-        Customers = await _db.Parties.AsNoTracking().Where(p => p.Type == PartyType.Customer && p.IsActive)
-            .OrderBy(p => p.Name).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToListAsync(),
-        Products = await _db.Products.AsNoTracking().Where(p => p.IsActive && !p.IsService)
-            .OrderBy(p => p.Name).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToListAsync(),
-        Warehouses = await _db.Warehouses.AsNoTracking().Where(w => w.IsActive)
-            .OrderBy(w => w.Name).Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToListAsync(),
-        Technicians = await _db.Technicians.AsNoTracking().Where(t => t.IsActive)
-            .OrderBy(t => t.Name).Select(t => new LookupItem { Id = t.Id, Name = t.Name }).ToListAsync()
-    };
+        var products = await _db.Products.AsNoTracking().Where(p => p.IsActive && !p.IsService)
+            .OrderBy(p => p.Name).Select(p => new { p.Id, p.Name, p.Unit, p.CompanyId }).ToListAsync();
+
+        // نوع مقدار هر کالا از «واحدهای شمارش» همان شرکت می‌آید (وگرنه پیش‌فرض واحدهای شناخته‌شده)
+        var unitNames = products.Select(p => (p.Unit ?? "").Trim()).Where(n => n.Length > 0).Distinct().ToList();
+        var unitRows = await _db.MeasureUnits.AsNoTracking().Where(u => unitNames.Contains(u.Name))
+            .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync();
+        var unitRules = unitRows.GroupBy(u => (u.CompanyId, u.Name.Trim()))
+            .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+
+        var rules = products.Select(p =>
+        {
+            var unit = (p.Unit ?? "").Trim();
+            var key = (p.CompanyId, unit);
+            var allows = unitRules.TryGetValue(key, out var rule) ? rule : ShopQuantityRules.DefaultAllowsFraction(unit);
+            return new ShopWarrantyProductRuleDto { ProductId = p.Id, Unit = unit, AllowsFractionalQuantity = allows };
+        }).ToList();
+        var ruleById = rules.ToDictionary(r => r.ProductId);
+
+        return new ShopWarrantyLookupsDto
+        {
+            Customers = await _db.Parties.AsNoTracking().Where(p => p.Type == PartyType.Customer && p.IsActive)
+                .OrderBy(p => p.Name).Select(p => new LookupItem { Id = p.Id, Name = p.Name }).ToListAsync(),
+            Products = products.Select(p => new LookupItem
+            {
+                Id = p.Id,
+                Name = p.Name,
+                InfoText = ruleById.TryGetValue(p.Id, out var r) ? $"واحد: {r.Unit} · {r.QuantityKindText}" : null
+            }).ToList(),
+            Warehouses = await _db.Warehouses.AsNoTracking().Where(w => w.IsActive)
+                .OrderBy(w => w.Name).Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToListAsync(),
+            Technicians = await _db.Technicians.AsNoTracking().Where(t => t.IsActive)
+                .OrderBy(t => t.Name).Select(t => new LookupItem { Id = t.Id, Name = t.Name }).ToListAsync(),
+            ProductRules = rules
+        };
+    }
+
+    /// <summary>قاعدهٔ واحد کالاهای یک شرکت — همان قاعده‌ای که در «واحدهای شمارش» تعیین شده است.</summary>
+    private async Task<Dictionary<int, ShopWarrantyProductRuleDto>> ProductRulesAsync(IReadOnlyCollection<int> productIds)
+    {
+        if (productIds.Count == 0) return new();
+        var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Unit, p.CompanyId }).ToListAsync();
+        var unitNames = products.Select(p => (p.Unit ?? "").Trim()).Where(n => n.Length > 0).Distinct().ToList();
+        var unitRows = await _db.MeasureUnits.AsNoTracking().Where(u => unitNames.Contains(u.Name))
+            .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync();
+        var unitRules = unitRows.GroupBy(u => (u.CompanyId, u.Name.Trim()))
+            .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+        return products.ToDictionary(p => p.Id, p =>
+        {
+            var unit = (p.Unit ?? "").Trim();
+            var allows = unitRules.TryGetValue((p.CompanyId, unit), out var rule) ? rule : ShopQuantityRules.DefaultAllowsFraction(unit);
+            return new ShopWarrantyProductRuleDto { ProductId = p.Id, Unit = unit, AllowsFractionalQuantity = allows };
+        });
+    }
+
+    /// <summary>
+    /// موجودی کالاهای انتخابی در انبار پذیرش — برای هشدار کمبود در همان لحظهٔ پذیرش
+    /// (پیش‌تر موجودی فقط هنگام «تحویل / نهایی‌سازی» بررسی می‌شد و کاربر دیر متوجه می‌شد).
+    /// </summary>
+    public async Task<List<ShopWarrantyStockItemDto>> StockAsync(int warehouseId, string? productIds)
+    {
+        if (warehouseId <= 0) return new();
+        var ids = (productIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => int.TryParse(x, out var id) ? id : 0).Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0) return new();
+        var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name, p.Unit }).ToListAsync();
+        var stock = await _inventory.GetStockQuantitiesAsOfAsync(DateTime.Now, warehouseId, ids);
+        return products.Select(p => new ShopWarrantyStockItemDto
+        {
+            ProductId = p.Id, ProductName = p.Name, Unit = p.Unit,
+            Quantity = stock.TryGetValue((warehouseId, p.Id), out var q) ? q : 0m
+        }).OrderBy(p => p.ProductName).ToList();
+    }
+
+    /// <summary>
+    /// کمبود موجودی ردیف‌های «قطعهٔ تحویل/مصرف‌شده» پذیرش گارانتی. محاسبه در سرور انجام
+    /// می‌شود تا هم فرم پذیرش و هم ذخیرهٔ پیش‌نویس یک قاعدهٔ واحد داشته باشند.
+    /// </summary>
+    public async Task<List<ShopWarrantyStockWarningDto>> StockWarningsAsync(int warehouseId, IEnumerable<ShopWarrantyItemDto> items)
+    {
+        var needed = items.Where(i => i.ProductId is > 0 && i.Supplied && i.Quantity > 0)
+            .GroupBy(i => i.ProductId!.Value)
+            .Select(g => (ProductId: g.Key, Required: g.Sum(i => i.Quantity)))
+            .ToList();
+        if (needed.Count == 0 || warehouseId <= 0) return new();
+        var ids = needed.Select(n => n.ProductId).ToList();
+        var products = await _db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name }).ToDictionaryAsync(p => p.Id);
+        var stock = await _inventory.GetStockQuantitiesAsOfAsync(DateTime.Now, warehouseId, ids);
+        return needed.Select(n =>
+            {
+                var available = stock.TryGetValue((warehouseId, n.ProductId), out var q) ? q : 0m;
+                var name = products.TryGetValue(n.ProductId, out var p) ? p.Name : $"کالا {n.ProductId}";
+                return new ShopWarrantyStockWarningDto { ProductId = n.ProductId, ProductName = name, Required = n.Required, Available = available };
+            })
+            .Where(w => w.Shortage > 0)
+            .OrderByDescending(w => w.Shortage)
+            .ToList();
+    }
 
     private IQueryable<ShopWarranty> FullQuery() => _db.ShopWarranties.AsNoTracking()
         .Include(w => w.Party).Include(w => w.Technician).Include(w => w.Warehouse)
@@ -177,6 +269,23 @@ public class ShopWarrantyService
                 !ShopInvoiceAmounts.TryGross(i.Quantity, i.CustomerUnitPrice.Value, out _))) ||
             i.Decision is not (WarrantyDecision.Accepted or WarrantyDecision.Rejected) || (i.Supplied && i.ProductId is not > 0)))
             throw new InvalidOperationException("شرح، مقدار، هزینه داخلی و تصمیم هر ردیف گارانتی را درست وارد کنید.");
+
+        // نوع مقدار کالا: برای واحدهایی مثل «عدد» مقدار اعشاری پذیرفته نمی‌شود و اگر
+        // نوع مقدار واحد هنوز تعیین نشده باشد، ثبت انجام نمی‌شود.
+        var submittedProductIds = dto.Items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
+        if (submittedProductIds.Count > 0)
+        {
+            var rules = await ProductRulesAsync(submittedProductIds);
+            foreach (var item in dto.Items.Where(i => i.ProductId is > 0))
+            {
+                if (!rules.TryGetValue(item.ProductId!.Value, out var rule))
+                    throw new InvalidOperationException("کالای انتخاب‌شده در شرکت جاری یافت نشد.");
+                if (rule.AllowsFractionalQuantity is null)
+                    throw new InvalidOperationException($"نوع مقدار واحد «{rule.Unit}» مشخص نیست؛ ابتدا آن را در واحدهای شمارش تعیین کنید.");
+                if (rule.AllowsFractionalQuantity == false && !ShopQuantityRules.IsWhole(item.Quantity))
+                    throw new InvalidOperationException($"مقدار «{item.Description}» با واحد «{rule.Unit}» باید عدد صحیح باشد.");
+            }
+        }
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         try
         {

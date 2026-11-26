@@ -396,6 +396,11 @@ public class VisOrderService : IVisOrderService
         if (cmd.WarehouseId <= 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId <= 0) throw new InvalidOperationException("مشتری را انتخاب کنید.");
 
+        // تاریخ دریافت محصول نباید پیش از تاریخ سفارش باشد.
+        var orderDate = cmd.Date == default ? DateTime.Today : cmd.Date.Date;
+        if (cmd.DeliveryDate.HasValue && cmd.DeliveryDate.Value.Date < orderDate)
+            throw new InvalidOperationException("تاریخ دریافت محصول نمی‌تواند پیش از تاریخ سفارش باشد.");
+
         var party = await _db.Parties.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.Id == cmd.PartyId)
                     ?? throw new InvalidOperationException("مشتری انتخاب‌شده یافت نشد؛ از فهرست مشتری‌ها دوباره انتخاب کنید.");
         var warehouse = await _db.Warehouses.IgnoreQueryFilters().FirstOrDefaultAsync(w => w.Id == cmd.WarehouseId)
@@ -421,6 +426,18 @@ public class VisOrderService : IVisOrderService
             .ToDictionaryAsync(p => p.Id);
         if (products.Count != productIds.Count)
             throw new InvalidOperationException("یکی از کالاهای انتخاب‌شده یافت نشد؛ فهرست کالاها را دوباره بارگذاری کنید.");
+
+        // نوع مقدار کالا: کالایی که واحدش «فقط صحیح» تعیین شده مقدار اعشاری نمی‌پذیرد.
+        // واحدِ نامشخص مانع ثبت نمی‌شود (فقط قاعدهٔ صریح «صحیح» اجرا می‌شود).
+        var unitRules = await UnitRulesAsync(productIds);
+        foreach (var line in cmd.Lines.Where(l => l.ProductId > 0))
+        {
+            var product = products[line.ProductId];
+            if (product.IsService) continue;
+            if (unitRules.TryGetValue(product.Id, out var allows) && allows == false && !ShopQuantityRules.IsWhole(line.Quantity))
+                throw new InvalidOperationException(
+                    $"مقدار «{product.Name}» با واحد «{(product.Unit ?? "").Trim()}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
+        }
 
         VisOrder entity;
         var isNew = cmd.Id == 0;
@@ -664,6 +681,9 @@ public class VisOrderService : IVisOrderService
         // تا هر دو برای پیگیری در سابقه باشد.
         var visitorDate = order.DeliveryDate ?? order.Date.Date;
         var chosen = (finalDeliveryDate ?? visitorDate).Date;
+        // تاریخ نهایی تحویل هم نباید پیش از تاریخ سفارش باشد.
+        if (chosen < order.Date.Date)
+            throw new InvalidOperationException("تاریخ تحویل نهایی نمی‌تواند پیش از تاریخ سفارش باشد.");
         order.FinalDeliveryDate = chosen;
         order.FinalDateSetAt = DateTime.Now;
         order.FinalDateSetBy = actor.UserName;
@@ -1623,6 +1643,15 @@ public class VisOrderService : IVisOrderService
 
         var effectivePrices = await ShopPricingService.ResolveAsync(_db, list.Select(p => p.Id), DateTime.Today);
         foreach (var product in list) if (effectivePrices.TryGetValue(product.Id, out var price)) product.SalePrice = price.Price;
+
+        // نوع مقدار واحد هر کالا — همان قاعدهٔ فاکتور فروش: واحدِ «صحیح» اعشار نمی‌پذیرد
+        if (list.Count > 0)
+        {
+            var rules = await UnitRulesAsync(list.Select(p => p.Id).ToList());
+            foreach (var product in list)
+                if (rules.TryGetValue(product.Id, out var rule)) product.AllowsFractionalQuantity = rule;
+        }
+
         if (warehouseId is > 0 && list.Count > 0)
         {
             var ids = list.Select(p => p.Id).ToList();
@@ -1635,6 +1664,41 @@ public class VisOrderService : IVisOrderService
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// قاعدهٔ «نوع مقدار» کالاها: از «واحدهای شمارش» همان شرکت (که با فیلتر خودکار شرکت
+    /// خوانده می‌شود)، وگرنه پیش‌فرض واحدهای شناخته‌شده (<see cref="ShopQuantityRules"/>).
+    /// null یعنی نوع مقدار واحد نامشخص است و باید تعیین شود.
+    /// </summary>
+    private async Task<Dictionary<int, bool?>> UnitRulesAsync(IReadOnlyCollection<int> productIds)
+    {
+        if (productIds.Count == 0) return new();
+        var products = await _db.Products.AsNoTracking()
+            .Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Unit, p.CompanyId, p.IsService }).ToListAsync();
+
+        var names = products.Where(p => !p.IsService)
+            .Select(p => (p.Unit ?? "").Trim()).Where(n => n.Length > 0).Distinct().ToList();
+        var rules = new Dictionary<(int? CompanyId, string Name), bool?>();
+        if (names.Count > 0)
+            rules = (await _db.MeasureUnits.AsNoTracking().Where(u => names.Contains(u.Name))
+                    .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync())
+                .GroupBy(u => (u.CompanyId, u.Name))
+                .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+
+        var result = new Dictionary<int, bool?>();
+        foreach (var p in products)
+        {
+            if (p.IsService) { result[p.Id] = true; continue; }
+            var unit = (p.Unit ?? "").Trim();
+            // واحدهای شناخته‌شده‌ای که در «واحدهای شمارش» ثبت نشده‌اند، پیش‌فرض seeder را می‌گیرند؛
+            // نام ناشناختهٔ سفارشی نامشخص می‌ماند. هرگز از رکورد شرکت دیگر استفاده نمی‌شود.
+            result[p.Id] = rules.TryGetValue((p.CompanyId, unit), out var rule)
+                ? rule
+                : ShopQuantityRules.DefaultAllowsFraction(unit);
+        }
+        return result;
     }
 
     public async Task<List<VisProductLite>> ProductPricesAsync(VisActor actor, List<int> productIds)

@@ -1,4 +1,5 @@
 using Db = Inventory.Api.Data;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Inventory.Api.Services.Finance;
 using Microsoft.EntityFrameworkCore;
@@ -81,6 +82,7 @@ public class ExpenseService : IExpenseService
 
     public async Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.Expenses.AsNoTracking().AsQueryable();
         if (categoryId is > 0) q = q.Where(e => e.CategoryId == categoryId);
         if (from.HasValue) q = q.Where(e => e.Date >= from.Value.Date);
@@ -142,6 +144,7 @@ public class ExpenseService : IExpenseService
 
     public async Task<ExpenseReportDto> GetReportAsync(int? categoryId, DateTime? from, DateTime? to)
     {
+        DateRangeFilter.EnsureValid(from, to);
         if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
             throw new InvalidOperationException("تاریخ شروع نمی‌تواند پس از تاریخ پایان باشد.");
         var q = _db.Expenses.AsNoTracking().AsQueryable();

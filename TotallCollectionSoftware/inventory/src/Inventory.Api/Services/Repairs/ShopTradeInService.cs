@@ -24,9 +24,34 @@ public class ShopTradeInService
             throw new InvalidOperationException("مبلغ باید عدد صحیح ریالی و بزرگ‌تر از صفر باشد.");
     }
 
-    public async Task<List<ShopTradeInDto>> ListAsync()
+    /// <summary>
+    /// فهرست پذیرش‌های تعویض با فیلتر: جستجو (شماره، مشتری، دستگاه، سریال)، وضعیت
+    /// (پیش‌نویس/نهایی‌شده/دارای اعتبار باقیمانده) و بازهٔ تاریخ پذیرش.
+    /// </summary>
+    public async Task<List<ShopTradeInDto>> ListAsync(string? search = null, TradeInStatusFilter? status = null,
+        DateTime? from = null, DateTime? to = null)
     {
-        var records = await _db.ShopTradeIns.AsNoTracking().Include(t => t.Party)
+        if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
+            throw new InvalidOperationException("تاریخ شروع فیلتر پس از تاریخ پایان است.");
+
+        var query = _db.ShopTradeIns.AsNoTracking().Include(t => t.Party).AsQueryable();
+        if (status is TradeInStatusFilter.Draft) query = query.Where(t => !t.FinalizedAt.HasValue);
+        if (status is TradeInStatusFilter.Finalized) query = query.Where(t => t.FinalizedAt.HasValue);
+        if (status is TradeInStatusFilter.WithCredit)
+            query = query.Where(t => t.FinalizedAt.HasValue &&
+                t.Value - (_db.ShopTradeInUses.Where(u => u.TradeInId == t.Id).Sum(u => (decimal?)u.Amount) ?? 0m) > 0);
+        if (from.HasValue) query = query.Where(t => t.ReceivedAt >= from.Value.Date);
+        if (to.HasValue && to.Value.Date < DateTime.MaxValue.Date) query = query.Where(t => t.ReceivedAt < to.Value.Date.AddDays(1));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(t => t.Number.Contains(term) || t.Party.Name.Contains(term) ||
+                t.DeviceType.Contains(term) ||
+                (t.SerialNumber != null && t.SerialNumber.Contains(term)) ||
+                (t.DeviceModel != null && t.DeviceModel.Contains(term)));
+        }
+
+        var records = await query
             .OrderByDescending(t => t.ReceivedAt).ThenByDescending(t => t.Id).ToListAsync();
         var ids = records.Select(r => r.Id).ToList();
         var uses = ids.Count == 0 ? new List<ShopTradeInUse>() : await _db.ShopTradeInUses.AsNoTracking()

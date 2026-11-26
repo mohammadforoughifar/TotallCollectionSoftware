@@ -991,6 +991,8 @@
 
     private async Task Load()
     {
+        // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
+        if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
         var version = ++loadVersion;
         loading = true;
         try

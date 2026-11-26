@@ -2646,6 +2646,7 @@ public class InventoryService : IInventoryService
 
     public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize, bool? hasChequeIncome = null, bool openingOnly = false)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.Transactions.Include(x => x.Lines)
             .Include(x => x.Cheques).Include(x => x.Installments)
             .Where(t => t.Type == type);
@@ -3263,6 +3264,7 @@ public class InventoryService : IInventoryService
 
     public async Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to, Paging.Request? pagination = null)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var source = _db.Transactions.AsNoTracking()
             .Where(t => !warehouseId.HasValue || t.WarehouseId == warehouseId.Value)
             .SelectMany(t => t.Lines.Where(l => l.ProductId == productId), (t, l) => new
@@ -5099,6 +5101,7 @@ public class InventoryService : IInventoryService
 
     public async Task<PartyStatementReportDto> GetPartyStatementSummaryReportAsync(PartyType? type = null, DateTime? from = null, DateTime? to = null, string? search = null)
     {
+        DateRangeFilter.EnsureValid(from, to);
         if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
             throw new InvalidOperationException("تاریخ شروع صورت‌حساب نمی‌تواند پس از تاریخ پایان باشد.");
         var partiesQ = _db.Parties.AsNoTracking().AsQueryable();
@@ -5329,6 +5332,7 @@ public class InventoryService : IInventoryService
 
     public async Task<PartyStatementDetailDto> GetPartyStatementDetailAsync(int partyId, DateTime? from = null, DateTime? to = null)
     {
+        DateRangeFilter.EnsureValid(from, to);
         if (from.HasValue && to.HasValue && from.Value.Date > to.Value.Date)
             throw new InvalidOperationException("تاریخ شروع صورت‌حساب نمی‌تواند پس از تاریخ پایان باشد.");
         var party = await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == partyId)

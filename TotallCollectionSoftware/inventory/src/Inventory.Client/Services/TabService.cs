@@ -218,6 +218,14 @@ public sealed class TabService
         ("karfarmas",                   "کارفرماها",            "bi-briefcase"),
         ("letters",                     "نامه داخلی",           "bi-envelope-paper"),
         ("misc/minutes",                "صورتجلسه",             "bi-journal-text"),
+        // گزارش‌های عملیاتی سامانه فروشگاهی — بدون این نگاشت، تبِ صفحه عنوانِ عمومی
+        // «صفحه» می‌گرفت (مثلاً گزارش گارانتی که عنوان درستش «گزارش گارانتی» است)
+        ("operations/reports/warranty",          "گزارش گارانتی",            "bi-shield-check"),
+        ("operations/reports/dashboard",         "داشبورد عملیاتی",          "bi-bar-chart-line"),
+        ("operations/reports/expenses",          "گزارش هزینه‌ها",           "bi-cash-coin"),
+        ("operations/reports/party-statements",  "گزارش طلب و بدهی اشخاص",   "bi-journal-check"),
+        ("operations/reports/cheque-income",     "گزارش چک‌های دریافتی",     "bi-journal-check"),
+        ("operations/reports/orders",            "گزارش خرید و فروش",        "bi-graph-up-arrow"),
         ("expenses",                    "هزینه‌ها",             "bi-cash-coin"),
         ("repairs",                     "تعمیرات",              "bi-tools"),
         ("stock",                       "موجودی انبار",         "bi-boxes"),
@@ -309,8 +317,16 @@ public sealed class TabService
         return "صفحه";
     }
 
-    private static bool IsStaleShopGuideTitle(string key, string? title)
-        => key.Split('?')[0] == "shop-guide" && (title == "صفحه" || title == "(صفحه)");
+    /// <summary>
+    /// عنوانِ جایگزینِ عمومیِ تب («صفحه») عنوانِ واقعی نیست و باید از نگاشت مسیر
+    /// دوباره ساخته شود؛ پیش‌تر این تازه‌سازی فقط برای «shop-guide» انجام می‌شد و
+    /// تبِ گزارش گارانتی عنوانِ «صفحه» را برای همیشه نگه می‌داشت.
+    /// </summary>
+    private static bool IsPlaceholderTitle(string? title)
+    {
+        var t = (title ?? "").Trim();
+        return t is "صفحه" or "(صفحه)" || t.StartsWith("صفحه ", StringComparison.Ordinal);
+    }
 
     // ==================== بارگیری / ذخیره ====================
 
@@ -361,7 +377,7 @@ public sealed class TabService
                     Key = key,
                     Url = s.Url,
                     // تبِ خانه (کلید "") عنوانش را از مسیرِ ریشه می‌گیرد، نه از نسخهٔ ذخیره‌شده
-                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug || IsStaleShopGuideTitle(key, savedTitle) || key.Length == 0 ? title : savedTitle,
+                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr || staleSlug || IsPlaceholderTitle(savedTitle) || key.Length == 0 ? title : savedTitle,
                     Icon = string.IsNullOrWhiteSpace(s.Icon) || staleHr ? icon : s.Icon,
                     // تبِ خانه همیشه سنجاق است
                     Pinned = s.Pinned || key.Length == 0
@@ -419,7 +435,7 @@ public sealed class TabService
             t.Url = relativeUrl;
             if ((!HrNavigation.IsWorkspace(key)
                     && (t.Title == "منابع انسانی" || t.Title == "خانه منابع انسانی"))
-                || IsSlugLike(t.Title) || IsStaleShopGuideTitle(key, t.Title))
+                || IsSlugLike(t.Title) || IsPlaceholderTitle(t.Title))
             {
                 var (title, icon) = Resolve(key);
                 t.Title = title;

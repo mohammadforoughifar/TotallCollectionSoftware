@@ -139,7 +139,10 @@ public class InvReportsController : RbacControllerBase
         [FromQuery] DateTime? to = null,
         [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        if (await ForbiddenUnlessAsync("ReportPages", "Kardex") is ObjectResult forbidden) return forbidden;
+        // مجوز قدیمی گزارش (ReportPages.Kardex) یا مجوز بخش «کاردکس کالا» در سامانهٔ فروشگاهی؛
+        // صفحهٔ کاردکس ریالی از منوی فروشگاهی هم باز می‌شود و نباید 403 بگیرد.
+        if (!await HasAsync("ReportPages", "Kardex") && !await ShopSectionPermissionAsync("Kardex", write: false))
+            return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
         // COUNT و Skip/Take در SQL و قبل از materialize شدن ردیف‌ها؛ ماندهٔ ابتدای/پایانی و
         // خلاصه‌های مالی مستقل از صفحه محاسبه می‌شوند و فقط ردیف‌های صفحه واکشی می‌شوند.
         var pagination = new Paging.Request(skip, take);

@@ -755,10 +755,17 @@
                                         }
                                     </td>
                                     <td>
-                                        <input class="form-control form-control-sm num" value="@itemQty[i]" @oninput="@(e => itemQty[i] = e.Value?.ToString() ?? "1")" inputmode="decimal" dir="ltr" aria-label="مقدار قطعه" />
+                                        <input class="form-control form-control-sm num" value="@itemQty[i]"
+                                               @oninput="@(e => itemQty[i] = NormalizeQtyInput(i, e.Value?.ToString()))"
+                                               inputmode="@(GetItemProduct(i)?.AllowsFractionalQuantity == false ? "numeric" : "decimal")"
+                                               dir="ltr" aria-label="مقدار قطعه" />
                                         @if (GetItemProduct(i) is { } quantityProduct)
                                         {
                                             <small class="d-block text-muted">واحد: @quantityProduct.Unit<br />@QuantityKind(quantityProduct.AllowsFractionalQuantity)</small>
+                                            @if (quantityProduct.AllowsFractionalQuantity == false)
+                                            {
+                                                <small class="d-block text-danger">اعشار برای این واحد مجاز نیست</small>
+                                            }
                                         }
                                         else if (form.Items[i].ProductId is > 0)
                                         {
@@ -1270,6 +1277,11 @@ else
     private string techIdStr = "0", statusStr = "0", invWarehouseStr = "1";
     private List<string> deviceQuoteTexts = new();
     private List<string> itemQty = new(), itemCost = new(), itemPrice = new();
+    /// <summary>
+    /// مقدار ثبت‌شدهٔ قبلی هر ردیف (کالا + مقدار) — مقادیر تاریخی که پیش از قاعدهٔ
+    /// «نوع مقدار» ثبت شده‌اند و کاربر تغییرشان نداده، هنگام ویرایش رد نمی‌شوند.
+    /// </summary>
+    private HashSet<(int ProductId, decimal Quantity)> originalItemQuantities = new();
     private ElementReference repairFormRoot, invoiceWarehouseControl;
     private bool repairFormFocusPending, invoiceFocusPending, invoiceOpening;
     private int? pendingDeviceFocusIndex;
@@ -1594,6 +1606,19 @@ else
 
     private Product? GetItemProduct(int index)
         => index >= 0 && index < itemProducts.Count ? itemProducts[index] : null;
+
+    /// <summary>
+    /// ورودی مقدار: برای واحد «صحیح» جداکنندهٔ اعشار در همان لحظهٔ تایپ حذف می‌شود تا
+    /// کاربر نتواند مقدار اعشاری وارد کند (اعتبارسنجی نهایی هم در Save انجام می‌شود).
+    /// </summary>
+    private string NormalizeQtyInput(int index, string? raw)
+    {
+        var text = raw ?? "";
+        var product = GetItemProduct(index);
+        if (product?.AllowsFractionalQuantity != false) return text;
+        var cleaned = new string(text.Where(ch => ch is not ('.' or '٫' or ',' or '٬' or '/')).ToArray());
+        return cleaned;
+    }
 
     private async Task Load()
     {
@@ -1933,6 +1958,7 @@ else
         techIdStr = "0"; statusStr = "0";
         deviceQuoteTexts = new List<string> { "" };
         itemQty = new(); itemCost = new(); itemPrice = new();
+        originalItemQuantities = new();
         AddItem();
         pendingDeviceFocusIndex = null;
         repairFormFocusPending = true;
@@ -1962,6 +1988,8 @@ else
                 .Select(d => d.QuotedPrice > 0 ? FormatRialTyping(d.QuotedPrice.ToString("0")) : "")
                 .ToList();
             itemQty = form.Items.Select(i => i.Quantity.ToString("0.###")).ToList();
+            originalItemQuantities = form.Items.Where(i => i.ProductId is > 0)
+                .Select(i => (i.ProductId!.Value, i.Quantity)).ToHashSet();
             itemCost = form.Items.Select(i => i.Cost > 0 ? FormatRialTyping(i.Cost.ToString("0")) : "").ToList();
             itemPrice = form.Items.Select(i => i.Price > 0 ? FormatRialTyping(i.Price.ToString("0")) : "").ToList();
             await LoadSelectedProductsAsync();
@@ -2177,6 +2205,31 @@ else
             form.Items[i].Price = Fa.ParseDecimal(itemPrice.ElementAtOrDefault(i) ?? "");
         }
         form.Items.RemoveAll(x => string.IsNullOrWhiteSpace(x.Description) && (x.ProductId is null or 0));
+
+        // نوع مقدار کالا: برای واحد «عدد صحیح» اعشار پذیرفته نمی‌شود و واحدِ نامشخص
+        // باید پیش از ثبت، نوع مقدارش مشخص شود (همان قاعدهٔ فاکتور خرید/فروش).
+        for (var i = 0; i < form.Items.Count; i++)
+        {
+            var item = form.Items[i];
+            if (item.ProductId is not > 0) continue;
+            // کالا از فهرست انتخاب‌شده‌ها خوانده می‌شود؛ پس از حذف ردیف‌های خالی،
+            // ایندکس ردیف‌ها با ایندکس محصولات هم‌تراز نیست.
+            if (!selectedProducts.TryGetValue(item.ProductId!.Value, out var product))
+                product = GetItemProduct(i);
+            if (product is null || product.IsService) continue;
+            if (originalItemQuantities.Contains((product.Id, item.Quantity))) continue; // مقدار تاریخیِ بدون تغییر
+            var unit = (product.Unit ?? "").Trim();
+            if (product.AllowsFractionalQuantity is null)
+            {
+                Toast.Error($"نوع مقدار واحد «{unit}» برای «{product.Name}» مشخص نیست؛ ابتدا آن را در واحدهای شمارش تعیین کنید.");
+                return;
+            }
+            if (product.AllowsFractionalQuantity == false && !ShopQuantityRules.IsWhole(item.Quantity))
+            {
+                Toast.Error($"مقدار «{product.Name}» با واحد «{unit}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
+                return;
+            }
+        }
 
         saving = true;
         try

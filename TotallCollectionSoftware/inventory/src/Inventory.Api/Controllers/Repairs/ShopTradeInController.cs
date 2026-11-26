@@ -14,8 +14,11 @@ public class ShopTradeInController : ApiControllerBase
     public ShopTradeInController(ShopTradeInService service) => _service = service;
     private string? Actor => User.Identity?.Name ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
+    /// <summary>فهرست پذیرش‌های تعویض — با فیلتر جستجو، وضعیت و بازهٔ تاریخ پذیرش.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<ShopTradeInDto>>> GetAll() => Ok(await _service.ListAsync());
+    public async Task<ActionResult<List<ShopTradeInDto>>> GetAll([FromQuery] string? search, [FromQuery] TradeInStatusFilter? status,
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to)
+        => Ok(await _service.ListAsync(search, status, from, to));
 
     [HttpGet("customers")]
     public async Task<ActionResult<List<LookupItem>>> Customers() => Ok(await _service.CustomersAsync());

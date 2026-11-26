@@ -160,7 +160,14 @@ else
                                 <i class="bi bi-info-circle text-muted" title="تاریخ تحویل مورد نظر شما؛ مدیر میتواند تاریخ نهایی را تغییر دهد و هر دو تاریخ در سابقه میماند."></i>
                             </label>
                             <DatePicker @bind-Value="deliveryDate" />
-                            @if (deliveryDate.HasValue)
+                            @if (deliveryDate.HasValue && DeliveryBeforeOrder)
+                            {
+                                <div class="vis-field-note text-danger" data-delivery-date-error>
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    تاریخ دریافت نمی‌تواند پیش از تاریخ سفارش (@(orderDate?.Date.ToFa())) باشد.
+                                </div>
+                            }
+                            else if (deliveryDate.HasValue)
                             {
                                 <div class="vis-field-note vis-date-note">
                                     <i class="bi bi-truck"></i>
@@ -308,8 +315,16 @@ else
                                     </div>
                                     <div class="vis-cell c-qty">
                                         <span class="vis-cell-label">مقدار</span>
-                                        <input class="form-control form-control-sm num @(IsOutOfStock(l) ? "zs-qty-input" : "")" value="@l.Quantity.ToString("0.##")"
+                                        <input class="form-control form-control-sm num @(IsOutOfStock(l) ? "zs-qty-input" : "")"
+                                               value="@l.Quantity.ToString("0.##")"
+                                               inputmode="@(UnitAllowsFraction(l) == false ? "numeric" : "decimal")"
                                                @onchange="e => SetQty(l, e.Value?.ToString())" />
+                                        @if (UnitAllowsFraction(l) == false)
+                                        {
+                                            <div class="vis-cell-note text-danger" data-fraction-error>
+                                                <i class="bi bi-exclamation-triangle"></i> واحد «@l.Unit» فقط مقدار صحیح می‌پذیرد
+                                            </div>
+                                        }
                                         @if (IsOutOfStock(l))
                                         {
                                             <div class="vis-cell-note text-danger" data-stock-alarm>
@@ -1639,9 +1654,22 @@ else
         foreach (var d in dup) model.Lines.Remove(d);
     }
 
+    /// <summary>تاریخ دریافت محصول پیش از تاریخ سفارش انتخاب شده است؟</summary>
+    private bool DeliveryBeforeOrder
+        => deliveryDate.HasValue && deliveryDate.Value.Date < (orderDate?.Date ?? DateTime.Today);
+
+    /// <summary>نوع مقدار واحد کالا در این سطر (null = نامشخص یا کالا انتخاب نشده).</summary>
+    private bool? UnitAllowsFraction(VisOrderLineDto line)
+        => line.ProductId > 0 && productIndex.TryGetValue(line.ProductId, out var p) ? p.AllowsFractionalQuantity : null;
+
     private void SetQty(VisOrderLineDto line, string? value)
     {
-        line.Quantity = Math.Max(0, Fa.ParseDecimal(value));
+        var parsed = Math.Max(0, Fa.ParseDecimal(value));
+        // واحدِ «صحیح» اعشار نمی‌پذیرد: مقدار در همان لحظهٔ ورود به عدد صحیح گرد می‌شود
+        // و ثبت نهایی هم در SaveAsync بررسی می‌شود.
+        if (UnitAllowsFraction(line) == false && !ShopQuantityRules.IsWhole(parsed))
+            Toast.Warning($"واحد «{line.Unit}» فقط مقدار صحیح می‌پذیرد؛ مقدار اعشاری ثبت نمی‌شود.");
+        line.Quantity = UnitAllowsFraction(line) == false ? decimal.Truncate(parsed) : parsed;
         RecalcLine(line);
     }
 
@@ -1782,6 +1810,22 @@ else
         if (model.Lines.Any(l => l.ProductId <= 0)) { Toast.Error("در هر سطر یک کالا انتخاب کنید (یا سطر خالی را حذف کنید)."); return; }
         if (model.Lines.Any(l => l.Quantity <= 0)) { Toast.Error("مقدار هر سطر باید بزرگ‌تر از صفر باشد."); return; }
         if (deliveryDate is null) { Toast.Error("تاریخ دریافت محصول را انتخاب کنید."); return; }
+        if (DeliveryBeforeOrder)
+        {
+            Toast.Error($"تاریخ دریافت محصول ({deliveryDate.Value.ToFa()}) نمی‌تواند پیش از تاریخ سفارش ({orderDate?.Date.ToFa()}) باشد.");
+            return;
+        }
+
+        // نوع مقدار کالا: واحدِ «صحیح» اعشار نمی‌پذیرد و واحدِ نامشخص باید تعیین شود.
+        foreach (var line in model.Lines.Where(l => l.ProductId > 0))
+        {
+            // فقط قاعدهٔ صریح «فقط صحیح» مانع ثبت است؛ واحد نامشخص جلوی ثبت را نمی‌گیرد.
+            if (UnitAllowsFraction(line) == false && !ShopQuantityRules.IsWhole(line.Quantity))
+            {
+                Toast.Error($"مقدار «{line.ProductName}» با واحد «{line.Unit}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
+                return;
+            }
+        }
 
         // فقط نقش فعال مدیر فروش از سقف تخفیف مستثناست.
         if (me?.IsSalesManager != true && me != null)

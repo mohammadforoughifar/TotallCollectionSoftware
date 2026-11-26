@@ -52,7 +52,7 @@ else
             <div class="row g-2.5 align-items-end">
                 <div class="col-12 col-md-4 col-xl-3">
                     <label class="fin-label">انتخاب کالا <span class="text-danger">*</span></label>
-                    <SearchSelect Items="productLookup" Value="productId" ValueChanged="v => productId = v" Placeholder="انتخاب یا جستجوی کالا…" />
+                    <SearchSelect Items="productLookup" Value="productId" ValueChanged="OnProductChanged" Placeholder="انتخاب یا جستجوی کالا…" />
                 </div>
                 <div class="col-6 col-md-3 col-xl-3">
                     <label class="fin-label">انبار مبدأ/مقصد</label>
@@ -535,23 +535,46 @@ else
         catch { }
     }
 
+    /// <summary>شناسهٔ آخرین درخواست — پاسخ دیررس کالای قبلی نباید جدول کالای جدید را پر کند.</summary>
+    private int loadVersion;
+
+    private async Task OnProductChanged(int id)
+    {
+        if (productId == id) return;
+        productId = id;
+        productName = productLookup.FirstOrDefault(p => p.Id == id)?.Name ?? "";
+        // انتخاب تازه یعنی جدول قبلی دیگر معتبر نیست؛ حتی اگر کالا پاک شود.
+        rows = new();
+        page = 1;
+        if (id <= 0) { loading = false; return; }
+        await Load();
+    }
+
     private async Task Load()
     {
-        if (productId == 0) return;
+        // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
+        if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
+        if (productId == 0) { rows = new(); return; }
+
+        var version = ++loadVersion;   // پاسخ‌های قدیمی کنار گذاشته می‌شوند
+        var requestedProduct = productId;
+        var requestedWarehouse = warehouseId;
         loading = true;
         rows = new();
         try
         {
-            rows = await ReportSvc.GetKardexAsync(productId, warehouseId, from, to);
+            var result = await ReportSvc.GetKardexAsync(requestedProduct, requestedWarehouse, from, to);
+            if (version != loadVersion || requestedProduct != productId) return; // کالا عوض شده است
+            rows = result ?? new();
             page = 1;
 
-            var sel = productLookup.FirstOrDefault(p => p.Id == productId);
+            var sel = productLookup.FirstOrDefault(p => p.Id == requestedProduct);
             productName = sel?.Name ?? "";
-            var wh = whLookup.FirstOrDefault(w => w.Id == warehouseId);
+            var wh = whLookup.FirstOrDefault(w => w.Id == requestedWarehouse);
             warehouseName = wh?.Name ?? "";
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private async Task Print()

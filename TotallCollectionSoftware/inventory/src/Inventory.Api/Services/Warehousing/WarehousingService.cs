@@ -1270,6 +1270,7 @@ public class WarehousingService : IWarehousingService
     public async Task<PagedResult<InvDoc>> GetDocsAsync(StockNature? nature, int? docTypeId, int? warehouseId,
         InvDocStatus? status, string? search, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var types = await _db.InvDocTypes.AsNoTracking().ToDictionaryAsync(t => t.Id);
 
         var q = _db.InvDocs.AsNoTracking().AsQueryable();
@@ -1946,6 +1947,7 @@ public class WarehousingService : IWarehousingService
     public async Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to,
         Paging.Request? pagination = null)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId)
                       ?? throw new InvalidOperationException("کالا یافت نشد.");
 

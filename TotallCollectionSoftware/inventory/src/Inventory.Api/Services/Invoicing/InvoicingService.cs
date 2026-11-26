@@ -42,6 +42,7 @@ public class InvoicingService : IInvoicingService
     public async Task<PagedResult<FacInvoice>> GetInvoicesAsync(InvoiceKind? kind, InvoiceStatus? status,
         int? partyId, int? warehouseId, string? search, DateTime? from, DateTime? to, int page, int pageSize)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.FacInvoices.AsNoTracking().AsQueryable();
 
         if (kind is not null) q = q.Where(i => i.Kind == kind);
@@ -987,6 +988,7 @@ public class InvoicingService : IInvoicingService
 
     public async Task<FacSummaryResult> GetSummaryAsync(InvoiceKind kind, string groupBy, DateTime? from, DateTime? to)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.FacInvoices.AsNoTracking()
             .Where(i => i.Kind == kind && i.Status == InvoiceStatus.Confirmed);
 
@@ -1067,6 +1069,7 @@ public class InvoicingService : IInvoicingService
 
     public async Task<FacDashboard> GetDashboardAsync(DateTime? from, DateTime? to)
     {
+        DateRangeFilter.EnsureValid(from, to);
         var q = _db.FacInvoices.AsNoTracking().AsQueryable();
         if (from is not null) q = q.Where(i => i.Date >= from.Value.Date);
         if (to is not null) q = q.Where(i => i.Date <= to.Value.Date.AddDays(1).AddTicks(-1));

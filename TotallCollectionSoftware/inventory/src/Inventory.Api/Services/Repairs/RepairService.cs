@@ -254,6 +254,10 @@ public class RepairService : IRepairService
             if (dto.Items.Any(i => i.WarrantyDecision != WarrantyDecision.Unspecified) && party.Type != PartyType.Customer)
                 throw new InvalidOperationException("پذیرش گارانتی باید برای مشتری ثبت شود.");
 
+            // نوع مقدار کالا: برای واحدهای «عدد صحیح» مقدار اعشاری رد می‌شود و اگر نوع
+            // مقدار واحد هنوز در «واحدهای شمارش» تعیین نشده باشد، پذیرش ثبت نمی‌شود.
+            await ValidateItemQuantityKindsAsync(dto, party.CompanyId);
+
             if (dto.TechnicianId is > 0 && !await _db.Technicians.AnyAsync(t => t.Id == dto.TechnicianId && t.CompanyId == party.CompanyId))
                 throw new InvalidOperationException("تعمیرکار در شرکت جاری یافت نشد.");
 
@@ -383,6 +387,59 @@ public class RepairService : IRepairService
             try { if (_db.Database.CurrentTransaction is not null) await transaction.RollbackAsync(); } catch { }
             _db.ChangeTracker.Clear();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// قاعدهٔ واحد کالاهای یک ردیف پذیرش: مقدار اعشاری برای واحد «صحیح» مجاز نیست و
+    /// واحدِ نامشخص باید پیش از ثبت در «واحدهای شمارش» تعیین شود. همان قاعده‌ای که در
+    /// فاکتورهای خرید/فروش اعمال می‌شود (ShopQuantityRules).
+    /// </summary>
+    private async Task ValidateItemQuantityKindsAsync(RepairOrderDto dto, int? companyId)
+    {
+        var items = dto.Items;
+        var productIds = items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
+        if (productIds.Count == 0) return;
+
+        // مقدار تاریخیِ ثبت‌شده پیش از این قاعده، تا وقتی کالا و مقدارش تغییر نکرده
+        // دست‌نخورده می‌ماند؛ وگرنه ویرایش پذیرش‌های قدیمی ممکن نمی‌شد.
+        var preserved = new HashSet<(int ProductId, decimal Quantity)>();
+        if (dto.Id > 0)
+        {
+            var saved = await _db.RepairItems.AsNoTracking()
+                .Where(i => i.RepairOrderId == dto.Id && i.ProductId != null)
+                .Select(i => new { i.ProductId, i.Quantity }).ToListAsync();
+            preserved = saved.Select(x => (x.ProductId!.Value, x.Quantity)).ToHashSet();
+        }
+
+        var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name, p.Unit, p.CompanyId, p.IsService }).ToListAsync();
+        var unitNames = products.Where(p => !p.IsService).Select(p => (p.Unit ?? "").Trim())
+            .Where(n => n.Length > 0).Distinct().ToList();
+        var unitRows = new List<(int? CompanyId, string Name, bool? AllowsFractionalQuantity)>();
+        if (unitNames.Count > 0)
+            unitRows = (await _db.MeasureUnits.AsNoTracking().Where(u => unitNames.Contains(u.Name))
+                    .Select(u => new { u.CompanyId, u.Name, u.AllowsFractionalQuantity }).ToListAsync())
+                .Select(u => (u.CompanyId, Name: u.Name.Trim(), u.AllowsFractionalQuantity)).ToList();
+        var unitRules = unitRows.GroupBy(u => (u.CompanyId, u.Name))
+            .ToDictionary(g => g.Key, g => g.Count() == 1 ? g.First().AllowsFractionalQuantity : null);
+
+        foreach (var item in items.Where(i => i.ProductId is > 0))
+        {
+            var product = products.FirstOrDefault(p => p.Id == item.ProductId!.Value)
+                ?? throw new InvalidOperationException("کالای مصرفی در شرکت جاری یافت نشد.");
+            if (product.IsService) continue;
+            if (companyId.HasValue && product.CompanyId != companyId)
+                throw new InvalidOperationException("کالای مصرفی متعلق به شرکت جاری نیست.");
+            if (preserved.Contains((product.Id, item.Quantity))) continue;
+            var unit = (product.Unit ?? "").Trim();
+            var allows = unitRules.TryGetValue((product.CompanyId, unit), out var rule)
+                ? rule
+                : ShopQuantityRules.DefaultAllowsFraction(unit);
+            if (allows is null)
+                throw new InvalidOperationException($"نوع مقدار واحد «{unit}» برای «{product.Name}» مشخص نیست؛ آن را در واحدهای شمارش تعیین کنید.");
+            if (allows == false && !ShopQuantityRules.IsWhole(item.Quantity))
+                throw new InvalidOperationException($"مقدار «{product.Name}» با واحد «{unit}» باید عدد صحیح باشد؛ مقدار اعشاری مجاز نیست.");
         }
     }
 

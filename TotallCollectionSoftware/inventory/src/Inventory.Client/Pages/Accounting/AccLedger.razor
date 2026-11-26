@@ -240,6 +240,8 @@ else
 
     private async Task Load()
     {
+        // بازهٔ تاریخ: شروع نباید پس از پایان باشد (قاعدهٔ مشترک همهٔ فیلترها)
+        if (DateRangeFilter.IsInvalid(from, to)) { Toast.Error(DateRangeFilter.InvalidMessage); return; }
         if (accountId == 0) return;
         loading = true;
         try { result = await ReportSvc.GetLedgerAsync(accountId, from, to, includeChildren); }
