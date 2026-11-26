@@ -1,9 +1,13 @@
 @namespace Inventory.Client.Pages
 @page "/sales/visits/{Id:int}"
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject HttpClient Http
 @inject ISalesVisitApi Api
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject NavigationManager Nav
+@inject IAuthState Auth
 
 <PageTitle>@(order?.Number ?? "سفارش ویزیتوری")</PageTitle>
 
@@ -100,6 +104,114 @@ else
                         <div class="vis-kpi"><span>تخفیف</span><b class="num text-danger">@Fa.Money(order.TotalDiscount) <small>ریال</small></b></div>
                         <div class="vis-kpi vis-kpi-total"><span>قابل پرداخت</span><b class="num">@Fa.Money(order.TotalNet) <small>ریال</small></b></div>
                     </div>
+
+                    @* ---------- ترکیب پرداخت سفارش ----------
+                       همان اجزای فاکتور خرید/فروش: نقد + چک + اقساط + نسیه.
+                       برای سفارش قدیمی (بدون اجزا) فقط روش پرداخت نشان داده می‌شود. *@
+                    <div class="vis-pay-detail" data-vis-payment-detail>
+                        <div class="vis-pay-detail-head">
+                            <span class="fw-700 fs-8"><i class="bi bi-credit-card-2-front text-primary ms-1"></i> ترکیب پرداخت</span>
+                            <span class="vis-pay-chip" data-vis-pay-title>@order.EffectivePaymentTitle</span>
+                            @if (order.HasChequePart)
+                            {
+                                <span class="vis-pay-chip vis-pay-chip--cheque" data-vis-cheque-badge>
+                                    <i class="bi bi-bank"></i> @Fa.Digits(order.ChequeCount) چک
+                                </span>
+                            }
+                            @if (order.AttachmentCount > 0)
+                            {
+                                <span class="vis-pay-chip" data-vis-att-badge>
+                                    <i class="bi bi-paperclip"></i> @Fa.Digits(order.AttachmentCount) پیوست
+                                </span>
+                            }
+                        </div>
+
+                        @if (order.HasPaymentPlan)
+                        {
+                            <div class="vis-pay-parts">
+                                <div class="vis-pay-part-kpi">
+                                    <span>نقدی</span>
+                                    <b class="num">@Fa.Money(order.CashAmount)</b>
+                                    @if (order.CashType is not null)
+                                    {
+                                        <small>@CashTypeTitle(order.CashType.Value)</small>
+                                    }
+                                </div>
+                                <div class="vis-pay-part-kpi">
+                                    <span>چک</span>
+                                    <b class="num">@Fa.Money(order.ChequeSum)</b>
+                                    <small>@Fa.Digits(order.ChequeCount) فقره</small>
+                                </div>
+                                <div class="vis-pay-part-kpi">
+                                    <span>اقساط</span>
+                                    <b class="num">@Fa.Money(order.InstallmentSum)</b>
+                                    <small>@Fa.Digits(order.Installments.Count) قسط</small>
+                                </div>
+                                <div class="vis-pay-part-kpi vis-pay-part-kpi--credit">
+                                    <span>نسیه (باقی‌مانده)</span>
+                                    <b class="num">@Fa.Money(order.CreditRemainder)</b>
+                                    <small>@(order.DueDate?.ToFa() ?? "بدون سررسید")</small>
+                                </div>
+                            </div>
+
+                            @if (order.Cheques.Count > 0)
+                            {
+                                <div class="vis-cheque-list" data-vis-cheques>
+                                    @foreach (var (c, idx) in order.Cheques.Select((c, i) => (c, i)))
+                                    {
+                                        <div class="vis-cheque-item" data-vis-cheque="@idx">
+                                            <span class="vis-cheque-no">#@Fa.Digits(c.Number ?? "")</span>
+                                            <span>@(string.IsNullOrWhiteSpace(c.BankName) ? "بانک نامشخص" : c.BankName)</span>
+                                            <span class="text-muted">@(string.IsNullOrWhiteSpace(c.OwnerName) ? "" : c.OwnerName)</span>
+                                            <span class="num ms-auto">@Fa.Money(c.Amount) ریال</span>
+                                            <span class="vis-cheque-due">سررسید @(c.DueDate == default ? "—" : c.DueDate.ToFa())</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="fs-8 text-muted">جزئیات اجزای پرداخت ثبت نشده است (سفارش قدیمی).</div>
+                        }
+
+                        @if (order.Attachments.Count > 0)
+                        {
+                            <div class="vis-detail-docs" data-vis-detail-docs>
+                                <div class="fs-8 fw-700 mb-1"><i class="bi bi-images text-primary ms-1"></i> مدارک و عکس چک‌ها</div>
+                                <div class="vis-detail-doc-grid">
+                                    @foreach (var a in order.Attachments)
+                                    {
+                                        <figure class="vis-detail-doc" data-vis-detail-doc="@a.Id">
+                                            @if (a.IsImage)
+                                            {
+                                                <button type="button" class="vis-detail-doc-thumb" title="مشاهدهٔ مدرک"
+                                                        @onclick="() => PreviewDocAsync(a)">
+                                                    <img src="@DocThumbUrl(a)" alt="@a.FileName" loading="lazy" />
+                                                </button>
+                                            }
+                                            else if (a.CanPreview)
+                                            {
+                                                <button type="button" class="vis-detail-doc-thumb vis-detail-doc-file" title="مشاهدهٔ PDF"
+                                                        @onclick="() => PreviewDocAsync(a)">
+                                                    <i class="bi bi-file-earmark-pdf"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <div class="vis-detail-doc-thumb vis-detail-doc-file"><i class="bi bi-file-earmark"></i></div>
+                                            }
+                                            <figcaption>
+                                                <div class="vis-detail-doc-name" title="@a.FileName">@a.FileName</div>
+                                                <div class="fs-9 text-muted">@VisAttachmentCategories.Title(a.Category)</div>
+                                                <div class="vis-detail-doc-state @a.DecisionCss">@a.DecisionTitle</div>
+                                            </figcaption>
+                                        </figure>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
 
@@ -143,7 +255,7 @@ else
                     <div class="vis-row"><span>ویزیتور</span><b>@(string.IsNullOrWhiteSpace(order.CreatedByName) ? "ثبت‌کننده نامشخص" : order.CreatedByName)</b></div>
                     <div class="vis-row"><span>مشتری</span><b>@order.PartyName</b></div>
                     <div class="vis-row"><span>انبار</span><b>@order.WarehouseName</b></div>
-                    <div class="vis-row"><span>پرداخت</span><b>@VisUi.PaymentText(order.PaymentMethod)</b></div>
+                    <div class="vis-row"><span>پرداخت</span><b>@order.EffectivePaymentTitle</b></div>
                     <div class="vis-row"><span>تاریخ سفارش</span><b>@order.Date.ToFa()</b></div>
                     <div class="vis-row">
                         <span>دریافت محصول (ویزیتور)</span>
@@ -295,6 +407,8 @@ else
 
 </div>
 
+<FilePreviewModal @ref="previewModal" />
+
 <style>
 /* ==========================================================================
    طراحی یکدست «جزئیات سفارش»
@@ -435,6 +549,39 @@ else
 .vis-detail .vis-cell-note { display: block; margin-top: .2rem; font-size: .7rem; color: var(--vis-muted); overflow-wrap: anywhere; }
 
 /* نوار بازبینی مالی: ۳ شاخص کنارهم (حتی روی موبایل) */
+/* ---------- ترکیب پرداخت ---------- */
+.vis-pay-detail { margin-top: .7rem; border: 1px solid var(--vis-line, #e2e8f0); border-radius: 14px; background: #fff; padding: .7rem .8rem; }
+.vis-pay-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .5rem; margin-bottom: .5rem; }
+.vis-pay-chip { font-size: .72rem; border: 1px solid #cbd5e1; border-radius: 999px; padding: .05rem .5rem; background: #f8fafc; color: #334155; }
+.vis-pay-chip--cheque { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.vis-pay-parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
+.vis-pay-part-kpi { display: flex; flex-direction: column; gap: .05rem; padding: .45rem .55rem; border: 1px solid #eef2f7; border-radius: 10px; background: #f8fafc; min-width: 0; }
+.vis-pay-part-kpi > span { font-size: .7rem; color: #64748b; }
+.vis-pay-part-kpi > b { font-size: .82rem; font-weight: 800; color: #1e293b; overflow-wrap: anywhere; }
+.vis-pay-part-kpi > small { font-size: .66rem; color: #94a3b8; }
+.vis-pay-part-kpi--credit { border-color: #fde2e2; background: #fff5f5; }
+.vis-pay-part-kpi--credit > b { color: #b91c1c; }
+.vis-cheque-list { margin-top: .5rem; display: flex; flex-direction: column; gap: .25rem; }
+.vis-cheque-item { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .7rem; font-size: .76rem;
+                  border-bottom: 1px dashed #eef2f7; padding: .25rem .1rem; }
+.vis-cheque-item:last-child { border-bottom: 0; }
+.vis-cheque-no { font-weight: 700; color: #1d4ed8; }
+.vis-cheque-due { font-size: .7rem; color: #92400e; background: #fef3c7; border-radius: 8px; padding: .02rem .4rem; }
+.vis-detail-docs { margin-top: .65rem; padding-top: .55rem; border-top: 1px dashed #e2e8f0; }
+.vis-detail-doc-grid { display: flex; flex-wrap: wrap; gap: .5rem; }
+.vis-detail-doc { width: 8.4rem; margin: 0; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: #fff; }
+.vis-detail-doc-thumb { display: block; width: 100%; height: 5.2rem; padding: 0; border: 0; background: #f1f5f9; cursor: zoom-in; }
+.vis-detail-doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vis-detail-doc-file { display: flex; align-items: center; justify-content: center; font-size: 1.6rem; color: #94a3b8; }
+button.vis-detail-doc-file { cursor: zoom-in; color: #b91c1c; }
+.vis-detail-doc figcaption { padding: .2rem .35rem .35rem; display: flex; flex-direction: column; gap: .1rem; }
+.vis-detail-doc-name { font-size: .68rem; font-weight: 600; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vis-detail-doc-state { font-size: .66rem; border-radius: 8px; padding: .02rem .35rem; width: fit-content; }
+.vis-att-pending { background: #fef3c7; color: #92400e; }
+.vis-att-ok { background: #dcfce7; color: #166534; }
+.vis-att-rejected { background: #fee2e2; color: #991b1b; }
+@media (max-width: 768px) { .vis-pay-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 .vis-detail .vis-review {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -666,6 +813,9 @@ else
     private bool loading = true;
     private VisOrderDto? order;
     private VisActorInfo? me;
+    private FilePreviewModal? previewModal;
+    private string? apiBase;
+    private string? authToken;
     private DecisionKind? decision;
     private bool decisionBusy;
     private string? comment;
@@ -686,9 +836,29 @@ else
     private bool CanCancel => order is not null
         && order.Status is VisOrderStatus.Draft or VisOrderStatus.Returned or VisOrderStatus.Submitted;
 
+    private static string CashTypeTitle(CashType t) => t switch
+    {
+        CashType.CardReader => "کارت‌خوان",
+        CashType.CardTransfer => "کارت به کارت",
+        _ => "وجه نقد"
+    };
+
+    private string DocThumbUrl(VisOrderAttachmentDto a) =>
+        $"{apiBase}/api/attachments/thumb/{a.Id}?access_token={Uri.EscapeDataString(authToken ?? "")}";
+
+    private async Task PreviewDocAsync(VisOrderAttachmentDto a)
+    {
+        if (previewModal is null) return;
+        await previewModal.ShowAsync(a.Id, a.FileName,
+            string.IsNullOrWhiteSpace(a.ContentType) ? "image/jpeg" : a.ContentType,
+            allowDownload: a.CanDownload);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         loading = true;
+        apiBase = (Http.BaseAddress?.ToString().TrimEnd('/')) ?? "";
+        authToken = Auth.Token;
         try
         {
             me = await Api.MeAsync();

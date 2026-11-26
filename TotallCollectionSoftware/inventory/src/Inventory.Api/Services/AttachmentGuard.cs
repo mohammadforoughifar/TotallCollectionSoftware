@@ -45,7 +45,9 @@ public class AttachmentGuard : IAttachmentGuard
     {
         "DocVersion",
         "HrEmployee",
-        "WorkOrders"
+        "WorkOrders",
+        // پیوست سفارش ویزیتور (عکس چک): فقط ثبت‌کننده سفارش یا نقش‌های تأیید/مالی.
+        "SalesVisit"
     };
 
     public bool IsProtected(string module) => Protected.Contains(module);
@@ -92,6 +94,31 @@ public class AttachmentGuard : IAttachmentGuard
             // Read فقط پیش‌نمایش می‌دهد؛ دانلود یک مجوز مستقل است.
             if (level < DocAccessLevel.Read) return AttachmentAccess.None;
             return canDownload ? AttachmentAccess.Download : AttachmentAccess.PreviewOnly;
+        }
+
+        // ---------- پیوست سفارش ویزیتور (عکس چک) ----------
+        // مالک پیوست، ثبت‌کنندهٔ سفارش است؛ مدیر فروش و مالی هم برای بررسی مدارک
+        // به آن دسترسی دارند. دیگران هیچ دسترسی‌ای ندارند (نه پیش‌نمایش، نه دانلود).
+        if (string.Equals(module, "SalesVisit", StringComparison.OrdinalIgnoreCase))
+        {
+            // فایل پیش‌نویسِ ذخیره‌نشده: ثبت‌کنندهٔ سفارش هنوز شناسه ندارد، پس مالکیت
+            // بر اساس UploaderUserId سنجیده می‌شود. گارد در سطح رکورد هم اعمال می‌شود
+            // (کنترلر فهرست/حذف)، اینجا فقط «امکان نوشتن» تأیید می‌شود.
+            if (refId == Inventory.Shared.Dtos.VisAttachmentCategories.DraftRefId)
+                return AttachmentAccess.Download;
+
+            var owner = await _db.VisOrders.AsNoTracking()
+                .Where(o => o.Id == refId)
+                .Select(o => (int?)o.CreatedByUserId)
+                .FirstOrDefaultAsync();
+            if (owner is null) return AttachmentAccess.None;
+            if (owner.Value == userId || isAdmin) return AttachmentAccess.Download;
+
+            var managerOrFinance = await _db.UserRoles.Where(ur => ur.UserId == userId)
+                .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+                .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+                .AnyAsync(p => p.Module == "SalesVisit" && (p.Action == "Approve" || p.Action == "FinanceView"));
+            return managerOrFinance ? AttachmentAccess.Download : AttachmentAccess.None;
         }
 
         // ---------- سایر ماژول‌ها ----------

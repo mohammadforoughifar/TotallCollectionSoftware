@@ -75,6 +75,40 @@ public class VisOrder : ICompanyOwned
     [MaxLength(150)]
     public string WarehouseName { get; set; } = "";
 
+    // ---------- پرداخت ترکیبی (نقد + چک + اقساط + نسیه) ----------
+    // دقیقاً همان اجزای فاکتور خرید و فروش. ستون‌ها nullable/با پیش‌فرض‌اند تا
+    // سفارش‌های قدیمی بدون این اجزا همچنان همان مقدار قبلی را نشان دهند.
+
+    /// <summary>پیش‌دریافت نقدی — تنها جزء نقدی یعنی تمام مبلغ (مثل فاکتور فروش).</summary>
+    public decimal CashAmount { get; set; }
+
+    /// <summary>نوع دریافت نقدی (وجه نقد / کارت‌خوان / کارت به کارت)</summary>
+    public CashType? CashType { get; set; }
+
+    /// <summary>حساب خزانه (صندوق/بانک) برای جزء نقدی.</summary>
+    public int? TrsAccountId { get; set; }
+
+    /// <summary>تاریخ سررسید نسیه (باقی‌ماندهٔ سفارش).</summary>
+    public DateTime? DueDate { get; set; }
+
+    /// <summary>چک‌های دریافتی سفارش — به‌صورت JSON تا ثبت سفارش به جدول چک وابسته نباشد.</summary>
+    public string? ChequesJson { get; set; }
+
+    /// <summary>دفترچهٔ اقساط سفارش — JSON.</summary>
+    public string? InstallmentsJson { get; set; }
+
+    /// <summary>مبلغ نقدی ذخیره‌شده (برای گزارش و کارتابل مالی).</summary>
+    public decimal PaymentCashAmount { get; set; }
+
+    /// <summary>جمع چک‌های ذخیره‌شده.</summary>
+    public decimal PaymentChequeSum { get; set; }
+
+    /// <summary>جمع اقساط ذخیره‌شده.</summary>
+    public decimal PaymentInstallmentSum { get; set; }
+
+    /// <summary>باقی‌ماندهٔ نسیه (مبلغ سفارش − نقد − چک − اقساط).</summary>
+    public decimal PaymentCreditRemainder { get; set; }
+
     // ---------- وضعیت و مبالغ ----------
 
     public VisOrderStatus Status { get; set; } = VisOrderStatus.Draft;
@@ -117,6 +151,20 @@ public class VisOrder : ICompanyOwned
 
     /// <summary>چند بار برای اصلاح برگشت خورده است</summary>
     public int ReturnCount { get; set; }
+
+    // ---------- تصمیم مالی روی پیوست‌ها (عکس چک و مدارک) ----------
+
+    /// <summary>آخرین تصمیم مالی روی پیوست‌های این سفارش: null = بررسی‌نشده، true = تأیید، false = رد.</summary>
+    public bool? FinanceAttachmentsApproved { get; set; }
+
+    public DateTime? FinanceAttachmentDecidedAt { get; set; }
+
+    [MaxLength(150)]
+    public string? FinanceAttachmentDecidedBy { get; set; }
+
+    /// <summary>دلیل رد مدرک — مالی برای ویزیتور می‌نویسد (مثلاً «عکس چک ناخواناست»).</summary>
+    [MaxLength(500)]
+    public string? FinanceAttachmentNote { get; set; }
 
     /// <summary>اعتبار سفارش ارسال‌شده؛ پس از آن خودکار منقضی می‌شود (اختیاری).</summary>
     public DateTime? ExpiresAt { get; set; }

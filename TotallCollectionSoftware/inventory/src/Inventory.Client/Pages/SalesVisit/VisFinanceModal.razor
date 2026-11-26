@@ -4,9 +4,14 @@
    نقدی (صندوق/بانک) ← چک (ردیف‌های چک) ← اقساط (دفترچهٔ اقساط) ← نسیه (سررسید)
    با ثبت، سند فروش فروشگاه ساخته می‌شود و سفارش «فروش‌شده» می‌گردد.
    ===================================================================== *@
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject HttpClient Http
 @inject ISalesVisitApi Api
 @inject ITrsAccountService AccountSvc
 @inject IToastService Toast
+@inject IAuthState Auth
+@inject IJSRuntime JS
 
 <Modal Visible="Visible" Title="@($"تأیید مالی سفارش {Order?.Number}")" Size="modal-xl" OnClose="Close">
     <ChildContent>
@@ -41,6 +46,95 @@
                     </div>
                 </div>
             }
+
+            @* ---------- مدارک مالی: عکس چک‌ها ----------
+               مالی پیش از تأیید نهایی، عکس هر چک را می‌بیند و تأیید/رد می‌کند. *@
+            <div class="vis-fin-docs" data-fin-docs>
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <span class="fw-700"><i class="bi bi-images text-primary ms-1"></i>مدارک چک (عکس)</span>
+                    @if (Order.Attachments.Count > 0)
+                    {
+                        <span class="badge rounded-pill bg-light text-secondary border" data-fin-docs-count>
+                            @Fa.Digits(Order.Attachments.Count) مدرک
+                        </span>
+                    }
+                    @if (Order.Attachments.Count > 0 && !docsDecided)
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-success ms-auto" data-fin-approve-docs
+                                disabled="@docsBusy" @onclick="() => DecideDocsAsync(true)">
+                            <i class="bi bi-check2-all sz-1"></i> تأیید همهٔ مدارک
+                        </button>
+                    }
+                </div>
+
+                @if (Order.Attachments.Count == 0)
+                {
+                    <div class="fs-8 text-muted" data-fin-docs-empty>
+                        @(HasChequePart
+                            ? "برای این سفارش عکسی از چک بارگذاری نشده است؛ اگر پرداخت چکی است، از ویزیتور بخواهید عکس چک را بارگذاری کند."
+                            : "مدرکی برای این سفارش ثبت نشده است.")
+                    </div>
+                }
+                else
+                {
+                    <div class="vis-fin-doc-grid" data-fin-doc-grid>
+                        @foreach (var a in Order.Attachments)
+                        {
+                            <figure class="vis-fin-doc" data-fin-doc="@a.Id" data-fin-doc-state="@(StateOf(a) switch { true => "ok", false => "rejected", _ => "pending" })">
+                                @if (a.IsImage)
+                                {
+                                    <button type="button" class="vis-fin-doc-thumb" title="مشاهدهٔ مدرک" @onclick="() => PreviewAsync(a)">
+                                        <img src="@DocThumbUrl(a)" alt="@a.FileName" loading="lazy" />
+                                    </button>
+                                }
+                                else if (a.CanPreview)
+                                {
+                                    <button type="button" class="vis-fin-doc-thumb vis-fin-doc-file" title="مشاهدهٔ PDF"
+                                            @onclick="() => PreviewAsync(a)">
+                                        <i class="bi bi-file-earmark-pdf"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <div class="vis-fin-doc-thumb vis-fin-doc-file">
+                                        <i class="bi bi-file-earmark"></i>
+                                    </div>
+                                }
+                                <figcaption>
+                                    <div class="vis-fin-doc-name" title="@a.FileName">@a.FileName</div>
+                                    <div class="fs-9 text-muted">
+                                        @VisAttachmentCategories.Title(a.Category) • @FormatSize(a.Size)
+                                    </div>
+                                    <div class="vis-fin-doc-state @DocStateCss(a)" data-fin-doc-title>
+                                        <i class="bi @DocStateIcon(a)"></i>
+                                        @DocStateTitle(a)
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(a.FinanceNote))
+                                    {
+                                        <div class="fs-9 text-danger">@a.FinanceNote</div>
+                                    }
+                                    <div class="vis-fin-doc-btns">
+                                        <button type="button" class="btn btn-sm btn-outline-success" data-fin-doc-ok="@a.Id"
+                                                disabled="@docsBusy" @onclick="() => DecideDocAsync(a, true)">
+                                            <i class="bi bi-check2"></i> تأیید
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" data-fin-doc-reject="@a.Id"
+                                                disabled="@docsBusy" @onclick="() => DecideDocAsync(a, false)">
+                                            <i class="bi bi-x-lg"></i> رد
+                                        </button>
+                                    </div>
+                                </figcaption>
+                            </figure>
+                        }
+                    </div>
+                    @if (docDecisionNote is not null)
+                    {
+                        <div class="alert @(docDecisionNoteApproved ? "alert-success" : "alert-warning") py-2 px-3 fs-8 mt-2 mb-0" data-fin-doc-note>
+                            @docDecisionNote
+                        </div>
+                    }
+                }
+            </div>
 
             <div class="pay-box">
                 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -293,6 +387,8 @@
     </Footer>
 </Modal>
 
+<FilePreviewModal @ref="previewModal" />
+
 <style>
     .pay-box { border: 1px solid #e2e8f0; border-radius: 14px; padding: .8rem; background: #f8fafc; }
     .pay-tabs { display: flex; flex-wrap: wrap; gap: .4rem; }
@@ -307,6 +403,25 @@
     .pay-summary b { font-variant-numeric: tabular-nums; }
     .fs-8 { font-size: .8rem; }
     .fs-9 { font-size: .72rem; }
+
+    /* ---------- مدارک چک (عکس) ---------- */
+    .vis-fin-docs { border: 1px solid #e2e8f0; border-radius: 14px; padding: .7rem .8rem; background: #fff; margin-bottom: .8rem; }
+    .vis-fin-doc-grid { display: flex; flex-wrap: wrap; gap: .6rem; }
+    .vis-fin-doc { width: 9.4rem; margin: 0; border: 1px solid #e2e8f0; border-radius: 11px; overflow: hidden; background: #fff; }
+    .vis-fin-doc[data-fin-doc-state=ok] { border-color: #bbf7d0; box-shadow: 0 0 0 2px rgba(16,185,129,.12); }
+    .vis-fin-doc[data-fin-doc-state=rejected] { border-color: #fecaca; box-shadow: 0 0 0 2px rgba(239,68,68,.12); }
+    .vis-fin-doc-thumb { display: block; width: 100%; height: 6rem; padding: 0; border: 0; background: #f1f5f9; cursor: zoom-in; }
+    .vis-fin-doc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .vis-fin-doc-file { display: flex; align-items: center; justify-content: center; font-size: 1.7rem; color: #94a3b8; }
+    button.vis-fin-doc-file { cursor: zoom-in; color: #b91c1c; }
+    .vis-fin-doc figcaption { padding: .25rem .4rem .4rem; display: flex; flex-direction: column; gap: .15rem; }
+    .vis-fin-doc-name { font-size: .7rem; font-weight: 600; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vis-fin-doc-state { font-size: .68rem; border-radius: 8px; padding: .1rem .35rem; display: inline-flex; align-items: center; gap: .2rem; width: fit-content; }
+    .vis-att-pending { background: #fef3c7; color: #92400e; }
+    .vis-att-ok { background: #dcfce7; color: #166534; }
+    .vis-att-rejected { background: #fee2e2; color: #991b1b; }
+    .vis-fin-doc-btns { display: flex; gap: .25rem; margin-top: .15rem; }
+    .vis-fin-doc-btns .btn { font-size: .68rem; padding: .1rem .35rem; }
 </style>
 
 @code {
@@ -317,6 +432,8 @@
 
     private bool busy;
     private List<TrsAccount> accounts = new();
+    private string? apiBase;
+    private string? authToken;
 
     // ---------------- پرداخت ترکیبی: نقد + چک + اقساط + نسیه ----------------
     private bool useCash = true, useCheque, useInstallment, useCredit;
@@ -342,13 +459,138 @@
     private bool HasNonCash => useCheque || useInstallment || useCredit;
 
     /// <summary>جزء نقدی — اگر تنها جزء باشد تمام مبلغ سفارش است.</summary>
-    private decimal CashPart => !HasNonCash ? Total : Fa.ParseDecimal(cashAmountText);
+    private decimal CashPart => !HasNonCash ? Total
+        : useCash ? Fa.ParseDecimal(cashAmountText) : 0;   // تب نقدی خاموش ⇒ صفر
+
     /// <summary>جمع چک‌ها — اگر جزء چک خاموش باشد صفر (سطرها برای فعال‌سازی مجدد نگه داشته می‌شوند).</summary>
     private decimal ChequeSum => useCheque
         ? cheques.Select((c, i) => Fa.ParseDecimal(chequeAmounts.ElementAtOrDefault(i))).Sum() : 0;
     /// <summary>جمع اقساط — اگر جزء اقساط خاموش باشد صفر.</summary>
     private decimal InstSum => useInstallment
         ? installments.Select((c, i) => Fa.ParseDecimal(instAmounts.ElementAtOrDefault(i))).Sum() : 0;
+
+    // ---------- مدارک مالی (عکس چک) ----------
+    private bool _initialized;
+    private bool docsBusy;
+    private string? docDecisionNote;
+    private bool docDecisionNoteApproved;
+    private FilePreviewModal? previewModal;
+
+    /// <summary>
+    /// وضعیت تصمیم هر مدرک (Id → true/false/null). سرور بعد از هر تصمیم وضعیت تازه را
+    /// برمی‌گرداند؛ اینجا نگه داشته می‌شود تا UI بدون بازنویسی پارامتر والد به‌روز شود.
+    /// </summary>
+    private readonly Dictionary<int, bool?> docState = new();
+
+    /// <summary>وضعیت مؤثر یک مدرک: تصمیم محلی، وگرنه تصمیم ذخیره‌شده در DTO.</summary>
+    private bool? StateOf(VisOrderAttachmentDto a) =>
+        docState.TryGetValue(a.Id, out var local) ? local : a.FinanceApproved;
+
+    private string DocStateCss(VisOrderAttachmentDto a) => StateOf(a) switch
+    {
+        true => "vis-att-ok",
+        false => "vis-att-rejected",
+        _ => "vis-att-pending"
+    };
+
+    private string DocStateTitle(VisOrderAttachmentDto a) => StateOf(a) switch
+    {
+        true => "تأییدشده",
+        false => "ردشده",
+        _ => "در انتظار بررسی مالی"
+    };
+
+    private string DocStateIcon(VisOrderAttachmentDto a) => StateOf(a) switch
+    {
+        true => "bi-check-circle-fill",
+        false => "bi-x-circle-fill",
+        _ => "bi-hourglass-split"
+    };
+
+    /// <summary>آیا مالی قبلاً همهٔ مدارک را تأیید کرده است؟</summary>
+    private bool docsDecided => Order?.Attachments.Count > 0 &&
+        Order.Attachments.All(a => StateOf(a) is not null);
+
+    /// <summary>آیا پرداخت این سفارش جزء چک دارد؟ (پیام نبود مدرک) — همان قاعدهٔ DTO.</summary>
+    private bool HasChequePart => Order?.HasChequePart == true;
+
+    private string DocThumbUrl(VisOrderAttachmentDto a) =>
+        $"{apiBase}/api/attachments/thumb/{a.Id}?access_token={Uri.EscapeDataString(authToken ?? "")}";
+
+    private async Task PreviewAsync(VisOrderAttachmentDto a)
+    {
+        if (previewModal is null) return;
+        await previewModal.ShowAsync(a.Id, a.FileName,
+            string.IsNullOrWhiteSpace(a.ContentType) ? "image/jpeg" : a.ContentType,
+            allowDownload: a.CanDownload);
+    }
+
+    /// <summary>ثبت تصمیم مالی روی همهٔ مدارک — با دلیل (برای رد الزامی).</summary>
+    private async Task DecideDocsAsync(bool approved)
+    {
+        if (Order is null || docsBusy) return;
+        string? reason = null;
+        if (!approved)
+        {
+            reason = await JS.InvokeAsync<string?>("prompt", "دلیل رد مدارک (برای ویزیتور ارسال می‌شود):");
+            if (string.IsNullOrWhiteSpace(reason)) return;
+        }
+        docsBusy = true;
+        try
+        {
+            var decision = new VisFinanceDecision
+            {
+                Approved = approved,
+                Comment = string.IsNullOrWhiteSpace(reason) ? null : reason!.Trim(),
+                ChequeOnly = true,
+                RejectOrder = false
+            };
+            await Api.FinanceDecideAsync(Order.Id, decision);
+            foreach (var a in Order.Attachments)
+                if (decision.AttachmentIds is null || decision.AttachmentIds.Count == 0 ||
+                    decision.AttachmentIds.Contains(a.Id))
+                    docState[a.Id] = approved;
+            docDecisionNoteApproved = approved;
+            docDecisionNote = approved
+                ? "مدارک چک تأیید شد؛ اکنون می‌توانید فروش را ثبت کنید."
+                : "مدرک رد شد؛ پیش از ثبت فروش باید مدرک اصلاح‌شده بارگذاری و تأیید شود.";
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { docsBusy = false; }
+    }
+
+    /// <summary>تصمیم روی یک مدرک مشخص.</summary>
+    private async Task DecideDocAsync(VisOrderAttachmentDto a, bool approved)
+    {
+        if (Order is null || docsBusy) return;
+        string? reason = null;
+        if (!approved)
+        {
+            reason = await JS.InvokeAsync<string?>("prompt", "دلیل رد این مدرک (برای ویزیتور ارسال می‌شود):");
+            if (string.IsNullOrWhiteSpace(reason)) return;
+        }
+        docsBusy = true;
+        try
+        {
+            var decision = new VisFinanceDecision
+            {
+                Approved = approved,
+                Comment = string.IsNullOrWhiteSpace(reason) ? null : reason!.Trim(),
+                ChequeOnly = false,
+                RejectOrder = false,
+                AttachmentIds = new List<int> { a.Id }
+            };
+            await Api.FinanceDecideAsync(Order.Id, decision);
+            docState[a.Id] = approved;
+            docDecisionNoteApproved = approved;
+            docDecisionNote = approved ? $"مدرک «{a.FileName}» تأیید شد." : $"مدرک «{a.FileName}» رد شد.";
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { docsBusy = false; }
+    }
+
+    private static string FormatSize(long b) =>
+        b <= 0 ? "—" : b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
 
     /// <summary>باقی‌ماندهٔ نهایی = مبلغ سفارش − (نقد + چک‌ها + اقساط) — همان مبلغ نسیه.</summary>
     private decimal FinalRemaining => Total - CashPart - ChequeSum - InstSum;
@@ -374,12 +616,14 @@
         return Total - sum;
     }
 
-    /// <summary>روش پرداخت اعلامی به سرور (سرور ترکیبی/تک‌جزء را خودش استخراج می‌کند).</summary>
-    private PaymentMethod DeclaredMethod => !HasNonCash
-        ? PaymentMethod.Cash
-        : useCheque ? PaymentMethod.Cheque
-        : useInstallment ? PaymentMethod.Installment
-        : PaymentMethod.Credit;
+    /// <summary>
+    /// روش پرداختِ همین فرم — از روی اجزای واقعی و با همان قاعدهٔ فرم فاکتور:
+    /// بیش از یک جزء ⇒ «ترکیبی». (قبلاً هرگز Mixed برنمی‌گشت و روش ترکیبی
+    /// به‌اشتباه «چک» یا «اقساط» ثبت می‌شد.)
+    /// </summary>
+    private PaymentMethod DeclaredMethod =>
+        SalesVisitPaymentPlan.MethodOf(HasNonCash && CashPart > 0, ChequeSum > 0, InstSum > 0,
+            Total - CashPart - ChequeSum - InstSum > PaymentMix.Tolerance / 2);
 
     private void ToggleCash()
     {
@@ -424,22 +668,54 @@
         _ => accounts
     };
 
+    /// <summary>شناسهٔ سفارشی که فرم برایش مقداردهی شده است.</summary>
+    private int loadedOrderId;
+
     protected override async Task OnParametersSetAsync()
     {
-        if (!Visible || Order is null) return;
+        apiBase = (Http.BaseAddress?.ToString().TrimEnd('/')) ?? "";
+        authToken = Auth.Token;
+        if (!Visible) { _initialized = false; return; }
+        if (Order is null) return;
 
-        // پیش‌فرض‌ها از انتخاب ویزیتور — اجزای پرداخت
-        useCheque = Order.PaymentMethod == PaymentMethod.Cheque;
-        useInstallment = Order.PaymentMethod == PaymentMethod.Installment;
-        useCredit = Order.PaymentMethod == PaymentMethod.Credit;
-        useCash = !HasNonCash;
-        cashTypeStr = "0";
-        dueDate = useCredit ? DateTime.Now.Date.AddMonths(1) : null;
+        // مقداردهی فقط یک‌بار به ازای هر سفارش/هر بار باز شدن مودال انجام می‌شود؛
+        // وگرنه هر رندر مجدد والد، اجزای پرداخت و تصمیم‌های مدارک را پاک می‌کرد.
+        if (_initialized && loadedOrderId == Order.Id) return;
+        loadedOrderId = Order.Id;
+        _initialized = true;
+
+        // پیش‌فرض‌ها از اجزای پرداختِ ثبت‌شده توسط ویزیتور (نه فقط روش پرداخت):
+        // نقد/چک/اقساط/نسیه دقیقاً همان‌طور که ویزیتور وارد کرده بازسازی می‌شود.
+        useCheque = Order.Cheques.Count > 0 || Order.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.Mixed;
+        useInstallment = Order.Installments.Count > 0 || Order.PaymentMethod is PaymentMethod.Installment or PaymentMethod.Mixed;
+        useCredit = Order.PaymentMethod is PaymentMethod.Credit || Order.CreditRemainder > PaymentMix.Tolerance / 2;
+        useCash = Order.CashAmount > 0 || !HasNonCash;
+        cashTypeStr = Order.CashType is null ? "0" : ((int)Order.CashType.Value).ToString();
+        dueDate = Order.DueDate?.Date ?? (useCredit ? DateTime.Now.Date.AddMonths(1) : null);
         comment = "";
-        cashAmountText = "";
+        cashAmountText = Order.CashAmount > 0 ? Fa.FormatTyping(Order.CashAmount.ToString("0")) : "";
+        docDecisionNote = null;
+        docState.Clear();
         cheques.Clear(); chequeAmounts.Clear(); chequeDates.Clear();
+        foreach (var c in Order.Cheques)
+        {
+            cheques.Add(new ChequeDto
+            {
+                Id = c.Id, Number = c.Number, BankName = c.BankName, OwnerName = c.OwnerName,
+                AccountInfo = c.AccountInfo, TrsAccountId = c.TrsAccountId, Amount = c.Amount, DueDate = c.DueDate
+            });
+            chequeAmounts.Add(c.Amount > 0 ? Fa.FormatTyping(c.Amount.ToString("0")) : "");
+            chequeDates.Add(c.DueDate == default ? null : c.DueDate);
+        }
         installments.Clear(); instAmounts.Clear(); instDates.Clear();
-        instFirstDue = DateTime.Now.Date.AddMonths(1);
+        foreach (var i in Order.Installments.OrderBy(x => x.DueDate))
+        {
+            installments.Add(new InstallmentDto { Id = i.Id, No = installments.Count + 1, Amount = i.Amount, DueDate = i.DueDate });
+            instAmounts.Add(i.Amount > 0 ? Fa.FormatTyping(i.Amount.ToString("0")) : "");
+            instDates.Add(i.DueDate == default ? null : i.DueDate);
+        }
+        instFirstDue = instDates.FirstOrDefault() ?? DateTime.Now.Date.AddMonths(1);
+        if (installments.Count > 0) instCount = installments.Count;
 
         if (accounts.Count == 0)
         {
@@ -447,7 +723,7 @@
             catch (Exception ex) { Toast.Error(ex.Message); }
         }
         var def = accounts.FirstOrDefault(a => a.IsDefault) ?? accounts.FirstOrDefault();
-        trsAccountId = def?.Id ?? 0;
+        trsAccountId = Order.TrsAccountId is > 0 ? Order.TrsAccountId.Value : def?.Id ?? 0;
 
         if (useCheque && cheques.Count == 0) AddCheque();
         if (useInstallment && installments.Count == 0) BuildInstallments(silent: true);
@@ -520,7 +796,9 @@
             TrsAccountId = trsAccountId > 0 ? trsAccountId : null,
             CashAmount = HasNonCash ? cash : 0,
             DueDate = dueDate,
-            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim()
+            Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
+            // مالی اجزای پرداخت را در همین فرم دیده و تأیید می‌کند؛ پس نسخهٔ خودش مرجع است.
+            PartsReviewed = true
         };
 
         // ---------- جزء چک ----------
@@ -587,5 +865,9 @@
         finally { busy = false; }
     }
 
-    private Task Close() => OnClose.InvokeAsync();
+    private Task Close()
+    {
+        _initialized = false;
+        return OnClose.InvokeAsync();
+    }
 }

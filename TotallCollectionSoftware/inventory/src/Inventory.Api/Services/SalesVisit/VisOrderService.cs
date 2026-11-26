@@ -79,6 +79,12 @@ public interface IVisOrderService
     /// </summary>
     Task<VisOrderDto> FinanceApproveAsync(VisActor actor, int id, VisFinanceCommand cmd);
 
+    /// <summary>
+    /// تصمیم مالی روی پیوست‌ها (عکس چک و مدارک): تأیید یا رد، با دلیل.
+    /// رد شدن مدرک، سفارش را به «برگشت برای اصلاح» می‌برد (اگر RejectOrder=true باشد).
+    /// </summary>
+    Task<VisOrderDto> FinanceDecideAsync(VisActor actor, int id, VisFinanceDecision decision);
+
     /// <summary>ساخت (یا بازگردانی) پیش‌نویس فاکتور فروش از سفارش تأییدشده — گام مالی.</summary>
     Task<VisOrderDto> CreateInvoiceDraftAsync(VisActor actor, int id);
 
@@ -125,10 +131,11 @@ public class VisOrderService : IVisOrderService
     private readonly IInventoryService _inventory;
     private readonly INotifyService _notify;
     private readonly ILogger<VisOrderService> _log;
+    private readonly IVisAttachmentService? _attachments;
 
     public VisOrderService(AppDbContext db, IEffectivePermissions permissions,
         IInvoicingService invoicing, IInventoryService inventory,
-        INotifyService notify, ILogger<VisOrderService> log)
+        INotifyService notify, ILogger<VisOrderService> log, IVisAttachmentService? attachments = null)
     {
         _db = db;
         _permissions = permissions;
@@ -136,6 +143,7 @@ public class VisOrderService : IVisOrderService
         _inventory = inventory;
         _notify = notify;
         _log = log;
+        _attachments = attachments;
     }
 
     // ==================================================================
@@ -307,6 +315,7 @@ public class VisOrderService : IVisOrderService
 
         var dtos = list.Select(ToDto).ToList();
         await FillSaleNumbersAsync(dtos);
+        await FillAttachmentsAsync(dtos);
         return dtos;
     }
 
@@ -322,7 +331,24 @@ public class VisOrderService : IVisOrderService
         var dto = ToDto(order);
         dto.History = order.History.OrderByDescending(h => h.At).Select(ToHistoryDto).ToList();
         await FillSaleNumbersAsync(new List<VisOrderDto> { dto });
+        await FillAttachmentsAsync(new List<VisOrderDto> { dto });
         return dto;
+    }
+
+    /// <summary>
+    /// پیوست‌های سفارش‌ها را پر می‌کند (عکس چک‌ها و مدارک مالی) با یک کوئری گروهی.
+    /// پیش‌نویس‌هایی که هنوز شناسهٔ سفارش ندارند، پیوستشان بعد از ذخیره منتقل می‌شود.
+    /// </summary>
+    private async Task FillAttachmentsAsync(List<VisOrderDto> dtos)
+    {
+        if (_attachments is null || dtos.Count == 0) return;
+        var ids = dtos.Where(d => d.Id > 0).Select(d => d.Id).Distinct().ToList();
+        var map = await _attachments.ListForOrdersAsync(ids);
+        foreach (var dto in dtos)
+        {
+            if (!map.TryGetValue(dto.Id, out var list)) continue;
+            dto.Attachments = list;
+        }
     }
 
     /// <summary>محدودهٔ داده: ویزیتور فقط سفارش‌های خودش، مدیر/مالی همهٔ شرکت.</summary>
@@ -367,6 +393,7 @@ public class VisOrderService : IVisOrderService
         var result = ToDto(order);
         result.History = order.History.OrderByDescending(h => h.At).Select(ToHistoryDto).ToList();
         await FillSaleNumbersAsync(new List<VisOrderDto> { result });
+        await FillAttachmentsAsync(new List<VisOrderDto> { result });
         return result;
     }
 
@@ -556,6 +583,12 @@ public class VisOrderService : IVisOrderService
 
         Recalculate(entity);
 
+        // ---------- پرداخت ترکیبی ----------
+        // همان سه جزء فاکتور خرید و فروش: نقد + چک + اقساط؛ باقی‌مانده = نسیه.
+        // اگر کلاینت (نسخهٔ قدیمی) این اجزا را نفرستد، مقدار قبلی دست‌نخورده می‌ماند
+        // تا ویرایشِ ساده سابقهٔ پرداخت را پاک نکند.
+        await ApplyPaymentPlanAsync(actor, entity, cmd);
+
         // هشدار سفارش بر اساس سقف ثبت‌کننده؛ اعمال محدودیت بر اساس سقف کاربر فعلی است.
         var cap = entity.CompanyId is > 0
             ? await _db.ShopVisitorDiscounts.AsNoTracking()
@@ -576,6 +609,26 @@ public class VisOrderService : IVisOrderService
         }
 
         await _db.SaveChangesAsync();
+
+        // ------------------------------------------------------------
+        //  انتقال پیوست‌های پیش‌نویس فرم به شناسهٔ واقعی سفارش
+        //  عمداً «بعد از» SaveChanges: شناسهٔ سفارش تازه همین‌جا ساخته می‌شود و
+        //  اگر پیش از ذخیره انجام شود، RefId صفر می‌ماند و عکس چک گم می‌شود.
+        // ------------------------------------------------------------
+        if (_attachments is not null)
+        {
+            try
+            {
+                await _attachments.MoveDraftAttachmentsAsync(entity.Id, actor.UserId, entity.CompanyId,
+                    cmd.AttachmentIds, cmd.ChequeAttachmentIds);
+            }
+            catch (Exception ex)
+            {
+                // پیوست نباید ثبت سفارش را شکست دهد؛ فایل پیش‌نویس می‌ماند و کاربر
+                // در صفحهٔ جزئیات دوباره بارگذاری می‌کند.
+                _log.LogWarning(ex, "انتقال پیوست‌های سفارش {Number} ناموفق بود", entity.Number);
+            }
+        }
 
         // پروندهٔ مشتری: آخرین سفارش
         await TouchCustomerLinkAsync(entity);
@@ -621,6 +674,26 @@ public class VisOrderService : IVisOrderService
         if (order.Status is not (VisOrderStatus.Draft or VisOrderStatus.Returned))
             throw new InvalidOperationException("این سفارش قبلاً ارسال شده است.");
         if (order.Lines.Count == 0) throw new InvalidOperationException("سفارش بدون سطر کالا قابل ارسال نیست.");
+
+        // ---------- پرداخت ترکیبی و پیوست چک ----------
+        // همان قاعدهٔ فرم: اجزای چک/اقساط کامل و برای پرداخت چکی حداقل یک عکس چک.
+        // این کنترل در سرور هم اعمال می‌شود تا ارسال مستقیم API از آن عبور نکند.
+        var cheques = ParseJson<List<ChequeDto>>(order.ChequesJson) ?? new();
+        var installments = ParseJson<List<InstallmentDto>>(order.InstallmentsJson) ?? new();
+        var hasChequePart = order.PaymentMethod is PaymentMethod.Cheque or PaymentMethod.Mixed ||
+                            order.PaymentChequeSum > PaymentMix.Tolerance / 2 || cheques.Count > 0;
+        var chequeProblem = SalesVisitPaymentPlan.ValidateCheques(hasChequePart, cheques);
+        if (chequeProblem is not null) throw new InvalidOperationException(chequeProblem);
+        var installmentProblem = SalesVisitPaymentPlan.ValidateInstallments(
+            order.PaymentMethod is PaymentMethod.Installment or PaymentMethod.Mixed, installments);
+        if (installmentProblem is not null) throw new InvalidOperationException(installmentProblem);
+        if (hasChequePart && _attachments is not null)
+        {
+            var chequePhotos = await _attachments.PendingChequeAttachmentsAsync(order.Id);
+            if (chequePhotos.Count == 0)
+                throw new InvalidOperationException("نوع پرداخت چکی است؛ عکس چک را در بخش پیوست بارگذاری کنید.");
+        }
+
         if (!actor.IsSalesManager)
         {
             var cap = actor.MaxDiscountPercent;
@@ -839,6 +912,40 @@ public class VisOrderService : IVisOrderService
         if (order.Lines.Count == 0)
             throw new InvalidOperationException("سفارش سطر کالا ندارد.");
 
+        // ---------- کنترل پیوست چک پیش از ثبت فروش ----------
+        // مالی باید عکس چک را دیده و تأیید کرده باشد. اگر عکسی ثبت شده و هنوز
+        // تصمیمی ندارد (یا رد شده)، ثبت فروش متوقف می‌شود تا تأیید واقعی اتفاق بیفتد.
+        if (_attachments is not null)
+        {
+            var chequePhotos = await _attachments.PendingChequeAttachmentsAsync(order.Id);
+            if (chequePhotos.Count > 0)
+            {
+                if (chequePhotos.Any(a => a.FinancialStatus == VisAttachmentFinancialStatus.Rejected))
+                    throw new InvalidOperationException("عکس چک این سفارش توسط مالی رد شده است؛ پیش از ثبت فروش، مدرک اصلاح‌شده بارگذاری و تأیید شود.");
+                if (chequePhotos.Any(a => a.FinancialStatus == VisAttachmentFinancialStatus.Pending))
+                    throw new InvalidOperationException("پیش از تأیید مالی، عکس چک‌ها را بررسی و تأیید کنید (دکمهٔ «تأیید مدارک چک»).");
+            }
+        }
+
+        // ---------- اگر مالی هیچ جزئی نفرستاده باشد، اجزای خودِ ویزیتور به ارث می‌رسد ----------
+        // (مالی معمولاً فقط «تأیید» می‌زند؛ در این حالت نباید چک‌ها و اقساط ثبت‌شده گم شوند.)
+        var planCheques = ParseJson<List<ChequeDto>>(order.ChequesJson) ?? new();
+        var planInstallments = ParseJson<List<InstallmentDto>>(order.InstallmentsJson) ?? new();
+        // مالی اگر اجزا را بازبینی کرده باشد (PartsReviewed) یا واقعاً جزئی فرستاده باشد،
+        // همان اعمال می‌شود؛ وگرنه اجزای خودِ ویزیتور به ارث می‌رسد.
+        var clientSentParts = cmd.PartsReviewed || (cmd.Cheques?.Count ?? 0) > 0 ||
+                              (cmd.Installments?.Count ?? 0) > 0 || cmd.CashAmount > 0;
+        if (!clientSentParts && (planCheques.Count > 0 || planInstallments.Count > 0 || order.CashAmount > 0))
+        {
+            cmd.PaymentMethod = order.PaymentMethod;
+            cmd.CashType = order.CashType;
+            cmd.TrsAccountId = order.TrsAccountId;
+            cmd.CashAmount = order.CashAmount;
+            cmd.DueDate = order.DueDate;
+            cmd.Cheques = planCheques;
+            cmd.Installments = planInstallments;
+        }
+
         // قیمت واحد پس از تخفیف سطر — سند فروش ستون تخفیف ندارد، پس تخفیف در فی واحد نشسته می‌شود
         var lines = order.Lines
             .OrderBy(l => l.RowNo)
@@ -852,6 +959,19 @@ public class VisOrderService : IVisOrderService
             })
             .ToList();
 
+        // ---------- روش پرداخت سند فروش ----------
+        // اگر مالی اجزای متفاوت بفرستد ولی روش را «نقدی» بگذارد، سند فروش کل مبلغ را نقد
+        // حساب می‌کرد و چک/اقساط در سند گم می‌شد. روش را از اجزای واقعی بازمحاسبه می‌کنیم
+        // (همان قاعدهٔ PaymentMix.Derive که ثبت فروشگاه هم استفاده می‌کند).
+        var cashSent = cmd.PaymentMethod == PaymentMethod.Cash && (cmd.Cheques?.Count ?? 0) == 0 &&
+                       (cmd.Installments?.Count ?? 0) == 0
+            ? Math.Max(0, order.TotalNet)
+            : Math.Max(0, cmd.CashAmount);
+        var chequeSent = (cmd.Cheques ?? new()).Sum(c => c.Amount);
+        var installSent = (cmd.Installments ?? new()).Sum(i => i.Amount);
+        var creditSent = Math.Max(0, order.TotalNet - cashSent - chequeSent - installSent);
+        cmd.PaymentMethod = PaymentMix.Derive(cashSent, chequeSent, installSent, creditSent);
+
         var saleCmd = new OrderCommand
         {
             Type = TransactionType.Sale,
@@ -864,7 +984,7 @@ public class VisOrderService : IVisOrderService
             PaymentMethod = cmd.PaymentMethod,
             CashType = cmd.CashType,
             TrsAccountId = cmd.TrsAccountId,
-            CashAmount = cmd.PaymentMethod == PaymentMethod.Cash ? 0 : cmd.CashAmount,
+            CashAmount = cmd.PaymentMethod == PaymentMethod.Cash ? 0 : Math.Max(0, cmd.CashAmount),
             DueDate = cmd.DueDate,
             Cheques = cmd.Cheques ?? new(),
             Installments = cmd.Installments ?? new(),
@@ -914,6 +1034,97 @@ public class VisOrderService : IVisOrderService
         await SafeBroadcastAsync(order);
 
         await NotifyOrderEventAsync(order, VisOrderEvent.Sold, actor, $"فروش {sale.Number}");
+
+        return await OperationResultAsync(actor, id);
+    }
+
+    /// <summary>
+    /// تصمیم مالی روی پیوست‌های سفارش (عکس چک‌ها و مدارک). این اقدام دادنی است:
+    /// <list type="bullet">
+    /// <item>تأیید — مدارک تأیید می‌شوند و سفارش برای «تأیید مالی نهایی» آماده است.</item>
+    /// <item>رد — دلیل الزامی است و در گردش سفارش ثبت می‌شود؛ اگر RejectOrder روشن باشد،
+    /// سفارش به «برگشت برای اصلاح» برمی‌گردد تا ویزیتور مدرک را اصلاح کند.</item>
+    /// </list>
+    /// </summary>
+    public async Task<VisOrderDto> FinanceDecideAsync(VisActor actor, int id, VisFinanceDecision decision)
+    {
+        if (!actor.CanFinance && !actor.CanApprove)
+            throw new InvalidOperationException("شما مجوز بررسی مالی مدرک سفارش را ندارید.");
+        if (decision is null) throw new InvalidOperationException("تصمیم مالی ارسال نشده است.");
+        if (!decision.Approved && string.IsNullOrWhiteSpace(decision.Comment))
+            throw new InvalidOperationException("دلیل رد مدرک الزامی است؛ ویزیتور بر همان مبنا اصلاح می‌کند.");
+        if (_attachments is null)
+            throw new InvalidOperationException("سرویس پیوست در دسترس نیست؛ کارتابل مالی را بازخوانی کنید.");
+
+        var order = await _db.VisOrders.Include(o => o.History).FirstOrDefaultAsync(o => o.Id == id)
+                    ?? throw new InvalidOperationException("سفارش یافت نشد.");
+        if (order.Status is VisOrderStatus.Canceled or VisOrderStatus.Rejected or VisOrderStatus.Invoiced or VisOrderStatus.Closed)
+            throw new InvalidOperationException("این سفارش در وضعیتی نیست که بررسی مالی مدرک داشته باشد.");
+
+        var attachments = decision.ChequeOnly
+            ? await _attachments.PendingChequeAttachmentsAsync(order.Id)
+            : await _db.AppAttachments
+                .Where(a => a.Module == VisAttachmentService.ModuleName && a.RefId == order.Id)
+                .OrderBy(a => a.Id).ToListAsync();
+        if (decision.AttachmentIds is { Count: > 0 })
+        {
+            var picked = decision.AttachmentIds.ToHashSet();
+            attachments = attachments.Where(a => picked.Contains(a.Id)).ToList();
+        }
+        if (attachments.Count == 0)
+            throw new InvalidOperationException("مدرکی برای بررسی مالی ثبت نشده است؛ ابتدا عکس چک یا مدرک را بارگذاری کنید.");
+
+        var at = DateTime.Now;
+        foreach (var a in attachments)
+            await _attachments.SetDecisionAsync(a, decision.Approved, decision.Comment, actor.UserName, at);
+
+        order.FinanceAttachmentsApproved = decision.Approved;
+        order.FinanceAttachmentDecidedAt = at;
+        order.FinanceAttachmentDecidedBy = actor.UserName;
+        order.FinanceAttachmentNote = decision.Approved ? null :
+            (string.IsNullOrWhiteSpace(decision.Comment) ? null : decision.Comment.Trim());
+
+        var from = order.Status;
+        var count = Fa.Digits(attachments.Count);
+        if (decision.Approved)
+        {
+            AddHistory(order, from, order.Status, actor,
+                $"تأیید مالی مدارک ({count} فایل)" +
+                (string.IsNullOrWhiteSpace(decision.Comment) ? "" : $" — {decision.Comment.Trim()}"));
+        }
+        else
+        {
+            var note = decision.Comment!.Trim();
+            AddHistory(order, from, decision.RejectOrder ? VisOrderStatus.Returned : order.Status, actor,
+                (decision.RejectOrder
+                    ? $"رد مدارک مالی توسط مالی — سفارش برای اصلاح برگشت ({count} فایل): "
+                    : $"رد مدارک مالی ({count} فایل): ") + note);
+            if (decision.RejectOrder)
+            {
+                order.Status = VisOrderStatus.Returned;
+                order.ReturnCount += 1;
+                order.DecidedAt = at;
+                order.DecidedBy = actor.UserName;
+                order.DecisionNote = note.Length <= 500 ? note : note[..500];
+                // مدرک ردشده با اصلاح بعدی جایگزین می‌شود؛ تصمیم مالی قبلی پاک می‌شود.
+                foreach (var a in attachments)
+                {
+                    a.FinancialStatus = VisAttachmentFinancialStatus.Pending;
+                    a.FinancialDecidedAt = null;
+                    a.FinancialDecidedBy = null;
+                    a.FinancialNote = null;
+                }
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        await SafeBroadcastAsync(order);
+
+        if (decision.RejectOrder && !decision.Approved)
+            await NotifyOrderEventAsync(order, VisOrderEvent.Returned, actor, "رد مدارک مالی");
+        else
+            await NotifyOrderEventAsync(order, VisOrderEvent.DocumentsDecided, actor,
+                decision.Approved ? "تأیید مدارک مالی" : "رد مدرک مالی");
 
         return await OperationResultAsync(actor, id);
     }
@@ -984,7 +1195,11 @@ public class VisOrderService : IVisOrderService
             WarehouseId = order.WarehouseId,
             PartyId = order.PartyId,
             Date = DateTime.Now.Date,
-            Settlement = order.PaymentMethod == PaymentMethod.Cash ? SettlementType.Cash : SettlementType.Credit,
+            // پیش‌نویس فاکتور فقط دو حالت تسویه دارد؛ هر روشی که باقی‌مانده دارد (چک/اقساط/ترکیبی/نسیه)
+            // «اعتباری» است و نقدی صرفاً «نقدی». جزئیات واقعی در سند فروشگاه ثبت می‌شود.
+            Settlement = order.PaymentMethod == PaymentMethod.Cash && order.PaymentCreditRemainder <= PaymentMix.Tolerance / 2
+                ? SettlementType.Cash
+                : SettlementType.Credit,
             Description = $"سفارش ویزیتور {order.Number} — {order.PartyName}",
             Lines = lines
         };
@@ -1407,6 +1622,8 @@ public class VisOrderService : IVisOrderService
         }
 
         await FillSaleNumbersAsync(dtos);
+        // عکس چک‌ها برای کارتابل مالی — همان کوئری مشترک پیوست‌ها (بدون N+1).
+        await FillAttachmentsAsync(dtos);
         return dtos;
     }
 
@@ -1767,7 +1984,42 @@ public class VisOrderService : IVisOrderService
             foreach (var o in stale)
                 await NotifyOrderEventAsync(o, VisOrderEvent.Expired, null);
         }
+
+        // پاک‌سازی پیوست‌های پیش‌نویس رهاشده (عکس چکِ سفارشی که هرگز ذخیره نشد) —
+        // فایل‌های بی‌صاحب روی دیسک سرور نمی‌مانند. عمداً جدا و بی‌خطر است.
+        await CleanupDraftAttachmentsAsync();
+
         return stale.Count;
+    }
+
+    /// <summary>
+    /// پیوست‌های پیش‌نویس قدیمی‌تر از <see cref="VisAttachmentCategories.DraftRetentionDays"/>
+    /// حذف می‌شوند. شکست این کار نباید شکست پاک‌سازی سفارش‌ها شود.
+    /// </summary>
+    private async Task CleanupDraftAttachmentsAsync()
+    {
+        if (_attachments is null) return;
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-VisAttachmentCategories.DraftRetentionDays);
+            // فقط شناسه خوانده می‌شود (AsNoTracking) تا حذف از مسیر سرویس پیوست انجام شود:
+            // آن سرویس «رکورد + فایل روی دیسک» را با هم پاک می‌کند. حذف مستقیم رکورد،
+            // فایل را روی سرور جا می‌گذاشت. (ChangeTracker دست نمی‌خورد.)
+            var abandonedIds = await _db.AppAttachments.AsNoTracking()
+                .Where(a => a.Module == VisAttachmentService.ModuleName &&
+                            a.RefId == VisAttachmentCategories.DraftRefId &&
+                            a.UploadedAt < cutoff)
+                .OrderBy(a => a.Id)
+                .Take(500)
+                .Select(a => a.Id)
+                .ToListAsync();
+            foreach (var id in abandonedIds)
+                await _attachments.DeleteAsync(id, VisAttachmentCategories.DraftRefId, allowAfterDecision: true);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "پاک‌سازی پیوست‌های پیش‌نویس رهاشده ناموفق بود");
+        }
     }
 
     // ==================================================================
@@ -1817,6 +2069,139 @@ public class VisOrderService : IVisOrderService
         order.TotalGross = order.Lines.Sum(l => l.Quantity * l.UnitPrice);
         order.TotalDiscount = order.Lines.Sum(l => l.DiscountAmount);
         order.TotalNet = order.TotalGross - order.TotalDiscount;
+    }
+
+    // ==================================================================
+    //  پرداخت ترکیبی — همان قاعدهٔ فاکتور خرید و فروش
+    // ==================================================================
+
+    /// <summary>
+    /// ذخیرهٔ اجزای پرداخت روی سفارش. قواعد:
+    /// <list type="bullet">
+    /// <item>ترکیبی/تک‌جزء از همین اجزا استخراج می‌شود (Mixed وقتی بیش از یک جزء مبلغ دارد).</item>
+    /// <item>جمع نقد + چک + اقساط از مبلغ سفارش بیشتر نمی‌شود؛ باقی‌مانده = نسیه.</item>
+    /// <item>پرداخت نقدی به حساب فعال صندوق/بانک نیاز دارد (همان قاعدهٔ فروشگاه).</item>
+    /// <item>اگر فرمان اجزای پرداخت نداشته باشد (کلاینت قدیمی)، مقدار قبلی حفظ می‌شود.</item>
+    /// </list>
+    /// </summary>
+    private async Task ApplyPaymentPlanAsync(VisActor actor, VisOrder entity, VisOrderCommand cmd)
+    {
+        if (!cmd.HasPaymentPlan) return;
+
+        var cheques = (cmd.Cheques ?? new List<ChequeDto>())
+            .Where(c => !string.IsNullOrWhiteSpace(c.Number) || c.Amount > 0 || c.DueDate != default)
+            .Select(c => new ChequeDto
+            {
+                Id = c.Id,
+                Number = (c.Number ?? "").Trim(),
+                TrsAccountId = c.TrsAccountId,
+                BankName = string.IsNullOrWhiteSpace(c.BankName) ? null : c.BankName.Trim(),
+                OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),
+                AccountInfo = string.IsNullOrWhiteSpace(c.AccountInfo) ? null : c.AccountInfo.Trim(),
+                Amount = c.Amount,
+                DueDate = c.DueDate.Date,
+                IsCleared = false
+            })
+            .ToList();
+        var installments = (cmd.Installments ?? new List<InstallmentDto>())
+            .Where(i => i.Amount > 0 || i.DueDate != default)
+            .OrderBy(i => i.DueDate)
+            .Select((i, index) => new InstallmentDto
+            {
+                Id = i.Id,
+                No = index + 1,
+                Amount = i.Amount,
+                DueDate = i.DueDate.Date,
+                IsPaid = false
+            })
+            .ToList();
+
+        var declared = cmd.PaymentMethod;
+        var useCheque = declared is PaymentMethod.Cheque or PaymentMethod.Mixed || cheques.Count > 0;
+        var useInstallment = declared is PaymentMethod.Installment or PaymentMethod.Mixed || installments.Count > 0;
+
+        // اعتبارسنجی اجزا — همان پیام‌های فرم فاکتور، تا کلاینت و سرور یکسان بگویند.
+        var chequeProblem = SalesVisitPaymentPlan.ValidateCheques(useCheque, cheques);
+        if (chequeProblem is not null) throw new InvalidOperationException(chequeProblem);
+        var installmentProblem = SalesVisitPaymentPlan.ValidateInstallments(useInstallment, installments);
+        if (installmentProblem is not null) throw new InvalidOperationException(installmentProblem);
+
+        var total = entity.TotalNet;
+
+        // «نقدی» یعنی کل مبلغ نقد است، مگر اینکه واقعاً اجزای دیگری هم آمده باشد.
+        // (اگر کلاینت نقدی + چک بفرستد، ترکیبی است و نقد فقط «بخشی از مبلغ» می‌شود.)
+        var onlyCash = cheques.Count == 0 && installments.Count == 0 && !cmd.DueDate.HasValue;
+        var cash = onlyCash
+            ? Math.Max(0, cmd.CashAmount > 0 ? Math.Min(cmd.CashAmount, Math.Max(0, total)) : total)
+            : Math.Max(0, cmd.CashAmount);
+        if (!onlyCash && cash > 0 && total > 0 && cash >= total)
+            throw new InvalidOperationException("پیش‌دریافت نقدی نمی‌تواند برابر یا بیشتر از مبلغ سفارش باشد؛ " +
+                                                "در این صورت فقط جزء «نقدی» را فعال کنید.");
+        var chequeSum = cheques.Sum(c => c.Amount);
+        var installmentSum = installments.Sum(i => i.Amount);
+        var remaining = SalesVisitPaymentPlan.RemainingAfterPayments(total, cash, chequeSum, installmentSum);
+
+        // «نسیه» یعنی باقی‌ماندهٔ منفی/صفر نیست؛ کلاینت با فرستادن سررسید آن را اعلام می‌کند.
+        var useCredit = declared is PaymentMethod.Credit or PaymentMethod.Mixed || cmd.DueDate.HasValue;
+        var remainderProblem = SalesVisitPaymentPlan.ValidateRemainder(
+            total, cash, chequeSum, installmentSum, useCredit, cmd.DueDate);
+        if (remainderProblem is not null) throw new InvalidOperationException(remainderProblem);
+
+        // پرداخت نقدی به حساب صندوق/بانک نیاز دارد (همان قاعدهٔ فاکتور فروش فروشگاه).
+        if (cash > 0)
+        {
+            if (cmd.TrsAccountId is not > 0)
+                throw new InvalidOperationException("برای دریافت نقدی، حساب صندوق یا بانک را انتخاب کنید.");
+            var account = await _db.TrsAccounts.AsNoTracking()
+                .FirstOrDefaultAsync(a => a.Id == cmd.TrsAccountId.Value && a.IsActive)
+                ?? throw new InvalidOperationException("حساب صندوق یا بانک انتخاب‌شده فعال نیست یا یافت نشد.");
+            if (entity.CompanyId is > 0 && account.CompanyId is > 0 && account.CompanyId != entity.CompanyId)
+                throw new InvalidOperationException("حساب صندوق یا بانک باید متعلق به شرکت همین سفارش باشد.");
+            var kind = cmd.CashType ?? Inventory.Shared.CashType.Cash;
+            var compatible = kind switch
+            {
+                Inventory.Shared.CashType.Cash => account.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash,
+                Inventory.Shared.CashType.CardReader => account.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank,
+                Inventory.Shared.CashType.CardTransfer => account.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos,
+                _ => true
+            };
+            if (!compatible)
+                throw new InvalidOperationException("نوع حساب با نوع دریافت نقدی انتخاب‌شده مطابقت ندارد.");
+            entity.CashType = kind;
+            entity.TrsAccountId = account.Id;
+        }
+        else
+        {
+            entity.CashType = null;
+            entity.TrsAccountId = null;
+        }
+
+        entity.CashAmount = cash;
+        entity.ChequesJson = ToJson(cheques);
+        entity.InstallmentsJson = ToJson(installments);
+        entity.PaymentCashAmount = cash;
+        entity.PaymentChequeSum = chequeSum;
+        entity.PaymentInstallmentSum = installmentSum;
+        entity.PaymentCreditRemainder = Math.Max(0, remaining);
+        entity.DueDate = remaining > -PaymentMix.Tolerance && cmd.DueDate.HasValue ? cmd.DueDate.Value.Date : null;
+        entity.PaymentMethod = AcceptedMethod(declared, cash, chequeSum, installmentSum, Math.Max(0, remaining));
+
+        static PaymentMethod AcceptedMethod(PaymentMethod declaredMethod, decimal cashPart, decimal chequeSum,
+            decimal installSum, decimal creditRemainder)
+        {
+            var parts = (cashPart > PaymentMix.Tolerance / 2 ? 1 : 0) + (chequeSum > PaymentMix.Tolerance / 2 ? 1 : 0)
+                        + (installSum > PaymentMix.Tolerance / 2 ? 1 : 0) + (creditRemainder > PaymentMix.Tolerance / 2 ? 1 : 0);
+            if (parts > 1) return PaymentMethod.Mixed;
+            if (parts == 0)
+            {
+                // سفارش بدون مبلغ (صفر) — همان انتخاب ویزیتور
+                return declaredMethod;
+            }
+            if (chequeSum > PaymentMix.Tolerance / 2) return PaymentMethod.Cheque;
+            if (installSum > PaymentMix.Tolerance / 2) return PaymentMethod.Installment;
+            if (creditRemainder > PaymentMix.Tolerance / 2) return PaymentMethod.Credit;
+            return PaymentMethod.Cash;
+        }
     }
 
     private static void AddHistory(VisOrder order, VisOrderStatus? from, VisOrderStatus to, VisActor actor, string? comment)
@@ -1872,6 +2257,7 @@ public class VisOrderService : IVisOrderService
         Sold,                  // تأیید مالی و ثبت فروش
         InvoiceDraftCreated,   // ساخت پیش‌نویس فاکتور
         InvoiceStateChanged,   // قطعی/ابطال فاکتور
+        DocumentsDecided,      // تصمیم مالی روی عکس چک/مدارک
         Expired                // انقضای خودکار
     }
 
@@ -1950,6 +2336,21 @@ public class VisOrderService : IVisOrderService
                     await Send(watchers, "سفارش تأییدشده آمادهٔ اقدام مالی",
                         $"سفارش {summary} تأیید شد؛ صف مالی را بررسی کنید.", "#1d4ed8", "/sales/finance-queue");
                     break;
+
+                case VisOrderEvent.DocumentsDecided:
+                {
+                    // تصمیم روی عکس چک/مدارک: ویزیتور باید بداند مدرکش تأیید یا رد شده است.
+                    var docsApproved = (extra ?? "").Contains("تأیید", StringComparison.Ordinal);
+                    await NotifyAsync(creator, order,
+                        docsApproved ? "مدارک سفارش شما تأیید شد" : "مدرک سفارش شما رد شد",
+                        docsApproved
+                            ? $"سفارش {order.Number}: مالی مدارک (عکس چک) را تأیید کرد."
+                            : $"سفارش {order.Number}: مالی مدرک را رد کرد — {order.FinanceAttachmentNote ?? "دلیل در گردش سفارش ثبت شده است"}.",
+                        docsApproved ? "#0f766e" : "#b45309", link);
+                    await Send(watchers, docsApproved ? "مدارک سفارش ویزیتور تأیید شد" : "مدرک سفارش ویزیتور رد شد",
+                        $"{who}: سفارش {summary} — {extra}.", docsApproved ? "#0f766e" : "#b45309", "/sales/finance-queue");
+                    break;
+                }
 
                 case VisOrderEvent.Returned:
                     await NotifyAsync(creator, order, "سفارش برای اصلاح برگشت خورد",
@@ -2092,6 +2493,13 @@ public class VisOrderService : IVisOrderService
         TotalGross = o.TotalGross,
         TotalDiscount = o.TotalDiscount,
         TotalNet = o.TotalNet,
+        // ---------- پرداخت ترکیبی ---------- (همان اجزای فاکتور خرید و فروش)
+        CashAmount = o.CashAmount,
+        CashType = o.CashType,
+        TrsAccountId = o.TrsAccountId,
+        DueDate = o.DueDate,
+        Cheques = ParseJson<List<ChequeDto>>(o.ChequesJson) ?? new(),
+        Installments = ParseJson<List<InstallmentDto>>(o.InstallmentsJson) ?? new(),
         Note = o.Note,
         CreatedAt = o.CreatedAt,
         CreatedByUserId = o.CreatedByUserId,
@@ -2123,6 +2531,25 @@ public class VisOrderService : IVisOrderService
             Note = l.Note
         }).ToList()
     };
+
+    /// <summary>
+    /// بازخوانی اجزای پرداخت ذخیره‌شده (JSON). دادهٔ خراب/قدیمی نباید فهرست سفارش‌ها را بشکند،
+    /// پس خطای خواندن به فهرست خالی تبدیل می‌شود (رفتار «بدون جزء پرداخت»).
+    /// </summary>
+    private static T? ParseJson<T>(string? json) where T : class
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<T>(json, PaymentJsonOptions); }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions PaymentJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private static string? ToJson<T>(T? value) where T : class =>
+        value is null ? null : System.Text.Json.JsonSerializer.Serialize(value, PaymentJsonOptions);
 
     private static VisOrderHistoryDto ToHistoryDto(VisOrderHistory h) => new()
     {

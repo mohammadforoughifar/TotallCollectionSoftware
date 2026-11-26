@@ -214,6 +214,11 @@ public static class DbInitializer
 
                 // ماژول ویزیتوری: جدول‌های سفارش میدانی (VisOrders/…). برای هر دو موتور، idempotent.
                 await SalesVisitSchemaV1.EnsureAsync(db);
+                // پرداخت ترکیبی سفارش ویزیتور (نقد/چک/اقساط/نسیه) + تصمیم مالی روی پیوست‌ها.
+                // فقط ستون‌های تازه؛ هیچ سند یا مبلغی بازنویسی نمی‌شود.
+                await VisPaymentPlanSchemaV1.EnsureAsync(db);
+                // ستون‌های دسته/تصمیم مالی/شرکت روی جدول مشترک پیوست‌ها (عکس چک سفارش ویزیتور).
+                await VisAttachmentSchemaV1.EnsureAsync(db);
 
                 // طرف حساب: ستون‌های «ثبت‌کننده» (چه ویزیتوری این مشتری را ثبت کرد)
                 await PartyRegistrationSchemaV1.EnsureAsync(db);

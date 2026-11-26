@@ -745,6 +745,8 @@ public class AppDbContext : DbContext
         // به‌طور محسوسی سنگین می‌شد. رکوردهای تازه‌تر فایل را روی دیسک دارند و
         // همین ستون را در همان ردیف خالی نگه می‌دارند.
         mb.Entity<AppAttachment>().HasIndex(a => new { a.Module, a.RefId });
+        // پیوست پیش‌نویس سفارش ویزیتور با RefId = -1 و مالکیت UploaderUserId جست‌وجو می‌شود.
+        mb.Entity<AppAttachment>().HasIndex(a => new { a.Module, a.RefId, a.UploaderUserId });
 
         // لاگ دسترسی به پیوست‌ها (گردانه دانلود/مشاهده)
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => new { l.Module, l.RefId });

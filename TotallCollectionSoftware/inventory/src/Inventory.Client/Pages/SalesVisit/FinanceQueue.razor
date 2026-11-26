@@ -1,5 +1,7 @@
 @namespace Inventory.Client.Pages
 @page "/sales/finance-queue"
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
 @inject ISalesVisitApi Api
 @inject IToastService Toast
 @inject LayoutState Layout
@@ -162,7 +164,24 @@
                                 </td>
                                 <td>@o.PartyName</td>
                                 <td class="fs-8">@(string.IsNullOrWhiteSpace(o.CreatedByName) ? "ثبت‌کننده نامشخص" : o.CreatedByName)</td>
-                                <td class="fs-8"><span class="vis-badge vis-secondary">@VisUi.PaymentText(o.PaymentMethod)</span></td>
+                                <td class="fs-8">
+                                    <span class="vis-badge vis-secondary" data-fin-pay-method title="@o.PaymentSummary">@o.EffectivePaymentTitle</span>
+                                    @if (o.HasChequePart)
+                                    {
+                                        <span class="vis-badge vis-info" data-fin-cheque-count title="تعداد چک‌های این سفارش">
+                                            <i class="bi bi-bank"></i> @Fa.Digits(o.ChequeCount) چک
+                                        </span>
+                                    }
+                                    @if (o.AttachmentCount > 0)
+                                    {
+                                        var pendingDocs = o.Attachments.Count(a => a.FinanceApproved is null);
+                                        <span class="vis-badge @(pendingDocs > 0 ? "vis-warning" : "vis-success")"
+                                              data-fin-doc-count title="عکس چک و مدارک مالی">
+                                            <i class="bi bi-images"></i> @Fa.Digits(o.AttachmentCount)
+                                            @if (pendingDocs > 0) { <text> — @Fa.Digits(pendingDocs) در انتظار</text> }
+                                        </span>
+                                    }
+                                </td>
                                 <td class="text-start">@Fa.Money(o.TotalNet)</td>
                                 <td><span class="@VisUi.BadgeCss(o.Status)">@VisUi.StatusText(o.Status)</span></td>
                                 <td class="fs-8">
@@ -571,6 +590,8 @@
     .vis-danger { background: #ffe4e6; color: #9f1239; border-color: #fecdd3; }
     .vis-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
     .vis-dark { background: #e2e8f0; color: #0f172a; border-color: #cbd5e1; }
+    .vis-info { background: #e0f2fe; color: #075985; border-color: #bae6fd; }
+    td .vis-badge + .vis-badge { margin-inline-start: .2rem; }
     .fs-8 { font-size: .8rem; }
     .fs-9 { font-size: .72rem; }
 </style>

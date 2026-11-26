@@ -223,7 +223,7 @@
                                 </td>
                                 <td>
                                     <div class="fw-800 text-dark">@o.PartyName</div>
-                                    <div class="fs-9 text-muted num">@o.LineCount.Num() قلم کالا — @VisUi.PaymentText(o.PaymentMethod)</div>
+                                    <div class="fs-9 text-muted num">@o.LineCount.Num() قلم کالا — @o.EffectivePaymentTitle</div>
                                 </td>
                                 @if (me?.CanApprove == true || me?.CanFinance == true)
                                 {

@@ -31,6 +31,9 @@ public interface ISalesVisitApi
     /// </summary>
     Task<VisOrderDto> FinanceApproveAsync(int id, VisFinanceCommand cmd);
 
+    /// <summary>تصمیم مالی روی پیوست‌ها (عکس چک): تأیید یا رد با دلیل.</summary>
+    Task<VisOrderDto> FinanceDecideAsync(int id, VisFinanceDecision decision);
+
     Task<VisOrderDto> InvoiceDraftAsync(int id);
     Task<VisOrderDto> SyncInvoiceAsync(int id);
 
@@ -98,6 +101,9 @@ public class SalesVisitApi : ISalesVisitApi
 
     public Task<VisOrderDto> FinanceApproveAsync(int id, VisFinanceCommand cmd) =>
         _api.PostAsync<VisOrderDto>($"api/sales-visit/{id}/finance-approve", cmd);
+
+    public Task<VisOrderDto> FinanceDecideAsync(int id, VisFinanceDecision decision) =>
+        _api.PostAsync<VisOrderDto>($"api/sales-visit/{id}/finance-decide", decision);
 
     public Task<VisOrderDto> InvoiceDraftAsync(int id) =>
         _api.PostAsync<VisOrderDto>($"api/sales-visit/{id}/invoice-draft");
