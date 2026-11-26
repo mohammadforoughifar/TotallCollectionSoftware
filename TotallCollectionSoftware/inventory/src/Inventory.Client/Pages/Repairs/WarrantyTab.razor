@@ -37,6 +37,7 @@ else
 
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش گارانتی" : $"ویرایش {form.Number}")" Size="modal-xl" OnClose="() => showForm = false">
     <ChildContent>
+        <div class="repair-form">
         <div class="row g-3">
             <div class="col-md-4"><label class="form-label">مشتری *</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><SearchSelect Items="customers" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری" ConstrainToModal="true" /></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف مشتری جدید" @onclick="() => showNewCustomer = true">جدید</button></div></div>
             <div class="col-md-4"><label class="form-label">تعمیرکار</label><div class="d-flex gap-2"><div class="flex-grow-1" style="min-width:0"><select class="form-select" @bind="technicianId"><option value="0">— بعداً تعیین می‌شود —</option>@foreach (var t in technicians) { <option value="@t.Id">@t.Name</option> }</select></div><button type="button" class="btn btn-outline-primary btn-sm" disabled="@(!CanManage)" aria-label="تعریف تعمیرکار جدید" @onclick="() => showNewTechnician = true">جدید</button></div></div>
@@ -44,17 +45,24 @@ else
             <div class="col-md-6"><label class="form-label">انبار برداشت *</label><select class="form-select" value="@form.WarehouseId" @onchange="OnWarehouseChanged"><option value="0">— انتخاب انبار —</option>@foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }</select><small class="text-muted">موجودی ردیف‌های قطعه در همین انبار بررسی می‌شود.</small></div>
             <div class="col-md-6"><label class="form-label">یادداشت</label><input class="form-control" maxlength="500" @bind="form.Note" /></div>
         </div>
-        <div class="d-flex align-items-center gap-2 mt-4 mb-2">
-            <b>دستگاه‌های پذیرش‌شده</b><span class="badge badge-soft-primary">@form.Devices.Count</span>
-            <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddDevice" disabled="@(form.Devices.Count >= 100)"><i class="bi bi-plus-lg"></i> افزودن دستگاه</button>
-        </div>
+        <div class="repair-block">
+            <div class="repair-block-head">
+                <i class="bi bi-pc-display-horizontal text-primary"></i>
+                <h6>دستگاه‌های پذیرش‌شده</h6>
+                <span class="badge badge-soft-primary">@form.Devices.Count</span>
+                <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddDevice" disabled="@(form.Devices.Count >= 100)"><i class="bi bi-plus-lg"></i> افزودن دستگاه</button>
+            </div>
         <datalist id="warranty-device-types"><option value="لپ‌تاپ" /><option value="کامپیوتر" /><option value="مانیتور" /><option value="دوربین" /><option value="پرینتر" /><option value="موبایل" /><option value="تبلت" /></datalist>
         @for (var index = 0; index < form.Devices.Count; index++)
         {
             var deviceIndex = index;
             var device = form.Devices[deviceIndex];
-            <div class="border rounded-3 p-3 mb-2" @key="device">
-                <div class="d-flex align-items-center mb-2"><b>دستگاه @(deviceIndex + 1)</b><button type="button" class="btn btn-sm btn-light me-auto" title="حذف دستگاه" disabled="@(form.Devices.Count <= 1)" @onclick="() => RemoveDevice(deviceIndex)"><i class="bi bi-trash text-danger"></i></button></div>
+            <div class="repair-device-card" @key="device">
+                <div class="repair-block-head">
+                    <span class="repair-block-index">@(deviceIndex + 1)</span>
+                    <h6>دستگاه @(deviceIndex + 1)</h6>
+                    <button type="button" class="btn btn-sm btn-light me-auto" title="حذف دستگاه" disabled="@(form.Devices.Count <= 1)" @onclick="() => RemoveDevice(deviceIndex)"><i class="bi bi-trash text-danger"></i></button>
+                </div>
                 <div class="row g-2">
                     <div class="col-md-4"><label class="form-label">نوع دستگاه *</label><input class="form-control" list="warranty-device-types" maxlength="100" @bind="device.DeviceType" /></div>
                     <div class="col-md-4"><label class="form-label">برند و مدل</label><input class="form-control" maxlength="200" @bind="device.DeviceModel" /></div>
@@ -64,7 +72,14 @@ else
                 </div>
             </div>
         }
-        <div class="d-flex align-items-center gap-2 mt-4 mb-2"><b>کارها و قطعات مشترک پذیرش</b><button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">افزودن ردیف (F2)</button></div>
+        </div>
+        <div class="repair-block">
+            <div class="repair-block-head">
+                <i class="bi bi-list-check text-primary"></i>
+                <h6>کارها و قطعات مشترک پذیرش</h6>
+                <span class="badge badge-soft-primary">@form.Items.Count</span>
+                <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem"><i class="bi bi-plus-lg"></i> افزودن ردیف (F2)</button>
+            </div>
         @for (var index = 0; index < form.Items.Count; index++)
         {
             var i = index;
@@ -101,7 +116,7 @@ else
                 </div>
                 <div class="col-6 col-md-2"><label class="form-label">هزینه داخلی واحد</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@costs[i]" @oninput="e => costs[i] = Fa.FormatTyping(e.Value?.ToString())" /></div>
                 <div class="col-md-2"><label class="form-label">تصمیم گارانتی *</label><select class="form-select form-select-sm" value="@form.Items[i].Decision" @onchange="e => SetDecision(i, e)"><option value="@WarrantyDecision.Unspecified">انتخاب کنید</option><option value="@WarrantyDecision.Accepted">پذیرفته</option><option value="@WarrantyDecision.Rejected">پذیرفته‌نشده</option></select></div>
-                <div class="col-md-1"><label class="form-label d-none d-md-block">&nbsp;</label><button type="button" class="btn btn-sm btn-light" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
+                <div class="col-md-1"><label class="form-label d-none d-md-block">&nbsp;</label><button type="button" class="btn btn-sm btn-light w-100" title="حذف ردیف" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button></div>
                 @if (form.Items[i].Decision == WarrantyDecision.Rejected && (form.Items[i].ProductId is > 0 ? form.Items[i].Supplied : form.Items[i].Performed))
                 {
                     <div class="col-12 col-md-4"><label class="form-label">قیمت واحد مشتری (ریال) *</label><input class="form-control form-control-sm num" dir="ltr" inputmode="numeric" value="@prices[i]" @oninput="e => prices[i] = FormatRial(e.Value?.ToString())" placeholder="قیمت را دستی وارد کنید" /></div>
@@ -125,9 +140,20 @@ else
                 <div class="fs-8">با تأیید دوباره، پیش‌نویس با همین هشدار ذخیره می‌شود؛ هنگام تحویل، خروج قطعات از انبار همچنان بررسی می‌شود.</div>
             </div>
         }
-        <div class="text-secondary fs-8 mt-3">مبلغ مشتری در زمان تحویل: <b class="num">@DraftCustomerAmount().MoneyExact()</b> ریال — هزینه داخلی جداگانه ثبت می‌شود.</div>
+        </div>
+        <div class="repair-total">
+            <div>مبلغ مشتری در زمان تحویل: <b class="num text-primary">@DraftCustomerAmount().MoneyExact()</b> ریال</div>
+            <div class="text-muted">هزینه داخلی جداگانه ثبت می‌شود.</div>
+        </div>
+        </div>
     </ChildContent>
-    <Footer><button class="btn btn-light" @onclick="() => showForm = false">انصراف</button><button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">@(stockWarnings.Count > 0 ? "ذخیره با وجود کمبود" : "ذخیره پیش‌نویس")</button></Footer>
+    <Footer>
+        <button type="button" class="btn btn-light" @onclick="() => showForm = false">انصراف (Esc)</button>
+        <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            @(stockWarnings.Count > 0 ? "ذخیره با وجود کمبود" : "ذخیره پیش‌نویس (F1)")
+        </button>
+    </Footer>
 </Modal>
 
 <Modal Visible="view is not null" Title="جزئیات گارانتی" Size="modal-lg" OnClose="() => view = null">

@@ -29,7 +29,7 @@
     </ChildContent>
     <Footer>
         <button type="button" class="btn btn-light" @onclick="Close" disabled="@saving">انصراف (Esc)</button>
-        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@(saving || !CanManage)">
+        <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@(saving || !CanManage)">
             @(saving ? "در حال ذخیره…" : "ذخیره (F1)")
         </button>
     </Footer>

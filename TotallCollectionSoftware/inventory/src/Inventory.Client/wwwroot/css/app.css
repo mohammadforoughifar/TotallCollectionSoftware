@@ -990,6 +990,107 @@ a { text-decoration: none; }
     .repair-view-shared { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* ============================================================
+   زبان طراحی یکپارچهٔ «بخش تعمیرات» (تعمیرات / گارانتی / طرح تعویض)
+   ------------------------------------------------------------
+   هدف: همهٔ فرم‌های این بخش مینیمال و هم‌خانواده باشند — همان چیزی
+   که در فرم پذیرش گارانتی خوب از آب درآمد:
+     • بدون هدر کارت‌های گرادیانی و سایه‌های سنگین
+     • هر بخش = یک «بلوک» ساده با سربرگ آیکن خطی + عنوان + شمارنده
+     • فوتر همهٔ مودال‌ها: [انصراف] سمت راست، دکمهٔ اصلی primary سمت چپ
+   کلاس‌های قدیمی (repair-common-card / repair-section-heading / …) دست‌نخورده
+   می‌مانند تا صفحات دیگر نشکنند؛ فقط دیگر در فرم‌های این بخش استفاده نمی‌شوند.
+   ============================================================ */
+.repair-form { display: flex; flex-direction: column; gap: .85rem; }
+.repair-form .row { --bs-gutter-x: .75rem; --bs-gutter-y: .55rem; }
+
+.repair-block {
+    padding: .85rem .95rem 1rem;
+    border: 1px solid #e8edf4;
+    border-radius: 14px;
+    background: #fff;
+}
+.repair-block + .repair-block { margin-top: .15rem; }
+
+.repair-block-head {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-bottom: .7rem;
+}
+.repair-block-head > i {
+    font-size: .95rem;
+    line-height: 1;
+    opacity: .85;
+}
+.repair-block-head h6 {
+    margin: 0;
+    font-size: .86rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+.repair-block-head .badge { font-weight: 700; }
+.repair-block-index {
+    display: inline-grid;
+    place-items: center;
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: .72rem;
+    font-weight: 800;
+}
+
+/* کارت هر دستگاه: بدون سایه و حاشیهٔ رنگی، فقط یک قاب آرام داخل بلوک */
+.repair-form .repair-device-card {
+    padding: .7rem .8rem .8rem;
+    border: 1px solid #eef2f7;
+    border-radius: 12px;
+    background: #fcfdff;
+    box-shadow: none;
+}
+.repair-form .repair-device-card + .repair-device-card,
+.repair-form .repair-device-card + .repair-block-head { margin-top: .6rem; }
+.repair-form .repair-device-card .form-label {
+    margin-bottom: .25rem;
+    font-size: .78rem;
+    font-weight: 600;
+    color: #475569;
+}
+.repair-form .form-label {
+    margin-bottom: .25rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #475569;
+}
+.repair-form .form-control,
+.repair-form .form-select { border-color: #e2e8f0; border-radius: 9px; }
+.repair-form .form-control-sm,
+.repair-form .form-select-sm { border-radius: 8px; }
+
+/* جمع‌بندی پایین فرم: یک نوار آرام، بدون جعبهٔ رنگی */
+.repair-total {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .35rem 1.25rem;
+    margin-top: .75rem;
+    padding-top: .65rem;
+    border-top: 1px solid #eef2f7;
+    font-size: .8rem;
+    color: #475569;
+}
+.repair-total b { font-weight: 800; }
+
+@media (max-width: 575.98px) {
+    .repair-block { padding: .65rem .7rem .8rem; border-radius: 12px; }
+    .repair-form .repair-device-card { padding: .6rem .65rem .7rem; }
+    .repair-total { justify-content: space-between; }
+}
+
 /* ---------- سوییچ جدول⇆کارت: دسکتاپ جدول، موبایل کارت ---------- */
 .cards-mobile { display: none; }
 

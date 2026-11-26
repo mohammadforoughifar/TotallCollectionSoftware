@@ -34,6 +34,7 @@
 <div class="page-head">
     <div>
         <h1>پذیرش تعمیرات</h1>
+        <p class="lead">پذیرش دستگاه، کارها و قطعات مصرفی — وضعیت، تحویل و فاکتور</p>
     </div>
     <div class="d-flex flex-wrap gap-2 me-auto">
         <button class="btn btn-outline-primary" @onclick="ToggleRepairReports" disabled="@reportLoading">
@@ -407,25 +408,25 @@
                                     }
                                 </td>
                                 <td class="text-end text-nowrap">
-                                    <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
-                                    <button class="btn btn-sm btn-light text-primary" title="چاپ فیش تحویل دستگاه" @onclick="() => PrintDeliveryReceipt(r)">
-                                        <i class="bi bi-card-checklist"></i>
+                                    <button type="button" class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
+                                    <button type="button" class="btn btn-sm btn-light" title="چاپ فیش تحویل دستگاه" @onclick="() => PrintDeliveryReceipt(r)">
+                                        <i class="bi bi-card-checklist text-primary"></i>
                                     </button>
                                     @if (r.InvoiceTransactionId is > 0)
                                     {
-                                        <button class="btn btn-sm btn-light text-success" title="چاپ فاکتور فروش" @onclick="() => PrintInvoice(r)">
-                                            <i class="bi bi-receipt"></i>
+                                        <button type="button" class="btn btn-sm btn-light" title="چاپ فاکتور فروش" @onclick="() => PrintInvoice(r)">
+                                            <i class="bi bi-receipt text-success"></i>
                                         </button>
                                     }
                                     @if (r.WarrantyProcessed && r.InvoiceTransactionId is > 0)
                                     {
-                                        <button class="btn btn-sm btn-light text-primary" title="مانده و تسویه" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light" title="مانده و تسویه" @onclick="() => creditRepair = r"><i class="bi bi-cash-coin text-primary"></i></button>
                                     }
                                     @if (r.InvoiceTransactionId is null && !r.WarrantyProcessed && r.Status != RepairStatus.Delivered)
                                     {
-                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
-                                        <button class="btn btn-sm btn-light" title="تبدیل به فروش و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
-                                        <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(r)"><i class="bi bi-trash text-danger"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light" title="تبدیل به فروش و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
+                                        <button type="button" class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(r)"><i class="bi bi-trash text-danger"></i></button>
                                     }
                                 </td>
                             </tr>
@@ -488,9 +489,9 @@
                             </div>
                         </div>
                         <div class="m-card-actions repair-card-actions">
-                            <button class="btn btn-light" @onclick="() => OpenView(r)"><i class="bi bi-eye"></i> جزئیات</button>
-                            <button class="btn btn-light text-primary" @onclick="() => PrintDeliveryReceipt(r)">
-                                <i class="bi bi-card-checklist"></i> فیش تحویل
+                            <button type="button" class="btn btn-light" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i> جزئیات</button>
+                            <button type="button" class="btn btn-light" @onclick="() => PrintDeliveryReceipt(r)">
+                                <i class="bi bi-card-checklist text-primary"></i> فیش تحویل
                             </button>
                             @if (r.InvoiceTransactionId is > 0)
                             {
@@ -562,13 +563,11 @@
 @* ---------------- فرم پذیرش ---------------- *@
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش جدید" : $"ویرایش پذیرش {form.Number}")" Size="modal-xl" OnClose="CloseForm">
     <ChildContent>
-        <div class="repair-intake-form" @ref="repairFormRoot">
-            <section class="repair-common-card mb-3">
-                <div class="repair-section-heading">
-                    <div class="repair-section-icon"><i class="bi bi-clipboard2-check"></i></div>
-                    <div>
-                        <h6>اطلاعات مشترک پذیرش</h6>
-                    </div>
+        <div class="repair-intake-form repair-form" @ref="repairFormRoot">
+            <section class="repair-block">
+                <div class="repair-block-head">
+                    <i class="bi bi-clipboard2-check text-primary"></i>
+                    <h6>اطلاعات مشترک پذیرش</h6>
                 </div>
                 <div class="row g-3">
                     <div class="col-md-4 repair-customer-focus">
@@ -627,12 +626,11 @@
                 </div>
             </section>
 
-            <section class="repair-devices-section mb-3">
-                <div class="repair-section-heading repair-devices-heading">
-                    <div class="repair-section-icon repair-device-icon"><i class="bi bi-pc-display-horizontal"></i></div>
-                    <div>
-                        <h6>دستگاه‌های پذیرش‌شده <span class="badge badge-soft-primary">@form.Devices.Count</span></h6>
-                    </div>
+            <section class="repair-block">
+                <div class="repair-block-head">
+                    <i class="bi bi-pc-display-horizontal text-primary"></i>
+                    <h6>دستگاه‌های پذیرش‌شده</h6>
+                    <span class="badge badge-soft-primary">@form.Devices.Count</span>
                     <button type="button" class="btn btn-sm btn-outline-primary me-auto"
                             title="افزودن دستگاه" @onclick="AddDevice">
                         <i class="bi bi-plus-lg"></i> افزودن دستگاه
@@ -645,19 +643,15 @@
                         var deviceIndex = idx;
                         var device = form.Devices[deviceIndex];
                         <article class="repair-device-card" @key="device">
-                            <div class="repair-device-card-head">
-                                <div class="repair-device-card-title">
-                                    <span class="repair-device-number">@(deviceIndex + 1)</span>
-                                    <div>
-                                        <strong>دستگاه @(deviceIndex + 1)</strong>
-                                    </div>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-light" title="حذف این دستگاه"
+                            <div class="repair-block-head">
+                                <span class="repair-block-index">@(deviceIndex + 1)</span>
+                                <h6>دستگاه @(deviceIndex + 1)</h6>
+                                <button type="button" class="btn btn-sm btn-light me-auto" title="حذف این دستگاه"
                                         disabled="@(form.Devices.Count <= 1)" @onclick="() => RemoveDevice(deviceIndex)">
                                     <i class="bi bi-trash text-danger"></i>
                                 </button>
                             </div>
-                            <div class="row g-3">
+                            <div class="row g-2">
                                 <div class="col-md-6">
                                     <label class="form-label">نوع دستگاه <span class="text-danger">*</span></label>
                                     <input class="form-control" @bind="device.DeviceType" list="@DeviceTypesId(deviceIndex)"
@@ -696,12 +690,11 @@
                 </div>
             </section>
 
-            <section class="repair-common-card repair-items-section">
-                <div class="d-flex align-items-center mb-2 gap-2">
-                    <div class="repair-section-icon repair-items-icon"><i class="bi bi-list-check"></i></div>
-                    <div>
-                        <h6 class="mb-0">کارها و قطعات مصرفی </h6>
-                    </div>
+            <section class="repair-block">
+                <div class="repair-block-head">
+                    <i class="bi bi-list-check text-primary"></i>
+                    <h6>کارها و قطعات مصرفی</h6>
+                    <span class="badge badge-soft-primary">@form.Items.Count</span>
                     <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f2" @onclick="AddItem">
                         <i class="bi bi-plus-lg"></i> ردیف جدید (F2)
                     </button>
@@ -789,7 +782,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="d-flex justify-content-end gap-3 fs-8">
+                <div class="repair-total">
                     <div>جمع هزینه: <b class="num">@SumCost().Money()</b></div>
                     <div>جمع دریافتی: <b class="num text-primary">@SumPrice().Money()</b></div>
                     <div>سود: <b class="num @(SumPrice() - SumCost() >= 0 ? "text-success" : "text-danger")">@((SumPrice() - SumCost()).Money())</b></div>
@@ -798,11 +791,11 @@
         </div>
     </ChildContent>
     <Footer>
-        <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" data-hotkey="f4" @onclick="SaveAndPrintReceipt" disabled="@saving">
+        <button type="button" class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
+        <button type="button" class="btn btn-outline-secondary" data-hotkey="f4" @onclick="SaveAndPrintReceipt" disabled="@saving">
             <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل (F4)
         </button>
-        <button class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
+        <button type="button" class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             ذخیره (F1)
         </button>
@@ -1130,8 +1123,8 @@
         }
     </ChildContent>
     <Footer>
-        <button class="btn btn-light" @onclick="CloseInvoice" disabled="@saving">انصراف (Esc)</button>
-        <button class="btn btn-success" data-hotkey="f1" @onclick="DoInvoice" disabled="@saving">
+        <button type="button" class="btn btn-light" @onclick="CloseInvoice" disabled="@saving">انصراف (Esc)</button>
+        <button type="button" class="btn btn-primary" data-hotkey="f1" @onclick="DoInvoice" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             <i class="bi bi-receipt"></i> @(invoicing is not null && IsFreeWarranty(invoicing) ? "تحویل بدون مبلغ" : $"صدور فاکتور فروش ({(invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه")})")
         </button>
