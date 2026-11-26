@@ -277,6 +277,18 @@ public class SalesVisitController : ControllerBase
         return Ok(await _svc.FinanceApproveAsync(actor, id, cmd ?? new VisFinanceCommand()));
     }
 
+    /// <summary>
+    /// تصمیم مالی روی پیوست‌ها (عکس چک‌ها و مدارک): تأیید یا رد با دلیل.
+    /// رد شدن مدرک می‌تواند سفارش را به «برگشت برای اصلاح» ببرد (RejectOrder).
+    /// </summary>
+    [HttpPost("{id:int}/finance-decide")]
+    public async Task<ActionResult<VisOrderDto>> FinanceDecide(int id, [FromBody] VisFinanceDecision decision)
+    {
+        if (!await HasAnyAsync("FinanceView", "Approve")) return Forbid();
+        var actor = await _svc.ResolveActorAsync(User);
+        return Ok(await _svc.FinanceDecideAsync(actor, id, decision ?? new VisFinanceDecision()));
+    }
+
     /// <summary>همگام‌سازی وضعیت سفارش با فاکتور (قطعی/ابطال).</summary>
     [HttpPost("{id:int}/sync-invoice")]
     public async Task<ActionResult<VisOrderDto>> SyncInvoice(int id)

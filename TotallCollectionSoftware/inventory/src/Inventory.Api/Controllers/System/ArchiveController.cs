@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Formats.Jpeg;
 
 namespace Inventory.Api.Controllers;
 
@@ -210,6 +211,18 @@ public class AttachmentsController : ControllerBase
         return (dId, flags.RequireDownloadConfirm, flags.WatermarkPreview);
     }
 
+    /// <summary>
+    /// پیوست پیش‌نویس سفارش ویزیتور (RefId = -1) به سفارشی وصل نیست، پس نگهبان نمی‌تواند
+    /// مالکیت را از وصلت سفارش بسنجد. اینجا مالکیت در سطح «همین رکورد» سنجیده می‌شود تا
+    /// هیچ کاربری فایل پیش‌نویس دیگران را باز نکند. true = اجازه دارد.
+    /// </summary>
+    private bool CanOpenRecord(AppAttachment a)
+    {
+        if (!string.Equals(a.Module, "SalesVisit", StringComparison.OrdinalIgnoreCase)) return true;
+        if (a.RefId != Inventory.Shared.Dtos.VisAttachmentCategories.DraftRefId) return true;
+        return a.UploaderUserId == MyUserId || IsAdmin;
+    }
+
     /// <summary>ثبت گردانه مشاهده/دانلود پیوست (همه ماژول‌ها) — خطای لاگ دانلود را متوقف نمی‌کند.</summary>
     private async Task LogAccessAsync(AppAttachment a, string action)
     {
@@ -247,10 +260,55 @@ public class AttachmentsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// فهرست پیوست‌های یک رکورد. برای ماژول SalesVisit قانون دسترسی در نگهبان اعمال می‌شود؛
+    /// پیوست پیش‌نویس سفارش ویزیتور (RefId = -1) فقط با ?draft=1 و فقط برای بارگذاران خودِ کاربر
+    /// دیده می‌شود (رکوردی در VisOrders وجود ندارد، پس بررسی مالکیت سفارش شدنی نیست).
+    /// </summary>
     [HttpGet("{module}/{refId:int}")]
-    public async Task<IActionResult> List(string module, int refId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+    public async Task<IActionResult> List(string module, int refId, [FromQuery] int skip = 0, [FromQuery] int? take = null,
+        [FromQuery] string? category = null, [FromQuery] bool draft = false)
     {
         var pagination = new Paging.Request(skip, take);
+
+        // فیلتر دستهٔ پیوست (مثلاً «Cheque» برای عکس چک سفارش ویزیتور). خالی = همهٔ پیوست‌ها.
+        var categoryFilter = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
+
+        // ---------- پیوست پیش‌نویس سفارش ویزیتور ----------
+        // فرم پیش از ذخیره، عکس چک را با RefId = -1 آپلود می‌کند. مالکیت بر اساس
+        // UploaderUserId سنجیده می‌شود و فهرست فقط برای خود بارگذار برمی‌گردد.
+        var isSalesVisitDraft = string.Equals(module, "SalesVisit", StringComparison.OrdinalIgnoreCase) &&
+                                refId == Inventory.Shared.Dtos.VisAttachmentCategories.DraftRefId;
+        if (isSalesVisitDraft)
+        {
+            if (!draft || MyUserId <= 0)
+                return StatusCode(403, new { message = "پیوست پیش‌نویس فقط برای بارگذارندهٔ خودش در دسترس است." });
+            var mine = await _db.AppAttachments
+                .Where(a => a.Module == module && a.RefId == refId && a.UploaderUserId == MyUserId &&
+                            (categoryFilter == null || a.Category == categoryFilter))
+                .OrderBy(x => x.Id)
+                .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt,
+                    a.FilePath, a.Data, a.Category })
+                .ToPageListAsync(pagination);
+            return Ok(pagination.Result(mine.Select(a =>
+            {
+                var ct0 = GuessContentType(a.FileName, a.ContentType);
+                return new
+                {
+                    a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt,
+                    Category = a.Category,
+                    Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+                    ContentType = ct0,
+                    CanPreview = IsPreviewable(a.FileName, ct0),
+                    CanDownload = true,
+                    CanDelete = true,
+                    DocumentId = 0,
+                    NeedsConfirm = false,
+                    Watermark = false
+                };
+            })));
+        }
+
         var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به پیوست‌های این مورد دسترسی ندارید." });
@@ -258,8 +316,12 @@ public class AttachmentsController : ControllerBase
         var docVersion = string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase);
         var canModify = docVersion ? await CanWriteDocVersion(refId) : access == AttachmentAccess.Download;
         var manager = docVersion ? await IsDocArchiveManagerAsync() : IsAdmin;
-        var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId).OrderBy(x => x.Id)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
+        var rows = await _db.AppAttachments
+            .Where(a => a.Module == module && a.RefId == refId &&
+                        (categoryFilter == null || a.Category == categoryFilter))
+            .OrderBy(x => x.Id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt,
+                a.FilePath, a.Data, a.Category })
             .ToPageListAsync(pagination);
 
         // اگر مدرک فلگ‌های امنیتی (محرمانه/واترمارک) داشته باشد، کلاینت از این فیلدها برای UX متناسب استفاده می‌کند
@@ -272,6 +334,7 @@ public class AttachmentsController : ControllerBase
             return new
             {
                 a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt,
+                Category = a.Category,
                 Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
                 ContentType = ct,
                 CanPreview = IsPreviewable(a.FileName, ct),
@@ -286,9 +349,17 @@ public class AttachmentsController : ControllerBase
 
     [HttpPost("{module}/{refId:int}")]
     [DisableRequestSizeLimit]
-    public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
+    public async Task<IActionResult> Upload(string module, int refId, IFormFile file,
+        [FromQuery] string? category = null)
     {
-        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        var isSalesVisit = string.Equals(module, "SalesVisit", StringComparison.OrdinalIgnoreCase);
+        // پیش‌نویس سفارش ویزیتور: RefId = -1 یعنی سفارش هنوز ذخیره نشده است؛
+        // مالکیت با UploaderUserId نگه داشته می‌شود و هنگام ذخیره به شناسهٔ سفارش منتقل می‌گردد.
+        if (isSalesVisit && refId == Inventory.Shared.Dtos.VisAttachmentCategories.DraftRefId)
+        {
+            if (MyUserId <= 0) return StatusCode(403, new { message = "برای بارگذاری پیوست باید وارد شوید." });
+        }
+        else if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
         {
             if (!await CanWriteDocVersion(refId))
                 return StatusCode(403, new { message = "افزودن پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
@@ -297,6 +368,18 @@ public class AttachmentsController : ControllerBase
             return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
 
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
+
+        // ---------- محدودیت عکس چک/مدرک سفارش ویزیتور ----------
+        // فقط تصویر یا PDF؛ فایل اجرایی/اسکریپت نباید زیر ماژول ویزیتوری ذخیره شود.
+        if (string.Equals(module, "SalesVisit", StringComparison.OrdinalIgnoreCase))
+        {
+            var ext = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+            var allowedExt = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".pdf" };
+            if (!allowedExt.Contains(ext))
+                return BadRequest(new { message = "برای سفارش ویزیتور فقط تصویر (JPG/PNG/WebP/TIFF) یا PDF پذیرفته می‌شود." });
+            if (file.Length > 25L * 1024 * 1024)
+                return BadRequest(new { message = "حداکثر حجم هر پیوست ۲۵ مگابایت است؛ عکس را فشرده یا PDF کنید." });
+        }
 
         // سقف حجم فایل برداشته شده است (هم‌راستا با متن «بدون محدودیت حجم» در جعبهٔ پیوست).
         // به‌جای کپی‌کردن فایل در MemoryStream، جریان فایل مستقیم روی دیسک نوشته می‌شود؛
@@ -324,7 +407,11 @@ public class AttachmentsController : ControllerBase
             ContentType = file.ContentType ?? "application/octet-stream",
             FilePath = relPath,
             Data = Array.Empty<byte>(),
-            UploaderName = MyUsername, UploaderUserId = MyUserId
+            UploaderName = MyUsername, UploaderUserId = MyUserId,
+            // دستهٔ پیوست (مثلاً «Cheque» برای عکس چک سفارش ویزیتور) — فقط برچسب است،
+            // دسترسی همان قانون نگهبان پیوست‌ها را دارد.
+            Category = string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
+            Size = _store.Size(relPath)
         };
         _db.AppAttachments.Add(att);
         try
@@ -370,6 +457,8 @@ public class AttachmentsController : ControllerBase
         var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+        if (!CanOpenRecord(a))
+            return StatusCode(403, new { message = "این پیوست پیش‌نویس متعلق به کاربر دیگری است." });
         if (access == AttachmentAccess.PreviewOnly)
             return StatusCode(403, new { message = "شما اجازه دانلود این فایل را ندارید؛ فقط امکان مشاهده دارید." });
 
@@ -423,6 +512,8 @@ public class AttachmentsController : ControllerBase
         var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+        if (!CanOpenRecord(a))
+            return StatusCode(403, new { message = "این پیوست پیش‌نویس متعلق به کاربر دیگری است." });
 
         var ct = GuessContentType(a.FileName, a.ContentType);
         if (!IsPreviewable(a.FileName, ct))
@@ -509,6 +600,62 @@ public class AttachmentsController : ControllerBase
     }
 
     /// <summary>
+    /// تصویر بندانگشتی برای شبکهٔ مدارک (عکس چک در فرم/کارتابل مالی):
+    /// فقط تصویر، حداکثر ۴۸۰px، قابل کش در مرورگر. برخلاف <c>preview</c> گردانه نمی‌نویسد
+    /// تا باز شدن ده‌ها کاشی، جدول گردانه را پر نکند؛ کلیک روی کاشی همان preview است.
+    /// </summary>
+    [HttpGet("thumb/{id:int}")]
+    [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Client, NoStore = false)]
+    public async Task<IActionResult> Thumb(int id)
+    {
+        var a = await _db.AppAttachments.FindAsync(id);
+        if (a == null) return NotFound();
+
+        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
+        if (access == AttachmentAccess.None || !CanOpenRecord(a))
+            return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+
+        // همان قاعدهٔ پیش‌نمایش برای مدرک محرمانه: تا رمز تأیید نشده، حتی بندانگشتی هم نرود.
+        var flags = await DocSecurityFlagsAsync(a.Module, a.RefId);
+        if (flags is { RequireConfirm: true } fl && !_confirm.IsConfirmed(MyUserId, fl.DocId))
+            return StatusCode(403, new { code = "PASSWORD_CONFIRM_REQUIRED", message = "برای مشاهدهٔ این مدرک تایید مجدد رمز لازم است." });
+
+        var ct = GuessContentType(a.FileName, a.ContentType);
+        if (!ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "این فایل تصویر نیست." });
+
+        var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        try
+        {
+            using var image = Image.Load(bytes);
+            image.Mutate(x => x.AutoOrient());
+            var w = image.Width;
+            var h = image.Height;
+            var max = Math.Max(w, h);
+            if (max > 480)
+            {
+                var ratio = 480d / max;
+                image.Mutate(x => x.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(Math.Max(1, (int)(w * ratio)), Math.Max(1, (int)(h * ratio)))
+                }));
+            }
+            using var ms = new MemoryStream();
+            image.Save(ms, new JpegEncoder { Quality = 78 });
+            Response.Headers["Cache-Control"] = "private, max-age=300";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return File(ms.ToArray(), "image/jpeg");
+        }
+        catch
+        {
+            return BadRequest(new { code = "IMAGE_FORMAT_UNSUPPORTED", message = "ساخت بندانگشتی برای این تصویر ممکن نشد." });
+        }
+    }
+
+    /// <summary>
     /// پیش‌نمایش Word/Excel/PowerPoint به‌صورت HTML (جداول و پاراگراف‌ها، بدون نیاز به دانلود).
     /// </summary>
     [HttpGet("preview-html/{id:int}")]
@@ -520,6 +667,8 @@ public class AttachmentsController : ControllerBase
         var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+        if (!CanOpenRecord(a))
+            return StatusCode(403, new { message = "این پیوست پیش‌نویس متعلق به کاربر دیگری است." });
 
         var flags = await DocSecurityFlagsAsync(a.Module, a.RefId);
         if (flags is { RequireConfirm: true } confidential && !_confirm.IsConfirmed(MyUserId, confidential.DocId))
@@ -557,7 +706,8 @@ public class AttachmentsController : ControllerBase
             if (!await CanWriteDocVersion(a.RefId))
                 return StatusCode(403, new { message = "حذف پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
         }
-        else if (await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin) != AttachmentAccess.Download)
+        else if (await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin) != AttachmentAccess.Download ||
+                 !CanOpenRecord(a))
             return StatusCode(403, new { message = "شما اجازه حذف پیوست این مورد را ندارید." });
         var manager = docVersion ? await IsDocArchiveManagerAsync() : IsAdmin;
         if (a.UploaderUserId != MyUserId && !manager)

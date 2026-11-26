@@ -89,6 +89,91 @@ public class VisOrderDto
     public decimal TotalDiscount { get; set; }
     public decimal TotalNet { get; set; }
 
+    // ---------- پرداخت ترکیبی (دقیقاً مثل فاکتور خرید و فروش) ----------
+    // ویزیتور روش پرداخت را در همین فرم انتخاب می‌کند و مالی در کارتابل مالی
+    // همان اجزا را می‌بیند و تأیید/رد می‌کند. برای سفارش‌های قدیمی که این
+    // اجزا را ندارند، همهٔ این فیلدها خالی/صفر می‌مانند و رفتار قبلی حفظ می‌شود.
+
+    /// <summary>پیش‌دریافت نقدی — اگر تنها جزء نقدی باشد، کل مبلغ سفارش است.</summary>
+    public decimal CashAmount { get; set; }
+
+    /// <summary>نوع دریافت نقدی (وجه نقد / کارت‌خوان / کارت به کارت)</summary>
+    public CashType? CashType { get; set; }
+
+    /// <summary>حساب خزانه (صندوق/بانک) برای جزء نقدی.</summary>
+    public int? TrsAccountId { get; set; }
+
+    /// <summary>تاریخ سررسید نسیه — فقط وقتی باقی‌مانده به نسیه می‌رود.</summary>
+    public DateTime? DueDate { get; set; }
+
+    /// <summary>چک‌های دریافتی سفارش (شماره، بانک، مبلغ، سررسید).</summary>
+    public List<ChequeDto> Cheques { get; set; } = new();
+
+    /// <summary>دفترچهٔ اقساط سفارش.</summary>
+    public List<InstallmentDto> Installments { get; set; } = new();
+
+    /// <summary>آیا یکی از اجزای پرداخت ثبت شده است؟ (سفارش قدیمی = false)</summary>
+    public bool HasPaymentPlan => CashAmount > 0 || Cheques.Count > 0 || Installments.Count > 0 ||
+                                  (DueDate.HasValue && PaymentMethod is PaymentMethod.Credit or PaymentMethod.Mixed);
+
+    public decimal ChequeSum => Cheques.Sum(c => c.Amount);
+    public decimal InstallmentSum => Installments.Sum(i => i.Amount);
+
+    /// <summary>
+    /// جزء نسیهٔ محاسبه‌شده = مبلغ سفارش − (نقد + چک + اقساط).
+    /// برای سفارش‌های قدیمی (بدون اجزا) صفر است و مبلغ از روش پرداخت خوانده می‌شود.
+    /// </summary>
+    public decimal CreditRemainder => Math.Max(0, TotalNet - CashAmount - ChequeSum - InstallmentSum);
+
+    /// <summary>
+    /// روش پرداخت مؤثر از اجزای واقعی؛ برای سفارش قدیمی/بدون اجزا همان مقدار ذخیره‌شده.
+    /// </summary>
+    public PaymentMethod EffectivePaymentMethod => HasPaymentPlan
+        ? PaymentMix.Derive(CashAmount, ChequeSum, InstallmentSum, CreditRemainder)
+        : PaymentMethod;
+
+    /// <summary>خلاصهٔ اجزای پرداخت — برای فهرست‌ها و کارتابل مالی.</summary>
+    public string PaymentSummary => HasPaymentPlan
+        ? SalesVisitPaymentPlan.DescribeParts(CashAmount, ChequeSum, InstallmentSum, CreditRemainder)
+        : "";
+
+    /// <summary>تعداد چک‌های ثبت‌شده — نشان «چک» در فهرست کارتابل مالی.</summary>
+    public int ChequeCount => Cheques.Count;
+
+    /// <summary>
+    /// پیوست‌های سفارش (عکس چک‌ها و هر مدرک دیگر). فایل‌ها روی دیسک سرور و رکورد
+    /// در جدول مشترک AppAttachments با کلید (Module + RefId) ذخیره می‌شوند.
+    /// </summary>
+    public List<VisOrderAttachmentDto> Attachments { get; set; } = new();
+
+    /// <summary>پیوست‌های دستهٔ چک — همان عکس‌هایی که مالی باید ببیند و تأیید/رد کند.</summary>
+    public List<VisOrderAttachmentDto> ChequeAttachments => Attachments.Where(a => a.IsCheque).ToList();
+
+    public int AttachmentCount => Attachments.Count;
+
+    /// <summary>
+    /// آیا پرداخت جزء چک دارد؟ (برای نشان «چک» در فهرست‌ها و جعبهٔ عکس چک)
+    /// مبنای محاسبه، مبلغ/ردیف‌های واقعی است؛ نه فقط روش پرداخت نهایی.
+    /// روش «ترکیبی» هم اگر ردیف چک داشته باشد جزء چک دارد.
+    /// </summary>
+    public bool HasChequePart => ChequeCount > 0 || ChequeSum > PaymentMix.Tolerance / 2 ||
+                                 EffectivePaymentMethod == PaymentMethod.Cheque;
+
+    /// <summary>
+    /// آخرین جزء فعال — برای نشان دادن «کدام روش» هنگام بارگذاری فرم.
+    /// جزئیات مبلغ هر جزء در فیلدهای بالا است.
+    /// </summary>
+    public VisPaymentPart Payment => EffectivePaymentMethod switch
+    {
+        PaymentMethod.Cheque => VisPaymentPart.Cheque,
+        PaymentMethod.Installment => VisPaymentPart.Installment,
+        PaymentMethod.Credit => VisPaymentPart.Credit,
+        PaymentMethod.Mixed => VisPaymentPart.Cash,
+        _ => VisPaymentPart.Cash
+    };
+
+    public string EffectivePaymentTitle => PaymentMix.Fa(EffectivePaymentMethod);
+
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; }
     public int CreatedByUserId { get; set; }
@@ -126,6 +211,7 @@ public class VisOrderDto
         PaymentMethod.Credit => "نسیه",
         PaymentMethod.Cheque => "چک",
         PaymentMethod.Installment => "اقساطی",
+        PaymentMethod.Mixed => "ترکیبی",
         _ => "—"
     };
 
@@ -153,11 +239,49 @@ public class VisOrderCommand
     public int PartyId { get; set; }
     public int WarehouseId { get; set; }
     public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+
+    // ---------- پرداخت ترکیبی (همان سه جزء فاکتور خرید و فروش) ----------
+
+    /// <summary>پیش‌دریافت نقدی — اگر تنها جزء نقدی باشد، سرور کل مبلغ را نقدی در نظر می‌گیرد.</summary>
+    public decimal CashAmount { get; set; }
+
+    /// <summary>نوع دریافت نقدی (وجه نقد / کارت‌خوان / کارت به کارت)</summary>
+    public CashType? CashType { get; set; }
+
+    /// <summary>حساب خزانه (صندوق/بانک) — برای جزء نقدی الزامی است.</summary>
+    public int? TrsAccountId { get; set; }
+
+    /// <summary>تاریخ سررسید نسیه — وقتی باقی‌مانده به نسیه می‌رود.</summary>
+    public DateTime? DueDate { get; set; }
+
+    public List<ChequeDto> Cheques { get; set; } = new();
+    public List<InstallmentDto> Installments { get; set; } = new();
+
+    /// <summary>
+    /// پیوست‌های پیش‌نویس (عکس چک، ...) — پیش از ثبت سفارش با شناسهٔ رکورد
+    /// <c>VisOrderDraftAttachmentRef</c> در جدول مشترک پیوست‌ها ذخیره شده‌اند و پس از
+    /// ذخیرهٔ سفارش به شناسهٔ واقعی سفارش منتقل می‌شوند.
+    /// </summary>
+    public List<int> AttachmentIds { get; set; } = new();
+
+    /// <summary>عکس چک‌های همین فرم — دستهٔ «چک» پیوست‌ها.</summary>
+    public List<int> ChequeAttachmentIds { get; set; } = new();
+
     public string? Note { get; set; }
     public List<VisOrderLineDto> Lines { get; set; } = new();
 
     /// <summary>پس از ذخیره، بلافاصله برای تأیید ارسال شود.</summary>
     public bool SubmitAfterSave { get; set; }
+
+    /// <summary>اجزای پرداخت در این فرمان آمده است؟ (سازگاری با کلاینت قدیمی)</summary>
+    public bool HasPaymentPlan => CashAmount > 0 || Cheques.Count > 0 || Installments.Count > 0 ||
+                                  DueDate.HasValue || PaymentMethod is PaymentMethod.Mixed;
+
+    /// <summary>
+    /// آیا نوع پرداخت جزء چک دارد؟ (پرداخت چکی یا ترکیبی)
+    /// برای پرداخت ترکیبی هم اگر چک ثبت شده باشد، عکس چک لازم است.
+    /// </summary>
+    public bool HasChequePart => PaymentMethod is PaymentMethod.Cheque or PaymentMethod.Mixed || Cheques.Count > 0;
 }
 
 /// <summary>تصمیم مدیر روی سفارش (تأیید/برگشت/رد/ابطال).</summary>
@@ -202,6 +326,116 @@ public class VisFinanceCommand
 
     /// <summary>یادداشت مالی — در گردش سفارش ثبت می‌شود.</summary>
     public string? Comment { get; set; }
+
+    /// <summary>
+    /// مالی اجزای پرداخت را دیده و تأیید کرده است. اگر false باشد (یا ارسال نشود) و
+    /// اجزای سفارش با آنچه فرستاده شده یکی نباشد، سرور اجزای خود ویزیتور را به ارث می‌برد
+    /// تا چک/اقساطی که ویزیتور ثبت کرده در سند فروش گم نشود.
+    /// </summary>
+    public bool PartsReviewed { get; set; }
+}
+
+/// <summary>
+/// تصمیم مالی روی سفارش/پیوست‌ها — «تأیید» یا «رد».
+/// <para>
+/// مالی عکس چک (و هر پیوست دیگر) را می‌بیند و پس از بررسی تأیید یا رد می‌کند.
+/// رد شدن، اتوماتیک سفارش را رد نمی‌کند: مالی می‌تواند فقط مدرک را رد کند و از
+/// ویزیتور اصلاح بخواهد، یا با پرچم <see cref="RejectOrder"/> سفارش را هم به
+/// «برگشت برای اصلاح» ببرد. دلیل رد برای هر دو حالت الزامی است.
+/// </para>
+/// </summary>
+public class VisFinanceDecision
+{
+    public int Id { get; set; }
+
+    /// <summary>true = تأیید مالی، false = رد مالی</summary>
+    public bool Approved { get; set; }
+
+    /// <summary>دلیل تصمیم — برای «رد» الزامی است و در گردش سفارش ثبت می‌شود.</summary>
+    public string? Comment { get; set; }
+
+    /// <summary>
+    /// پیوست‌هایی که این تصمیم دربارهٔ آن‌هاست (خالی = همهٔ پیوست‌های سفارش).
+    /// </summary>
+    public List<int> AttachmentIds { get; set; } = new();
+
+    /// <summary>با رد مدرک، خود سفارش هم به «برگشت برای اصلاح» برود.</summary>
+    public bool RejectOrder { get; set; }
+
+    /// <summary>فقط پیوست‌های دستهٔ چک بررسی شوند (پیش‌فرض صف مالی).</summary>
+    public bool ChequeOnly { get; set; }
+}
+
+/// <summary>
+/// یک پیوست سفارش ویزیتور — فایل روی دیسک سرور، رکورد در جدول مشترک پیوست‌ها.
+/// </summary>
+public class VisOrderAttachmentDto
+{
+    public int Id { get; set; }
+
+    /// <summary>شناسهٔ سفارش مالک پیوست (برای پیش‌نویس، شناسهٔ موقت منفی).</summary>
+    public int OrderId { get; set; }
+
+    public string FileName { get; set; } = "";
+    public string? ContentType { get; set; }
+    public long Size { get; set; }
+    public string? UploaderName { get; set; }
+    public DateTime? UploadedAt { get; set; }
+
+    /// <summary>دستهٔ پیوست — «چک» برای عکس چک، «عمومی» برای مدرک دیگر.</summary>
+    public string Category { get; set; } = VisAttachmentCategories.General;
+
+    public bool IsCheque => string.Equals(Category, VisAttachmentCategories.Cheque, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>آیا تصویر است؟ (پیش‌نمایش درون‌برنامه‌ای)</summary>
+    public bool IsImage => ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true;
+
+    /// <summary>قابل پیش‌نمایش (تصویر یا PDF) — واتس‌اپ‌گونه در کارتابل مالی دیده می‌شود.</summary>
+    public bool CanPreview => IsImage || string.Equals(ContentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>تصمیم مالی روی همین مدرک: null = در انتظار بررسی، true = تأیید، false = رد.</summary>
+    public bool? FinanceApproved { get; set; }
+
+    public DateTime? FinanceDecidedAt { get; set; }
+    public string? FinanceDecidedBy { get; set; }
+    public string? FinanceNote { get; set; }
+
+    /// <summary>عنوان فارسی وضعیت تصمیم مالی.</summary>
+    public string DecisionTitle => FinanceApproved switch
+    {
+        true => "تأییدشده",
+        false => "ردشده",
+        _ => "در انتظار بررسی مالی"
+    };
+
+    public string DecisionCss => FinanceApproved switch
+    {
+        true => "vis-att-ok",
+        false => "vis-att-rejected",
+        _ => "vis-att-pending"
+    };
+
+    /// <summary>آیا کاربر جاری اجازهٔ پیش‌نمایش دارد؟ (از سرور در فهرست پیوست‌ها)</summary>
+    public bool CanPreview { get; set; } = true;
+
+    /// <summary>آیا کاربر جاری اجازهٔ دانلود دارد؟</summary>
+    public bool CanDownload { get; set; } = true;
+}
+
+/// <summary>دسته‌های پیوست سفارش ویزیتور — یک منبع مشترک کلاینت/سرور.</summary>
+public static class VisAttachmentCategories
+{
+    public const string General = "General";
+    public const string Cheque = "Cheque";
+
+    /// <summary>شناسهٔ رکورد پیش‌نویس (سفارش هنوز ذخیره نشده) — شناسه‌های منفی برای همین کارند.</summary>
+    public const int DraftRefId = -1;
+
+    /// <summary>تعداد روزی که پیوست پیش‌نویسِ بدون سفارش معتبر می‌ماند.</summary>
+    public const int DraftRetentionDays = 3;
+
+    public static string Title(string? category) =>
+        string.Equals(category, Cheque, StringComparison.OrdinalIgnoreCase) ? "عکس چک" : "پیوست عمومی";
 }
 
 /// <summary>هویت و توان‌های کاربر جاری در ماژول ویزیتوری (سمت سرور محاسبه می‌شود).</summary>

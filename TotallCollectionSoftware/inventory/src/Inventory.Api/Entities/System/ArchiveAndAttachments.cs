@@ -3,6 +3,21 @@ using System.ComponentModel.DataAnnotations;
 namespace Inventory.Api.Data;
 
 /// <summary>
+/// تصمیم مالی روی یک پیوست (عکس چک سفارش ویزیتور و مدارک مشابه).
+/// </summary>
+public enum VisAttachmentFinancialStatus
+{
+    /// <summary>در انتظار بررسی مالی</summary>
+    Pending = 0,
+
+    /// <summary>مالی تأیید کرد</summary>
+    Approved = 1,
+
+    /// <summary>مالی رد کرد (دلیل در FinancialNote)</summary>
+    Rejected = 2
+}
+
+/// <summary>
 /// ================== بایگانی جامع (عمومی) ==================
 /// هر کاربر بایگانی اختصاصی خودش را دارد (OwnerUserId) با پوشه و زیرپوشه.
 /// هر رکوردی از هر ماژولی با (Module + RefId) قابل بایگانی است —
@@ -84,6 +99,38 @@ public class AppAttachment
     public string UploaderName { get; set; } = "";
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// دستهٔ پیوست — مثلاً «Cheque» برای عکس چک سفارش ویزیتور. خالی = پیوست عمومی.
+    /// </summary>
+    [MaxLength(40)]
+    public string? Category { get; set; }
+
+    /// <summary>
+    /// شناسهٔ مدرک مرتبط در آرشیو (فقط DocVersion) — برای پیوست پیش‌نویس سفارش ویزیتور
+    /// موقتاً شناسهٔ کاربر بارگذار را نگه می‌دارد تا انتقال به سفارش ممکن شود.
+    /// </summary>
+    public int? DocumentId { get; set; }
+
+    /// <summary>شرکت مالک پیوست — پیوست پیش‌نویس بدون شرکت است.</summary>
+    public int? CompanyId { get; set; }
+
+    /// <summary>تصمیم مالی روی مدرک (برای کارتابل مالی سفارش ویزیتور).</summary>
+    public VisAttachmentFinancialStatus FinancialStatus { get; set; } = VisAttachmentFinancialStatus.Pending;
+
+    public DateTime? FinancialDecidedAt { get; set; }
+
+    [MaxLength(150)]
+    public string? FinancialDecidedBy { get; set; }
+
+    [MaxLength(500)]
+    public string? FinancialNote { get; set; }
+
+    /// <summary>زمان آخرین تغییر — برای پاک‌سازی پیش‌نویس‌های رهاشده.</summary>
+    public DateTime? UpdatedAt { get; set; }
+
+    /// <summary>طول فایل (بایت) — برای پیوست‌های روی دیسک که Data خالی است.</summary>
+    public long? Size { get; set; }
 }
 
 /// <summary>

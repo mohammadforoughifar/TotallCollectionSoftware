@@ -122,7 +122,7 @@ else
                                     <div class="d-flex justify-content-between fs-8"><span>جمع کل</span><span>@Fa.Money(o.TotalGross)</span></div>
                                     <div class="d-flex justify-content-between fs-8"><span>تخفیف</span><span class="text-danger">@Fa.Money(o.TotalDiscount)</span></div>
                                     <div class="d-flex justify-content-between fw-700 mt-1"><span>قابل پرداخت</span><span>@Fa.Money(o.TotalNet)</span></div>
-                                    <div class="fs-9 text-muted mt-1">پرداخت: @VisUi.PaymentText(o.PaymentMethod) — انبار: @o.WarehouseName</div>
+                                    <div class="fs-9 text-muted mt-1">پرداخت: @o.EffectivePaymentTitle@(o.HasChequePart ? $" ({Fa.Digits(o.ChequeCount)} چک)" : "") — انبار: @o.WarehouseName</div>
                                     @if (!string.IsNullOrWhiteSpace(o.Note))
                                     {
                                         <div class="fs-9 text-muted mt-1">یادداشت ویزیتور: @o.Note</div>

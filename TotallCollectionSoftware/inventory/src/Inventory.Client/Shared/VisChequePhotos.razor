@@ -1,0 +1,303 @@
+@* =====================================================================
+   عکس چک سفارش ویزیتور — آپلود، پیش‌نمایش و حذف
+   بک‌اند مشترک پیوست‌ها: /api/attachments/SalesVisit/{orderId}
+   فایل با دستهٔ «Cheque» ثبت می‌شود تا کارتابل مالی آن را جدا ببیند.
+   پیش از ذخیرهٔ سفارش: RefId = -1 (پیش‌نویس) و بعد از ذخیره منتقل می‌شود.
+   ===================================================================== *@
+@using System.Net.Http.Headers
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<div class="vis-photo-wrap" data-cheque-photos>
+    <div class="vis-photo-head">
+        <div class="fw-700 fs-8">
+            <i class="bi bi-camera-fill text-primary ms-1"></i>
+            عکس چک‌ها
+            <span class="vis-photo-count">@items.Count</span>
+        </div>
+        <div class="fs-9 text-muted">
+            عکس روی/پشت چک، صیاد یا رسید کارت‌خوان؛ مالی پیش از ثبت فروش همین عکس‌ها را تأیید می‌کند.
+        </div>
+    </div>
+
+    @if (items.Count > 0)
+    {
+        <div class="vis-photo-grid">
+            @foreach (var a in items.OrderBy(x => x.Id))
+            {
+                <figure class="vis-photo-card @(a.CanPreview ? "is-clickable" : "")" data-cheque-photo="@a.Id">
+                    @if (a.IsImage)
+                    {
+                        <button type="button" class="vis-photo-thumb" title="پیش‌نمایش عکس چک"
+                                @onclick="() => PreviewAsync(a)">
+                            <img src="@PreviewUrl(a)" alt="@a.FileName" loading="lazy" />
+                        </button>
+                    }
+                    else if (a.CanPreview)
+                    {
+                        @* PDF: تگ img رندر نمی‌شود؛ کاشی PDF با پیش‌نمایش در مودال *@
+                        <button type="button" class="vis-photo-thumb vis-photo-nopreview" title="پیش‌نمایش PDF"
+                                @onclick="() => PreviewAsync(a)">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="vis-photo-thumb vis-photo-nopreview"><i class="bi bi-file-earmark"></i></div>
+                    }
+                    <figcaption class="vis-photo-meta" title="@a.FileName">
+                        <span class="vis-photo-name">@ShortName(a.FileName)</span>
+                        <span class="fs-9 text-muted">@FormatSize(a.Size)</span>
+                    </figcaption>
+                    <div class="vis-photo-actions">
+                        @if (a.CanPreview)
+                        {
+                            <button type="button" class="btn btn-sm btn-light py-0" title="پیش‌نمایش" @onclick="() => PreviewAsync(a)">
+                                <i class="bi bi-eye text-primary"></i>
+                            </button>
+                        }
+                        @if (a.CanDownload)
+                        {
+                            <a class="btn btn-sm btn-light py-0" title="دانلود" href="@DownloadUrl(a)" target="_blank" rel="noopener">
+                                <i class="bi bi-download text-success"></i>
+                            </a>
+                        }
+                        @if (CanUpload)
+                        {
+                            <button type="button" class="btn btn-sm btn-light py-0" title="حذف عکس"
+                                    disabled="@busy" @onclick="() => DeleteAsync(a)">
+                                <i class="bi bi-trash text-danger"></i>
+                            </button>
+                        }
+                    </div>
+                </figure>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="vis-photo-empty fs-8 text-muted">
+            <i class="bi bi-image"></i> هنوز عکسی برای چک بارگذاری نشده است.
+        </div>
+    }
+
+    @if (CanUpload)
+    {
+        <div class="vis-photo-add @(busy ? "is-busy" : "")" data-cheque-photo-input>
+            <i class="bi @(busy ? "bi-hourglass-split" : "bi-cloud-arrow-up")"></i>
+            <span>@(busy ? "در حال بارگذاری…" : "افزودن عکس چک")</span>
+            @* InputFile بلاژور است، نه <input type=file> خام: فقط InputFile رویداد
+               InputFileChangeEventArgs تولید می‌کند و استریم فایل را می‌دهد. *@
+            <InputFile class="vis-photo-input" OnChange="OnFilesAsync" multiple
+                       accept="image/*,application/pdf" disabled="@busy" />
+        </div>
+    }
+</div>
+
+<FilePreviewModal @ref="previewModal" />
+
+<style>
+    .vis-photo-wrap { border: 1px dashed #bfdbfe; background: #f8fbff; border-radius: 12px; padding: .6rem .7rem; }
+    .vis-photo-head { display: flex; flex-wrap: wrap; gap: .25rem .6rem; align-items: baseline; margin-bottom: .45rem; }
+    .vis-photo-count { background: #e0edff; color: #1d4ed8; border-radius: 999px; font-size: .68rem; padding: .02rem .45rem; margin-inline-start: .2rem; }
+    .vis-photo-grid { display: flex; flex-wrap: wrap; gap: .55rem; margin-bottom: .5rem; }
+    .vis-photo-card { width: 8.2rem; margin: 0; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; }
+    .vis-photo-thumb { display: block; width: 100%; height: 5.2rem; padding: 0; border: 0; background: #f1f5f9; cursor: pointer; }
+    .vis-photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    button.vis-photo-nopreview { cursor: zoom-in; color: #b91c1c; }
+    .vis-photo-nopreview { display: flex; align-items: center; justify-content: center; color: #94a3b8; font-size: 1.6rem; cursor: default; }
+    .vis-photo-meta { display: flex; flex-direction: column; padding: .2rem .4rem 0; }
+    .vis-photo-name { font-size: .7rem; font-weight: 600; color: #334155; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vis-photo-actions { display: flex; justify-content: space-between; padding: .15rem .3rem .3rem; }
+    .vis-photo-empty { padding: .3rem 0 .5rem; }
+    .vis-photo-add { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; font-weight: 700;
+                     color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 9px;
+                     padding: .32rem .7rem; position: relative; overflow: hidden; }
+    .vis-photo-add.is-busy { opacity: .7; pointer-events: none; }
+    .vis-photo-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer;
+                       font-size: 0; }
+    .vis-photo-input::file-selector-button { cursor: pointer; }
+</style>
+
+@code {
+    /// <summary>شناسهٔ سفارش؛ برای پیش‌نویس ذخیره‌نشده باید VisAttachmentCategories.DraftRefId (-1) باشد.</summary>
+    [Parameter] public int OrderId { get; set; } = VisAttachmentCategories.DraftRefId;
+
+    /// <summary>اجازهٔ بارگذاری/حذف — پس از ارسال سفارش (در انتظار تأیید) خاموش می‌شود.</summary>
+    [Parameter] public bool CanUpload { get; set; } = true;
+
+    /// <summary>تعداد عکس‌های بارگذاری‌شده — به میزبان خبر داده می‌شود.</summary>
+    [Parameter] public EventCallback<int> OnCountChanged { get; set; }
+
+    /// <summary>آخرین فهرست عکس‌ها برای استفادهٔ میزبان (مثلاً شناسه‌ها هنگام ذخیره).</summary>
+    [Parameter] public EventCallback<List<VisOrderAttachmentDto>> OnLoaded { get; set; }
+
+    /// <summary>آیا این فرم قفل شده است؟ (مثلاً سفارش ارسال‌شده)</summary>
+    private List<VisOrderAttachmentDto> items = new();
+    private bool busy;
+    private int _loadedOrderId = int.MinValue;
+    private bool _loadedCanUpload;
+    private FilePreviewModal? previewModal;
+    private string apiBase = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+        Http.DefaultRequestHeaders.Authorization =
+            string.IsNullOrWhiteSpace(Auth.Token) ? null : new AuthenticationHeaderValue("Bearer", Auth.Token);
+        if (_loadedOrderId != OrderId || _loadedCanUpload != CanUpload)
+        {
+            _loadedOrderId = OrderId;
+            _loadedCanUpload = CanUpload;
+            await ReloadAsync();
+        }
+    }
+
+    public async Task ReloadAsync()
+    {
+        if (OrderId == 0 || string.IsNullOrWhiteSpace(Auth.Token)) { items = new(); await PublishAsync(); return; }
+        try
+        {
+            // پیش‌نویس (RefId = -1) با ?draft=1 خوانده می‌شود؛ سرور فقط فایل‌های خودِ
+            // همین کاربر را برمی‌گرداند. سفارش ذخیره‌شده بدون پارامتر خوانده می‌شود.
+            var query = new List<string> { $"category={VisAttachmentCategories.Cheque}" };
+            if (OrderId == VisAttachmentCategories.DraftRefId) query.Add("draft=true");
+            var url = $"{apiBase}/api/attachments/{AttachmentModule}/{OrderId}?" +
+                      string.Join("&", query);
+            var rows = await Http.GetFromJsonAsync<List<PagedAttachmentRow>>(url) ?? new();
+            items = rows.Select(r => new VisOrderAttachmentDto
+            {
+                Id = r.Id,
+                OrderId = OrderId,
+                FileName = r.FileName ?? "",
+                ContentType = r.ContentType,
+                Size = r.Size,
+                UploaderName = r.UploaderName,
+                UploadedAt = r.UploadedAt,
+                Category = VisAttachmentCategories.Cheque,
+                CanDownload = r.CanDownload,
+                CanPreview = r.CanPreview
+            }).ToList();
+        }
+        catch { items = new(); }
+        await PublishAsync();
+    }
+
+    private async Task PublishAsync()
+    {
+        if (OnCountChanged.HasDelegate) await OnCountChanged.InvokeAsync(items.Count);
+        if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync(items.ToList());
+    }
+
+    private async Task OnFilesAsync(InputFileChangeEventArgs e)
+    {
+        if (!CanUpload || OrderId == 0) return;
+        var files = e.GetMultipleFiles(20);
+        busy = true;
+        var ok = 0;
+        try
+        {
+            foreach (var f in files)
+            {
+                try
+                {
+                    using var content = new MultipartFormDataContent();
+                    var sc = new StreamContent(f.OpenReadStream(25L * 1024 * 1024));
+                    sc.Headers.ContentType = new MediaTypeHeaderValue(
+                        string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+                    // دستهٔ چک با پارامتر query به سرور اعلام می‌شود (همان endpoint مشترک پیوست‌ها)
+                    content.Add(sc, "file", f.Name);
+                    var resp = await Http.PostAsync(
+                        $"{apiBase}/api/attachments/{AttachmentModule}/{OrderId}?category={VisAttachmentCategories.Cheque}",
+                        content);
+                    if (resp.IsSuccessStatusCode) ok++;
+                    else Toast.Error($"بارگذاری {f.Name} ناموفق بود: {await ReadErrorAsync(resp)}");
+                }
+                catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }
+            }
+            await ReloadAsync();
+            if (ok > 0) Toast.Success($"{Fa.Digits(ok)} عکس چک بارگذاری شد.");
+        }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteAsync(VisOrderAttachmentDto a)
+    {
+        if (!CanUpload) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.DeleteAsync($"{apiBase}/api/attachments/{a.Id}");
+            if (!resp.IsSuccessStatusCode) Toast.Error($"حذف انجام نشد: {await ReadErrorAsync(resp)}");
+            await ReloadAsync();
+        }
+        finally { busy = false; }
+    }
+
+    private async Task PreviewAsync(VisOrderAttachmentDto a)
+    {
+        if (previewModal is null) return;
+        await previewModal.ShowAsync(a.Id, a.FileName,
+            string.IsNullOrWhiteSpace(a.ContentType) ? "image/jpeg" : a.ContentType,
+            allowDownload: a.CanDownload);
+    }
+
+    private string PreviewUrl(VisOrderAttachmentDto a) => ThumbUrl(a.Id);
+
+    private string DownloadUrl(VisOrderAttachmentDto a) =>
+        $"{apiBase}/api/attachments/download/{a.Id}?access_token={Uri.EscapeDataString(Auth.Token ?? "")}";
+
+    /// <summary>
+    /// آدرس تصویر بندانگشتی — همان endpoint پیش‌نمایش سرور (inline، بدون نیاز به هدر):
+    /// توکن در query می‌رود تا تگ <img> بدون fetch مرورگر کار کند.
+    /// </summary>
+    private string ThumbUrl(int id) =>
+        $"{apiBase}/api/attachments/thumb/{id}?access_token={Uri.EscapeDataString(Auth.Token ?? "")}";
+
+    private static string ShortName(string name) =>
+        name.Length <= 22 ? name : name[..12] + "…" + name[^7..];
+
+    private static string FormatSize(long b) =>
+        b <= 0 ? "—" : b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
+
+    private static async Task<string> ReadErrorAsync(HttpResponseMessage resp)
+    {
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<ApiError>();
+            if (!string.IsNullOrWhiteSpace(err?.message)) return err!.message!;
+        }
+        catch { }
+        return resp.StatusCode switch
+        {
+            System.Net.HttpStatusCode.Forbidden => "اجازهٔ افزودن یا حذف عکس چک را ندارید.",
+            System.Net.HttpStatusCode.Unauthorized => "نشست شما منقضی شده است؛ دوباره وارد شوید.",
+            _ => $"خطای سرور ({(int)resp.StatusCode})"
+        };
+    }
+
+    /// <summary>نام ماژول پیوست — همان مقداری که سرور برای VisOrder قبول می‌کند.</summary>
+    private const string AttachmentModule = "SalesVisit";
+
+    private sealed class PagedAttachmentRow
+    {
+        public int Id { get; set; }
+        public string? FileName { get; set; }
+        public string? ContentType { get; set; }
+        public long Size { get; set; }
+        public string? UploaderName { get; set; }
+        public DateTime? UploadedAt { get; set; }
+        public bool CanPreview { get; set; }
+        public bool CanDownload { get; set; }
+        public int? DocumentId { get; set; }
+        public bool NeedsConfirm { get; set; }
+        public bool Watermark { get; set; }
+        public int UploaderUserId { get; set; }
+    }
+
+    private sealed class ApiError { public string? message { get; set; } }
+}

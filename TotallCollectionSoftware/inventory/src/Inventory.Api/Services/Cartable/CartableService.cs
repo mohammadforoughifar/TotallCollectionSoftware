@@ -247,6 +247,31 @@ public class SalesVisitCartableSource : ICartableSource
                     BadgeCount = approved
                 });
 
+            // عکس چک/مدارک در انتظار بررسی مالی — همان چیزی که «کارتابل مالی» باید نشان دهد.
+            // تا تصمیم‌نگرفتن روی مدارک، دکمهٔ «تأیید مالی و ثبت فروش» سرور را رد می‌کند.
+            var docsPending = await _db.AppAttachments.AsNoTracking()
+                .Where(a => a.Module == "SalesVisit" && a.RefId > 0 &&
+                            a.Category == Inventory.Shared.Dtos.VisAttachmentCategories.Cheque &&
+                            a.FinancialStatus == Inventory.Api.Data.VisAttachmentFinancialStatus.Pending &&
+                            _db.VisOrders.Any(o => o.Id == a.RefId && o.Status == VisOrderStatus.Approved))
+                .Select(a => a.RefId)
+                .Distinct()
+                .CountAsync(ct);
+            if (docsPending > 0)
+                items.Add(new CartableItemDto
+                {
+                    Source = Key,
+                    Kind = "finance-docs-pending",
+                    Title = $"{Fa.Digits(docsPending)} سفارش با عکس چک تأییدنشده",
+                    Subtitle = "عکس چک‌ها را ببینید و تأیید یا رد کنید",
+                    Link = "/sales/finance-queue",
+                    Icon = "bi-images",
+                    Color = "#b45309",
+                    Priority = CartablePriority.High,
+                    Actionable = true,
+                    BadgeCount = docsPending
+                });
+
             var invoiced = await _db.VisOrders.AsNoTracking()
                 .Where(o => o.Status == VisOrderStatus.Invoiced)
                 .CountAsync(ct);

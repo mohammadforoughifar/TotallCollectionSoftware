@@ -140,7 +140,21 @@ BEGIN
         [DeliveryDate] datetime2 NULL,
         [FinalDeliveryDate] datetime2 NULL,
         [FinalDateSetAt] datetime2 NULL,
-        [FinalDateSetBy] nvarchar(150) NULL
+        [FinalDateSetBy] nvarchar(150) NULL,
+        [CashAmount] decimal(18,2) NOT NULL DEFAULT(0),
+        [CashType] int NULL,
+        [TrsAccountId] int NULL,
+        [DueDate] datetime2 NULL,
+        [ChequesJson] nvarchar(max) NULL,
+        [InstallmentsJson] nvarchar(max) NULL,
+        [PaymentCashAmount] decimal(18,2) NOT NULL DEFAULT(0),
+        [PaymentChequeSum] decimal(18,2) NOT NULL DEFAULT(0),
+        [PaymentInstallmentSum] decimal(18,2) NOT NULL DEFAULT(0),
+        [PaymentCreditRemainder] decimal(18,2) NOT NULL DEFAULT(0),
+        [FinanceAttachmentsApproved] bit NULL,
+        [FinanceAttachmentDecidedAt] datetime2 NULL,
+        [FinanceAttachmentDecidedBy] nvarchar(150) NULL,
+        [FinanceAttachmentNote] nvarchar(500) NULL
     );
     CREATE UNIQUE INDEX [IX_VisOrders_CompanyId_Number] ON [dbo].[VisOrders] ([CompanyId], [Number]);
     CREATE INDEX [IX_VisOrders_Status] ON [dbo].[VisOrders] ([Status]);
@@ -265,12 +279,27 @@ CREATE TABLE IF NOT EXISTS VisOrders (
     DeliveryDate TEXT NULL,
     FinalDeliveryDate TEXT NULL,
     FinalDateSetAt TEXT NULL,
-    FinalDateSetBy TEXT NULL
+    FinalDateSetBy TEXT NULL,
+    CashAmount TEXT NOT NULL DEFAULT '0',
+    CashType INTEGER NULL,
+    TrsAccountId INTEGER NULL,
+    DueDate TEXT NULL,
+    ChequesJson TEXT NULL,
+    InstallmentsJson TEXT NULL,
+    PaymentCashAmount TEXT NOT NULL DEFAULT '0',
+    PaymentChequeSum TEXT NOT NULL DEFAULT '0',
+    PaymentInstallmentSum TEXT NOT NULL DEFAULT '0',
+    PaymentCreditRemainder TEXT NOT NULL DEFAULT '0',
+    FinanceAttachmentsApproved INTEGER NULL,
+    FinanceAttachmentDecidedAt TEXT NULL,
+    FinanceAttachmentDecidedBy TEXT NULL,
+    FinanceAttachmentNote TEXT NULL
 );");
         await SafeAsync(db, "CREATE UNIQUE INDEX IF NOT EXISTS IX_VisOrders_CompanyId_Number ON VisOrders (CompanyId, Number);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_VisOrders_Status ON VisOrders (Status);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_VisOrders_ReferrerId_Date ON VisOrders (ReferrerId, Date);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_VisOrders_PartyId ON VisOrders (PartyId);");
+        await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_VisOrders_InvoiceId ON VisOrders (InvoiceId);");
 
         await SafeAsync(db, @"
 CREATE TABLE IF NOT EXISTS VisOrderLines (
