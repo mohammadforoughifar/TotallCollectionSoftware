@@ -51,7 +51,7 @@ public class User
     /// <summary>
     /// ستون قدیمی معافیت «صندلی لایسنس». موتور لایسنس حذف شده و این مقدار دیگر
     /// هیچ اثری ندارد؛ فقط برای سازگاری با دیتابیس نصب‌های موجود نگه داشته شده
-    /// (نام ستون همان <c>LicenseSeatExempt</c> است تا مایگریشنی لازم نشود).
+    /// (نام ستون همان <c>LicenseSeatExempt</c> است؛ در صورت نبودن، هنگام ارتقا با پیش‌فرض false ساخته می‌شود).
     /// </summary>
     [System.ComponentModel.DataAnnotations.Schema.Column("LicenseSeatExempt")]
     public bool SessionSeatExempt { get; set; }

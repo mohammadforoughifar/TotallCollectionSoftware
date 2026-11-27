@@ -9161,6 +9161,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<int>("CreateUserId")
                         .HasColumnType("int");
 
@@ -9245,6 +9248,9 @@ namespace Inventory.Api.Migrations
                 {
                     b.Property<int>("Id")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<int?>("CreatorSematId")
                         .HasColumnType("int");
@@ -11245,6 +11251,9 @@ namespace Inventory.Api.Migrations
                 {
                     b.Property<int>("Id")
                         .HasColumnType("int");
+
+                    b.Property<DateTime?>("CreatedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime?>("ArchivedAt")
                         .HasColumnType("datetime2");
@@ -14710,6 +14719,9 @@ namespace Inventory.Api.Migrations
                     b.Property<bool>("MobileVerified")
                         .HasColumnType("bit");
 
+                    b.Property<int?>("OrganizationId")
+                        .HasColumnType("int");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -14726,6 +14738,10 @@ namespace Inventory.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("SessionSeatExempt")
+                        .HasColumnType("bit")
+                        .HasColumnName("LicenseSeatExempt");
 
                     b.Property<int?>("ShiftGroupId")
                         .HasColumnType("int");

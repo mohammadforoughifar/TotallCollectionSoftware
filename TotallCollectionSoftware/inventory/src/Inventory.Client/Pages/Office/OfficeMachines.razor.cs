@@ -208,7 +208,6 @@ public partial class OfficeMachines : IDisposable
     {
         editing = false; editId = 0; formError = ""; testResult = null; formSection = "basic";
         form = new MachineForm();
-        sysDropOpen = false; sysSearch = "";
         formAgentPrinters = new();
         await LoadLookups();
         ShowForm = true;
@@ -218,7 +217,6 @@ public partial class OfficeMachines : IDisposable
     {
         editing = true; editId = m.Id; formError = ""; testResult = null; formSection = "basic";
         form = MachineForm.From(m);
-        sysDropOpen = false; sysSearch = "";
         formAgentPrinters = new();
         await LoadLookups();
         ShowForm = true;
@@ -285,8 +283,10 @@ public partial class OfficeMachines : IDisposable
             form.AssignedUserId = s.UserId is > 0 ? s.UserId : null;
             form.CompanyId = s.CompanyId is > 0 ? s.CompanyId : null;
         }
-        PickSys(s);
-        await Task.CompletedTask;
+        if (form.LinkedSystemInfoId != s.Id) form.AgentPrinterId = null;
+        form.LinkedSystemInfoId = s.Id;
+        form.LinkedSystemLabel = $"{s.Label} — {s.Owner}";
+        await LoadFormAgentPrinters();
     }
 
     private void OnAgentPrinterChanged(ChangeEventArgs e)
@@ -571,38 +571,6 @@ public partial class OfficeMachines : IDisposable
 
     // ================================================================== کمبوی سیستم (کابلی)
     private List<SysOpt> sysLookup = new();
-    private bool sysDropOpen;
-    private string sysSearch = "";
-    private ElementReference _omComboEl;
-    private double _omTop, _omLeft, _omWidth;
-    private string OmMenuStyle => Popover.FixedStyle(_omTop, _omLeft, _omWidth, 300);
-
-    private async Task ToggleSysCombo()
-    {
-        if (sysDropOpen) { sysDropOpen = false; return; }
-        try
-        {
-            var r = await JS.InvokeAsync<UiRect>("uiRect", _omComboEl);
-            (_omTop, _omLeft, _omWidth) = Popover.Below(r, 0, 300);
-        }
-        catch (JSException) { }
-        sysDropOpen = true;
-    }
-
-    private IEnumerable<SysOpt> FilteredSys =>
-        string.IsNullOrWhiteSpace(sysSearch) ? sysLookup :
-        sysLookup.Where(x => x.Label.Contains(sysSearch.Trim(), StringComparison.OrdinalIgnoreCase)
-            || x.Owner.Contains(sysSearch.Trim(), StringComparison.OrdinalIgnoreCase)
-            || (x.Ip ?? "").Contains(sysSearch.Trim(), StringComparison.OrdinalIgnoreCase));
-
-    private void PickSys(SysOpt s)
-    {
-        if (form.LinkedSystemInfoId != s.Id) form.AgentPrinterId = null;
-        form.LinkedSystemInfoId = s.Id;
-        form.LinkedSystemLabel = $"{s.Label} — {s.Owner}";
-        sysDropOpen = false;
-        _ = LoadFormAgentPrinters();
-    }
 
     // ================================================================== چاپگرهای ایجنت (USB)
     private List<AgentPrinterItem> formAgentPrinters = new();
@@ -1108,7 +1076,7 @@ public partial class OfficeMachines : IDisposable
         public string? SnmpCommunity { get; set; }
         public bool HasCommunity { get; set; }
         public string? SnmpV3User { get; set; }
-        public string SnmpV3AuthProtocol { get; set; } = "SHA1";
+        public string SnmpV3AuthProtocol { get; set; } = "SHA256";
         public string? SnmpV3AuthPassword { get; set; }
         public bool HasV3Auth { get; set; }
         public string SnmpV3PrivProtocol { get; set; } = "AES";

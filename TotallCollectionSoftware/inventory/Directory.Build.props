@@ -1,4 +1,15 @@
 <Project>
+  <!-- Keep the Blazor intermediate asset tree below legacy Windows path limits.
+       Set before Microsoft.Common.props chooses MSBuildProjectExtensionsPath so restore,
+       VS design-time builds and normal builds agree. The key isolates each checkout. -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT' and '$(MSBuildProjectName)' == 'Inventory.Client' and '$(LOCALAPPDATA)' != '' and '$(BaseIntermediateOutputPath)' == '' and '$(MSBuildProjectExtensionsPath)' == '' and '$(UseArtifactsOutput)' != 'true' and '$(ArtifactsPath)' == ''">
+    <_InventoryClientObjKey>$([MSBuild]::StableStringHash('$(MSBuildProjectFullPath)'))</_InventoryClientObjKey>
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\TCS\obj\$(_InventoryClientObjKey)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'Inventory.Client'">
+    <!-- An old in-project obj folder must not become a Razor/C# input after moving obj. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
+  </PropertyGroup>
   <PropertyGroup>
     <!-- .NET 8 uses C# 12. Do not use latest: C# 14 can bind array
          extension calls to Span overloads that .NET 8 expression interpreters cannot execute. -->

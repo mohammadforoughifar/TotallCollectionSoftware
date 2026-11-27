@@ -82,7 +82,10 @@ IF OBJECT_ID(N'dbo.TrsCheques', N'U') IS NOT NULL AND NOT EXISTS
             ? new List<TrsVoucher>()
             : await (soleCompany.HasValue ? query : query.Where(v => linkedIds.Contains(v.Id))).Include(v => v.Lines).ToListAsync();
         var accountOwners = await db.TrsAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, a => a.CompanyId);
-        var partyOwners = await db.Parties.IgnoreQueryFilters().AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.CompanyId);
+        // ToDictionaryAsync's selectors run on the client; project ownership in SQL first.
+        var partyOwners = await db.Parties.IgnoreQueryFilters().AsNoTracking()
+            .Select(p => new { p.Id, p.CompanyId })
+            .ToDictionaryAsync(p => p.Id, p => p.CompanyId);
         var chequeOwners = await db.TrsCheques.IgnoreQueryFilters().AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.CompanyId);
         bool AccountMatches(int id, int company) => accountOwners.TryGetValue(id, out var owner) &&
             (owner == company || (!multi && owner == null));

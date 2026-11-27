@@ -2,64 +2,53 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Data;
 
-/// <summary>
-/// خودتعمیرِ اسکیمای «ثبت‌کنندهٔ طرف حساب» — نسخه ۱.
-/// <para>
-/// ستون‌های <c>RegisteredBy*</c> بعد از ساخت اولیهٔ جدول <c>Parties</c> اضافه شده‌اند؛
-/// مایگریشن EF برای دیتابیس‌های موجود اجرا نمی‌شود، پس اینجا idempotent اضافه می‌شوند.
-/// همهٔ ستون‌ها nullable هستند و به دادهٔ فعلی کاری ندارند.
-/// </para>
-/// </summary>
+/// <summary>Add missing optional Party fields on existing databases; never rewrite existing values.</summary>
 public static class PartyRegistrationSchemaV1
 {
+    // PostalCode and TaxId match AddMoadianV1. Upgrades that skipped that migration
+    // can be missing either column even when the migration history looks current.
+    internal const string SqlServer = @"
+IF OBJECT_ID(N'dbo.Parties', N'U') IS NULL
+    THROW 51001, N'dbo.Parties was not found or is not visible. Check the target database and permissions.', 1;
+IF COL_LENGTH(N'dbo.Parties', N'PostalCode') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [PostalCode] nvarchar(20) NULL;
+IF COL_LENGTH(N'dbo.Parties', N'TaxId') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [TaxId] nvarchar(20) NULL;
+IF COL_LENGTH(N'dbo.Parties', N'RegisteredByUserId') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [RegisteredByUserId] int NULL;
+IF COL_LENGTH(N'dbo.Parties', N'RegisteredByName') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [RegisteredByName] nvarchar(150) NULL;
+IF COL_LENGTH(N'dbo.Parties', N'RegisteredByReferrerId') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [RegisteredByReferrerId] int NULL;
+IF COL_LENGTH(N'dbo.Parties', N'RegisteredAt') IS NULL
+    ALTER TABLE [dbo].[Parties] ADD [RegisteredAt] datetime2 NULL;";
+
+    private static readonly (string Name, string Sql)[] SqliteColumns =
+    {
+        ("PostalCode", "ALTER TABLE Parties ADD COLUMN PostalCode TEXT NULL;"),
+        ("TaxId", "ALTER TABLE Parties ADD COLUMN TaxId TEXT NULL;"),
+        ("RegisteredByUserId", "ALTER TABLE Parties ADD COLUMN RegisteredByUserId INTEGER NULL;"),
+        ("RegisteredByName", "ALTER TABLE Parties ADD COLUMN RegisteredByName TEXT NULL;"),
+        ("RegisteredByReferrerId", "ALTER TABLE Parties ADD COLUMN RegisteredByReferrerId INTEGER NULL;"),
+        ("RegisteredAt", "ALTER TABLE Parties ADD COLUMN RegisteredAt TEXT NULL;")
+    };
+
     public static async Task EnsureAsync(AppDbContext db)
     {
-        if (db.Database.IsSqlite())
+        if (!db.Database.IsSqlite())
         {
-            if (!await HasColumnAsync(db, "Parties", "RegisteredByUserId"))
-                await SafeAsync(db, "ALTER TABLE Parties ADD COLUMN RegisteredByUserId INTEGER NULL;");
-            if (!await HasColumnAsync(db, "Parties", "RegisteredByName"))
-                await SafeAsync(db, "ALTER TABLE Parties ADD COLUMN RegisteredByName TEXT NULL;");
-            if (!await HasColumnAsync(db, "Parties", "RegisteredByReferrerId"))
-                await SafeAsync(db, "ALTER TABLE Parties ADD COLUMN RegisteredByReferrerId INTEGER NULL;");
-            if (!await HasColumnAsync(db, "Parties", "RegisteredAt"))
-                await SafeAsync(db, "ALTER TABLE Parties ADD COLUMN RegisteredAt TEXT NULL;");
+            // Required schema: let permission or DDL failures surface at their source.
+            await db.Database.ExecuteSqlRawAsync(SqlServer);
             return;
         }
 
-        await SafeAsync(db, @"
-IF OBJECT_ID(N'dbo.Parties', N'U') IS NOT NULL
-BEGIN
-    IF COL_LENGTH('dbo.Parties','RegisteredByUserId') IS NULL
-        ALTER TABLE [dbo].[Parties] ADD [RegisteredByUserId] int NULL;
-    IF COL_LENGTH('dbo.Parties','RegisteredByName') IS NULL
-        ALTER TABLE [dbo].[Parties] ADD [RegisteredByName] nvarchar(150) NULL;
-    IF COL_LENGTH('dbo.Parties','RegisteredByReferrerId') IS NULL
-        ALTER TABLE [dbo].[Parties] ADD [RegisteredByReferrerId] int NULL;
-    IF COL_LENGTH('dbo.Parties','RegisteredAt') IS NULL
-        ALTER TABLE [dbo].[Parties] ADD [RegisteredAt] datetime2 NULL;
-END");
-    }
+        var names = await db.Database.SqlQueryRaw<string>(
+            "SELECT name AS Value FROM pragma_table_info('Parties')").ToListAsync();
+        if (names.Count == 0)
+            throw new InvalidOperationException("The Parties table is missing. Check the target database.");
 
-    private static async Task<bool> HasColumnAsync(AppDbContext db, string table, string column)
-    {
-        try
-        {
-            var conn = db.Database.GetDbConnection();
-            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='{column}';";
-            return Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
-        }
-        catch
-        {
-            return true;   // اگر نسنجیدیم، دست نمی‌زنیم
-        }
-    }
-
-    private static async Task SafeAsync(AppDbContext db, string sql)
-    {
-        try { await db.Database.ExecuteSqlRawAsync(sql); }
-        catch (Exception ex) { Console.WriteLine($"[DB] PartyRegistration: {ex.Message}"); }
+        var existing = names.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, sql) in SqliteColumns)
+            if (!existing.Contains(name)) await db.Database.ExecuteSqlRawAsync(sql);
     }
 }

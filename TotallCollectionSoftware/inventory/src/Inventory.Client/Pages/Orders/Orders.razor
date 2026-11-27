@@ -532,7 +532,7 @@
             <div class="row g-3 mb-3 align-items-end">
                 <div class="col-md-5">
                     <label class="form-label fs-8">تاریخ برگشت</label>
-                    <PersianDatePicker Value="returnDate" ValueChanged="OnReturnDateChanged" />
+                    <DatePicker Value="returnDate" ValueChanged="OnReturnDateChanged" />
                 </div>
                 <div class="col-md-7 text-muted fs-8">
                     مشتری: <strong class="text-dark">@returningOrder.PartyName</strong> |
@@ -642,7 +642,7 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label fs-8">تاریخ عملیات</label>
-                    <PersianDatePicker Value="creditDate" ValueChanged="v => creditDate = v" />
+                    <DatePicker Value="creditDate" ValueChanged="v => creditDate = v ?? creditDate" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label fs-8">مبلغ (ریال)</label>
@@ -726,7 +726,7 @@
                     </div>
                     <div class="col-12 col-md-4">
                         <label class="form-label fs-8">تاریخ گردش</label>
-                        <PersianDatePicker Value="orderCreditDate" ValueChanged="v => orderCreditDate = v" />
+                        <DatePicker Value="orderCreditDate" ValueChanged="v => orderCreditDate = v ?? orderCreditDate" />
                     </div>
                 </div>
                 @if (orderCreditAccounts.Count == 0)
@@ -745,7 +745,7 @@
                 {
                     <div class="d-flex align-items-center gap-2">
                         <span class="text-muted fs-8">تاریخ لغو</span>
-                        <PersianDatePicker Value="orderCreditReversalDate" ValueChanged="v => orderCreditReversalDate = v" />
+                        <DatePicker Value="orderCreditReversalDate" ValueChanged="v => orderCreditReversalDate = v ?? orderCreditReversalDate" />
                     </div>
                 }
             </div>
@@ -801,7 +801,7 @@
             </div>
             <div class="mb-3">
                 <label class="form-label fs-8">تاریخ ابطال</label>
-                <PersianDatePicker Value="cancelDate" ValueChanged="v => cancelDate = v" />
+                <DatePicker Value="cancelDate" ValueChanged="v => cancelDate = v ?? cancelDate" />
             </div>
             <div>
                 <label class="form-label fs-8">علت ابطال</label>
@@ -1132,9 +1132,10 @@
         returnPreview = null;
     }
 
-    private void OnReturnDateChanged(DateTime value)
+    private void OnReturnDateChanged(DateTime? value)
     {
-        returnDate = value;
+        if (!value.HasValue) return; // A return must keep a concrete date.
+        returnDate = value.Value;
         returnPreview = null;
         returnDecision = SaleChequeReturnDecision.None;
         returnOperationId = Guid.NewGuid();

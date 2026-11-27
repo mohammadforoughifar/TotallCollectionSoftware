@@ -306,7 +306,7 @@
         {
             await Ai.DeleteConversationAsync(id);
             conversations.RemoveAll(c => c.Id == id);
-            if (conversationId == id) NewChat();
+            if (conversationId == id) await NewChat();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

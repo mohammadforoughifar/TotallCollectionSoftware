@@ -23,10 +23,26 @@ public static class DbInitializer
         {
             try
             {
-                if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
+                var isSqlite = provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase);
+                if (isSqlite)
+                    db.Database.EnsureCreated(); // حالت توسعه/تست: بدون مایگریشن
+                else
+                    MigrateSqlServer(db);
+
+                // Login accounts live in Users, independently of SystemUsers. Repair before
+                // seeders, background jobs or authentication can materialize a full User.
+                await CoreUserColumnsSchemaV1.EnsureAsync(db);
+
+                // On legacy databases a stamped migration may not have added every Party column.
+                // Repair before any startup backfill/seed can read a full Party entity.
+                await PartyRegistrationSchemaV1.EnsureAsync(db);
+
+                // Startup materializes InnerLetter rows while rebuilding the display numbers.
+                // Repair the mapped timestamps first, including when migration history was stamped.
+                await LetterCreatedAtSchemaV1.EnsureAsync(db);
+
+                if (isSqlite)
                 {
-                    // حالت توسعه/تست: بدون مایگریشن
-                    db.Database.EnsureCreated();
                     await OrderVatSchemaV1.EnsureAsync(db);
                     await OrderTrackingSchemaV1.EnsureAsync(db);
                     await SaleChequeChargeSchemaV1.EnsureAsync(db);
@@ -120,7 +136,6 @@ public static class DbInitializer
                 }
                 else
                 {
-                    MigrateSqlServer(db);
                     await OrderVatSchemaV1.EnsureAsync(db);
                     await OrderTrackingSchemaV1.EnsureAsync(db);
                     await SaleChequeChargeSchemaV1.EnsureAsync(db);
@@ -223,9 +238,6 @@ public static class DbInitializer
                 // (مثل باگ «Invalid column name 'DocumentId'»)، همین‌جا در لاگ راه‌اندازی
                 // هشدار داده می‌شود تا تشخیص «مشکل اسکیما» از «مشکل کد» آسان باشد.
                 await ModelSchemaDriftCheck.RunAsync(db);
-
-                // طرف حساب: ستون‌های «ثبت‌کننده» (چه ویزیتوری این مشتری را ثبت کرد)
-                await PartyRegistrationSchemaV1.EnsureAsync(db);
 
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
