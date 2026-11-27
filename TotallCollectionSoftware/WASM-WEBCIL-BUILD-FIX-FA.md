@@ -1,66 +1,37 @@
-# رفع خطای بیلد: «Failed to convert … to webcil»
+# بیلد کلاینت Blazor در ویندوز (.NET 8)
 
-## متن خطا
+`Inventory.Client` برای `net8.0` است. اگر خطای `DirectoryNotFoundException` برای
+`obj\Debug\net8.0\fx\Inventory.Client\_framework\Microsoft.Extensions.Configuration.FileExtensions.dll` دیدید،
+این یک **مسیر تولیدی در زمان بیلد** است، نه فایلی که باید دستی داخل سورس کپی شود.
+در گزارش، مسیر مقصد ۲۶۰ کاراکتر است و تسک از WebAssembly Pack نسخهٔ ۱۱ اجرا می‌شود.
 
-```
-Failed to convert '…\microsoft.aspnetcore.components.webassembly\8.0.30\lib\net8.0\
-Microsoft.AspNetCore.Components.WebAssembly.dll' to webcil:
-Could not find a part of the path
-'…\inventory\src\Inventory.Client\obj\Debug\net8.0\tmp-webcil\a38fd86c…\Microsoft.AspNetCore.Components.WebAssembly.wasm'.
-```
+## تغییرات این نسخه
 
-این خطا از `Microsoft.NET.Sdk.WebAssembly.Browser.targets` نسخهٔ **10.0.3** می‌آید.
+- سه `global.json` (ریشهٔ بسته، `TotallCollectionSoftware` و `inventory`) همگی `version: 8.0.100`، `rollForward: major` و `allowPrerelease: false` دارند. بر خلاف `latestMajor`، اگر SDK ۸ سازگار موجود باشد همان خانواده ترجیح داده می‌شود. اگر نباشد، انتخاب نسخهٔ پایدار بالاتر مجاز است؛ روی سیستم فقط با `11.0.100` همان SDK انتخاب می‌شود. این تنظیم **TargetFramework را تغییر نمی‌دهد** و SDK نصب نمی‌کند.
+- `inventory/Directory.Build.props` فقط برای `Inventory.Client` در ویندوز، مسیر پیش‌فرض موقت را به `%LOCALAPPDATA%\TCS\obj\<checkout-key>\` می‌برد. کلید از مسیر کامل پروژه به دست می‌آید تا نسخه‌های جداگانه روی یکدیگر ننویسند. `Restore` و `Build` از همان مسیر استفاده می‌کنند. `bin`، مسیر انتشار و فایل‌های کاربر جابه‌جا نمی‌شوند.
+- برای حفظ فرمت بوت قبلی، `WasmEnableWebcil=false` باقی مانده است. حذف DLLها، ویرایش فایل‌های `.targets` در NuGet یا تغییر رجیستری لازم نیست.
 
-## علت
+## بررسی در یک کپی تازه
 
-1. پروژه `net8.0` است، ولی ابزارِ WebAssembly که بیلد را انجام می‌دهد از **SDK نسخهٔ ۱۰** آمده است
-   (`C:\Users\…\.nuget\packages\microsoft.net.sdk.webassembly.pack\10.0.3\…`).
-2. فایل `global.json` ریشه با `"rollForward": "latestMajor"` اجازه می‌دهد SDK جدیدتر (۱۰) برای این پروژه
-   انتخاب شود؛ در نتیجه مرحلهٔ تبدیل اسمبلی‌ها به فرمت **webcil** با نسخهٔ net8.0 اسمبلی‌ها سازگار نیست و
-   فایل موقت `tmp-webcil\*.wasm` ساخته نمی‌شود.
-3. مسیر پروژه هم پرانتز و فاصله دارد (`…\Downloads\TotallCollectionSoftware-main (14)\…`) که این نوع
-   مسیرهای موقت را حساس‌تر می‌کند.
+آرشیو را مستقیم در پوشه‌ای کوتاه مانند `C:\src\TCS` استخراج کنید. در پوشهٔ Solution مرجع (`TotallCollectionSoftware\inventory`) اجرا کنید:
 
-## رفع انجام‌شده (در مخزن)
-
-در `inventory/src/Inventory.Client/Inventory.Client.csproj` این ویژگی اضافه شد:
-
-```xml
-<WasmEnableWebcil>false</WasmEnableWebcil>
+```powershell
+dotnet --list-sdks
+dotnet --version
+dotnet restore .\src\Inventory.Client\Inventory.Client.csproj
+dotnet build .\src\Inventory.Client\Inventory.Client.csproj -c Debug --no-restore
 ```
 
-با این کار مرحلهٔ تبدیل به webcil انجام نمی‌شود و اسمبلی‌ها مثل گذشته به شکل `.dll` در خروجی می‌مانند.
-رفتار برنامه تغییری نمی‌کند و این تنظیم روی SDK 8 و 10 هر دو معتبر است.
+در نصب فقط با SDK `11.0.100`، خروجی `dotnet --version` از داخل همین پوشه باید `11.0.100` باشد؛ در نصب آزمایشی دارای هر دو SDK، `8.0.428` انتخاب شد. سپس `Inventory.sln` **همین پوشه** را در Visual Studio باز و Rebuild کنید.
 
-## پس از گرفتن تغییرات
+**NETSDK1141 هنگام باز کردن بستهٔ قبلی:** این خطا پیش از کامپایل می‌گوید resolver نتوانسته درخواست `global.json` را با SDKهای قابل استفاده برآورده کند. فایل گزارش‌شده در `C:\Program Files\dotnet\sdk\...\targets` را ویرایش نکنید. Visual Studio را ببندید، بستهٔ جدید را در پوشهٔ تازه استخراج کنید و Solution همان نسخه را باز کنید. اگر فقط VS خطا دارد ولی CLI موفق است، سازگاری نسخهٔ Visual Studio با SDK نصب‌شده را بررسی کنید. برای بیلد با نصب استاندارد SDK ۸ نیز می‌توانید آن را **کنار** ۱۱ نصب کنید (`winget install --id Microsoft.DotNet.SDK.8 --exact --architecture x64`).
 
-```bat
-cd inventory\src\Inventory.Client
-rmdir /s /q obj
-rmdir /s /q bin
-dotnet build
+**اجرا جدا از بیلد است:** `Inventory.Api` همچنان `net8.0` است. اگر بعد از بیلد، اجرای برنامهٔ framework-dependent خطای نبود `Microsoft.AspNetCore.App 8.0.x` داد، `dotnet --list-runtimes` را بررسی و **ASP.NET Core Runtime 8 x64** (یا SDK ۸ که آن را شامل می‌شود) نصب کنید. برای رفع خطای انتخاب SDK، دیتابیس و تنظیمات آن را تغییر ندهید.
+
+برای مشاهدهٔ مسیرهای واقعی فایل‌های موقت در نسخه‌های تست‌شده:
+
+```powershell
+dotnet msbuild .\src\Inventory.Client\Inventory.Client.csproj -getProperty:BaseIntermediateOutputPath,MSBuildProjectExtensionsPath,IntermediateOutputPath
 ```
 
-(پاک‌کردن `obj` لازم است، چون خروجی نیمه‌کارهٔ `tmp-webcil` در آن مانده است.)
-
-## اگر باز هم خطا داد
-
-به ترتیب این گزینه‌ها را امتحان کنید:
-
-**۱) پین‌کردن SDK ۸** — اگر .NET 8 SDK روی سیستم نصب است، در `global.json` ریشه مقدار
-`rollForward` را از `latestMajor` به `latestFeature` تغییر دهید:
-
-```json
-{
-  "sdk": { "version": "8.0.100", "rollForward": "latestFeature", "allowPrerelease": false }
-}
-```
-
-**۲) مسیر بدون پرانتز** — پروژه را از `…\Downloads\TotallCollectionSoftware-main (14)\…` به مسیری ساده
-مثل `C:\src\TotallCollectionSoftware` منتقل کنید (پرانتز و فاصله در مسیر، بیلد ابزارهای wasm را حساس می‌کند).
-
-**۳) نصب دات‌نت ۸** — اگر فقط SDK ۱۰ نصب است، .NET 8 SDK (نسخهٔ 8.0.4xx) را نصب کنید؛ بیلد پروژه‌های
-net8.0 با ابزار خودشان همیشه امن‌ترین حالت است.
-
-**۴) حذف کش NuGet ابزار** (نادر): پوشهٔ `%USERPROFILE%\.nuget\packages\microsoft.net.sdk.webassembly.pack`
-را پاک کنید تا نسخهٔ سازگار دوباره بازیابی شود.
+در صورت به‌روزرسانی روی یک کپی قدیمی، اول IDE را ببندید؛ فقط `bin` و `obj` تولیدیِ خود پروژهٔ کلاینت را در صورت نیاز پاک کنید، نه سورس، تنظیمات اتصال، آپلودها یا دیتابیس را. پوشهٔ کش NuGet را پاک نکنید.

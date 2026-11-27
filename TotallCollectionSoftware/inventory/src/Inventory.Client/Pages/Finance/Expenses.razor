@@ -714,7 +714,7 @@
         await ApplyFilter();
     }
 
-    private async Task ClearFilterCategory() => OnCatFilter(new ChangeEventArgs { Value = "0" });
+    private Task ClearFilterCategory() => OnCatFilter(new ChangeEventArgs { Value = "0" });
     private async Task GoToPage(int p) { page = p; await Load(); }
 
     private RenderFragment PayTypeBadge(CashType t) => t switch

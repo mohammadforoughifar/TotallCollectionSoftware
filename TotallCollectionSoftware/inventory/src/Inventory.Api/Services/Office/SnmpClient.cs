@@ -16,7 +16,7 @@ public sealed class SnmpTarget
     public string? Community { get; init; }
     public string? V3User { get; init; }
     /// <summary>None | MD5 | SHA1 | SHA256</summary>
-    public string V3AuthProtocol { get; init; } = "SHA1";
+    public string V3AuthProtocol { get; init; } = "SHA256";
     public string? V3AuthPassword { get; init; }
     /// <summary>None | DES | AES</summary>
     public string V3PrivProtocol { get; init; } = "AES";
@@ -87,18 +87,24 @@ public sealed class SnmpSession
         IAuthenticationProvider auth = (_t.V3AuthProtocol ?? "").ToUpperInvariant() switch
         {
             "NONE" or "" => DefaultAuthenticationProvider.Instance,
-            "MD5" => new MD5AuthenticationProvider(new OctetString(_t.V3AuthPassword ?? "")),
             "SHA256" => new SHA256AuthenticationProvider(new OctetString(_t.V3AuthPassword ?? "")),
-            _ => new SHA1AuthenticationProvider(new OctetString(_t.V3AuthPassword ?? "")),
+#pragma warning disable CS0618 // Explicit legacy device settings only; do not silently downgrade unknown protocols.
+            "MD5" => new MD5AuthenticationProvider(new OctetString(_t.V3AuthPassword ?? "")),
+            "SHA1" => new SHA1AuthenticationProvider(new OctetString(_t.V3AuthPassword ?? "")),
+#pragma warning restore CS0618
+            _ => throw new SnmpQueryException("الگوریتم احراز هویت SNMPv3 شناخته نشد."),
         };
         if (auth is DefaultAuthenticationProvider)
             _privacy = DefaultPrivacyProvider.DefaultPair;
         else
             _privacy = (_t.V3PrivProtocol ?? "").ToUpperInvariant() switch
             {
-                "DES" => new DESPrivacyProvider(new OctetString(_t.V3PrivPassword ?? ""), auth),
                 "AES" => new AESPrivacyProvider(new OctetString(_t.V3PrivPassword ?? ""), auth),
-                _ => new DefaultPrivacyProvider(auth),
+#pragma warning disable CS0618 // Legacy printers configured for DES cannot negotiate AES on the wire.
+                "DES" => new DESPrivacyProvider(new OctetString(_t.V3PrivPassword ?? ""), auth),
+#pragma warning restore CS0618
+                "NONE" or "" => new DefaultPrivacyProvider(auth),
+                _ => throw new SnmpQueryException("الگوریتم رمزنگاری SNMPv3 شناخته نشد."),
             };
 
         // کشف engineId/boots/time دستگاه (Report) — پیش‌نیاز هر درخواست v3

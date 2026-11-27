@@ -917,11 +917,11 @@
                                         {
                                             <div class="col-md-6">
                                                 <label class="form-label" for="omf-aproto">Auth</label>
-                                                <select id="omf-aproto" class="form-select" @bind="form.SnmpV3AuthProtocol"><option value="SHA1">SHA1</option><option value="SHA256">SHA256</option><option value="MD5">MD5</option><option value="None">بدون</option></select>
+                                                <select id="omf-aproto" class="form-select" @bind="form.SnmpV3AuthProtocol"><option value="SHA256">SHA-256 (پیشنهادی)</option><option value="SHA1">SHA-1 (قدیمی)</option><option value="MD5">MD5 (قدیمی)</option><option value="None">بدون</option></select>
                                             </div>
                                             <div class="col-md-6">
                                                 <label class="form-label" for="omf-pproto">Privacy</label>
-                                                <select id="omf-pproto" class="form-select" @bind="form.SnmpV3PrivProtocol"><option value="AES">AES</option><option value="DES">DES</option><option value="None">بدون</option></select>
+                                                <select id="omf-pproto" class="form-select" @bind="form.SnmpV3PrivProtocol"><option value="AES">AES</option><option value="DES">DES (قدیمی)</option><option value="None">بدون</option></select>
                                             </div>
                                         }
                                     </div>

@@ -142,7 +142,7 @@
                    @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
             @if (!string.IsNullOrWhiteSpace(search))
             {
-                <button class="stripe-search-clear" @onclick="@(() => { search = null; SearchChanged(); })">
+                <button class="stripe-search-clear" @onclick="ClearSearchAsync">
                     <i class="bi bi-x"></i>
                 </button>
             }
@@ -151,15 +151,15 @@
         <div class="stripe-filter-controls">
             <div class="stripe-control-group">
                 <span class="stripe-control-label">از تاریخ:</span>
-                <DatePicker Value="from" ValueChanged="d => SetFrom(d)" AllowClear="true" />
+                <DatePicker Value="from" ValueChanged="SetFrom" AllowClear="true" />
             </div>
             <div class="stripe-control-group">
                 <span class="stripe-control-label">تا تاریخ:</span>
-                <DatePicker Value="to" ValueChanged="d => SetTo(d)" AllowClear="true" />
+                <DatePicker Value="to" ValueChanged="SetTo" AllowClear="true" />
             </div>
             @if (from.HasValue || to.HasValue || !string.IsNullOrWhiteSpace(search) || statusFilter.HasValue)
             {
-                <button class="stripe-btn-text" @onclick="@(() => { from = null; to = null; search = null; statusFilter = null; LoadAsync(); })">
+                <button class="stripe-btn-text" @onclick="ResetFiltersAsync">
                     <i class="bi bi-x-circle me-1"></i> پاک‌سازی فیلترها
                 </button>
             }
@@ -183,7 +183,7 @@
                 <div class="stripe-empty-desc">هیچ سفارشی مطابق با این فیلتر یا عبارت جستجو وجود ندارد.</div>
                 @if (from.HasValue || to.HasValue || !string.IsNullOrWhiteSpace(search) || statusFilter.HasValue)
                 {
-                    <button class="stripe-btn stripe-btn-secondary mt-3" @onclick="@(() => { from = null; to = null; search = null; statusFilter = null; LoadAsync(); })">
+                    <button class="stripe-btn stripe-btn-secondary mt-3" @onclick="ResetFiltersAsync">
                         بازنشانی تمامی فیلترها
                     </button>
                 }
@@ -1202,9 +1202,23 @@
         ApplyFilters();
     }
 
-    private void SetFrom(DateTime? d) { from = d; _ = LoadAsync(); }
+    private Task SetFrom(DateTime? d) { from = d; return LoadAsync(); }
 
-    private void SetTo(DateTime? d) { to = d; _ = LoadAsync(); }
+    private Task SetTo(DateTime? d) { to = d; return LoadAsync(); }
+
+    private Task ClearSearchAsync()
+    {
+        _debounce?.Cancel();
+        search = null;
+        return LoadAsync();
+    }
+
+    private Task ResetFiltersAsync()
+    {
+        from = to = null;
+        statusFilter = null;
+        return ClearSearchAsync();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1227,8 +1241,6 @@
         finally
         {
             loading = false;
-            // LoadAsync گاهی از یک رویداد همزمان (تغییر تاریخ) فراخوانی میشود؛
-            // بدون رندر صریح، جدول روی حالت «در حال بارگذاری» میماند.
             await InvokeAsync(StateHasChanged);
         }
     }
